@@ -335,6 +335,9 @@ function renderAll() {
           ${r.accessibilityNeeds?`<div style="font-size:13px;margin-top:6px;padding:10px;background:#f5f7fa;border-radius:6px;"><strong>Accessibility:</strong> ${r.accessibilityNeeds}</div>`:""}
           ${r.travelNotes?`<div style="font-size:13px;margin-top:6px;padding:10px;background:#f5f7fa;border-radius:6px;"><strong>Travel:</strong> ${r.travelNotes}</div>`:""}
           ${r.otherNotes?`<div style="font-size:13px;margin-top:6px;padding:10px;background:#f5f7fa;border-radius:6px;"><strong>Other:</strong> ${r.otherNotes}</div>`:""}
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f3f6;text-align:right;">
+            <button onclick="deleteResponse('${r.id}','${fullName(r)||r.email}')" style="padding:7px 14px;background:#fce8e6;color:#b7410e;border:1px solid #f5b8b0;border-radius:6px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete response</button>
+          </div>
         </div>
       </div>`;
   }).join("");
@@ -342,6 +345,18 @@ function renderAll() {
 
 function toggleCard(i) {
   document.getElementById("card-" + i).classList.toggle("open");
+}
+
+async function deleteResponse(docId, name) {
+  if (!confirm(`Delete response from ${name}?\n\nThis cannot be undone.`)) return;
+  try {
+    await db.collection("faculty_responses").doc(docId).delete();
+    allResponses = allResponses.filter(r => r.id !== docId);
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Delete failed: " + err.message);
+  }
 }
 
 // ── Generic name/email table ──────────────────────────────────────────────
