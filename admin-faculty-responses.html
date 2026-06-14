@@ -141,6 +141,9 @@
     <div class="sum-pill" id="pill-erc-fix" onclick="switchTab('erc')">
       <div class="val" id="sum-erc-fix" style="color:#b7410e;">–</div><div class="lbl">ERC to fix</div>
     </div>
+    <div class="sum-pill" id="pill-itc" onclick="switchTab('itc')">
+      <div class="val" id="sum-itc">–</div><div class="lbl">ITCs</div>
+    </div>
   </div>
 
   <!-- Tabs -->
@@ -152,6 +155,7 @@
     <button class="tab-btn"        onclick="switchTab('sat-accom')"  id="tab-sat-accom">Sat accom</button>
     <button class="tab-btn"        onclick="switchTab('dietary')"    id="tab-dietary">Dietary</button>
     <button class="tab-btn"        onclick="switchTab('erc')"        id="tab-erc">ERC issues</button>
+    <button class="tab-btn"        onclick="switchTab('itc')"        id="tab-itc">ITCs</button>
     <button class="tab-btn"        onclick="switchTab('export')"     id="tab-export">Export</button>
   </div>
 
@@ -218,6 +222,7 @@ function updateSummary() {
   document.getElementById("sum-sat-accom").textContent  = r.filter(x => x.accommodation && x.accommodation.saturday === "yes").length;
   document.getElementById("sum-dietary").textContent    = r.filter(x => x.diet && x.diet !== "None" && x.diet !== "").length;
   document.getElementById("sum-erc-fix").textContent    = r.filter(x => x.ercCorrectlyListed === "no").length;
+  document.getElementById("sum-itc").textContent        = r.filter(x => x.role === "ITC").length;
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────
@@ -250,6 +255,7 @@ function renderTab(tab) {
     "Saturday night accommodation requests", ["Name","Email","Role"]);
   else if (tab === "dietary") renderDietary();
   else if (tab === "erc")    renderERC();
+  else if (tab === "itc")    renderITC();
   else if (tab === "export") renderExport();
 }
 
@@ -268,6 +274,7 @@ function getFiltered() {
     case "sat-accom":  return allResponses.filter(r => r.accommodation && r.accommodation.saturday === "yes");
     case "dietary":    return allResponses.filter(r => r.diet && r.diet !== "None" && r.diet !== "");
     case "erc":        return allResponses.filter(r => r.ercCorrectlyListed === "no");
+    case "itc":        return allResponses.filter(r => r.role === "ITC");
     default:           return allResponses;
   }
 }
@@ -419,6 +426,39 @@ function renderERC() {
       <div class="section-heading" style="color:#b7410e;">ERC issues — needs correcting before end of September (${toFix.length})</div>
       <table class="data-table">
         <thead><tr><th>Name</th><th>Email</th><th>Current ERC qualification</th><th>Liaison confirmed</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── ITC view ──────────────────────────────────────────────────────────────
+function renderITC() {
+  const itcs = allResponses.filter(r => r.role === "ITC");
+  setFilterLabel(`${itcs.length} ITC(s)`);
+
+  const rows = itcs.length
+    ? itcs.map(r => {
+        const days = ["friday","saturday","sunday"].map(d =>
+          `<span class="day-badge day-${r.days&&r.days[d]?'yes':'no'}">${d.slice(0,3)}</span>`).join(" ");
+        return `<tr>
+          <td>${fullName(r)||"–"}</td>
+          <td>${r.email||"–"}</td>
+          <td>${r.ercQualification||"–"}</td>
+          <td>${r.ercCorrectlyListed==="yes"
+            ? '<span class="badge-erc-ok">✓ OK</span>'
+            : r.ercCorrectlyListed==="no"
+              ? '<span class="badge-erc-fix">✗ Fix needed</span>'
+              : "–"}</td>
+          <td><div class="day-badges">${days}</div></td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="5" style="color:#aab8c2;text-align:center;">No ITC responses yet</td></tr>`;
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="section-block">
+      <div class="section-heading">Instructor Trainer Candidates (${itcs.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>ERC qualification</th><th>ERC status</th><th>Days</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
