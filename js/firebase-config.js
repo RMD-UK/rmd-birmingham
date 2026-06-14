@@ -50,7 +50,7 @@ function initFirebase() {
   firebase.initializeApp(FIREBASE_CONFIG);
   db      = firebase.firestore();
   auth    = firebase.auth();
-  storage = firebase.storage();
+  storage = firebase.storage ? firebase.storage() : null;
   console.log("Firebase initialised.");
   return true;
 }
