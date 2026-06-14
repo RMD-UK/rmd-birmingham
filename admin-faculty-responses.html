@@ -150,13 +150,27 @@ initFirebase();
 let allResponses = [];
 let currentTab   = "all";
 
-document.addEventListener("DOMContentLoaded", loadResponses);
+document.addEventListener("DOMContentLoaded", () => {
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      loadResponses();
+    } else {
+      document.getElementById("tabContent").innerHTML =
+        `<div class="empty-state">Please <a href="index.html">sign in as director</a> to view responses.</div>`;
+    }
+  });
+});
 
 async function loadResponses() {
   document.getElementById("tabContent").innerHTML = `<div class="loading">Loading…</div>`;
   try {
-    const snap = await db.collection("faculty_responses").orderBy("submittedAt", "desc").get();
-    allResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snap = await db.collection("faculty_responses").get();
+    allResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const ta = a.submittedAt ? a.submittedAt.seconds : 0;
+        const tb = b.submittedAt ? b.submittedAt.seconds : 0;
+        return tb - ta;
+      });
     updateSummary();
     renderTab(currentTab);
   } catch (err) {
