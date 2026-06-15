@@ -52,8 +52,7 @@
 <script>
   // ── Director email list (add more as needed) ───────────────────────────────
   const DIRECTOR_EMAILS = [
-    "console_brews.6f@icloud.com",
-    "j.hulme.1@bham.ac.uk"
+    "console_brews.6f@icloud.com"
   ];
 
   // ── Init Firebase ──────────────────────────────────────────────────────────
@@ -102,7 +101,14 @@
 
     try {
       await auth.signInWithEmailAndPassword(email, password);
-      const role = DIRECTOR_EMAILS.includes(email) ? "director" : "faculty";
+      // Check Firestore for dynamically promoted directors
+      let firestoreDirectors = [];
+      try {
+        const configSnap = await db.collection("config").doc("platform").get();
+        firestoreDirectors = configSnap.exists ? (configSnap.data().directors || []) : [];
+      } catch (e) { /* fall through to hardcoded list */ }
+      const allDirectors = [...DIRECTOR_EMAILS, ...firestoreDirectors.map(x => x.toLowerCase())];
+      const role = allDirectors.includes(email) ? "director" : "faculty";
       window.location.href = `timetable.html?role=${role}`;
     } catch (err) {
       btn.textContent = "Sign in";

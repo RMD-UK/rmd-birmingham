@@ -1,0 +1,87 @@
+rules_version = '2';
+
+// RMD Instructor Weekend 2026 — Firestore Security Rules
+//
+// Two access levels:
+//   - Public (unauthenticated): QR code arrivals, faculty pre-course form
+//   - Authenticated: all faculty/director platform features
+//
+// To deploy: Firebase Console -> Firestore Database -> Rules -> paste and publish
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── People directory ────────────────────────────────────────────────────
+    // Read: public — QR landing page looks up candidate name without login
+    // Write: authenticated only — populated by import scripts / admin tools
+    match /people/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Attendance ──────────────────────────────────────────────────────────
+    // Create/update: public — candidates write their own arrival via QR scan
+    // Read/delete: authenticated only — faculty dashboard and admin only
+    match /attendance/{docId} {
+      allow create, update: if true;
+      allow read, delete: if request.auth != null;
+    }
+
+    // ── Faculty pre-course form ─────────────────────────────────────────────
+    // Create: public — form is sent to faculty before they have a platform login
+    // Read/update/delete: authenticated only — only you can view responses
+    match /faculty_responses/{docId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+
+    // ── Assessments ─────────────────────────────────────────────────────────
+    // Authenticated only — gateway and development assessment records
+    match /assessments/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Sessions ────────────────────────────────────────────────────────────
+    // Authenticated only — programme schedule if managed via Firestore
+    match /sessions/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Messages ────────────────────────────────────────────────────────────
+    // Authenticated only — broadcast messages to room screens / noticeboard
+    match /messages/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Rooms ────────────────────────────────────────────────────────────────
+    // Authenticated only — room state (timer, current message)
+    match /rooms/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Feedback ────────────────────────────────────────────────────────────
+    // Authenticated only — faculty voice feedback transcripts
+    match /feedback/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── ITC observations ────────────────────────────────────────────────────
+    // Authenticated only — ITC observation records
+    match /itc_observations/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Gateway assessments ─────────────────────────────────────────────────
+    // Authenticated only — BLS gateway binary outcomes and concern flags
+    match /gateway_assessments/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Platform config ──────────────────────────────────────────────────────
+    // Authenticated only — stores director email list and platform settings
+    match /config/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+  }
+}

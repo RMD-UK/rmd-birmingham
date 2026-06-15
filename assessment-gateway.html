@@ -2,929 +2,640 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>BLS Gateway Assessment</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLS Gateway — RMD 2026</title>
   <link rel="stylesheet" href="css/rmd.css">
   <style>
     * { box-sizing: border-box; }
-
-    body {
-      background: #f0f3f6;
-      font-family: var(--font);
-      margin: 0;
-      padding: 0;
-      min-height: 100vh;
-    }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 80px; }
 
     /* ── Top bar ── */
     .top-bar {
-      background: var(--rmd-navy);
-      color: white;
-      padding: 10px 14px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      position: sticky;
-      top: 0;
-      z-index: 100;
+      background: var(--rmd-navy); color: white; padding: 12px 16px;
+      display: flex; align-items: center; gap: 10px;
+      position: sticky; top: 0; z-index: 200;
     }
     .top-bar img { height: 28px; }
     .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
-    .top-bar-time { font-size: 13px; opacity: 0.7; font-variant-numeric: tabular-nums; }
-
-    /* ── Gateway deadline bar ── */
-    .deadline-bar {
-      background: #b7410e;
-      color: white;
-      text-align: center;
-      padding: 7px 14px;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.3px;
-    }
-    .deadline-bar.safe  { background: #1a6e31; }
-    .deadline-bar.close { background: #c17a00; }
-
-    /* ── Phase selector ── */
-    .phase-tabs {
-      display: flex;
-      background: white;
-      border-bottom: 2px solid #dce3ea;
-    }
-    .phase-tab {
-      flex: 1;
-      padding: 11px 6px;
-      text-align: center;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--rmd-muted);
-      cursor: pointer;
-      border: none;
-      background: none;
-      border-bottom: 3px solid transparent;
-      margin-bottom: -2px;
-      font-family: var(--font);
-    }
-    .phase-tab.active {
-      color: var(--rmd-blue);
-      border-bottom-color: var(--rmd-blue);
+    .clock-pill {
+      font-size: 13px; font-weight: 700;
+      background: rgba(255,255,255,0.15); border-radius: 20px;
+      padding: 4px 12px; min-width: 70px; text-align: center;
     }
 
-    /* ── View panels ── */
-    .view { display: none; padding: 12px 14px 100px; }
-    .view.active { display: block; }
+    /* ── Deadline bar ── */
+    #deadlineBar {
+      padding: 8px 16px; text-align: center; font-size: 13px; font-weight: 700;
+      background: #1a3a5c; color: white; transition: background 0.5s;
+    }
+    #deadlineBar.amber { background: #e65c00; }
+    #deadlineBar.red   { background: #b71c1c; }
 
-    /* ── Candidate selector card ── */
-    .card {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-      margin-bottom: 12px;
-      overflow: hidden;
+    /* ── View switcher ── */
+    .view-tabs {
+      display: flex; background: white; border-bottom: 2px solid #dce3ea;
+      overflow-x: auto;
     }
-    .card-header {
-      background: var(--rmd-blue);
-      color: white;
-      padding: 10px 14px;
-      font-size: 13px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+    .view-tab {
+      padding: 11px 18px; font-size: 13px; font-weight: 700;
+      color: var(--rmd-muted); border: none; background: none;
+      font-family: var(--font); cursor: pointer;
+      border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap;
     }
-    .card-body { padding: 12px 14px; }
+    .view-tab:hover  { color: var(--rmd-blue); }
+    .view-tab.active { color: var(--rmd-blue); border-bottom-color: var(--rmd-blue); }
 
-    select.candidate-select {
-      width: 100%;
-      padding: 12px 10px;
-      font-size: 16px;
-      border: 2px solid #ccd6dd;
-      border-radius: 6px;
-      font-family: var(--font);
-      color: var(--rmd-navy);
-      background: white;
-      appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%230b5394' stroke-width='2' fill='none'/%3E%3C/svg%3E");
-      background-repeat: no-repeat;
-      background-position: right 14px center;
+    /* ── Room selector (director only) ── */
+    #roomSelector {
+      padding: 10px 14px; display: flex; gap: 8px; flex-wrap: wrap;
+      background: #f8f9fb; border-bottom: 1px solid #dce3ea;
     }
-    select.candidate-select:focus {
-      outline: none;
-      border-color: var(--rmd-blue);
+    .room-btn {
+      padding: 7px 14px; border-radius: 20px; font-size: 12px; font-weight: 700;
+      font-family: var(--font); cursor: pointer;
+      background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd;
+      transition: all 0.12s;
     }
+    .room-btn:hover { border-color: var(--rmd-blue); color: var(--rmd-blue); }
+    .room-btn.active { background: var(--rmd-navy); color: white; border-color: var(--rmd-navy); }
+    .room-btn.done   { background: #e6f4ea; border-color: #34a853; color: #1a6e31; }
 
-    /* ── Assessor info ── */
-    .assessor-row {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-    }
-    .assessor-row input {
-      flex: 1;
-      padding: 10px;
-      font-size: 14px;
-      border: 2px solid #ccd6dd;
-      border-radius: 6px;
-      font-family: var(--font);
-    }
-    .assessor-row input:focus { outline: none; border-color: var(--rmd-blue); }
+    /* ── Content ── */
+    .content { padding: 14px; max-width: 800px; margin: 0 auto; }
 
-    /* ── Skill rows ── */
-    .skill-row {
-      display: flex;
-      align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px solid #edf0f2;
-      gap: 10px;
+    /* ── Room header ── */
+    .room-header {
+      background: var(--rmd-navy); color: white; border-radius: 10px;
+      padding: 14px 18px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
     }
-    .skill-row:last-child { border-bottom: none; }
+    .room-header .room-name { font-size: 20px; font-weight: 700; flex: 1; }
+    .room-header .room-prog { font-size: 13px; opacity: 0.8; }
 
-    .skill-name {
-      flex: 1;
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--rmd-navy);
-      line-height: 1.3;
+    /* ── Candidate rows ── */
+    .candidate-row {
+      background: white; border-radius: 10px; margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.10); overflow: hidden;
+      display: flex; align-items: center; gap: 0; min-height: 64px;
+      border: 2px solid transparent; transition: border-color 0.15s;
     }
-    .skill-sub {
-      font-size: 11px;
-      font-weight: 400;
-      color: var(--rmd-muted);
-      display: block;
-      margin-top: 2px;
-    }
+    .candidate-row.outcome-pass { border-color: #34a853; }
+    .candidate-row.outcome-fail { border-color: #ea4335; }
 
-    .skill-btns {
-      display: flex;
-      gap: 6px;
+    .cr-name {
+      flex: 1; padding: 12px 14px; font-size: 15px; font-weight: 700;
+      color: var(--rmd-navy); min-width: 0;
+    }
+    .cr-name small { display: block; font-size: 11px; font-weight: 600; color: var(--rmd-muted); margin-top: 2px; }
+
+    .cr-outcome {
+      display: flex; align-items: center; gap: 6px; padding: 10px;
       flex-shrink: 0;
     }
+    .btn-pass, .btn-fail {
+      font-size: 22px; width: 52px; height: 52px; border: 3px solid transparent;
+      border-radius: 50%; cursor: pointer; font-family: var(--font);
+      background: #f0f3f6; transition: all 0.12s; display: flex;
+      align-items: center; justify-content: center;
+    }
+    .btn-pass:hover { background: #e6f4ea; border-color: #34a853; transform: scale(1.08); }
+    .btn-fail:hover { background: #fce8e6; border-color: #ea4335; transform: scale(1.08); }
+    .btn-pass.selected { background: #34a853; border-color: #2e7d32; color: white; }
+    .btn-fail.selected { background: #ea4335; border-color: #c62828; color: white; }
 
-    .rag-btn {
-      width: 44px;
-      height: 44px;
-      border-radius: 8px;
-      border: 2px solid transparent;
-      font-size: 18px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: transform 0.1s, border-color 0.1s;
-      background: #e8edf2;
-      color: transparent;
+    .cr-flag {
+      font-size: 22px; width: 44px; height: 52px; border: none;
+      background: none; cursor: pointer; opacity: 0.3; transition: opacity 0.12s;
+      flex-shrink: 0;
     }
-    .rag-btn:active { transform: scale(0.92); }
+    .cr-flag:hover  { opacity: 0.7; }
+    .cr-flag.flagged { opacity: 1; }
 
-    /* unselected states: show coloured dot */
-    .rag-btn.green  { background: #e6f4ea; color: #1a6e31; }
-    .rag-btn.amber  { background: #fff3cd; color: #856404; }
-    .rag-btn.red    { background: #fde8e4; color: #b7410e; }
+    .cr-lock {
+      font-size: 20px; width: 44px; height: 52px; border: none;
+      background: none; cursor: pointer; color: #aab8c2; flex-shrink: 0;
+      transition: color 0.12s;
+    }
+    .cr-lock.locked { color: var(--rmd-navy); cursor: pointer; }
+    .cr-lock.unlock-pending { color: #e65c00; }
 
-    /* selected states: solid fill + white check */
-    .rag-btn.selected-green { background: #1a6e31; color: white; border-color: #145727; }
-    .rag-btn.selected-amber { background: #c17a00; color: white; border-color: #9a6200; }
-    .rag-btn.selected-red   { background: #b7410e; color: white; border-color: #8e3209; }
+    .cr-status {
+      font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px;
+      margin-right: 8px; flex-shrink: 0;
+    }
+    .status-pass { background: #e6f4ea; color: #1a6e31; }
+    .status-fail { background: #fce8e6; color: #b7410e; }
+    .status-pending { background: #f0f3f6; color: #aab8c2; }
 
-    /* ── Overall outcome ── */
-    .outcome-section {
-      margin-top: 16px;
+    /* ── Concerns panel ── */
+    #concernsPanel {
+      background: #fff8e1; border: 2px solid #fbc02d; border-radius: 10px;
+      padding: 14px; margin-bottom: 14px; display: none;
     }
-    .outcome-label {
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--rmd-muted);
-      margin-bottom: 8px;
-    }
-    .outcome-btns {
-      display: flex;
-      gap: 8px;
-    }
-    .outcome-btn {
-      flex: 1;
-      padding: 14px 8px;
-      border-radius: 8px;
-      border: 2px solid #dce3ea;
-      background: white;
-      font-size: 14px;
-      font-weight: 700;
-      cursor: pointer;
-      text-align: center;
-      font-family: var(--font);
-      color: var(--rmd-muted);
-      transition: all 0.15s;
-    }
-    .outcome-btn:active { transform: scale(0.97); }
-    .outcome-btn.selected-pass     { background: #1a6e31; color: white; border-color: #145727; }
-    .outcome-btn.selected-borderline { background: #c17a00; color: white; border-color: #9a6200; }
-    .outcome-btn.selected-fail     { background: #b7410e; color: white; border-color: #8e3209; }
+    #concernsPanel h3 { margin: 0 0 10px; font-size: 14px; color: #b71c1c; }
+    #concernsPanel .concern-item { font-size: 13px; color: var(--rmd-navy); margin-bottom: 4px; }
 
-    /* ── Notes ── */
-    .notes-textarea {
-      width: 100%;
-      min-height: 70px;
-      padding: 10px;
-      border: 2px solid #ccd6dd;
-      border-radius: 6px;
-      font-size: 14px;
-      font-family: var(--font);
-      resize: vertical;
-      margin-top: 8px;
+    /* ── Overview (director) ── */
+    .overview-banner {
+      border-radius: 10px; padding: 16px 20px; margin-bottom: 16px;
+      text-align: center; font-size: 18px; font-weight: 700;
     }
-    .notes-textarea:focus { outline: none; border-color: var(--rmd-blue); }
+    .banner-ok    { background: #e6f4ea; color: #1a6e31; }
+    .banner-alert { background: #fce8e6; color: #b71c1c; }
+    .banner-wait  { background: #f5f7fa; color: #637282; }
 
-    /* ── Submit button ── */
-    .submit-bar {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      background: white;
-      padding: 12px 14px;
-      box-shadow: 0 -2px 10px rgba(0,0,0,0.12);
-      z-index: 50;
+    .overview-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px;
+      margin-bottom: 20px;
     }
-    .btn-submit {
-      width: 100%;
-      padding: 16px;
-      background: var(--rmd-blue);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 17px;
-      font-weight: 700;
-      font-family: var(--font);
-      cursor: pointer;
-      letter-spacing: 0.3px;
+    .ov-room-card {
+      background: white; border-radius: 10px; padding: 12px 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1); cursor: pointer;
+      border: 2px solid transparent; transition: border-color 0.12s;
     }
-    .btn-submit:active { opacity: 0.85; }
-    .btn-submit:disabled { background: #aab8c2; cursor: default; }
+    .ov-room-card:hover    { border-color: var(--rmd-blue); }
+    .ov-room-card .rn     { font-size: 16px; font-weight: 700; color: var(--rmd-navy); }
+    .ov-room-card .rp     { font-size: 12px; color: var(--rmd-muted); margin: 4px 0; }
+    .progress-bar-wrap    { background: #f0f3f6; border-radius: 4px; height: 6px; overflow: hidden; }
+    .progress-bar-fill    { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .fill-complete { background: #34a853; }
+    .fill-partial  { background: #fbbc04; }
+    .fill-empty    { background: #f0f3f6; }
+    .ov-room-flag  { font-size: 11px; color: #b71c1c; font-weight: 700; margin-top: 6px; }
 
-    /* ── Success toast ── */
-    .toast {
-      position: fixed;
-      top: 70px; left: 50%; transform: translateX(-50%);
-      background: #1a6e31;
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 700;
-      z-index: 999;
-      opacity: 0;
-      transition: opacity 0.3s;
+    .concerns-list { background: white; border-radius: 10px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    .concerns-list h3 { margin: 0 0 10px; font-size: 14px; color: var(--rmd-navy); }
+    .cl-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f3f6; }
+    .cl-item:last-child { border-bottom: none; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      padding: 10px 20px; border-radius: 24px; font-size: 14px; font-weight: 700;
+      color: white; z-index: 999; opacity: 0; transition: opacity 0.2s;
       pointer-events: none;
-      white-space: nowrap;
     }
-    .toast.show { opacity: 1; }
+    #toast.show  { opacity: 1; }
+    #toast.green { background: #34a853; }
+    #toast.amber { background: #e65c00; }
+    #toast.red   { background: #ea4335; }
 
-    /* ── Dashboard view ── */
-    .dash-filter-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-    .dash-filter-row select {
-      flex: 1;
-      padding: 9px 10px;
-      font-size: 14px;
-      border: 2px solid #ccd6dd;
-      border-radius: 6px;
-      font-family: var(--font);
-    }
-
-    .candidate-card {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-      margin-bottom: 10px;
-      padding: 12px 14px;
-      border-left: 5px solid #ccd6dd;
-      cursor: pointer;
-    }
-    .candidate-card.pass     { border-left-color: #1a6e31; }
-    .candidate-card.borderline { border-left-color: #c17a00; }
-    .candidate-card.fail     { border-left-color: #b7410e; }
-    .candidate-card.pending  { border-left-color: #ccd6dd; }
-
-    .cc-name { font-size: 15px; font-weight: 700; color: var(--rmd-navy); }
-    .cc-room { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
-    .cc-row  { display: flex; align-items: center; justify-content: space-between; }
-
-    .outcome-badge {
-      font-size: 12px;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 20px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .badge-pass       { background: #e6f4ea; color: #1a6e31; }
-    .badge-borderline { background: #fff3cd; color: #856404; }
-    .badge-fail       { background: #fde8e4; color: #b7410e; }
-    .badge-pending    { background: #e8edf2; color: var(--rmd-muted); }
-
-    .skill-dots {
-      display: flex;
-      gap: 4px;
-      margin-top: 8px;
-    }
-    .skill-dot {
-      width: 12px; height: 12px;
-      border-radius: 50%;
-      background: #dce3ea;
-    }
-    .skill-dot.green  { background: #1a6e31; }
-    .skill-dot.amber  { background: #c17a00; }
-    .skill-dot.red    { background: #b7410e; }
-
-    .summary-bar {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-    .summary-pill {
-      flex: 1;
-      text-align: center;
-      padding: 10px 6px;
-      border-radius: 8px;
-      font-size: 22px;
-      font-weight: 700;
-    }
-    .summary-pill .pill-label { font-size: 11px; font-weight: 600; display: block; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.4px; }
-    .pill-pass       { background: #e6f4ea; color: #1a6e31; }
-    .pill-borderline { background: #fff3cd; color: #856404; }
-    .pill-fail       { background: #fde8e4; color: #b7410e; }
-    .pill-pending    { background: #e8edf2; color: var(--rmd-muted); }
-
-    /* ── Detail modal ── */
-    .modal-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.5);
-      z-index: 200;
-      align-items: flex-end;
-    }
-    .modal-overlay.open { display: flex; }
-    .modal-sheet {
-      background: white;
-      border-radius: 16px 16px 0 0;
-      width: 100%;
-      max-height: 80vh;
-      overflow-y: auto;
-      padding: 20px 16px 40px;
-    }
-    .modal-handle { width: 36px; height: 4px; background: #ccd6dd; border-radius: 2px; margin: 0 auto 16px; }
-    .modal-title { font-size: 18px; font-weight: 700; color: var(--rmd-navy); margin-bottom: 4px; }
-    .modal-sub { font-size: 13px; color: var(--rmd-muted); margin-bottom: 16px; }
-
-    .skill-detail-row {
-      display: flex;
-      align-items: center;
-      padding: 10px 0;
-      border-bottom: 1px solid #edf0f2;
-      gap: 10px;
-    }
-    .skill-detail-row:last-child { border-bottom: none; }
-    .skill-detail-dot {
-      width: 14px; height: 14px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .skill-detail-name { flex: 1; font-size: 14px; color: var(--rmd-navy); }
-    .skill-detail-val  { font-size: 13px; font-weight: 700; }
-    .val-pass   { color: #1a6e31; }
-    .val-amber  { color: #856404; }
-    .val-fail   { color: #b7410e; }
-    .val-none   { color: #aab8c2; }
-
-    .modal-notes {
-      margin-top: 14px;
-      background: #f5f7fa;
-      border-radius: 6px;
-      padding: 10px 12px;
-      font-size: 13px;
-      color: var(--rmd-navy);
-    }
-    .modal-meta {
-      margin-top: 10px;
-      font-size: 12px;
-      color: var(--rmd-muted);
-    }
-    .btn-close-modal {
-      width: 100%;
-      margin-top: 16px;
-      padding: 12px;
-      background: var(--rmd-navy);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 700;
-      font-family: var(--font);
-      cursor: pointer;
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 40px 20px;
-      color: var(--rmd-muted);
-      font-size: 14px;
-    }
+    .loading-state { text-align: center; padding: 60px 20px; color: var(--rmd-muted); }
+    .empty-state   { text-align: center; padding: 40px 20px; color: var(--rmd-muted); font-size: 14px; }
   </style>
 </head>
 <body>
 
-<!-- Top bar -->
 <div class="top-bar">
-  <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
+  <a href="timetable.html" style="display:flex;align-items:center;">
+    <img src="assets/rmd-logo.png" alt="RMD">
+  </a>
   <div class="top-bar-title">BLS Gateway Assessment</div>
-  <div class="top-bar-time" id="topBarTime">--:--</div>
+  <div class="clock-pill" id="clockEl">–:–</div>
 </div>
 
-<!-- Deadline bar -->
-<div class="deadline-bar" id="deadlineBar">
-  Gateway deadline: 11:45 &nbsp;·&nbsp; <span id="deadlineCountdown"></span>
+<div id="deadlineBar">Assessing until 11:45 ·  loading…</div>
+
+<div class="view-tabs" id="viewTabs" style="display:none;">
+  <button class="view-tab active" id="tabAssess"   onclick="switchView('assess')">Assess</button>
+  <button class="view-tab"        id="tabOverview" onclick="switchView('overview')">Overview</button>
 </div>
 
-<!-- Phase tabs -->
-<div class="phase-tabs">
-  <button class="phase-tab active" onclick="switchView('assess')" id="tab-assess">📋 Assess</button>
-  <button class="phase-tab" onclick="switchView('dashboard')" id="tab-dashboard">📊 Overview</button>
+<div id="roomSelector" style="display:none;"></div>
+
+<div class="content">
+  <div class="loading-state" id="loadingEl">Loading…</div>
+  <div id="mainContent" style="display:none;"></div>
 </div>
 
-<!-- ASSESS VIEW -->
-<div class="view active" id="view-assess">
+<div id="toast"></div>
 
-  <!-- Candidate selector -->
-  <div class="card" style="margin-top:12px;">
-    <div class="card-header">Select Candidate</div>
-    <div class="card-body">
-      <select class="candidate-select" id="candidateSelect" onchange="onCandidateChange()">
-        <option value="">— Choose candidate —</option>
-      </select>
-      <div class="assessor-row">
-        <input type="text" id="assessorName" placeholder="Your name (assessor)" autocomplete="name">
-      </div>
-    </div>
-  </div>
-
-  <!-- Skills checklist -->
-  <div class="card" id="skillsCard">
-    <div class="card-header">BLS / AED Skills</div>
-    <div class="card-body" id="skillsBody">
-      <!-- Populated by JS -->
-    </div>
-  </div>
-
-  <!-- Overall outcome -->
-  <div class="card">
-    <div class="card-body">
-      <div class="outcome-label">Overall Gateway Outcome</div>
-      <div class="outcome-btns">
-        <button class="outcome-btn" id="btn-pass"       onclick="setOutcome('pass')">✅ Pass</button>
-        <button class="outcome-btn" id="btn-borderline" onclick="setOutcome('borderline')">⚠️ Review</button>
-        <button class="outcome-btn" id="btn-fail"       onclick="setOutcome('fail')">❌ Fail</button>
-      </div>
-
-      <label style="display:block;margin-top:14px;font-size:13px;font-weight:700;color:var(--rmd-muted);">Notes (optional)</label>
-      <textarea class="notes-textarea" id="assessmentNotes" placeholder="Any specific concerns or observations…"></textarea>
-    </div>
-  </div>
-
-</div>
-
-<!-- DASHBOARD VIEW -->
-<div class="view" id="view-dashboard">
-  <div style="margin-top:12px;">
-
-    <!-- Summary pills -->
-    <div class="summary-bar">
-      <div class="summary-pill pill-pass">
-        <span id="count-pass">0</span>
-        <span class="pill-label">Pass</span>
-      </div>
-      <div class="summary-pill pill-borderline">
-        <span id="count-borderline">0</span>
-        <span class="pill-label">Review</span>
-      </div>
-      <div class="summary-pill pill-fail">
-        <span id="count-fail">0</span>
-        <span class="pill-label">Fail</span>
-      </div>
-      <div class="summary-pill pill-pending">
-        <span id="count-pending">0</span>
-        <span class="pill-label">Pending</span>
-      </div>
-    </div>
-
-    <!-- Filter -->
-    <div class="dash-filter-row">
-      <select id="dashFilter" onchange="renderDashboard()">
-        <option value="all">All candidates</option>
-        <option value="pass">Pass only</option>
-        <option value="borderline">Review only</option>
-        <option value="fail">Fail only</option>
-        <option value="pending">Not yet assessed</option>
-      </select>
-    </div>
-
-    <!-- Candidate list -->
-    <div id="dashList"></div>
-
-  </div>
-</div>
-
-<!-- Submit bar -->
-<div class="submit-bar" id="submitBar">
-  <button class="btn-submit" id="submitBtn" onclick="submitAssessment()">Save Assessment</button>
-</div>
-
-<!-- Toast -->
-<div class="toast" id="toast"></div>
-
-<!-- Detail modal -->
-<div class="modal-overlay" id="detailModal" onclick="closeModal(event)">
-  <div class="modal-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-title" id="modalName"></div>
-    <div class="modal-sub"   id="modalSub"></div>
-    <div id="modalSkills"></div>
-    <div class="modal-notes" id="modalNotes" style="display:none;"></div>
-    <div class="modal-meta"  id="modalMeta"></div>
-    <button class="btn-close-modal" onclick="document.getElementById('detailModal').classList.remove('open')">Close</button>
-  </div>
-</div>
-
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
-<script src="js/programme-data.js"></script>
 <script>
 
-// ── Skills definition ──────────────────────────────────────────────────────
-const SKILLS = [
-  {
-    id: "scene-safety",
-    name: "Scene Safety",
-    sub: "Identifies hazards; refuses approach if unsafe"
-  },
-  {
-    id: "responsiveness",
-    name: "Responsiveness Check",
-    sub: "Shouts for help; calls 999 / assigns AED runner"
-  },
-  {
-    id: "cpr-quality",
-    name: "CPR Quality",
-    sub: "Correct hand position, depth ≥5cm, rate 100–120/min, full recoil"
-  },
-  {
-    id: "aed-use",
-    name: "AED Use",
-    sub: "Powers on; correct pad placement; safe shock delivery; resumes CPR immediately"
-  },
-  {
-    id: "airway",
-    name: "Airway & Ventilation",
-    sub: "Head tilt/chin lift; rescue breaths visible chest rise; 30:2 ratio"
-  },
-  {
-    id: "team-leadership",
-    name: "Team Leadership",
-    sub: "Clear role allocation; directs team; communicates situation"
-  },
-  {
-    id: "teaching-clarity",
-    name: "Teaching Clarity",
-    sub: "Explains rationale; clear instructions; positions for visibility"
+// ── URL params ──────────────────────────────────────────────────────────────
+const params  = new URLSearchParams(window.location.search);
+const myRole  = (params.get("role")  || "faculty").toLowerCase();
+const myRoom  = (params.get("room")  || "").toUpperCase();
+const isDirector = myRole === "director";
+
+const DIRECTOR_EMAILS = ["console_brews.6f@icloud.com", "j.hulme.1@bham.ac.uk"];
+const DEADLINE_HOUR   = 11;
+const DEADLINE_MIN    = 45;
+
+// ── State ───────────────────────────────────────────────────────────────────
+var candidates    = {};   // id -> {name, stream}
+var assessments   = {};   // id -> {outcome, flagged, lockedAt}
+var unlockPending = {};   // id -> true while awaiting confirmation
+var currentView   = "assess";
+var currentRoom   = myRoom;
+var allRooms      = [];
+var unsubscribe   = null;
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+initFirebase();
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    // Director override: verify email
+    if (isDirector && !DIRECTOR_EMAILS.includes(user.email.toLowerCase())) {
+      checkFirestoreDirector(user.email).then(ok => {
+        if (ok) boot(); else showError("Director access required.");
+      });
+    } else {
+      boot();
+    }
+  } else {
+    showError('Please <a href="index.html">sign in</a> to access assessments.');
   }
-];
-
-// ── Candidate list (demo — replace with Firebase fetch) ────────────────────
-const CANDIDATES = [
-  { id: "c01", name: "Dr A. Ahmed",     room: "WF15", group: 1 },
-  { id: "c02", name: "Dr B. Brennan",   room: "WF15", group: 1 },
-  { id: "c03", name: "Dr C. Carter",    room: "WF19", group: 2 },
-  { id: "c04", name: "Dr D. Davies",    room: "WF19", group: 2 },
-  { id: "c05", name: "Dr E. Evans",     room: "ATH",  group: 3 },
-  { id: "c06", name: "Dr F. Fletcher",  room: "ATH",  group: 3 },
-  { id: "c07", name: "Dr G. Green",     room: "WF15", group: 1 },
-  { id: "c08", name: "Dr H. Harris",    room: "WF19", group: 2 },
-  { id: "c09", name: "Dr I. Ingram",    room: "ATH",  group: 3 },
-  { id: "c10", name: "Dr J. Jones",     room: "WF15", group: 1 },
-  { id: "c11", name: "Dr K. Khan",      room: "WF19", group: 2 },
-  { id: "c12", name: "Dr L. Lewis",     room: "ATH",  group: 3 }
-];
-
-// ── State ──────────────────────────────────────────────────────────────────
-let currentCandidate = null;
-let skillRatings     = {};  // { skillId: "green"|"amber"|"red" }
-let currentOutcome   = null;
-
-// ── Persistent store (localStorage — replaced by Firebase in production) ───
-const STORE_KEY = "rmd_gateway_assessments";
-
-function loadStore() {
-  try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); }
-  catch { return {}; }
-}
-function saveStore(data) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(data));
-}
-
-// ── Init ───────────────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-  populateCandidateDropdown();
-  renderSkillsForm();
-  updateClock();
-  setInterval(updateClock, 10000);
-  // TODO: initFirebase(); then fetch real candidates + listen for updates
 });
 
-function populateCandidateDropdown() {
-  const sel = document.getElementById("candidateSelect");
-  const store = loadStore();
-  CANDIDATES.forEach(c => {
-    const opt = document.createElement("option");
-    opt.value = c.id;
-    const done = store[c.id];
-    const tag  = done ? ` [${done.outcome || "saved"}]` : "";
-    opt.textContent = `${c.name} — ${c.room}${tag}`;
-    sel.appendChild(opt);
+async function checkFirestoreDirector(email) {
+  try {
+    const snap = await db.collection("config").doc("platform").get();
+    const dirs = snap.exists ? (snap.data().directors || []) : [];
+    return dirs.map(x => x.toLowerCase()).includes(email.toLowerCase());
+  } catch { return false; }
+}
+
+function showError(msg) {
+  document.getElementById("loadingEl").innerHTML = `<div style="padding:40px;text-align:center;">${msg}</div>`;
+}
+
+async function boot() {
+  if (isDirector) {
+    document.getElementById("viewTabs").style.display = "flex";
+  }
+  updateClock();
+  setInterval(updateClock, 10000);
+  await loadCandidates();
+  startListener();
+}
+
+// ── Load candidates from Firestore or demo data ──────────────────────────────
+async function loadCandidates() {
+  try {
+    const snap = await db.collection(COLLECTIONS.people).get();
+    if (snap.empty) { loadDemo(); return; }
+    snap.docs.forEach(d => {
+      const data = d.data();
+      candidates[d.id] = { name: data.name || d.id, stream: data.stream || "" };
+    });
+    // Derive rooms
+    const roomSet = new Set();
+    snap.docs.forEach(d => {
+      const rm = (d.data().room || "").toUpperCase();
+      if (rm) roomSet.add(rm);
+    });
+    allRooms = Array.from(roomSet).sort();
+    if (!currentRoom && allRooms.length) currentRoom = allRooms[0];
+  } catch (err) {
+    console.warn("Could not load people; falling back to demo data.", err);
+    loadDemo();
+  }
+}
+
+function loadDemo() {
+  const demoRooms = ["WF15","WF16","WF17","G06","G07"];
+  if (!currentRoom) currentRoom = demoRooms[0];
+  allRooms = demoRooms;
+  const names = [
+    "Alex Patel","Bea Thompson","Chris Owusu","Divya Mehta","Ed Walsh",
+    "Fiona Clarke","George Ivanova","Hannah Brown","Isaac Wong","Julia Nakamura"
+  ];
+  demoRooms.forEach(room => {
+    const offset = demoRooms.indexOf(room) * 2;
+    for (let i = 0; i < 2; i++) {
+      const n = names[(offset + i) % names.length];
+      const id = room + "_" + (i + 1);
+      candidates[id] = { name: n, stream: "Instructor Candidate", room };
+    }
   });
 }
 
-function onCandidateChange() {
-  const id = document.getElementById("candidateSelect").value;
-  if (!id) { currentCandidate = null; return; }
-  currentCandidate = CANDIDATES.find(c => c.id === id);
+// ── Real-time listener ────────────────────────────────────────────────────────
+function startListener() {
+  if (unsubscribe) unsubscribe();
+  unsubscribe = db.collection("gateway_assessments")
+    .onSnapshot(snap => {
+      snap.docChanges().forEach(change => {
+        if (change.type === "removed") {
+          delete assessments[change.doc.id];
+        } else {
+          assessments[change.doc.id] = change.doc.data();
+        }
+      });
+      document.getElementById("loadingEl").style.display  = "none";
+      document.getElementById("mainContent").style.display = "block";
+      render();
+    }, err => {
+      console.error("Listener error", err);
+      document.getElementById("loadingEl").style.display  = "none";
+      document.getElementById("mainContent").style.display = "block";
+      render();
+    });
+}
 
-  // Load existing assessment if present
-  const store = loadStore();
-  const existing = store[id];
-  if (existing) {
-    skillRatings   = { ...existing.skills };
-    currentOutcome = existing.outcome;
-    document.getElementById("assessmentNotes").value = existing.notes || "";
-    document.getElementById("assessorName").value    = existing.assessor || "";
+// ── Routing ───────────────────────────────────────────────────────────────────
+function render() {
+  if (currentView === "overview" && isDirector) {
+    buildRoomSelector();
+    renderOverview();
   } else {
-    skillRatings   = {};
-    currentOutcome = null;
-    document.getElementById("assessmentNotes").value = "";
-  }
-  renderSkillsForm();
-  renderOutcomeButtons();
-}
-
-// ── Skills form ────────────────────────────────────────────────────────────
-function renderSkillsForm() {
-  const body = document.getElementById("skillsBody");
-  body.innerHTML = SKILLS.map(skill => `
-    <div class="skill-row">
-      <div class="skill-name">
-        ${skill.name}
-        <span class="skill-sub">${skill.sub}</span>
-      </div>
-      <div class="skill-btns">
-        <button class="rag-btn green ${skillRatings[skill.id] === 'green' ? 'selected-green' : ''}"
-                onclick="setSkill('${skill.id}','green')" title="Pass">✓</button>
-        <button class="rag-btn amber ${skillRatings[skill.id] === 'amber' ? 'selected-amber' : ''}"
-                onclick="setSkill('${skill.id}','amber')" title="Borderline">~</button>
-        <button class="rag-btn red ${skillRatings[skill.id] === 'red' ? 'selected-red' : ''}"
-                onclick="setSkill('${skill.id}','red')" title="Fail">✗</button>
-      </div>
-    </div>
-  `).join("");
-}
-
-function setSkill(skillId, rating) {
-  // Toggle off if clicking same button again
-  if (skillRatings[skillId] === rating) {
-    delete skillRatings[skillId];
-  } else {
-    skillRatings[skillId] = rating;
-  }
-  renderSkillsForm();
-  autoOutcome();
-}
-
-function autoOutcome() {
-  const vals = Object.values(skillRatings);
-  if (vals.length < SKILLS.length) return; // not all rated
-  const reds   = vals.filter(v => v === "red").length;
-  const ambers = vals.filter(v => v === "amber").length;
-  if (reds >= 2 || (reds >= 1 && ambers >= 2)) {
-    setOutcome("fail");
-  } else if (ambers >= 2 || reds >= 1) {
-    setOutcome("borderline");
-  } else {
-    setOutcome("pass");
+    if (isDirector) buildRoomSelector();
+    renderAssess();
   }
 }
 
-// ── Outcome buttons ────────────────────────────────────────────────────────
-function setOutcome(outcome) {
-  currentOutcome = outcome;
-  renderOutcomeButtons();
-}
-
-function renderOutcomeButtons() {
-  ["pass","borderline","fail"].forEach(o => {
-    const btn = document.getElementById("btn-" + o);
-    btn.className = "outcome-btn" + (currentOutcome === o ? " selected-" + o : "");
-  });
-}
-
-// ── Submit ─────────────────────────────────────────────────────────────────
-function submitAssessment() {
-  if (!currentCandidate) {
-    showToast("Please select a candidate first", "warn");
-    return;
-  }
-  if (!currentOutcome) {
-    showToast("Please set a gateway outcome", "warn");
-    return;
-  }
-
-  const record = {
-    candidateId: currentCandidate.id,
-    candidateName: currentCandidate.name,
-    room: currentCandidate.room,
-    assessor: document.getElementById("assessorName").value.trim(),
-    skills: { ...skillRatings },
-    outcome: currentOutcome,
-    notes: document.getElementById("assessmentNotes").value.trim(),
-    timestamp: new Date().toISOString()
-  };
-
-  // Save to localStorage (demo)
-  const store = loadStore();
-  store[currentCandidate.id] = record;
-  saveStore(store);
-
-  // TODO: write to Firebase
-  // db.collection(COLLECTIONS.assessments).doc(currentCandidate.id).set({
-  //   phase: "gateway",
-  //   ...record,
-  //   timestamp: firebase.firestore.FieldValue.serverTimestamp()
-  // }, { merge: true });
-
-  // Update dropdown label
-  const opt = document.querySelector(`#candidateSelect option[value="${currentCandidate.id}"]`);
-  if (opt) opt.textContent = `${currentCandidate.name} — ${currentCandidate.room} [${currentOutcome}]`;
-
-  showToast(`✓ Saved — ${currentCandidate.name}: ${currentOutcome.toUpperCase()}`);
-
-  // Reset for next candidate
-  document.getElementById("candidateSelect").value = "";
-  currentCandidate = null;
-  skillRatings     = {};
-  currentOutcome   = null;
-  document.getElementById("assessmentNotes").value = "";
-  renderSkillsForm();
-  renderOutcomeButtons();
-}
-
-// ── Dashboard ──────────────────────────────────────────────────────────────
 function switchView(view) {
-  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  document.querySelectorAll(".phase-tab").forEach(t => t.classList.remove("active"));
-  document.getElementById("view-" + view).classList.add("active");
-  document.getElementById("tab-" + view).classList.add("active");
-
-  // Submit bar only in assess view
-  document.getElementById("submitBar").style.display = view === "assess" ? "block" : "none";
-
-  if (view === "dashboard") renderDashboard();
+  currentView = view;
+  document.getElementById("tabAssess").classList.toggle("active",   view === "assess");
+  document.getElementById("tabOverview").classList.toggle("active", view === "overview");
+  document.getElementById("roomSelector").style.display = (view === "assess" && isDirector) ? "flex" : "none";
+  render();
 }
 
-function renderDashboard() {
-  const store   = loadStore();
-  const filter  = document.getElementById("dashFilter").value;
+function setRoom(room) {
+  currentRoom = room;
+  renderAssess();
+  buildRoomSelector();
+}
 
-  let pass = 0, borderline = 0, fail = 0, pending = 0;
+// ── Room selector ──────────────────────────────────────────────────────────────
+function buildRoomSelector() {
+  const sel = document.getElementById("roomSelector");
+  if (!isDirector) { sel.style.display = "none"; return; }
+  if (currentView !== "assess") { sel.style.display = "none"; return; }
+  sel.style.display = "flex";
+  const roomCandidates = roomsWithProgress();
+  sel.innerHTML = roomCandidates.map(r => {
+    const done = r.total > 0 && r.recorded === r.total;
+    return `<button class="room-btn${r.room===currentRoom?" active":""}${done?" done":""}"
+      onclick="setRoom('${r.room}')">${r.room} (${r.recorded}/${r.total})</button>`;
+  }).join("");
+}
 
-  const cards = CANDIDATES.map(c => {
-    const rec = store[c.id];
-    const outcome = rec ? rec.outcome : "pending";
-    if (outcome === "pass")             pass++;
-    else if (outcome === "borderline")  borderline++;
-    else if (outcome === "fail")        fail++;
-    else                                pending++;
+function roomsWithProgress() {
+  return allRooms.map(room => {
+    const ids = candidateIdsForRoom(room);
+    const recorded = ids.filter(id => assessments[id] && assessments[id].outcome).length;
+    return { room, total: ids.length, recorded };
+  });
+}
 
-    if (filter !== "all" && outcome !== filter) return "";
+function candidateIdsForRoom(room) {
+  return Object.entries(candidates)
+    .filter(([id, c]) => {
+      const r = (c.room || id.split("_")[0] || "").toUpperCase();
+      return r === room;
+    })
+    .map(([id]) => id);
+}
 
-    const dots = SKILLS.map(sk => {
-      const r = rec ? (rec.skills[sk.id] || "none") : "none";
-      return `<div class="skill-dot ${r}" title="${sk.name}"></div>`;
-    }).join("");
+// ── Render: Assess view ──────────────────────────────────────────────────────
+function renderAssess() {
+  const ids = candidateIdsForRoom(currentRoom);
+  const assessed = ids.filter(id => assessments[id] && assessments[id].outcome).length;
+  const flagged  = ids.filter(id => assessments[id] && assessments[id].flagged).length;
 
-    return `
-      <div class="candidate-card ${outcome}" onclick="openModal('${c.id}')">
-        <div class="cc-row">
-          <div>
-            <div class="cc-name">${c.name}</div>
-            <div class="cc-room">Room ${c.room}</div>
-          </div>
-          <span class="outcome-badge badge-${outcome}">${outcome === "borderline" ? "Review" : outcome}</span>
-        </div>
-        <div class="skill-dots">${dots}</div>
+  let html = `
+    <div class="room-header">
+      <div class="room-name">Room ${currentRoom}</div>
+      <div class="room-prog">${assessed}/${ids.length} assessed${flagged ? " · ⚑ " + flagged + " concern(s)" : ""}</div>
+    </div>`;
+
+  // Concerns panel
+  const concerns = ids.filter(id => assessments[id] && assessments[id].flagged);
+  if (concerns.length) {
+    html += `<div id="concernsPanel" style="display:block;background:#fff8e1;border:2px solid #fbc02d;border-radius:10px;padding:14px;margin-bottom:14px;">
+      <h3 style="margin:0 0 10px;font-size:14px;color:#b71c1c;">⚑ Concern flags (${concerns.length})</h3>
+      ${concerns.map(id => `<div class="concern-item">⚑ ${candidates[id]?candidates[id].name:id}</div>`).join("")}
+    </div>`;
+  }
+
+  if (ids.length === 0) {
+    html += `<div class="empty-state">No candidates assigned to room ${currentRoom}.</div>`;
+  } else {
+    html += ids.map(id => buildCandidateRow(id)).join("");
+  }
+
+  document.getElementById("mainContent").innerHTML = html;
+}
+
+function buildCandidateRow(id) {
+  const cand = candidates[id] || { name: id, stream: "" };
+  const asmnt = assessments[id] || {};
+  const outcome = asmnt.outcome || null;      // "pass" | "fail" | null
+  const flagged = asmnt.flagged || false;
+  const locked  = !!(asmnt.lockedAt);
+  const pending = unlockPending[id] || false;
+
+  const rowClass = outcome === "pass" ? "outcome-pass" : outcome === "fail" ? "outcome-fail" : "";
+
+  const passClass = outcome === "pass" ? "selected" : "";
+  const failClass = outcome === "fail" ? "selected" : "";
+
+  const flagClass = flagged ? "flagged" : "";
+
+  let lockIcon = "";
+  if (locked && !pending) {
+    lockIcon = `<button class="cr-lock locked" onclick="requestUnlock('${id}')" title="Locked — tap to request unlock">🔒</button>`;
+  } else if (locked && pending) {
+    lockIcon = `<button class="cr-lock unlock-pending" onclick="confirmUnlock('${id}')" title="Tap again to confirm unlock">🔓</button>`;
+  } else if (outcome) {
+    lockIcon = `<button class="cr-lock" onclick="lockOutcome('${id}')" title="Tap to lock this outcome">🔓</button>`;
+  }
+
+  // If locked, disable buttons
+  const disabled = (locked && !pending) ? "disabled style='opacity:0.4;cursor:not-allowed;pointer-events:none;'" : "";
+
+  return `
+    <div class="candidate-row ${rowClass}" id="cr-${id}">
+      <div class="cr-name">
+        ${cand.name}
+        <small>${cand.stream||""}</small>
+      </div>
+      <div class="cr-outcome">
+        <button class="btn-pass ${passClass}" onclick="recordOutcome('${id}','pass')" ${disabled} title="Successful">✓</button>
+        <button class="btn-fail ${failClass}" onclick="recordOutcome('${id}','fail')" ${disabled} title="Not Successful">✗</button>
+      </div>
+      <button class="cr-flag ${flagClass}" onclick="toggleFlag('${id}')" title="Flag concern">⚑</button>
+      ${lockIcon}
+    </div>`;
+}
+
+// ── Render: Overview ────────────────────────────────────────────────────────
+function renderOverview() {
+  const prog = roomsWithProgress();
+  const allDone    = prog.every(r => r.total > 0 && r.recorded === r.total);
+  const nonStarted = prog.filter(r => r.recorded === 0).length;
+  const totalFlags = Object.values(assessments).filter(a => a.flagged).length;
+
+  let bannerClass, bannerText;
+  if (allDone && totalFlags === 0) {
+    bannerClass = "banner-ok";
+    bannerText  = "✓ ALL CLEAR — All rooms complete, no concerns";
+  } else if (totalFlags > 0) {
+    bannerClass = "banner-alert";
+    bannerText  = `⚠ ALERT — ${totalFlags} concern flag(s) raised`;
+  } else if (nonStarted === prog.length) {
+    bannerClass = "banner-wait";
+    bannerText  = "Assessment not yet started";
+  } else {
+    bannerClass = "banner-wait";
+    bannerText  = `Assessment in progress — ${prog.filter(r => r.recorded === r.total && r.total > 0).length}/${prog.length} rooms complete`;
+  }
+
+  let html = `<div class="overview-banner ${bannerClass}">${bannerText}</div>`;
+
+  // Room grid
+  html += `<div class="overview-grid">`;
+  prog.forEach(r => {
+    const pct     = r.total ? Math.round(r.recorded / r.total * 100) : 0;
+    const fillCls = pct === 100 ? "fill-complete" : pct > 0 ? "fill-partial" : "fill-empty";
+    const flags   = Object.entries(assessments).filter(([id, a]) => {
+      const room = (candidates[id]&&candidates[id].room) || id.split("_")[0] || "";
+      return room.toUpperCase() === r.room && a.flagged;
+    }).length;
+    html += `
+      <div class="ov-room-card" onclick="switchToRoom('${r.room}')">
+        <div class="rn">Room ${r.room}</div>
+        <div class="rp">${r.recorded}/${r.total} assessed</div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill ${fillCls}" style="width:${pct}%;"></div></div>
+        ${flags ? `<div class="ov-room-flag">⚑ ${flags} concern(s)</div>` : ""}
       </div>`;
   });
+  html += `</div>`;
 
-  document.getElementById("count-pass").textContent       = pass;
-  document.getElementById("count-borderline").textContent  = borderline;
-  document.getElementById("count-fail").textContent        = fail;
-  document.getElementById("count-pending").textContent     = pending;
-
-  const list = document.getElementById("dashList");
-  const content = cards.join("");
-  list.innerHTML = content || `<div class="empty-state">No candidates match this filter.</div>`;
-}
-
-// ── Detail modal ───────────────────────────────────────────────────────────
-function openModal(candidateId) {
-  const c   = CANDIDATES.find(x => x.id === candidateId);
-  const rec = loadStore()[candidateId];
-  if (!c) return;
-
-  document.getElementById("modalName").textContent = c.name;
-  document.getElementById("modalSub").textContent  = `Room ${c.room}`;
-
-  const skillsHtml = SKILLS.map(sk => {
-    const r   = rec ? (rec.skills[sk.id]) : null;
-    const col = r === "green" ? "#1a6e31" : r === "amber" ? "#c17a00" : r === "red" ? "#b7410e" : "#dce3ea";
-    const valClass = r === "green" ? "val-pass" : r === "amber" ? "val-amber" : r === "red" ? "val-fail" : "val-none";
-    const valText  = r === "green" ? "Pass" : r === "amber" ? "Borderline" : r === "red" ? "Fail" : "Not rated";
-    return `
-      <div class="skill-detail-row">
-        <div class="skill-detail-dot" style="background:${col}"></div>
-        <div class="skill-detail-name">${sk.name}</div>
-        <div class="skill-detail-val ${valClass}">${valText}</div>
-      </div>`;
-  }).join("");
-  document.getElementById("modalSkills").innerHTML = skillsHtml;
-
-  const notesEl = document.getElementById("modalNotes");
-  if (rec && rec.notes) {
-    notesEl.textContent = rec.notes;
-    notesEl.style.display = "block";
+  // Concerns list
+  const flaggedEntries = Object.entries(assessments).filter(([,a]) => a.flagged);
+  if (flaggedEntries.length) {
+    html += `<div class="concerns-list">
+      <h3>⚑ Active concern flags (${flaggedEntries.length})</h3>
+      ${flaggedEntries.map(([id, a]) => {
+        const cand = candidates[id] || { name: id, stream: "" };
+        const room = (cand.room||id.split("_")[0]||"").toUpperCase();
+        return `<div class="cl-item">
+          <span><strong>${cand.name}</strong> · Room ${room} · ${a.outcome === "pass" ? "Successful" : a.outcome === "fail" ? "Not Successful" : "Pending"}</span>
+          <button onclick="switchToRoom('${room}')" style="font-size:12px;padding:5px 10px;background:var(--rmd-navy);color:white;border:none;border-radius:6px;cursor:pointer;font-family:var(--font);">View room</button>
+        </div>`;
+      }).join("")}
+    </div>`;
   } else {
-    notesEl.style.display = "none";
+    html += `<div class="concerns-list"><div class="empty-state" style="padding:20px;">No concern flags raised.</div></div>`;
   }
 
-  const metaEl = document.getElementById("modalMeta");
-  if (rec) {
-    const ts = rec.timestamp ? new Date(rec.timestamp).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "";
-    metaEl.textContent = `Assessed by ${rec.assessor || "unknown"} at ${ts}`;
-  } else {
-    metaEl.textContent = "Not yet assessed";
-  }
-
-  document.getElementById("detailModal").classList.add("open");
+  document.getElementById("mainContent").innerHTML = html;
 }
 
-function closeModal(e) {
-  if (e.target === document.getElementById("detailModal")) {
-    document.getElementById("detailModal").classList.remove("open");
+function switchToRoom(room) {
+  currentRoom = room;
+  switchView("assess");
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+async function recordOutcome(candidateId, outcome) {
+  const label = outcome === "pass" ? "Successful" : "Not Successful";
+  try {
+    await db.collection("gateway_assessments").doc(candidateId).set({
+      outcome,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      assessorUid: auth.currentUser ? auth.currentUser.uid : null
+    }, { merge: true });
+    showToast(`${candidates[candidateId]?candidates[candidateId].name:candidateId}: ${label}`,
+      outcome === "pass" ? "green" : "red");
+  } catch (err) {
+    showToast("Save failed — check connection", "red");
+    console.error(err);
   }
 }
 
-// ── Clock + deadline countdown ─────────────────────────────────────────────
+async function toggleFlag(candidateId) {
+  const current = !!(assessments[candidateId] && assessments[candidateId].flagged);
+  try {
+    await db.collection("gateway_assessments").doc(candidateId).set(
+      { flagged: !current, updatedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+    showToast(!current ? "⚑ Concern flag added" : "Flag removed", "amber");
+  } catch (err) {
+    showToast("Could not update flag", "red");
+  }
+}
+
+async function lockOutcome(candidateId) {
+  try {
+    await db.collection("gateway_assessments").doc(candidateId).set(
+      { lockedAt: firebase.firestore.FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+    showToast("Outcome locked", "green");
+  } catch (err) {
+    showToast("Lock failed", "red");
+  }
+}
+
+function requestUnlock(candidateId) {
+  const name = candidates[candidateId] ? candidates[candidateId].name : candidateId;
+  if (confirm(`Unlock assessment for ${name}?\n\nThis will allow the outcome to be changed. Tap OK to confirm.`)) {
+    unlockPending[candidateId] = true;
+    db.collection("gateway_assessments").doc(candidateId).update({ lockedAt: null })
+      .then(() => {
+        delete unlockPending[candidateId];
+        showToast("Unlocked — outcome can now be changed", "amber");
+      })
+      .catch(err => {
+        delete unlockPending[candidateId];
+        showToast("Unlock failed", "red");
+      });
+  }
+}
+
+function confirmUnlock(candidateId) {
+  delete unlockPending[candidateId];
+  renderAssess();
+}
+
+// ── Clock & deadline bar ─────────────────────────────────────────────────────
 function updateClock() {
-  const now   = new Date();
-  const h     = now.getHours().toString().padStart(2,"0");
-  const m     = now.getMinutes().toString().padStart(2,"0");
-  document.getElementById("topBarTime").textContent = `${h}:${m}`;
+  const now  = new Date();
+  const h    = now.getHours();
+  const m    = now.getMinutes();
+  const hPad = String(h).padStart(2,"0");
+  const mPad = String(m).padStart(2,"0");
+  document.getElementById("clockEl").textContent = `${hPad}:${mPad}`;
 
-  const nowMins      = now.getHours()*60 + now.getMinutes();
-  const deadlineMins = 11*60 + 45;
-  const remaining    = deadlineMins - nowMins;
-  const bar          = document.getElementById("deadlineBar");
-  const countdown    = document.getElementById("deadlineCountdown");
-
-  if (remaining <= 0) {
-    bar.className = "deadline-bar";
-    countdown.textContent = "Deadline passed";
-  } else if (remaining <= 15) {
-    bar.className = "deadline-bar";  // red
-    countdown.textContent = `${remaining} min remaining`;
-  } else if (remaining <= 30) {
-    bar.className = "deadline-bar close";
-    countdown.textContent = `${remaining} min remaining`;
+  const dlMins  = (DEADLINE_HOUR * 60 + DEADLINE_MIN) - (h * 60 + m);
+  const bar     = document.getElementById("deadlineBar");
+  if (dlMins <= 0) {
+    bar.textContent = "Assessment window closed (11:45)";
+    bar.className   = "red";
+  } else if (dlMins <= 15) {
+    bar.textContent = `⚠ ${dlMins} minute(s) remaining — submit results now`;
+    bar.className   = "red";
+  } else if (dlMins <= 30) {
+    bar.textContent = `⚠ ${dlMins} minutes remaining until 11:45 deadline`;
+    bar.className   = "amber";
   } else {
-    bar.className = "deadline-bar safe";
-    countdown.textContent = `${remaining} min remaining`;
+    const hrs = Math.floor(dlMins / 60);
+    const min = dlMins % 60;
+    const timeStr = hrs > 0 ? `${hrs}h ${min}m` : `${min}m`;
+    bar.textContent = `Assessing until 11:45 · ${timeStr} remaining`;
+    bar.className   = "";
   }
 }
 
-// ── Toast ──────────────────────────────────────────────────────────────────
-let toastTimer;
-function showToast(msg) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove("show"), 2800);
+// ── Toast ─────────────────────────────────────────────────────────────────────
+var toastTimer = null;
+function showToast(msg, type) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className   = `show ${type}`;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = type; }, 2200);
 }
 
 </script>

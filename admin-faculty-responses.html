@@ -45,6 +45,8 @@
     }
     .tab-btn:hover { color: var(--rmd-blue); }
     .tab-btn.active { color: var(--rmd-blue); border-bottom-color: var(--rmd-blue); }
+    .tab-btn.director-tab { color: #7b2d00; }
+    .tab-btn.director-tab.active { color: #7b2d00; border-bottom-color: #7b2d00; }
 
     /* Action bar */
     .action-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
@@ -94,7 +96,7 @@
     /* Tables */
     .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 13px; }
     .data-table th { background: var(--rmd-navy); color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .data-table td { padding: 10px 12px; border-bottom: 1px solid #f0f3f6; vertical-align: top; }
+    .data-table td { padding: 10px 12px; border-bottom: 1px solid #f0f3f6; vertical-align: middle; }
     .data-table tr:last-child td { border-bottom: none; }
     .data-table tr:hover td { background: #f8f9fa; }
 
@@ -104,8 +106,33 @@
     .badge-erc-ok  { background: #e6f4ea; color: #1a6e31; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
     .badge-erc-fix { background: #fce8e6; color: #b7410e; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
 
+    /* Director badges & buttons */
+    .badge-director   { background: #7b2d00; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-faculty    { background: #ddeeff; color: #0b5394; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-itc        { background: #e8f0fe; color: #3d52a0; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-hardcoded  { background: #f0f3f6; color: #637282; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+
+    .btn-promote {
+      padding: 6px 14px; background: #7b2d00; color: white;
+      border: none; border-radius: 6px; font-size: 12px; font-weight: 700;
+      font-family: var(--font); cursor: pointer; white-space: nowrap;
+    }
+    .btn-promote:hover { background: #5a2000; }
+    .btn-demote {
+      padding: 6px 14px; background: white; color: #637282;
+      border: 1px solid #ccd6dd; border-radius: 6px; font-size: 12px; font-weight: 700;
+      font-family: var(--font); cursor: pointer; white-space: nowrap;
+    }
+    .btn-demote:hover { background: #fce8e6; color: #b7410e; border-color: #f5b8b0; }
+
     .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
     .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
+
+    .info-banner {
+      background: #e8f0fe; border-left: 4px solid var(--rmd-blue);
+      border-radius: 0 6px 6px 0; padding: 10px 14px;
+      font-size: 13px; color: var(--rmd-navy); margin-bottom: 16px;
+    }
   </style>
 </head>
 <body>
@@ -113,15 +140,18 @@
 <div class="top-bar">
   <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
   <div class="top-bar-title">Faculty Responses</div>
-  <button onclick="loadResponses()" style="background:rgba(255,255,255,0.15);border:none;color:white;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">↻ Refresh</button>
+  <button onclick="loadAll()" style="background:rgba(255,255,255,0.15);border:none;color:white;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">↻ Refresh</button>
 </div>
 
 <div class="content">
 
-  <!-- Summary pills (clickable) -->
+  <!-- Summary pills -->
   <div class="summary-strip" id="summaryStrip" style="margin-top:14px;">
-    <div class="sum-pill" id="pill-all"     onclick="switchTab('all')">
+    <div class="sum-pill" id="pill-all"        onclick="switchTab('all')">
       <div class="val" id="sum-total">–</div><div class="lbl">Responses</div>
+    </div>
+    <div class="sum-pill" id="pill-directors"  onclick="switchTab('directors')">
+      <div class="val" id="sum-directors" style="color:#7b2d00;">–</div><div class="lbl">Directors</div>
     </div>
     <div class="sum-pill" id="pill-fri-dinner" onclick="switchTab('fri-dinner')">
       <div class="val" id="sum-fri-dinner">–</div><div class="lbl">Fri dinner</div>
@@ -129,34 +159,35 @@
     <div class="sum-pill" id="pill-sat-dinner" onclick="switchTab('sat-dinner')">
       <div class="val" id="sum-sat-dinner">–</div><div class="lbl">Sat dinner</div>
     </div>
-    <div class="sum-pill" id="pill-fri-accom" onclick="switchTab('fri-accom')">
+    <div class="sum-pill" id="pill-fri-accom"  onclick="switchTab('fri-accom')">
       <div class="val" id="sum-fri-accom">–</div><div class="lbl">Fri accom</div>
     </div>
-    <div class="sum-pill" id="pill-sat-accom" onclick="switchTab('sat-accom')">
+    <div class="sum-pill" id="pill-sat-accom"  onclick="switchTab('sat-accom')">
       <div class="val" id="sum-sat-accom">–</div><div class="lbl">Sat accom</div>
     </div>
-    <div class="sum-pill" id="pill-dietary" onclick="switchTab('dietary')">
+    <div class="sum-pill" id="pill-dietary"    onclick="switchTab('dietary')">
       <div class="val" id="sum-dietary">–</div><div class="lbl">Dietary req</div>
     </div>
-    <div class="sum-pill" id="pill-erc-fix" onclick="switchTab('erc')">
+    <div class="sum-pill" id="pill-erc-fix"    onclick="switchTab('erc')">
       <div class="val" id="sum-erc-fix" style="color:#b7410e;">–</div><div class="lbl">ERC to fix</div>
     </div>
-    <div class="sum-pill" id="pill-itc" onclick="switchTab('itc')">
+    <div class="sum-pill" id="pill-itc"        onclick="switchTab('itc')">
       <div class="val" id="sum-itc">–</div><div class="lbl">ITCs</div>
     </div>
   </div>
 
   <!-- Tabs -->
   <div class="tab-row">
-    <button class="tab-btn active" onclick="switchTab('all')"        id="tab-all">All responses</button>
-    <button class="tab-btn"        onclick="switchTab('fri-dinner')" id="tab-fri-dinner">Fri dinner</button>
-    <button class="tab-btn"        onclick="switchTab('sat-dinner')" id="tab-sat-dinner">Sat dinner</button>
-    <button class="tab-btn"        onclick="switchTab('fri-accom')"  id="tab-fri-accom">Fri accom</button>
-    <button class="tab-btn"        onclick="switchTab('sat-accom')"  id="tab-sat-accom">Sat accom</button>
-    <button class="tab-btn"        onclick="switchTab('dietary')"    id="tab-dietary">Dietary</button>
-    <button class="tab-btn"        onclick="switchTab('erc')"        id="tab-erc">ERC issues</button>
-    <button class="tab-btn"        onclick="switchTab('itc')"        id="tab-itc">ITCs</button>
-    <button class="tab-btn"        onclick="switchTab('export')"     id="tab-export">Export</button>
+    <button class="tab-btn active"      onclick="switchTab('all')"        id="tab-all">All responses</button>
+    <button class="tab-btn director-tab" onclick="switchTab('directors')" id="tab-directors">⭐ Directors &amp; roles</button>
+    <button class="tab-btn"             onclick="switchTab('fri-dinner')" id="tab-fri-dinner">Fri dinner</button>
+    <button class="tab-btn"             onclick="switchTab('sat-dinner')" id="tab-sat-dinner">Sat dinner</button>
+    <button class="tab-btn"             onclick="switchTab('fri-accom')"  id="tab-fri-accom">Fri accom</button>
+    <button class="tab-btn"             onclick="switchTab('sat-accom')"  id="tab-sat-accom">Sat accom</button>
+    <button class="tab-btn"             onclick="switchTab('dietary')"    id="tab-dietary">Dietary</button>
+    <button class="tab-btn"             onclick="switchTab('erc')"        id="tab-erc">ERC issues</button>
+    <button class="tab-btn"             onclick="switchTab('itc')"        id="tab-itc">ITCs</button>
+    <button class="tab-btn"             onclick="switchTab('export')"     id="tab-export">Export</button>
   </div>
 
   <!-- Action bar -->
@@ -179,15 +210,21 @@
 <script src="js/firebase-config.js"></script>
 <script>
 
-var allResponses = [];
-var currentTab   = "all";
+var allResponses   = [];
+var directorEmails = [];
+var currentTab     = "all";
+
+const HARDCODED_DIRECTORS = [
+  "console_brews.6f@icloud.com",
+  "j.hulme.1@bham.ac.uk"
+];
 
 initFirebase();
 
 window.addEventListener("load", () => {
   auth.onAuthStateChanged(user => {
     if (user) {
-      loadResponses();
+      loadAll();
     } else {
       document.getElementById("tabContent").innerHTML =
         `<div class="empty-state">Please <a href="index.html">sign in as director</a> to view responses.</div>`;
@@ -195,8 +232,67 @@ window.addEventListener("load", () => {
   });
 });
 
-async function loadResponses() {
+async function loadAll() {
   document.getElementById("tabContent").innerHTML = `<div class="loading">Loading…</div>`;
+  await Promise.all([loadDirectors(), loadResponses()]);
+  updateSummary();
+  renderTab(currentTab);
+}
+
+async function loadDirectors() {
+  try {
+    const snap = await db.collection("config").doc("platform").get();
+    directorEmails = snap.exists ? (snap.data().directors || []) : [];
+  } catch (e) {
+    directorEmails = [];
+  }
+}
+
+function isDirector(email) {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return HARDCODED_DIRECTORS.includes(e) || directorEmails.map(x => x.toLowerCase()).includes(e);
+}
+
+function isHardcoded(email) {
+  return HARDCODED_DIRECTORS.includes((email||"").toLowerCase());
+}
+
+async function makeDirector(email, name) {
+  if (!email) return;
+  if (!confirm(`Designate ${name} as a course director?\n\nThey will be able to log in with director-level access.`)) return;
+  try {
+    const e = email.toLowerCase();
+    const updated = [...new Set([...directorEmails, e])];
+    await db.collection("config").doc("platform").set({ directors: updated }, { merge: true });
+    directorEmails = updated;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update directors: " + err.message);
+  }
+}
+
+async function removeDirector(email, name) {
+  if (!email) return;
+  if (isHardcoded(email)) {
+    alert("This director is hardcoded and cannot be removed here.");
+    return;
+  }
+  if (!confirm(`Remove director access from ${name}?\n\nThey will revert to faculty-level access on their next login.`)) return;
+  try {
+    const e = email.toLowerCase();
+    const updated = directorEmails.filter(x => x.toLowerCase() !== e);
+    await db.collection("config").doc("platform").set({ directors: updated }, { merge: true });
+    directorEmails = updated;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update directors: " + err.message);
+  }
+}
+
+async function loadResponses() {
   try {
     const snap = await db.collection("faculty_responses").get();
     allResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -205,8 +301,6 @@ async function loadResponses() {
         const tb = b.submittedAt ? b.submittedAt.seconds : 0;
         return tb - ta;
       });
-    updateSummary();
-    renderTab(currentTab);
   } catch (err) {
     document.getElementById("tabContent").innerHTML =
       `<div class="empty-state">Could not load responses. Check you are signed in as director.<br><small>${err.message}</small></div>`;
@@ -215,7 +309,9 @@ async function loadResponses() {
 
 function updateSummary() {
   const r = allResponses;
+  const directorCount = r.filter(x => isDirector(x.email)).length;
   document.getElementById("sum-total").textContent      = r.length;
+  document.getElementById("sum-directors").textContent  = directorCount;
   document.getElementById("sum-fri-dinner").textContent = r.filter(x => x.meals && x.meals.friday   === "yes").length;
   document.getElementById("sum-sat-dinner").textContent = r.filter(x => x.meals && x.meals.saturday === "yes").length;
   document.getElementById("sum-fri-accom").textContent  = r.filter(x => x.accommodation && x.accommodation.friday   === "yes").length;
@@ -225,42 +321,42 @@ function updateSummary() {
   document.getElementById("sum-itc").textContent        = r.filter(x => x.role === "ITC").length;
 }
 
-// ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
   currentTab = tab;
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
   document.querySelectorAll(".sum-pill").forEach(b => b.classList.remove("active"));
 
-  const tabEl = document.getElementById("tab-" + tab);
-  if (tabEl) tabEl.classList.add("active");
+  const tabEl  = document.getElementById("tab-"  + tab);
   const pillEl = document.getElementById("pill-" + tab);
+  if (tabEl)  tabEl.classList.add("active");
   if (pillEl) pillEl.classList.add("active");
 
+  document.getElementById("actionBar").style.display = (tab === "directors") ? "none" : "flex";
   renderTab(tab);
 }
 
 function renderTab(tab) {
-  if (tab === "all")        renderAll();
+  if      (tab === "all")        renderAll();
+  else if (tab === "directors")  renderDirectors();
   else if (tab === "fri-dinner") renderNameEmailTable(
     allResponses.filter(r => r.meals && r.meals.friday === "yes"),
     "Friday 9 Oct — Evening meal", ["Name","Email","Role","Dietary"]);
   else if (tab === "sat-dinner") renderNameEmailTable(
     allResponses.filter(r => r.meals && r.meals.saturday === "yes"),
     "Saturday 10 Oct — Postgraduate meal", ["Name","Email","Role","Dietary"]);
-  else if (tab === "fri-accom") renderNameEmailTable(
+  else if (tab === "fri-accom")  renderNameEmailTable(
     allResponses.filter(r => r.accommodation && r.accommodation.friday === "yes"),
     "Friday night accommodation requests", ["Name","Email","Role"]);
-  else if (tab === "sat-accom") renderNameEmailTable(
+  else if (tab === "sat-accom")  renderNameEmailTable(
     allResponses.filter(r => r.accommodation && r.accommodation.saturday === "yes"),
     "Saturday night accommodation requests", ["Name","Email","Role"]);
-  else if (tab === "dietary") renderDietary();
-  else if (tab === "erc")    renderERC();
-  else if (tab === "itc")    renderITC();
-  else if (tab === "export") renderExport();
+  else if (tab === "dietary")    renderDietary();
+  else if (tab === "erc")        renderERC();
+  else if (tab === "itc")        renderITC();
+  else if (tab === "export")     renderExport();
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-function fullName(r) { return [r.title, r.firstName, r.lastName].filter(Boolean).join(" "); }
+function fullName(r) { return [r.firstName, r.lastName].filter(Boolean).join(" "); }
 function fmtDate(r)  {
   return r.submittedAt
     ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
@@ -291,7 +387,6 @@ function setFilterLabel(text) {
   document.getElementById("filterLabel").textContent = text;
 }
 
-// ── All responses ──────────────────────────────────────────────────────────
 function renderAll() {
   setFilterLabel(`${allResponses.length} response(s)`);
   if (allResponses.length === 0) {
@@ -302,17 +397,20 @@ function renderAll() {
   document.getElementById("tabContent").innerHTML = allResponses.map((r, i) => {
     const days = ["friday","saturday","sunday"].map(d =>
       `<span class="day-badge day-${r.days&&r.days[d]?'yes':'no'}">${d.slice(0,3)}</span>`).join(" ");
+    const dirBadge = isDirector(r.email)
+      ? `<span class="badge-director">Director</span>`
+      : "";
     return `
       <div class="response-card">
         <div class="rc-header" onclick="toggleCard(${i})">
           <div class="rc-name">${fullName(r) || r.email}</div>
+          ${dirBadge}
           <span class="rc-role">${r.role||"–"}</span>
           <span class="rc-time">${fmtDate(r)}</span>
         </div>
         <div class="rc-body" id="card-${i}">
           <div class="rc-grid">
             <div><div class="rc-label">Email</div><div class="rc-value">${r.email||"–"}</div></div>
-            <div><div class="rc-label">DOB</div><div class="rc-value">${r.dob||"–"}</div></div>
             <div><div class="rc-label">Days</div><div class="rc-value"><div class="day-badges">${days}</div></div></div>
             <div><div class="rc-label">Meals</div><div class="rc-value">
               <div class="meal-badges">
@@ -359,7 +457,60 @@ async function deleteResponse(docId, name) {
   }
 }
 
-// ── Generic name/email table ──────────────────────────────────────────────
+function renderDirectors() {
+  const makeRow = (r) => {
+    const name   = fullName(r) || r.email;
+    const dir    = isDirector(r.email);
+    const hard   = isHardcoded(r.email);
+    const roleBadge = dir
+      ? `<span class="badge-director">Course Director</span>`
+      : r.role === "ITC"
+        ? `<span class="badge-itc">ITC</span>`
+        : `<span class="badge-faculty">Faculty</span>`;
+
+    let actionBtn = "";
+    if (r.role === "Faculty") {
+      if (hard) {
+        actionBtn = `<span class="badge-hardcoded">Permanent director</span>`;
+      } else if (dir) {
+        actionBtn = `<button class="btn-demote" onclick="removeDirector('${r.email}','${name}')">Remove director</button>`;
+      } else {
+        actionBtn = `<button class="btn-promote" onclick="makeDirector('${r.email}','${name}')">Make director</button>`;
+      }
+    } else {
+      actionBtn = `<span style="font-size:12px;color:var(--rmd-muted);">ITC — not applicable</span>`;
+    }
+
+    return `<tr>
+      <td style="font-weight:700;color:var(--rmd-navy);">${name}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
+      <td>${roleBadge}</td>
+      <td>${actionBtn}</td>
+    </tr>`;
+  };
+
+  const allRows = allResponses.length
+    ? allResponses.map(makeRow).join("")
+    : `<tr><td colspan="4" style="color:#aab8c2;text-align:center;padding:20px;">No faculty responses yet</td></tr>`;
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="info-banner">
+      <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. ITCs cannot be made directors here.
+    </div>
+    <div class="section-block">
+      <div class="section-heading">Faculty who have responded (${allResponses.length})</div>
+      <table class="data-table">
+        <thead><tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Self-declared role</th>
+          <th>Platform access</th>
+        </tr></thead>
+        <tbody>${allRows}</tbody>
+      </table>
+    </div>`;
+}
+
 function renderNameEmailTable(filtered, title, cols) {
   setFilterLabel(`${filtered.length} person(s)`);
   const showDiet = cols.includes("Dietary");
@@ -385,17 +536,9 @@ function renderNameEmailTable(filtered, title, cols) {
     </div>`;
 }
 
-// ── Dietary ───────────────────────────────────────────────────────────────
 function renderDietary() {
   const dietary = allResponses.filter(r => r.diet && r.diet !== "None" && r.diet !== "");
   setFilterLabel(`${dietary.length} person(s) with requirements`);
-
-  const grouped = {};
-  dietary.forEach(r => {
-    const key = r.diet + (r.dietDetail ? " — " + r.dietDetail : "");
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(r);
-  });
 
   const rows = dietary.length
     ? dietary.map(r => `
@@ -421,7 +564,6 @@ function renderDietary() {
     </div>`;
 }
 
-// ── ERC issues ────────────────────────────────────────────────────────────
 function renderERC() {
   const toFix = allResponses.filter(r => r.ercCorrectlyListed === "no");
   setFilterLabel(`${toFix.length} person(s) need to fix ERC`);
@@ -446,7 +588,6 @@ function renderERC() {
     </div>`;
 }
 
-// ── ITC view ──────────────────────────────────────────────────────────────
 function renderITC() {
   const itcs = allResponses.filter(r => r.role === "ITC");
   setFilterLabel(`${itcs.length} ITC(s)`);
@@ -479,7 +620,6 @@ function renderITC() {
     </div>`;
 }
 
-// ── Export ────────────────────────────────────────────────────────────────
 function renderExport() {
   setFilterLabel("All responses");
   document.getElementById("tabContent").innerHTML = `
@@ -490,20 +630,21 @@ function renderExport() {
         <button class="btn-action secondary" onclick="copyAllEmails()">📋 Copy all emails</button>
       </div>
       <p style="font-size:12px;color:var(--rmd-muted);margin:16px 0 0;">
-        CSV includes: name, email, DOB, role, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
+        CSV includes: name, email, role, platform role, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
       </p>
     </div>`;
 }
 
 function exportCSV() {
-  const headers = ["Title","First Name","Middle Name","Last Name","Email","DOB","Role",
+  const headers = ["First Name","Last Name","Email","Self-declared Role","Platform Role",
     "Days-Fri","Days-Sat","Days-Sun","Meal-Fri","Meal-Sat",
     "Accom-Fri","Accom-Sat","Diet","Diet Detail",
     "ERC Qualification","ERC Correctly Listed","ERC Liaison Confirmed",
     "Accessibility","Travel Notes","Other Notes","Submitted"];
 
   const rows = allResponses.map(r => [
-    r.title, r.firstName, r.middleName, r.lastName, r.email, r.dob, r.role,
+    r.firstName, r.lastName, r.email, r.role,
+    isDirector(r.email) ? "Director" : "Faculty",
     r.days&&r.days.friday?"Yes":"No", r.days&&r.days.saturday?"Yes":"No", r.days&&r.days.sunday?"Yes":"No",
     r.meals&&r.meals.friday||"", r.meals&&r.meals.saturday||"",
     r.accommodation&&r.accommodation.friday||"", r.accommodation&&r.accommodation.saturday||"",
