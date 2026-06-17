@@ -89,5 +89,19 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // ── MOU responses ───────────────────────────────────────────────────────
+    // Create: public — annual Memorandum of Understanding form is sent before login
+    // Read/update/delete: authenticated only — only directors view responses
+    match /mou_responses/{docId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+
+    // ── MOU roster ──────────────────────────────────────────────────────────
+    // Authenticated only — expected member list, managed by directors
+    match /mou_roster/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
   }
 }

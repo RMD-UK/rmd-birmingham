@@ -29,8 +29,15 @@ const COLLECTIONS = {
   rooms:       "rooms",         // room state (timer, current message)
   feedback:    "feedback",      // faculty voice feedback (transcripts)
   itcObs:      "itc_observations", // ITC observation records
-  groups:      "groups"          // room assignments: IT + candidates + ITC rotation
+  groups:      "groups",         // room assignments: IT + candidates + ITC rotation
+  mouResponses: "mou_responses", // annual Memorandum of Understanding submissions
+  mouRoster:    "mou_roster"     // expected RMD Birmingham member roster (for MOU completion tracking)
 };
+
+// ── Memorandum of Understanding ─────────────────────────────────────────────
+// Bump this every academic year — drives the form's locked "year" field and
+// the dashboard's completion matching. Nothing else needs to change annually.
+const CURRENT_MOU_YEAR = "2026/27";
 
 // ── Rooms ───────────────────────────────────────────────────────────────────
 const INSTRUCTOR_ROOMS = ["CM01","CM02","CM03","CM04","CM13","CM14","CM15","CM16"];

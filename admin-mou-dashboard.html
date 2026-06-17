@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOU Dashboard — RMD</title>
+<link rel="stylesheet" href="css/rmd.css">
+<style>
+  * { box-sizing: border-box; }
+  body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+  .top-bar {
+    background: var(--rmd-navy); color: white;
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .top-bar img { height: 28px; }
+  .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+  .top-bar .year-tag { font-size: 12px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 12px; }
+
+  .content { padding: 14px; max-width: 960px; margin: 0 auto; }
+
+  .summary-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; margin-top: 14px; }
+  .sum-pill {
+    background: white; border-radius: 8px; padding: 10px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; min-width: 100px;
+    cursor: pointer; border: 2px solid transparent; transition: all 0.12s;
+  }
+  .sum-pill:hover { border-color: var(--rmd-blue); }
+  .sum-pill.active { border-color: var(--rmd-blue); background: #e8f0fe; }
+  .sum-pill .val { font-size: 24px; font-weight: 700; color: var(--rmd-navy); }
+  .sum-pill .lbl { font-size: 11px; color: var(--rmd-muted); font-weight: 600; text-transform: uppercase; }
+  .sum-pill.warn .val { color: var(--rmd-warn); }
+
+  .tab-row {
+    display: flex; background: white; border-bottom: 2px solid #dce3ea;
+    margin-bottom: 14px; border-radius: 8px 8px 0 0; overflow-x: auto;
+  }
+  .tab-btn {
+    padding: 11px 16px; font-size: 13px; font-weight: 600; color: var(--rmd-muted);
+    border: none; background: none; cursor: pointer; font-family: var(--font);
+    border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap; flex-shrink: 0;
+  }
+  .tab-btn:hover { color: var(--rmd-blue); }
+  .tab-btn.active { color: var(--rmd-blue); border-bottom-color: var(--rmd-blue); }
+  .tab-btn.warn-tab { color: var(--rmd-warn); }
+  .tab-btn.warn-tab.active { color: var(--rmd-warn); border-bottom-color: var(--rmd-warn); }
+
+  .action-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .btn-action {
+    padding: 8px 16px; background: var(--rmd-blue); color: white;
+    border: none; border-radius: 6px; font-size: 13px; font-weight: 700;
+    font-family: var(--font); cursor: pointer;
+  }
+  .btn-action:hover { background: var(--rmd-navy); }
+  .btn-action.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
+  .btn-action.danger { background: var(--rmd-warn); }
+  .filter-label { font-size: 13px; color: var(--rmd-muted); margin-left: 4px; }
+
+  .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 13px; }
+  .data-table th { background: var(--rmd-navy); color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .data-table td { padding: 10px 12px; border-bottom: 1px solid #f0f3f6; vertical-align: middle; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #f8f9fa; }
+
+  .section-heading { color: var(--rmd-navy); margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+  .section-block { margin-bottom: 24px; }
+
+  .badge-signed   { background: #e6f4ea; color: #1a6e31; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-outstanding { background: #fce8e6; color: var(--rmd-warn); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-disagree { background: #fff3cd; color: #856404; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-agree    { background: #e6f4ea; color: #1a6e31; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+
+  .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
+  .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
+
+  .info-banner {
+    background: #e8f0fe; border-left: 4px solid var(--rmd-blue);
+    border-radius: 0 6px 6px 0; padding: 10px 14px;
+    font-size: 13px; color: var(--rmd-navy); margin-bottom: 16px;
+  }
+  .warn-banner {
+    background: #fce8e6; border-left: 4px solid var(--rmd-warn);
+    border-radius: 0 6px 6px 0; padding: 10px 14px;
+    font-size: 13px; color: var(--rmd-navy); margin-bottom: 16px;
+  }
+
+  .roster-card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .roster-card textarea {
+    width: 100%; min-height: 220px; border: 2px solid #ccd6dd; border-radius: 6px;
+    padding: 12px; font-family: monospace; font-size: 13px; resize: vertical;
+  }
+  .roster-log { margin-top: 14px; font-size: 13px; max-height: 200px; overflow-y: auto; background: #f5f7fa; border-radius: 6px; padding: 10px 14px; display: none; }
+  .roster-log div { padding: 2px 0; }
+
+  .comment-box { font-size: 13px; padding: 10px; background: #fff3cd; border-radius: 6px; margin-top: 4px; color: #856404; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">MOU Dashboard</div>
+  <span class="year-tag" id="yearTag"></span>
+  <button onclick="loadAll()" style="background:rgba(255,255,255,0.15);border:none;color:white;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">↻ Refresh</button>
+</div>
+
+<div class="content">
+
+  <div class="summary-strip">
+    <div class="sum-pill" id="pill-roster" onclick="switchTab('roster-status')">
+      <div class="val" id="sum-roster">–</div><div class="lbl">Roster</div>
+    </div>
+    <div class="sum-pill" id="pill-signed" onclick="switchTab('roster-status')">
+      <div class="val" id="sum-signed" style="color:#1a6e31;">–</div><div class="lbl">Signed</div>
+    </div>
+    <div class="sum-pill warn" id="pill-outstanding" onclick="switchTab('outstanding')">
+      <div class="val" id="sum-outstanding">–</div><div class="lbl">Outstanding</div>
+    </div>
+    <div class="sum-pill warn" id="pill-disagreed" onclick="switchTab('disagreed')">
+      <div class="val" id="sum-disagreed">–</div><div class="lbl">Disagreed</div>
+    </div>
+  </div>
+
+  <div class="tab-row">
+    <button class="tab-btn active" onclick="switchTab('roster-status')" id="tab-roster-status">Roster status</button>
+    <button class="tab-btn warn-tab" onclick="switchTab('outstanding')" id="tab-outstanding">⚠ Outstanding</button>
+    <button class="tab-btn warn-tab" onclick="switchTab('disagreed')" id="tab-disagreed">⚠ Disagreed</button>
+    <button class="tab-btn" onclick="switchTab('all')" id="tab-all">All submissions</button>
+    <button class="tab-btn" onclick="switchTab('manage-roster')" id="tab-manage-roster">Manage roster</button>
+  </div>
+
+  <div class="action-bar" id="actionBar">
+    <button class="btn-action secondary" onclick="copyFilteredEmails()">📋 Copy emails</button>
+    <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
+    <span class="filter-label" id="filterLabel"></span>
+  </div>
+
+  <div id="tabContent">
+    <div class="loading">Loading…</div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+const HARDCODED_DIRECTORS = [
+  "console_brews.6f@icloud.com",
+  "j.hulme.1@bham.ac.uk"
+];
+
+var allSubmissions = [];  // mou_responses for CURRENT_MOU_YEAR
+var roster          = []; // mou_roster docs
+var directorEmails   = [];
+var currentTab       = "roster-status";
+
+initFirebase();
+document.getElementById("yearTag").textContent = CURRENT_MOU_YEAR;
+
+window.addEventListener("load", () => {
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      loadAll();
+    } else {
+      document.getElementById("tabContent").innerHTML =
+        `<div class="empty-state">Please <a href="index.html">sign in as director</a> to view the MOU dashboard.</div>`;
+    }
+  });
+});
+
+async function loadAll() {
+  document.getElementById("tabContent").innerHTML = `<div class="loading">Loading…</div>`;
+  await Promise.all([loadDirectors(), loadRoster(), loadSubmissions()]);
+  updateSummary();
+  renderTab(currentTab);
+}
+
+async function loadDirectors() {
+  try {
+    const snap = await db.collection("config").doc("platform").get();
+    directorEmails = snap.exists ? (snap.data().directors || []) : [];
+  } catch (e) { directorEmails = []; }
+}
+function isDirector(email) {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return HARDCODED_DIRECTORS.includes(e) || directorEmails.map(x => x.toLowerCase()).includes(e);
+}
+
+async function loadRoster() {
+  try {
+    const snap = await db.collection(COLLECTIONS.mouRoster).get();
+    roster = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  } catch (err) {
+    roster = [];
+  }
+}
+
+async function loadSubmissions() {
+  try {
+    const snap = await db.collection(COLLECTIONS.mouResponses)
+      .where("academicYear", "==", CURRENT_MOU_YEAR).get();
+    allSubmissions = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const ta = a.submittedAt ? a.submittedAt.seconds : 0;
+        const tb = b.submittedAt ? b.submittedAt.seconds : 0;
+        return tb - ta;
+      });
+  } catch (err) {
+    document.getElementById("tabContent").innerHTML =
+      `<div class="empty-state">Could not load MOU submissions. Check you are signed in as director.<br><small>${err.message}</small></div>`;
+  }
+}
+
+function findSubmission(email) {
+  if (!email) return null;
+  const e = email.toLowerCase();
+  return allSubmissions.find(s => (s.email || "").toLowerCase() === e) || null;
+}
+
+function rosterWithStatus() {
+  return roster.map(m => {
+    const sub = findSubmission(m.email);
+    return { ...m, submission: sub, status: sub ? (sub.agreed === false ? "disagreed" : "signed") : "outstanding" };
+  });
+}
+
+function fullName(r) { return r.name || r.email || "–"; }
+function fmtDate(r) {
+  return r.submittedAt
+    ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
+    : "–";
+}
+
+function updateSummary() {
+  const withStatus = rosterWithStatus();
+  document.getElementById("sum-roster").textContent      = roster.length;
+  document.getElementById("sum-signed").textContent      = withStatus.filter(m => m.status === "signed").length;
+  document.getElementById("sum-outstanding").textContent = withStatus.filter(m => m.status === "outstanding").length;
+  document.getElementById("sum-disagreed").textContent   = withStatus.filter(m => m.status === "disagreed").length;
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  const tabEl = document.getElementById("tab-" + tab);
+  if (tabEl) tabEl.classList.add("active");
+  document.getElementById("actionBar").style.display = (tab === "manage-roster") ? "none" : "flex";
+  renderTab(tab);
+}
+
+function renderTab(tab) {
+  if      (tab === "roster-status")  renderRosterStatus();
+  else if (tab === "outstanding")    renderOutstanding();
+  else if (tab === "disagreed")      renderDisagreed();
+  else if (tab === "all")            renderAllSubmissions();
+  else if (tab === "manage-roster")  renderManageRoster();
+}
+
+function getFiltered() {
+  const withStatus = rosterWithStatus();
+  switch (currentTab) {
+    case "outstanding": return withStatus.filter(m => m.status === "outstanding");
+    case "disagreed":   return withStatus.filter(m => m.status === "disagreed");
+    case "roster-status": return withStatus;
+    case "all": return allSubmissions;
+    default: return [];
+  }
+}
+
+function copyFilteredEmails() {
+  const filtered = getFiltered();
+  if (!filtered.length) { alert("No people in this view."); return; }
+  const emails = filtered.map(r => r.email).filter(Boolean).join(", ");
+  navigator.clipboard.writeText(emails).then(() =>
+    alert(`${filtered.length} email(s) copied to clipboard.`));
+}
+
+function exportCSV() {
+  const withStatus = rosterWithStatus();
+  const headers = ["Name","Email","Roster Role","Status","Submitted Role","Agreed","Comment","Submitted At"];
+  const rows = withStatus.map(m => [
+    m.name, m.email, m.role || "", m.status,
+    m.submission ? m.submission.role : "",
+    m.submission ? (m.submission.agreed ? "Yes" : "No") : "",
+    m.submission ? m.submission.comment || "" : "",
+    m.submission && m.submission.submittedAt ? new Date(m.submission.submittedAt.seconds*1000).toISOString() : ""
+  ].map(v => `"${(v||"").toString().replace(/"/g,'""')}"`));
+  const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `rmd-mou-status-${CURRENT_MOU_YEAR.replace("/","-")}.csv`; a.click();
+}
+
+function setFilterLabel(text) { document.getElementById("filterLabel").textContent = text; }
+
+function renderRosterStatus() {
+  setFilterLabel(`${roster.length} on roster`);
+  const withStatus = rosterWithStatus();
+
+  if (!roster.length) {
+    document.getElementById("tabContent").innerHTML =
+      `<div class="info-banner">No roster loaded yet. Go to <strong>Manage roster</strong> to paste in the expected member list.</div>`;
+    return;
+  }
+
+  const rows = withStatus.map(m => {
+    const badge = m.status === "signed" ? `<span class="badge-signed">✓ Signed</span>`
+      : m.status === "disagreed" ? `<span class="badge-disagree">⚠ Disagreed</span>`
+      : `<span class="badge-outstanding">✗ Outstanding</span>`;
+    return `<tr>
+      <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
+      <td>${m.role||"–"}</td>
+      <td>${badge}</td>
+      <td>${m.submission ? fmtDate(m.submission) : "–"}</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="section-block">
+      <div class="section-heading">Roster status for ${CURRENT_MOU_YEAR} (${roster.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Roster role</th><th>Status</th><th>Submitted</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderOutstanding() {
+  const list = rosterWithStatus().filter(m => m.status === "outstanding");
+  setFilterLabel(`${list.length} outstanding`);
+
+  const rows = list.length
+    ? list.map(m => `<tr>
+        <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+        <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
+        <td>${m.role||"–"}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="3" style="color:#aab8c2;text-align:center;padding:20px;">Everyone on the roster has completed the MOU</td></tr>`;
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="warn-banner">These roster members have not yet submitted the ${CURRENT_MOU_YEAR} MOU. Use "Copy emails" above to send a reminder.</div>
+    <div class="section-block">
+      <div class="section-heading" style="color:var(--rmd-warn);">Outstanding (${list.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Roster role</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderDisagreed() {
+  const list = rosterWithStatus().filter(m => m.status === "disagreed");
+  setFilterLabel(`${list.length} disagreed`);
+
+  const rows = list.length
+    ? list.map(m => `<tr>
+        <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+        <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
+        <td>${m.submission.role||"–"}</td>
+        <td>${fmtDate(m.submission)}</td>
+        <td><div class="comment-box">${m.submission.comment || "(no comment provided)"}</div></td>
+      </tr>`).join("")
+    : `<tr><td colspan="5" style="color:#aab8c2;text-align:center;padding:20px;">No one has disagreed with the MOU</td></tr>`;
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="warn-banner">These members selected "I do not agree" when submitting the MOU. Follow up with them directly.</div>
+    <div class="section-block">
+      <div class="section-heading" style="color:var(--rmd-warn);">Disagreed (${list.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Submitted</th><th>Comment</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderAllSubmissions() {
+  setFilterLabel(`${allSubmissions.length} submission(s)`);
+
+  const rows = allSubmissions.length
+    ? allSubmissions.map(r => {
+        const onRoster = roster.some(m => (m.email||"").toLowerCase() === (r.email||"").toLowerCase());
+        const agreeBadge = r.agreed === false ? `<span class="badge-disagree">⚠ Disagreed</span>` : `<span class="badge-agree">✓ Agreed</span>`;
+        return `<tr>
+          <td style="font-weight:700;color:var(--rmd-navy);">${r.name||r.email}</td>
+          <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
+          <td>${r.role||"–"}</td>
+          <td>${agreeBadge}</td>
+          <td>${onRoster ? "" : `<span class="badge-outstanding">Not on roster</span>`}</td>
+          <td>${fmtDate(r)}</td>
+          <td><button onclick="deleteSubmission('${r.id}','${(r.name||r.email||"").replace(/'/g,"")}')" style="padding:5px 10px;background:#fce8e6;color:var(--rmd-warn);border:1px solid #f5b8b0;border-radius:6px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button></td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="7" style="color:#aab8c2;text-align:center;padding:20px;">No submissions yet for ${CURRENT_MOU_YEAR}</td></tr>`;
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="section-block">
+      <div class="section-heading">All submissions — ${CURRENT_MOU_YEAR} (${allSubmissions.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Agreement</th><th>Roster check</th><th>Submitted</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function deleteSubmission(docId, name) {
+  if (!confirm(`Delete MOU submission from ${name}?\n\nThis cannot be undone.`)) return;
+  try {
+    await db.collection(COLLECTIONS.mouResponses).doc(docId).delete();
+    allSubmissions = allSubmissions.filter(r => r.id !== docId);
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Delete failed: " + err.message);
+  }
+}
+
+function renderManageRoster() {
+  document.getElementById("tabContent").innerHTML = `
+    <div class="roster-card">
+      <p class="section-heading">Import expected member roster</p>
+      <p style="font-size:13px;color:var(--rmd-muted);margin-bottom:12px;">
+        Paste one member per line as <strong>Name, email, role</strong>. Role should match exactly: Instructor, Senior Instructor, Assessor, RMD Student Faculty, or RMD Senior Faculty.
+        Importing <strong>replaces the entire current roster</strong> — existing MOU submissions are not affected.
+      </p>
+      <textarea id="rosterPaste" placeholder="Jane Smith, jane.smith@bham.ac.uk, Instructor
+John Doe, john.doe@bham.ac.uk, Senior Instructor"></textarea>
+      <div style="display:flex;gap:10px;margin-top:12px;">
+        <button class="btn-action" onclick="importRoster()">⬆ Import roster (replace all)</button>
+        <button class="btn-action secondary" onclick="loadRosterIntoTextarea()">↺ Load current roster</button>
+      </div>
+      <div class="roster-log" id="rosterLog"></div>
+      <p style="font-size:12px;color:var(--rmd-muted);margin-top:14px;">Current roster: ${roster.length} member(s).</p>
+    </div>`;
+}
+
+function loadRosterIntoTextarea() {
+  const lines = roster.map(m => `${m.name||""}, ${m.email||""}, ${m.role||""}`).join("\n");
+  document.getElementById("rosterPaste").value = lines;
+}
+
+async function importRoster() {
+  const raw = document.getElementById("rosterPaste").value.trim();
+  if (!raw) { alert("Paste at least one member first."); return; }
+
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const parsed = [];
+  const errors = [];
+
+  lines.forEach((line, i) => {
+    const parts = line.split(",").map(p => p.trim());
+    if (parts.length < 2 || !parts[1].includes("@")) {
+      errors.push(`Line ${i+1}: could not parse "${line}"`);
+      return;
+    }
+    parsed.push({
+      name:  parts[0] || "",
+      email: parts[1].toLowerCase(),
+      role:  parts[2] || ""
+    });
+  });
+
+  if (!parsed.length) {
+    alert("No valid rows found. Each line needs at least Name, email.");
+    return;
+  }
+
+  if (!confirm(`Replace the current roster (${roster.length} member(s)) with ${parsed.length} new entr${parsed.length===1?'y':'ies'}?\n\nThis cannot be undone.`)) return;
+
+  const logEl = document.getElementById("rosterLog");
+  logEl.style.display = "block";
+  logEl.innerHTML = "<div>Starting import…</div>";
+
+  try {
+    // Delete existing roster docs
+    const existingSnap = await db.collection(COLLECTIONS.mouRoster).get();
+    let batch = db.batch();
+    let opCount = 0;
+    for (const doc of existingSnap.docs) {
+      batch.delete(doc.ref);
+      opCount++;
+      if (opCount >= 450) { await batch.commit(); batch = db.batch(); opCount = 0; }
+    }
+    if (opCount > 0) { await batch.commit(); }
+    logEl.innerHTML += `<div>Cleared ${existingSnap.size} existing roster entr${existingSnap.size===1?'y':'ies'}.</div>`;
+
+    // Add new roster docs (doc id = email for easy upsert/lookup)
+    batch = db.batch();
+    opCount = 0;
+    for (const m of parsed) {
+      const ref = db.collection(COLLECTIONS.mouRoster).doc(m.email);
+      batch.set(ref, { ...m, addedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      opCount++;
+      if (opCount >= 450) { await batch.commit(); batch = db.batch(); opCount = 0; }
+    }
+    if (opCount > 0) { await batch.commit(); }
+
+    logEl.innerHTML += `<div>✅ Imported ${parsed.length} member(s).</div>`;
+    if (errors.length) {
+      logEl.innerHTML += errors.map(e => `<div style="color:var(--rmd-warn);">⚠ ${e}</div>`).join("");
+    }
+
+    await loadRoster();
+    updateSummary();
+    document.querySelector(".roster-card p:last-of-type").textContent = `Current roster: ${roster.length} member(s).`;
+  } catch (err) {
+    logEl.innerHTML += `<div style="color:var(--rmd-warn);">Import failed: ${err.message}</div>`;
+  }
+}
+
+</script>
+</body>
+</html>
