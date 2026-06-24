@@ -85,7 +85,7 @@ const PROGRAMME = {
         roles: ["all"],
         notes: "",
         resources: [
-          { title: "Intro slides", path: "resources/1-intro-to-weekend-2026.pptx", icon: "📊" }
+          { title: "Intro slides", path: "resources/1-intro-to-weekend.html", icon: "📊" }
         ],
         tags: []
       },
@@ -137,7 +137,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture-2026.pptx", icon: "📊" }
+          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" }
         ],
         tags: []
       },
@@ -190,8 +190,8 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "First Aid slides", path: "resources/3-first-aid-2026.pptx", icon: "📊" },
-          { title: "Catastrophic haemorrhage slides", path: "resources/3a-catastrophic-haemorrhage-2026.pptx", icon: "📊" }
+          { title: "First Aid slides", path: "resources/3-first-aid.html", icon: "📊" },
+          { title: "Catastrophic haemorrhage slides", path: "resources/3a-catastrophic-haemorrhage.html", icon: "📊" }
         ],
         tags: []
       },
@@ -269,7 +269,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Teaching Adults CPR slides", path: "resources/4-teaching-adults-cpr-aed-2026.pptx", icon: "📊" }
+          { title: "Teaching Adults CPR slides", path: "resources/4-teaching-adults-cpr-aed.html", icon: "📊" }
         ],
         tags: []
       },
@@ -311,7 +311,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Learning conversation slides", path: "resources/5-learning-conversation-2026.pptx", icon: "📊" }
+          { title: "Learning conversation slides", path: "resources/5-learning-conversation.html", icon: "📊" }
         ],
         tags: []
       },
@@ -370,7 +370,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Learning slides", path: "resources/6-learning-2026.pptx", icon: "📊" },
+          { title: "Learning slides", path: "resources/6-learning.html", icon: "📊" },
           { title: "Session guide", path: "resources/instructor/5-learning-lecture.html", icon: "📄" }
         ],
         tags: []
@@ -425,7 +425,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Assessing slides", path: "resources/7-assessing-2026.pptx", icon: "📊" },
+          { title: "Assessing slides", path: "resources/7-assessing.html", icon: "📊" },
           { title: "Session guide", path: "resources/instructor/8-how-to-assess-lecture-and-demo.html", icon: "📄" }
         ],
         tags: []
