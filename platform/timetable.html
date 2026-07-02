@@ -474,16 +474,11 @@
       // Hide loading overlay
       document.getElementById("authLoading").style.display = "none";
 
-      if (role) {
-        // Production: role found in Firestore — hide dev selector
-        document.getElementById("roleSelectorBar").style.display = "none";
-        setRole(role);
-      } else {
-        // Dev fallback: no people doc yet — show role selector, default to director
-        document.getElementById("roleSelectorBar").style.display = "flex";
-        document.getElementById("roleSelect").value = "director";
-        setRole("director");
-      }
+      // Always show role selector; use Firestore role as default if found, else director
+      const devRole = role || "director";
+      document.getElementById("roleSelectorBar").style.display = "flex";
+      document.getElementById("roleSelect").value = devRole;
+      setRole(devRole);
       switchDay("saturday");
       updateLiveBar();
       setTimeout(() => {
