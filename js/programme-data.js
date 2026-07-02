@@ -71,7 +71,7 @@ const PROGRAMME = {
         location: "ATH",
         lead: "Student faculty",
         roles: ["all"],
-        notes: "Self-scan QR code on arrival. Timetable opens automatically on scan.",
+        notes: "Report to the registration desk on arrival.",
         resources: [],
         tags: []
       },
@@ -85,7 +85,7 @@ const PROGRAMME = {
         roles: ["all"],
         notes: "",
         resources: [
-          { title: "Intro slides", path: "resources/1-intro-to-weekend.html", icon: "📊" }
+          { title: "Intro slides", path: "resources/1-intro-to-weekend-2026.pptx", icon: "📊" }
         ],
         tags: []
       },
@@ -108,21 +108,9 @@ const PROGRAMME = {
         start: "09:35",
         duration: 30,
         title: "Equipment Practice",
-        location: "CM01 CM02 CM03 CM04 CM13 CM14 CM15 CM16",
+        location: "Teaching rooms",
         lead: "Room faculty lead",
         roles: ["all"],
-        notes: "",
-        resources: [],
-        tags: []
-      },
-      {
-        id: "sat-5",
-        start: "10:05",
-        duration: 5,
-        title: "Recognition of a Heart Attack",
-        location: "ATH",
-        lead: "",
-        roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],
         tags: []
@@ -137,7 +125,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" }
+          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture-2026.pptx", icon: "📊" }
         ],
         tags: []
       },
@@ -159,12 +147,12 @@ const PROGRAMME = {
         duration: 60,
         title: "Group Practice: BLS/AED",
         subtitle: "Including: Closing the Gender Gap",
-        location: "CM01 CM02 CM03 CM04 CM13 CM14 CM15 CM16",
+        location: "Teaching rooms",
         lead: "Room faculty lead",
         roles: ["instructor", "faculty", "director"],
-        notes: "Small group practice. Formal gateway assessment of BLS/AED competency must be completed before the morning break (11:45).",
+        notes: "Small group practice. ⚠ Gateway assessment: all Instructor Candidates must pass the BLS/AED competency check by 12:00 noon. Candidates who have not passed by noon cannot progress to the afternoon instructor development sessions.",
         resources: [
-          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" }
+          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.docx", icon: "📄" }
         ],
         tags: ["gateway-deadline"]
       },
@@ -176,7 +164,7 @@ const PROGRAMME = {
         location: "",
         lead: "",
         roles: ["all"],
-        notes: "Gateway assessment must be complete before this break.",
+        notes: "",
         resources: [],
         tags: ["break", "gateway-deadline"]
       },
@@ -190,8 +178,8 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "First Aid slides", path: "resources/3-first-aid.html", icon: "📊" },
-          { title: "Catastrophic haemorrhage slides", path: "resources/3a-catastrophic-haemorrhage.html", icon: "📊" }
+          { title: "First Aid slides", path: "resources/3-first-aid-2026.pptx", icon: "📊" },
+          { title: "Catastrophic haemorrhage slides", path: "resources/3a-catastrophic-haemorrhage-2026.pptx", icon: "📊" }
         ],
         tags: []
       },
@@ -200,12 +188,12 @@ const PROGRAMME = {
         start: "12:30",
         duration: 60,
         title: "Group Practice: First Aid & Catastrophic Haemorrhage",
-        location: "CM01 CM02 CM03 CM04 CM13 CM14 CM15 CM16",
+        location: "Teaching rooms",
         lead: "Room faculty lead",
         roles: ["instructor", "faculty", "director"],
         notes: "To include: Choking, Bleeding, Recovery position, Drowning, Paediatrics.",
         resources: [
-          { title: "Session guide", path: "resources/provider/5-first-aid-practice.html", icon: "📄" }
+          { title: "Session guide", path: "resources/provider/5-first-aid-practice.docx", icon: "📄" }
         ],
         tags: []
       },
@@ -222,6 +210,32 @@ const PROGRAMME = {
         tags: ["break"]
       },
 
+      // ── Assessor stream (Saturday) — placeholder until Naveed confirms ──
+      {
+        id: "sat-assessor-am",
+        start: "09:35",
+        duration: 235,
+        title: "Assessor Training (Morning)",
+        location: "TBC",
+        lead: "Naveed",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Programme to be confirmed by Naveed. Runs parallel to instructor candidate morning sessions.",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sat-assessor-pm",
+        start: "13:30",
+        duration: 210,
+        title: "Assessor Training (Afternoon)",
+        location: "TBC",
+        lead: "Naveed",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Assessor training concludes Saturday. Assessor candidates do not return Sunday.",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+
       // ── Instructor development (Saturday afternoon) ──
       {
         id: "sat-13",
@@ -231,7 +245,7 @@ const PROGRAMME = {
         location: "ATH",
         lead: "",
         roles: ["instructor", "faculty", "director"],
-        notes: "Show agonal breathing video as supplementary material.",
+        notes: "",
         resources: [],
         tags: []
       },
@@ -243,7 +257,7 @@ const PROGRAMME = {
         location: "ATH",
         lead: "",
         roles: ["instructor", "faculty", "director"],
-        notes: "",
+        notes: "Video to be added.",
         resources: [],
         tags: []
       },
@@ -269,7 +283,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Teaching Adults CPR slides", path: "resources/4-teaching-adults-cpr-aed.html", icon: "📊" }
+          { title: "Teaching Adults CPR slides", path: "resources/4-teaching-adults-cpr-aed-2026.pptx", icon: "📊" }
         ],
         tags: []
       },
@@ -283,7 +297,8 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/2-five-minute-lecture-summary.html", icon: "📄" }
+          { title: "Slides (to be uploaded)", path: "", icon: "📊" },
+          { title: "Session guide", path: "resources/instructor/2-five-minute-lecture-summary.docx", icon: "📄" }
         ],
         tags: []
       },
@@ -297,7 +312,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/3-debrief-5-min-presentation.html", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/3-debrief-5-min-presentation.docx", icon: "📄" }
         ],
         tags: []
       },
@@ -311,7 +326,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Learning conversation slides", path: "resources/5-learning-conversation.html", icon: "📊" }
+          { title: "Learning conversation slides", path: "resources/5-learning-conversation-2026.pptx", icon: "📊" }
         ],
         tags: []
       },
@@ -320,14 +335,14 @@ const PROGRAMME = {
         start: "16:00",
         duration: 45,
         title: "Group Practice: The Learning Conversation",
-        location: "CM01 CM02 CM03 CM04 CM13 CM14 CM15 CM16",
+        location: "Teaching rooms",
         lead: "Room faculty lead",
         roles: ["instructor", "faculty", "director"],
-        notes: "ITC observation session — ITC will be assigned to a specific breakout room for this block.",
+        notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/4-learning-conversation-group-practice.html", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/4-learning-conversation-group-practice.docx", icon: "📄" }
         ],
-        tags: ["itc-observation"]
+        tags: []
       },
       {
         id: "sat-21",
@@ -370,8 +385,8 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Learning slides", path: "resources/6-learning.html", icon: "📊" },
-          { title: "Session guide", path: "resources/instructor/5-learning-lecture.html", icon: "📄" }
+          { title: "Learning slides", path: "resources/6-learning-2026.pptx", icon: "📊" },
+          { title: "Session guide", path: "resources/instructor/5-learning-lecture.docx", icon: "📄" }
         ],
         tags: []
       },
@@ -385,7 +400,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/6-skills-teaching-demonstration.html", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/6-skills-teaching-demonstration.docx", icon: "📄" }
         ],
         tags: []
       },
@@ -394,12 +409,12 @@ const PROGRAMME = {
         start: "10:30",
         duration: 90,
         title: "Group Practice: Teaching",
-        location: "CM01 CM02 CM03 CM04 CM13 CM14 CM15 CM16",
+        location: "Teaching rooms",
         lead: "Room faculty lead",
         roles: ["instructor", "faculty", "director"],
-        notes: "ITC observation sessions take place during this block.",
+        notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/7-skills-teaching-practical.html", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/7-skills-teaching-practical.docx", icon: "📄" }
         ],
         tags: ["itc-observation"]
       },
@@ -425,8 +440,8 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Assessing slides", path: "resources/7-assessing.html", icon: "📊" },
-          { title: "Session guide", path: "resources/instructor/8-how-to-assess-lecture-and-demo.html", icon: "📄" }
+          { title: "Assessing slides", path: "resources/7-assessing-2026.pptx", icon: "📊" },
+          { title: "Session guide", path: "resources/instructor/8-how-to-assess-lecture-and-demo.docx", icon: "📄" }
         ],
         tags: []
       },
@@ -471,12 +486,12 @@ const PROGRAMME = {
         start: "13:30",
         duration: 90,
         title: "Group Practice: Continuous Assessment",
-        location: "CM01 CM02 CM03 CM04 CM13 CM14 CM15 CM16",
+        location: "Teaching rooms",
         lead: "Room faculty lead",
         roles: ["instructor", "faculty", "director"],
-        notes: "ITC observation sessions take place during this block.",
+        notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/9-skills-assessing-practical.html", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/9-skills-assessing-practical.docx", icon: "📄" }
         ],
         tags: ["itc-observation"]
       },
@@ -512,7 +527,7 @@ const PROGRAMME = {
         location: "WF15",
         lead: "",
         roles: ["instructor", "faculty", "director"],
-        notes: "",
+        notes: "Video to be added.",
         resources: [],
         tags: []
       },
@@ -536,159 +551,7 @@ const PROGRAMME = {
         location: "WF19",
         lead: "",
         roles: ["faculty", "director"],
-        notes: "End-of-course debrief. ITC outcomes discussed.",
-        resources: [],
-        tags: ["faculty-only"]
-      }
-    ]
-  }
-};
-
-/**
- * RMD Assessor Course 2026 — Programme Data
- *
- * Runs in parallel with the Instructor Weekend on Saturday 10 Oct.
- * Assessor candidates attend Saturday only.
- * Programme to be confirmed by Naveed.
- */
-
-const ASSESSOR_PROGRAMME = {
-
-  friday: {
-    label: "Friday 9 Oct",
-    date: "Friday 9 October 2026",
-    sessions: [
-      {
-        id: "afri-1",
-        start: "18:00",
-        duration: 60,
-        title: "Faculty Arrival",
-        location: "TBC",
-        lead: "",
-        roles: ["faculty", "director"],
-        notes: "Arrival and informal networking before the meeting.",
-        resources: [],
-        tags: []
-      },
-      {
-        id: "afri-2",
-        start: "19:00",
-        duration: 120,
-        title: "Faculty Meeting & Dinner",
-        location: "TBC",
-        lead: "Jon",
-        roles: ["faculty", "director"],
-        notes: "Briefing for the weekend.",
-        resources: [],
-        tags: ["faculty-only"]
-      }
-    ]
-  },
-
-  saturday: {
-    label: "Saturday 10 Oct",
-    date: "Saturday 10 October 2026",
-    sessions: [
-      {
-        id: "asat-0",
-        start: "07:45",
-        duration: 15,
-        title: "Faculty Meeting",
-        location: "WF15",
-        lead: "Jon",
-        roles: ["faculty", "director"],
-        notes: "Pre-course briefing for faculty before candidates arrive.",
-        resources: [],
-        tags: ["faculty-only"]
-      },
-      {
-        id: "asat-1",
-        start: "08:00",
-        duration: 45,
-        title: "Registration",
-        location: "ATH",
-        lead: "Student faculty",
-        roles: ["all"],
-        notes: "Self-scan QR code on arrival.",
-        resources: [],
-        tags: []
-      },
-      {
-        id: "asat-2",
-        start: "08:45",
-        duration: 30,
-        title: "Plenary Introduction & Welcome",
-        location: "ATH",
-        lead: "Jon",
-        roles: ["all"],
         notes: "",
-        resources: [],
-        tags: []
-      },
-      {
-        id: "asat-3",
-        start: "09:35",
-        duration: 235,
-        title: "Assessor Training (Morning)",
-        location: "TBC",
-        lead: "Naveed",
-        roles: ["assessor", "faculty", "director"],
-        notes: "Programme to be confirmed by Naveed. Runs parallel to instructor candidate morning sessions.",
-        resources: [],
-        tags: ["placeholder"]
-      },
-      {
-        id: "asat-4",
-        start: "13:30",
-        duration: 210,
-        title: "Assessor Training (Afternoon)",
-        location: "TBC",
-        lead: "Naveed",
-        roles: ["assessor", "faculty", "director"],
-        notes: "Assessor training concludes Saturday. Assessor candidates do not return Sunday.",
-        resources: [],
-        tags: ["placeholder"]
-      },
-      {
-        id: "asat-5",
-        start: "16:45",
-        duration: 30,
-        title: "Whole Course Photo",
-        location: "Medical School steps",
-        lead: "",
-        roles: ["all"],
-        notes: "All groups please. Wear your course polo shirts.",
-        resources: [],
-        tags: []
-      }
-    ]
-  },
-
-  sunday: {
-    label: "Sunday 11 Oct",
-    date: "Sunday 11 October 2026",
-    sessions: [
-      {
-        id: "asun-1",
-        start: "09:00",
-        duration: 15,
-        title: "No sessions Sunday",
-        location: "",
-        lead: "",
-        roles: ["assessor"],
-        notes: "Assessor candidates do not attend Sunday. Thank you for completing the course.",
-        resources: [],
-        tags: []
-      },
-      {
-        id: "asun-2",
-        start: "16:15",
-        duration: 45,
-        title: "Faculty Meeting",
-        location: "WF19",
-        lead: "",
-        roles: ["faculty", "director"],
-        notes: "End-of-course debrief.",
         resources: [],
         tags: ["faculty-only"]
       }
