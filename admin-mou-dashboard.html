@@ -149,10 +149,8 @@
 <script src="js/firebase-config.js"></script>
 <script>
 
-const HARDCODED_DIRECTORS = [
-  "console_brews.6f@icloud.com",
-  "j.hulme.1@bham.ac.uk"
-];
+// Hardcoded directors mirror the canonical DIRECTOR_EMAILS list in firebase-config.js
+const HARDCODED_DIRECTORS = DIRECTOR_EMAILS.map(x => x.toLowerCase());
 
 var allSubmissions = [];  // mou_responses for CURRENT_MOU_YEAR
 var roster          = []; // mou_roster docs
@@ -163,13 +161,8 @@ initFirebase();
 document.getElementById("yearTag").textContent = CURRENT_MOU_YEAR;
 
 window.addEventListener("load", () => {
-  auth.onAuthStateChanged(user => {
-    if (user) {
-      loadAll();
-    } else {
-      document.getElementById("tabContent").innerHTML =
-        `<div class="empty-state">Please <a href="rmd-birmingham.html#signin">sign in as director</a> to view the MOU dashboard.</div>`;
-    }
+  requireDirector("timetable.html").then(() => {
+    loadAll();
   });
 });
 
