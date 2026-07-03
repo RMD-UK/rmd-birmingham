@@ -292,6 +292,7 @@ j.smith@nhs.net
 <script>
 
 initFirebase();
+requireDirector("timetable.html");
 
 // ── Parse email list ──────────────────────────────────────────────────────
 function parseEmails(raw) {
@@ -397,6 +398,126 @@ async function startCreation() {
 
   btn.disabled    = false;
   btn.textContent = "Create accounts";
+}
+
+// ── MOU roster provisioning ────────────────────────────────────────────────
+let mouRosterEntries = [];
+
+async function loadMouRosterPreview() {
+  const btn = document.getElementById("loadRosterBtn");
+  btn.disabled    = true;
+  btn.textContent = "Loading roster…";
+
+  try {
+    const snap = await db.collection(COLLECTIONS.mouRoster).get();
+    mouRosterEntries = snap.docs
+      .map(d => d.data())
+      .filter(m => m.email)
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  } catch (e) {
+    alert("Could not load mou_roster — check you're signed in as director elsewhere on the site.\n\n" + e.message);
+    btn.disabled    = false;
+    btn.textContent = "Load MOU roster";
+    return;
+  }
+
+  btn.disabled    = false;
+  btn.textContent = "Reload MOU roster";
+
+  const previewSection = document.getElementById("mouPreviewSection");
+  const summaryEl       = document.getElementById("mouPreviewSummary");
+  const bodyEl          = document.getElementById("mouPreviewBody");
+  const createBtn       = document.getElementById("mouCreateBtn");
+
+  previewSection.style.display = "block";
+
+  if (!mouRosterEntries.length) {
+    summaryEl.textContent = "mou_roster is empty — import the roster via the MOU dashboard's Manage roster tab first.";
+    bodyEl.innerHTML = "";
+    createBtn.disabled    = true;
+    createBtn.textContent = "Create accounts";
+    return;
+  }
+
+  summaryEl.textContent = `${mouRosterEntries.length} member(s) found on the current roster. Review below, then create accounts.`;
+  bodyEl.innerHTML = mouRosterEntries.map(m =>
+    `<tr><td>${m.name || "–"}</td><td style="font-family:monospace;">${m.email}</td><td>${m.role || "–"}</td></tr>`
+  ).join("");
+  createBtn.disabled    = false;
+  createBtn.textContent = `Create accounts for ${mouRosterEntries.length} member(s)`;
+}
+
+async function startMouRosterCreation() {
+  if (!mouRosterEntries.length) return;
+  const password = document.getElementById("mouPassword").value.trim();
+  if (!password) { alert("Please set a default password."); return; }
+
+  if (!confirm(`Create Firebase accounts for ${mouRosterEntries.length} roster member(s)?\n\nAccounts that already exist will be skipped automatically. This cannot easily be undone.`)) return;
+
+  const btn = document.getElementById("mouCreateBtn");
+  btn.disabled    = true;
+  btn.textContent = `Creating ${mouRosterEntries.length} accounts…`;
+
+  document.getElementById("mouProgressWrap").style.display = "block";
+  document.getElementById("mouResultsCard").style.display  = "block";
+  document.getElementById("mouLogList").innerHTML = "";
+  document.getElementById("mouSummaryBar").innerHTML = "";
+
+  let ok = 0, err = 0, skip = 0;
+
+  for (let i = 0; i < mouRosterEntries.length; i++) {
+    const { email, name, role } = mouRosterEntries[i];
+    const pct = Math.round(((i + 1) / mouRosterEntries.length) * 100);
+    document.getElementById("mouProgressBar").style.width = pct + "%";
+
+    let icon, statusClass, statusText;
+
+    try {
+      const res = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_CONFIG.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, returnSecureToken: false })
+        }
+      );
+      const data = await res.json();
+
+      if (data.error) {
+        if (data.error.message === "EMAIL_EXISTS") {
+          icon = "⚠️"; statusClass = "skip"; statusText = "Already exists — skipped";
+          skip++;
+        } else {
+          throw new Error(data.error.message);
+        }
+      } else {
+        icon = "✅"; statusClass = "ok"; statusText = "Created";
+        ok++;
+      }
+    } catch (e) {
+      icon = "❌"; statusClass = "err"; statusText = e.message || "Failed";
+      err++;
+    }
+
+    const entry = document.createElement("div");
+    entry.className = "log-entry";
+    entry.innerHTML = `
+      <div class="log-icon">${icon}</div>
+      <div class="log-email">${email}${name ? ` <span style="color:var(--rmd-muted)">(${name}${role ? " — " + role : ""})</span>` : ""}</div>
+      <div class="log-status ${statusClass}">${statusText}</div>`;
+    document.getElementById("mouLogList").appendChild(entry);
+
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  document.getElementById("mouSummaryBar").innerHTML = `
+    ${ok   ? `<span class="sum sum-ok">✅ ${ok} created</span>` : ""}
+    ${skip ? `<span class="sum sum-skip">⚠️ ${skip} already existed</span>` : ""}
+    ${err  ? `<span class="sum sum-err">❌ ${err} failed</span>` : ""}
+  `;
+
+  btn.disabled    = false;
+  btn.textContent = `Create accounts for ${mouRosterEntries.length} member(s)`;
 }
 
 </script>
