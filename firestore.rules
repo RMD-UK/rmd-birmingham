@@ -5,18 +5,46 @@ rules_version = '2';
 // Two access levels:
 //   - Public (unauthenticated): QR code arrivals, faculty pre-course form
 //   - Authenticated: all faculty/director platform features
+//   - Director: collections that decide who IS a director, plus admin-only lists
 //
 // To deploy: Firebase Console -> Firestore Database -> Rules -> paste and publish
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Mirrors DIRECTOR_EMAILS in js/firebase-config.js — keep these in sync.
+    function directorEmails() {
+      return [
+        "console_brews.6f@icloud.com",
+        "j.hulme.1@bham.ac.uk"
+      ];
+    }
+
+    // True if the signed-in user is a director, checked the same way
+    // resolveRole() does in firebase-config.js: people doc role, then the
+    // hardcoded email list, then config/platform's directors array.
+    function isDirector() {
+      return isSignedIn() && (
+        request.auth.token.email.lower() in directorEmails() ||
+        (exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "director") ||
+        (exists(/databases/$(database)/documents/config/platform) &&
+          request.auth.token.email.lower() in get(/databases/$(database)/documents/config/platform).data.directors)
+      );
+    }
+
     // ── People directory ────────────────────────────────────────────────────
     // Read: public — QR landing page looks up candidate name without login
-    // Write: authenticated only — populated by import scripts / admin tools
+    // Write: director only — this collection decides who counts as a director,
+    //   so any signed-in user being able to write here is a privilege escalation
     match /people/{docId} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if isDirector();
     }
 
     // ── Attendance ──────────────────────────────────────────────────────────
@@ -24,7 +52,7 @@ service cloud.firestore {
     // Read/delete: authenticated only — faculty dashboard and admin only
     match /attendance/{docId} {
       allow create, update: if true;
-      allow read, delete: if request.auth != null;
+      allow read, delete: if isSignedIn();
     }
 
     // ── Faculty pre-course form ─────────────────────────────────────────────
@@ -34,89 +62,93 @@ service cloud.firestore {
     // Delete: authenticated only — only you can remove responses
     match /faculty_responses/{docId} {
       allow create, read, update: if true;
-      allow delete: if request.auth != null;
+      allow delete: if isSignedIn();
     }
 
     // ── Assessments ─────────────────────────────────────────────────────────
-    // Authenticated only — gateway and development assessment records
+    // Authenticated only — faculty submit these for candidates, not director-only
     match /assessments/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── Sessions ────────────────────────────────────────────────────────────
     // Authenticated only — programme schedule if managed via Firestore
     match /sessions/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── Messages ────────────────────────────────────────────────────────────
     // Authenticated only — broadcast messages to room screens / noticeboard
     match /messages/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── Rooms ────────────────────────────────────────────────────────────────
     // Authenticated only — room state (timer, current message)
     match /rooms/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── Feedback ────────────────────────────────────────────────────────────
     // Authenticated only — faculty voice feedback transcripts
     match /feedback/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── ITC observations ────────────────────────────────────────────────────
     // Authenticated only — ITC observation records
     match /itc_observations/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── Gateway assessments ─────────────────────────────────────────────────
     // Authenticated only — BLS gateway binary outcomes and concern flags
     match /gateway_assessments/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── Development assessments ─────────────────────────────────────────────
     // Authenticated only — RAG ratings, flags, notes for instructor development
     match /development_assessments/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isSignedIn();
     }
 
     // ── Platform config ──────────────────────────────────────────────────────
-    // Authenticated only — stores director email list and platform settings
+    // Read: authenticated — pages display the current director list
+    // Write: director only — this is the OTHER place director status can be
+    //   granted from (config/platform.directors), same escalation risk as people
     match /config/{docId} {
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn();
+      allow write: if isDirector();
     }
 
     // ── MOU responses ───────────────────────────────────────────────────────
-    // Create: authenticated only — MOU form now sits behind RMD member sign-in
-    // Read/update/delete: authenticated only — only directors view responses
+    // Create: authenticated — member submits their own MOU form response
+    // Read/update/delete: director only — only directors review submissions
     match /mou_responses/{docId} {
-      allow create: if request.auth != null;
-      allow read, update, delete: if request.auth != null;
+      allow create: if isSignedIn();
+      allow read, update, delete: if isDirector();
     }
 
     // ── MOU roster ──────────────────────────────────────────────────────────
-    // Authenticated only — expected member list, managed by directors
+    // Director only — expected member list, managed exclusively via director tools
     match /mou_roster/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isDirector();
     }
 
     // ── Room groups ──────────────────────────────────────────────────────────
     // Read: authenticated — all staff need to see their room assignment
     //   (timetable.html room banner reads this for every signed-in user)
-    // Write: authenticated — room allocation admin page, director only in practice
+    // Write: director only — room allocation admin page
     match /groups/{docId} {
-      allow read, write: if request.auth != null;
+      allow read: if isSignedIn();
+      allow write: if isDirector();
     }
 
     // ── IW registrations ────────────────────────────────────────────────────
-    // Authenticated only — director-managed attendee list for Instructor Weekend
+    // Director only — director-managed attendee list for Instructor Weekend
     match /iw_registrations/{docId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if isDirector();
     }
 
   }
