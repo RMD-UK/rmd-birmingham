@@ -51,6 +51,59 @@ const ROLES = {
   ITC:        "itc"           // instructor trainer candidate (rotates rooms)
 };
 
+// ── Director access ─────────────────────────────────────────────────────────
+// Canonical list of director emails. Any page that gates on director role
+// should use resolveRole() / requireDirector() from this file rather than
+// maintaining its own copy of this list.
+const DIRECTOR_EMAILS = [
+  "console_brews.6f@icloud.com",
+  "j.hulme.1@bham.ac.uk"
+];
+
+// resolveRole(uid, email) → role string or null
+// 1. Checks people/{uid} in Firestore for role field
+// 2. Falls back to DIRECTOR_EMAILS check
+// 3. Falls back to config/platform directors array
+// db must be initialised before calling.
+async function resolveRole(uid, email) {
+  try {
+    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
+    if (snap.exists && snap.data().role) return snap.data().role;
+  } catch(e) {}
+  const el = (email || "").toLowerCase();
+  if (DIRECTOR_EMAILS.map(x => x.toLowerCase()).includes(el)) return ROLES.DIRECTOR;
+  try {
+    const cfg = await db.collection("config").doc("platform").get();
+    const extra = cfg.exists ? (cfg.data().directors || []) : [];
+    if (extra.map(x => x.toLowerCase()).includes(el)) return ROLES.DIRECTOR;
+  } catch(e) {}
+  return null;
+}
+
+// requireDirector() — call on director-only pages instead of writing auth
+// logic inline. Waits for auth state, resolves role, redirects if not director.
+// Usage:
+//   initFirebase();
+//   requireDirector().then(user => { /* load page content */ });
+//
+// Expects an element with id="authMsg" for the rejection message (optional).
+function requireDirector(redirectTo) {
+  redirectTo = redirectTo || "timetable.html";
+  return new Promise(function(resolve) {
+    auth.onAuthStateChanged(async function(user) {
+      if (!user) { window.location.href = "signin.html"; return; }
+      const role = await resolveRole(user.uid, user.email || "");
+      if (role !== ROLES.DIRECTOR) {
+        var msg = document.getElementById("authMsg");
+        if (msg) msg.textContent = "Course Directors only.";
+        setTimeout(function() { window.location.href = redirectTo; }, 1500);
+        return;
+      }
+      resolve(user);
+    });
+  });
+}
+
 // ── Firebase initialisation (loaded after firebase SDK scripts) ──────────────
 let db, auth, storage;
 

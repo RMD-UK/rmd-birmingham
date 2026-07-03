@@ -247,21 +247,14 @@ var allResponses   = [];
 var directorEmails = [];
 var currentTab     = "all";
 
-const HARDCODED_DIRECTORS = [
-  "console_brews.6f@icloud.com",
-  "j.hulme.1@bham.ac.uk"
-];
+// Hardcoded directors mirror the canonical DIRECTOR_EMAILS list in firebase-config.js
+const HARDCODED_DIRECTORS = DIRECTOR_EMAILS.map(x => x.toLowerCase());
 
 initFirebase();
 
 window.addEventListener("load", () => {
-  auth.onAuthStateChanged(user => {
-    if (user) {
-      loadAll();
-    } else {
-      document.getElementById("tabContent").innerHTML =
-        `<div class="empty-state">Please <a href="rmd-birmingham.html#signin">sign in as director</a> to view responses.</div>`;
-    }
+  requireDirector("timetable.html").then(() => {
+    loadAll();
   });
 });
 
