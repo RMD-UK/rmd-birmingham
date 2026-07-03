@@ -203,6 +203,7 @@
     <button class="btn-action secondary" onclick="togglePanel('rosterPanel')">⬇ Import from roster</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()">📧 Copy confirmed emails</button>
     <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
+    <button class="btn-action secondary" onclick="togglePanel('syncPanel')">🔗 Sync to People</button>
   </div>
 
   <!-- Add person panel -->
@@ -289,6 +290,25 @@
     </div>
   </div>
 
+  <!-- Sync to People panel -->
+  <div class="panel" id="syncPanel" style="display:none;">
+    <div class="panel-header">Sync confirmed candidates → People
+      <button onclick="togglePanel('syncPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="warn-box">
+        Writes every <strong>confirmed</strong> registration to the <code>people</code> collection, which
+        <code>attendance.html</code> uses for check-in on course day. People already synced (matched by email)
+        are skipped, never duplicated or overwritten.
+      </div>
+      <div id="syncPreview" class="loading">Loading…</div>
+      <div id="syncActions" style="display:none;margin-top:12px;">
+        <button class="btn-action" onclick="syncToPeople()">Sync listed people</button>
+        <span id="syncFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
+      </div>
+    </div>
+  </div>
+
   <!-- Filter tabs -->
   <div class="filter-row">
     <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
@@ -312,40 +332,18 @@
 <script src="js/firebase-config.js"></script>
 <script>
 
-const DIRECTOR_EMAILS  = ["console_brews.6f@icloud.com", "j.hulme.1@bham.ac.uk"];
 const IW_COLL          = "iw_registrations";
 
 let allRegistrations   = [];   // [{id, name, email, role, status, source, notes, addedAt}]
 let rosterCandidates   = [];   // from mou_roster (for import panel)
 let currentFilter      = "all";
 let pasteData          = [];   // parsed paste rows
+let syncCandidates     = [];   // confirmed regs mapped for People sync
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
-async function resolveRole(uid, email) {
-  try {
-    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
-    if (snap.exists && snap.data().role) return snap.data().role;
-  } catch(e) {}
-  const el = (email || "").toLowerCase();
-  if (DIRECTOR_EMAILS.includes(el)) return ROLES.DIRECTOR;
-  try {
-    const cfg = await db.collection("config").doc("platform").get();
-    const extra = cfg.exists ? (cfg.data().directors || []) : [];
-    if ([...DIRECTOR_EMAILS, ...extra.map(x => x.toLowerCase())].includes(el)) return ROLES.DIRECTOR;
-  } catch(e) {}
-  return null;
-}
-
 initFirebase();
 
-auth.onAuthStateChanged(async user => {
-  if (!user) { window.location.href = "signin.html"; return; }
-  const role = await resolveRole(user.uid, user.email || "");
-  if (role !== ROLES.DIRECTOR) {
-    document.getElementById("authMsg").textContent = "Course Directors only.";
-    setTimeout(() => { window.location.href = "timetable.html"; }, 2000);
-    return;
-  }
+requireDirector("timetable.html").then(async () => {
   document.getElementById("authOverlay").style.display = "none";
   await loadAll();
 });
@@ -709,12 +707,120 @@ function togglePanel(id) {
   const el      = document.getElementById(id);
   const visible = el.style.display !== "none";
   // Close all panels first
-  ["addPanel","pastePanel","rosterPanel"].forEach(p => {
+  ["addPanel","pastePanel","rosterPanel","syncPanel"].forEach(p => {
     document.getElementById(p).style.display = "none";
   });
   if (!visible) {
     el.style.display = "block";
     if (id === "rosterPanel") loadRosterPreview();
+    if (id === "syncPanel") loadSyncPreview();
+  }
+}
+
+// ── Sync to People ────────────────────────────────────────────────────────────
+// attendance.html reads the `people` collection for course-day check-in.
+// Maps the IW registrations' Title Case role labels to the lowercase ROLES
+// constants people.html/resolveRole() expect. "Other" has no equivalent, so
+// those are flagged rather than guessed at.
+const IW_TO_PEOPLE_ROLE = {
+  "Instructor Candidate": ROLES.INSTRUCTOR,
+  "Assessor Candidate":   ROLES.ASSESSOR,
+  "Faculty":              ROLES.FACULTY,
+  "ITC":                  ROLES.ITC
+};
+
+async function loadSyncPreview() {
+  const preview = document.getElementById("syncPreview");
+  const actions = document.getElementById("syncActions");
+  preview.innerHTML = '<div class="loading">Checking existing People records…</div>';
+  actions.style.display = "none";
+
+  const confirmed = allRegistrations.filter(r => r.status === "confirmed");
+  if (!confirmed.length) {
+    preview.innerHTML = '<div class="empty-state">No confirmed registrations yet — confirm attendees in the table below first.</div>';
+    return;
+  }
+
+  let existingEmails = new Set();
+  try {
+    const snap = await db.collection(COLLECTIONS.people).get();
+    snap.forEach(doc => {
+      const e = (doc.data().email || "").toLowerCase();
+      if (e) existingEmails.add(e);
+    });
+  } catch (err) {
+    preview.innerHTML = `<div class="empty-state">Could not check existing People records: ${err.message}</div>`;
+    return;
+  }
+
+  syncCandidates = confirmed.map(r => {
+    const mappedRole = IW_TO_PEOPLE_ROLE[r.role];
+    let state;
+    if (!mappedRole) state = "unresolved";
+    else if (r.email && existingEmails.has(r.email.toLowerCase())) state = "already";
+    else state = "new";
+    return { ...r, mappedRole, state };
+  });
+
+  const toSync     = syncCandidates.filter(c => c.state === "new");
+  const already    = syncCandidates.filter(c => c.state === "already");
+  const unresolved = syncCandidates.filter(c => c.state === "unresolved");
+
+  preview.innerHTML = `
+    <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:8px;">
+      <strong style="color:#1a6e31;">${toSync.length} new</strong> to sync,
+      <strong style="color:#637282;">${already.length} already synced</strong>${unresolved.length ? `,
+      <strong style="color:#b7410e;">${unresolved.length} skipped — role not recognised</strong>` : ""}
+    </div>
+    <div class="import-preview">
+      ${toSync.map(p => `<div class="preview-row">
+        <span class="preview-name">${p.name||"–"}</span>
+        <span class="preview-email">${p.email||"–"}</span>
+        <span class="badge-candidate">${p.mappedRole}</span>
+      </div>`).join("")}
+      ${already.map(p => `<div class="preview-row" style="opacity:0.45;">
+        <span class="preview-name">${p.name||"–"}</span>
+        <span class="preview-email">${p.email||"–"}</span>
+        <span style="font-size:11px;color:#637282;">Already synced</span>
+      </div>`).join("")}
+      ${unresolved.map(p => `<div class="preview-row" style="opacity:0.75;">
+        <span class="preview-name">${p.name||"–"}</span>
+        <span class="preview-email">${p.email||"–"}</span>
+        <span style="font-size:11px;font-weight:700;color:#b7410e;">Role "${p.role||"–"}" not recognised — add manually</span>
+      </div>`).join("")}
+    </div>`;
+  actions.style.display = toSync.length ? "block" : "none";
+  document.getElementById("syncFeedback").textContent = "";
+}
+
+async function syncToPeople() {
+  const toAdd = syncCandidates.filter(c => c.state === "new");
+  const fb    = document.getElementById("syncFeedback");
+  if (!toAdd.length) { fb.textContent = "Nothing new to sync."; return; }
+  fb.textContent = `Syncing ${toAdd.length} people…`;
+
+  try {
+    const batch = db.batch();
+    const ts    = firebase.firestore.FieldValue.serverTimestamp();
+    toAdd.forEach(p => {
+      const ref = db.collection(COLLECTIONS.people).doc();
+      batch.set(ref, {
+        name: p.name,
+        email: p.email,
+        role: p.mappedRole,
+        syncedFrom: "iw_registrations",
+        syncedAt: ts
+      });
+    });
+    await batch.commit();
+    fb.textContent = `✓ ${toAdd.length} people synced to attendance list`;
+    setTimeout(() => {
+      fb.textContent = "";
+      document.getElementById("syncPanel").style.display = "none";
+    }, 4000);
+    loadSyncPreview(); // refresh so re-opening reflects the new "already synced" state
+  } catch (err) {
+    fb.textContent = "Error: " + err.message;
   }
 }
 

@@ -249,6 +249,18 @@
     renderAll();
   }
 
+  // ── Date-based default day ─────────────────────────────────────────────────
+  // Course runs Saturday 10 Oct – Sunday 11 Oct 2026. On course days, open
+  // straight to that day's tab. Any other date (rehearsal, testing, browsing
+  // early) falls back to Saturday.
+  function getDefaultDay() {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+    if (y === 2026 && m === 10 && d === 10) return "saturday";
+    if (y === 2026 && m === 10 && d === 11) return "sunday";
+    return "saturday";
+  }
+
   // ── Day switching ──────────────────────────────────────────────────────────
   function switchDay(day) {
     currentDay = day;
@@ -651,10 +663,10 @@
       document.getElementById("roleSelect").value = devRole;
       setRole(devRole);
       if (user.email) loadUserRoom(user.email, devRole);
-      switchDay("saturday");
+      switchDay(getDefaultDay());
       updateLiveBar();
       setTimeout(() => {
-        const current = document.querySelector(".session-row.current");
+        const current = document.querySelector("#day-" + currentDay + " .session-row.current");
         if (current) current.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 300);
     });
