@@ -38,6 +38,21 @@ service cloud.firestore {
       );
     }
 
+    // True if the signed-in user's people/{uid} doc has role == "faculty".
+    // Candidates (instructor/assessor/itc) must never be able to write their own
+    // assessment/observation records — only the faculty member assessing them,
+    // or the director, can. This is what draws that line at the rules level.
+    function isFaculty() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "faculty";
+    }
+
+    // Can record/amend an assessment: faculty or director.
+    function canAssess() {
+      return isFaculty() || isDirector();
+    }
+
     // ── People directory ────────────────────────────────────────────────────
     // Read: public — QR landing page looks up candidate name without login
     // Write: director only — this collection decides who counts as a director,
@@ -74,9 +89,17 @@ service cloud.firestore {
     }
 
     // ── Assessments ─────────────────────────────────────────────────────────
-    // Authenticated only — faculty submit these for candidates, not director-only
+    // Read: any signed-in user, including candidates (they can see their own
+    //   results; this collection isn't per-user scoped so this also means
+    //   candidates can see others' — acceptable per current design, revisit if not).
+    // Create/update: faculty or director only — candidates must never be able
+    //   to write/alter their own or anyone else's assessment record.
+    // Delete: director only — this is the "cannot be undone" action; faculty
+    //   can correct a result by updating it, but never permanently remove one.
     match /assessments/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create, update: if canAssess();
+      allow delete: if isDirector();
     }
 
     // ── Sessions ────────────────────────────────────────────────────────────
@@ -104,21 +127,38 @@ service cloud.firestore {
     }
 
     // ── ITC observations ────────────────────────────────────────────────────
-    // Authenticated only — ITC observation records
+    // Read: any signed-in user (ITC being observed can see their own feed).
+    // Create/update: faculty or director only — the ITC being observed must
+    //   never be able to write their own observation record.
+    // Delete: director only.
     match /itc_observations/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create, update: if canAssess();
+      allow delete: if isDirector();
     }
 
     // ── Gateway assessments ─────────────────────────────────────────────────
-    // Authenticated only — BLS gateway binary outcomes and concern flags
+    // Read: any signed-in user (candidate can see their own gateway outcome).
+    // Create/update: faculty or director only — recordOutcome()/toggleFlag()/
+    //   lockOutcome() in assessment-gateway.html are all faculty/director actions.
+    // Delete: director only — a locked/recorded gateway outcome (pass/fail on
+    //   whether a candidate continues to Sunday) must never be silently erasable
+    //   by a faculty member; unlocking to correct it is a separate, non-destructive
+    //   update (lockedAt: null), already handled above.
     match /gateway_assessments/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create, update: if canAssess();
+      allow delete: if isDirector();
     }
 
     // ── Development assessments ─────────────────────────────────────────────
-    // Authenticated only — RAG ratings, flags, notes for instructor development
+    // Read: any signed-in user (candidate can see their own RAG trajectory).
+    // Create/update: faculty or director only.
+    // Delete: director only.
     match /development_assessments/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create, update: if canAssess();
+      allow delete: if isDirector();
     }
 
     // ── Platform config ──────────────────────────────────────────────────────

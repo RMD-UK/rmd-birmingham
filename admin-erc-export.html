@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ERC Export — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+    .top-bar {
+      background: var(--rmd-navy); color: white;
+      padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .top-bar img { height: 28px; }
+    .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+
+    .content { padding: 14px; max-width: 860px; margin: 0 auto; }
+
+    .warn-banner {
+      background: #fff3cd; border-left: 4px solid #c17a00;
+      border-radius: 0 6px 6px 0; padding: 14px 16px;
+      font-size: 13px; color: #6b4500; margin-bottom: 18px; line-height: 1.5;
+    }
+    .warn-banner strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+    .card {
+      background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      padding: 16px; margin-bottom: 14px;
+    }
+    .card-title { font-size: 15px; font-weight: 700; color: var(--rmd-navy); margin: 0 0 4px; }
+    .card-sub   { font-size: 12px; color: var(--rmd-muted); margin: 0 0 12px; line-height: 1.5; }
+    .card-counts { font-size: 13px; color: var(--rmd-navy); margin-bottom: 12px; }
+    .card-counts b { color: var(--rmd-blue); }
+
+    .btn-action {
+      padding: 9px 16px; background: var(--rmd-blue); color: white;
+      border: none; border-radius: 6px; font-size: 13px; font-weight: 700;
+      font-family: var(--font); cursor: pointer;
+    }
+    .btn-action:hover { background: var(--rmd-navy); }
+    .btn-action:disabled { background: #aab8c2; cursor: default; }
+    .btn-action.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
+
+    .assumption-list { font-size: 12px; color: var(--rmd-muted); margin: 8px 0 0; padding-left: 18px; line-height: 1.6; }
+
+    .loading { text-align: center; padding: 40px; color: var(--rmd-muted); }
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="cd-dashboard.html" title="Back to dashboard" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;"></a>
+  <div class="top-bar-title">ERC Export</div>
+</div>
+
+<div class="content" id="pageContent">
+  <div class="loading">Loading…</div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * PLACEHOLDER SCHEMA — DO NOT UPLOAD TO ERC WITHOUT CHECKING FIRST
+ * ══════════════════════════════════════════════════════════════════════════
+ * As of when this was built, nobody had the actual ERC CSV upload template —
+ * the column names, order, and any ERC-specific codes below are a reasonable
+ * guess based on BLS_Instructor_Weekend_Handoff.md, not a verified format.
+ *
+ * Before this is used for a real submission:
+ *   1. Get the real template from the ERC course director portal (or a past
+ *      submission if you've done this before).
+ *   2. Update the HEADERS/roles constants below to match exactly.
+ *   3. Re-check the "assumptions" notes in each card against how ERC actually
+ *      wants attendance/outcome data split.
+ *
+ * Data model notes (so future edits don't have to rediscover this):
+ *   - iw_registrations: name (single field, not split first/last), email,
+ *     role ("Instructor Candidate" | "Assessor Candidate" | "Faculty" | "ITC"),
+ *     status ("pending" | "confirmed" | "declined"). No per-record day-attendance
+ *     field — instructor candidates are assumed both days, assessor candidates
+ *     Saturday only, per the course structure, not stored per-registration.
+ *   - faculty_responses: firstName/lastName split, days.{friday,saturday,sunday},
+ *     attendanceStatus ("confirmed" | "declined" | null/pending).
+ *   - gateway_assessments/{uid} and development_assessments/{uid} are keyed by
+ *     the candidate's `people` collection doc ID (their Firebase Auth uid) —
+ *     NOT the iw_registrations doc ID. This tool joins iw_registrations to
+ *     people BY EMAIL to find the right uid, because the two collections are
+ *     not guaranteed to share IDs (the "sync confirmed candidates to people"
+ *     step is a separate, still-pending piece of admin-iw-registrations.html).
+ *   - Assessor candidates are NOT included in ERC exports below — per the
+ *     handoff, their RMD assessor certificate is a separate, non-ERC credential.
+ * ══════════════════════════════════════════════════════════════════════════
+ */
+
+initFirebase();
+
+let iwRegistrations = [];
+let facultyResponses = [];
+let people = [];
+let gatewayAssessments = {};
+let developmentAssessments = {};
+
+window.addEventListener("load", () => {
+  requireDirector("timetable.html").then(() => {
+    loadAllData();
+  });
+});
+
+async function loadAllData() {
+  const [regSnap, facSnap, peopleSnap, gwSnap, devSnap] = await Promise.all([
+    db.collection("iw_registrations").get(),
+    db.collection("faculty_responses").get(),
+    db.collection("people").get(),
+    db.collection("gateway_assessments").get(),
+    db.collection("development_assessments").get()
+  ]);
+
+  iwRegistrations  = regSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  facultyResponses = facSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  people           = peopleSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  gwSnap.docs.forEach(d  => gatewayAssessments[d.id]     = d.data());
+  devSnap.docs.forEach(d => developmentAssessments[d.id] = d.data());
+
+  render();
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+function splitName(fullName) {
+  const parts = (fullName || "").trim().split(/\s+/);
+  return { first: parts[0] || "", last: parts.slice(1).join(" ") || "" };
+}
+
+function confirmedInstructorCandidates() {
+  return iwRegistrations.filter(r => r.role === "Instructor Candidate" && r.status === "confirmed");
+}
+
+function confirmedFaculty() {
+  return facultyResponses.filter(r => r.attendanceStatus === "confirmed");
+}
+
+function personByEmail(email) {
+  const e = (email || "").trim().toLowerCase();
+  return people.find(p => (p.email || "").trim().toLowerCase() === e);
+}
+
+function candidateOutcome(email) {
+  const person = personByEmail(email);
+  if (!person) return { gateway: "not linked to people/ — sync needed", development: "" };
+  const gw  = gatewayAssessments[person.id];
+  const dev = developmentAssessments[person.id];
+  return {
+    gateway: gw ? (gw.outcome || "pending") : "not recorded",
+    development: dev ? (dev.overallStatus || dev.status || "recorded, see platform") : "not recorded"
+  };
+}
+
+function toCsv(headers, rows) {
+  const esc = v => `"${(v == null ? "" : String(v)).replace(/"/g, '""')}"`;
+  return [headers.map(esc).join(","), ...rows.map(r => r.map(esc).join(","))].join("\n");
+}
+
+function downloadCsv(filename, csv) {
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+}
+
+// ── Exports ──────────────────────────────────────────────────────────────
+// Placeholder headers — replace with the real ERC template's column names/order.
+const PLACEHOLDER_HEADERS = ["First Name", "Last Name", "Email", "Role", "Course", "Notes"];
+
+function exportPreCourse(courseLabel, includeFacultyFilter) {
+  const rows = [];
+  confirmedInstructorCandidates().forEach(c => {
+    const n = splitName(c.name);
+    rows.push([n.first, n.last, c.email, "Instructor Candidate", courseLabel, ""]);
+  });
+  confirmedFaculty().filter(includeFacultyFilter).forEach(f => {
+    rows.push([f.firstName, f.lastName, f.email, "Faculty", courseLabel, ""]);
+  });
+  downloadCsv(`erc-precourse-${courseLabel.toLowerCase().replace(/\s+/g, "-")}.csv`,
+    toCsv(PLACEHOLDER_HEADERS, rows));
+}
+
+function exportBlsProvider() {
+  // Assumption: faculty attending the BLS Provider (Saturday morning) session
+  // are those confirmed for Saturday. If a faculty record has no `days` data
+  // at all (shouldn't happen post-form, but just in case), they're included
+  // rather than silently dropped — better to over-include and let you check.
+  exportPreCourse("BLS Provider Course", f => !f.days || f.days.saturday);
+}
+
+function exportInstructorTraining() {
+  // Assumption: instructor training course (the full weekend) needs faculty
+  // confirmed for the full weekend, i.e. both Saturday and Sunday.
+  exportPreCourse("Instructor Training Course", f => !f.days || (f.days.saturday && f.days.sunday));
+}
+
+function exportPostCourseOutcomes() {
+  const headers = ["First Name", "Last Name", "Email", "BLS Gateway Outcome", "Development Outcome", "Notes"];
+  const rows = confirmedInstructorCandidates().map(c => {
+    const n = splitName(c.name);
+    const outcome = candidateOutcome(c.email);
+    return [n.first, n.last, c.email, outcome.gateway, outcome.development, ""];
+  });
+  downloadCsv("erc-postcourse-instructor-outcomes.csv", toCsv(headers, rows));
+}
+
+// ── Render ───────────────────────────────────────────────────────────────
+function render() {
+  const icCount  = confirmedInstructorCandidates().length;
+  const facCount = confirmedFaculty().length;
+
+  document.getElementById("pageContent").innerHTML = `
+    <div class="warn-banner">
+      <strong>⚠ Placeholder column headers — not yet checked against the real ERC template</strong>
+      These exports pull real, correctly-joined data from the platform, but the actual
+      column names/order ERC wants on upload haven't been confirmed. Get the real
+      template before submitting anything generated here. See the comment block at
+      the top of this page's source for the full data-model notes.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pre-course: BLS Provider Course (Saturday morning)</div>
+      <div class="card-sub">All confirmed instructor candidates, plus confirmed faculty attending Saturday.</div>
+      <div class="card-counts">${icCount} instructor candidate(s) · faculty filtered by Saturday attendance at export time</div>
+      <button class="btn-action" onclick="exportBlsProvider()">⬇ Download CSV</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pre-course: Instructor Training Course (full weekend)</div>
+      <div class="card-sub">All confirmed instructor candidates, plus confirmed faculty attending both Saturday and Sunday.</div>
+      <div class="card-counts">${icCount} instructor candidate(s) · faculty filtered by full-weekend attendance at export time</div>
+      <button class="btn-action" onclick="exportInstructorTraining()">⬇ Download CSV</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Post-course: instructor pass/fail outcomes</div>
+      <div class="card-sub">
+        Confirmed instructor candidates joined to their gateway/development assessment
+        records by email. If a candidate shows "not linked to people/ — sync needed",
+        the Course Administration "sync confirmed candidates to people" step hasn't
+        been run for them yet, so their assessment record can't be found.
+      </div>
+      <div class="card-counts">${icCount} instructor candidate(s), ${facCount} confirmed faculty on file</div>
+      <button class="btn-action" onclick="exportPostCourseOutcomes()">⬇ Download CSV</button>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
