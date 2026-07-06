@@ -56,12 +56,20 @@ service cloud.firestore {
     }
 
     // ── Faculty pre-course form ─────────────────────────────────────────────
-    // Create, read, update: public — form is sent to faculty before they have a
-    //   platform login, and they can reopen it to look up and edit their own
-    //   answers by email (the form only ever queries/writes its own record)
-    // Delete: authenticated only — only you can remove responses
+    // Document ID is the lowercased submitter email (see faculty-form.html) —
+    //   this lets a caller with no login look up/edit their own response via a
+    //   direct-by-ID fetch, without ever needing to query/list the collection.
+    // get:  public — caller must already know the exact email (= docId) to
+    //   fetch one record. Residual risk: knowing someone's email is enough to
+    //   see/overwrite their response — accepted trade-off for no-login editing.
+    // list: director only — this is what stops anyone dumping every faculty
+    //   member's dietary/accessibility/travel data in one unauthenticated query.
+    // create/update: public — supports pre-login submit and edit-by-email re-open.
+    // delete: authenticated only.
     match /faculty_responses/{docId} {
-      allow create, read, update: if true;
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
       allow delete: if isSignedIn();
     }
 

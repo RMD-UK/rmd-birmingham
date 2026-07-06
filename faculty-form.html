@@ -508,15 +508,23 @@ async function nextSection() {
   goToSection(currentSection + 1);
 }
 
+// ── Doc ID scheme: the lowercased email IS the document ID ────────────────
+// This lets a signed-out faculty member fetch/edit their own response with a
+// direct get-by-ID instead of a collection query, so the security rules never
+// have to grant public list access to this collection. See firestore.rules.
+function emailDocId(email) {
+  return (email || "").trim().toLowerCase();
+}
+
 // ── Look up a previous submission by email and prefill the form ───────────
 async function checkExistingSubmission(email) {
   existingDocId = null;
   if (!email) return false;
   try {
-    const snap = await db.collection("faculty_responses").where("email", "==", email).limit(1).get();
-    if (!snap.empty) {
-      existingDocId = snap.docs[0].id;
-      prefillForm(snap.docs[0].data());
+    const snap = await db.collection("faculty_responses").doc(emailDocId(email)).get();
+    if (snap.exists) {
+      existingDocId = snap.id;
+      prefillForm(snap.data());
       return true;
     }
   } catch (err) {
@@ -728,11 +736,10 @@ async function submitForm() {
   }
 
   try {
-    if (existingDocId) {
-      await db.collection("faculty_responses").doc(existingDocId).set(record, { merge: true });
-    } else {
-      await db.collection("faculty_responses").add(record);
-    }
+    // Always write under the email-keyed doc ID (create or overwrite-merge —
+    // Firestore evaluates this as `create` if the doc doesn't exist yet, so
+    // both new submissions and edits use the same call).
+    await db.collection("faculty_responses").doc(emailDocId(record.email)).set(record, { merge: true });
     document.getElementById("section-" + currentSection).classList.remove("active");
     document.getElementById("navRow").style.display = "none";
     document.querySelector(".progress-strip").style.display = "none";
