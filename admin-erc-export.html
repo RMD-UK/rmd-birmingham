@@ -68,18 +68,25 @@
 <script>
 /*
  * ══════════════════════════════════════════════════════════════════════════
- * PLACEHOLDER SCHEMA — DO NOT UPLOAD TO ERC WITHOUT CHECKING FIRST
+ * ERC PRE-COURSE EXPORT — verified against real template 2026-07-07
  * ══════════════════════════════════════════════════════════════════════════
- * As of when this was built, nobody had the actual ERC CSV upload template —
- * the column names, order, and any ERC-specific codes below are a reasonable
- * guess based on BLS_Instructor_Weekend_Handoff.md, not a verified format.
+ * Real template: import_participants_template.xlsx (Jon uploaded 2026-07-07;
+ * saved to the Instructor weekend folder in Claude sync). It's a
+ * generic ERC participant-import sheet with 15 named columns (FIRST NAME,
+ * MIDDLE NAME, LAST NAME, EMAIL, DATE OF BIRTH, TITLE, ADDRESS, ZIP, CITY,
+ * STATE, COUNTRY, ACCESS TO COURSE MATERIALS, ALTERNATIVE NAME, TITLE SHORT,
+ * ADDRESS COUNTRY CODE) plus dropdown validation on TITLE/COUNTRY/ACCESS TO
+ * COURSE MATERIALS, and two trailing columns (TITLE SHORT, ADDRESS COUNTRY
+ * CODE) that are auto-derived by VLOOKUP formulas from TITLE/COUNTRY in the
+ * live workbook — not meant to be filled in by hand.
  *
- * Before this is used for a real submission:
- *   1. Get the real template from the ERC course director portal (or a past
- *      submission if you've done this before).
- *   2. Update the HEADERS/roles constants below to match exactly.
- *   3. Re-check the "assumptions" notes in each card against how ERC actually
- *      wants attendance/outcome data split.
+ * Jon confirmed (2026-07-07) only 5 of those 15 columns are needed for our
+ * submissions: FIRST NAME, MIDDLE NAME (if applicable), LAST NAME, EMAIL,
+ * COUNTRY — and COUNTRY is always "United Kingdom" (exact dropdown spelling
+ * from the template's Data sheet, which maps to code GB). DATE OF BIRTH,
+ * TITLE, ADDRESS, ZIP, CITY, STATE, ACCESS TO COURSE MATERIALS, ALTERNATIVE
+ * NAME are deliberately omitted — don't add them back in without checking
+ * with Jon first, this was a scoped-down decision, not an oversight.
  *
  * Data model notes (so future edits don't have to rediscover this):
  *   - iw_registrations: name (single field, not split first/last), email,
@@ -133,9 +140,20 @@ async function loadAllData() {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
+// iw_registrations only stores a single `name` field for instructor
+// candidates (no first/middle/last split at source). Best-effort split:
+// first word = first name, last word = last name, anything in between =
+// middle name. Middle name is optional on the ERC side so an empty result
+// for two-word names is fine.
 function splitName(fullName) {
-  const parts = (fullName || "").trim().split(/\s+/);
-  return { first: parts[0] || "", last: parts.slice(1).join(" ") || "" };
+  const parts = (fullName || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", middle: "", last: "" };
+  if (parts.length === 1) return { first: parts[0], middle: "", last: "" };
+  return {
+    first:  parts[0],
+    middle: parts.slice(1, -1).join(" "),
+    last:   parts[parts.length - 1]
+  };
 }
 
 function confirmedInstructorCandidates() {
@@ -175,20 +193,24 @@ function downloadCsv(filename, csv) {
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────
-// Placeholder headers — replace with the real ERC template's column names/order.
-const PLACEHOLDER_HEADERS = ["First Name", "Last Name", "Email", "Role", "Course", "Notes"];
+// Real ERC import_participants_template.xlsx column names, restricted to the
+// 5 fields Jon confirmed we actually need to fill in (2026-07-07). COUNTRY is
+// always "United Kingdom" — exact spelling from the template's dropdown list,
+// which is what its ADDRESS COUNTRY CODE formula resolves to "GB" from.
+const ERC_HEADERS = ["FIRST NAME", "MIDDLE NAME", "LAST NAME", "EMAIL", "COUNTRY"];
+const ERC_COUNTRY = "United Kingdom";
 
 function exportPreCourse(courseLabel, includeFacultyFilter) {
   const rows = [];
   confirmedInstructorCandidates().forEach(c => {
     const n = splitName(c.name);
-    rows.push([n.first, n.last, c.email, "Instructor Candidate", courseLabel, ""]);
+    rows.push([n.first, n.middle, n.last, c.email, ERC_COUNTRY]);
   });
   confirmedFaculty().filter(includeFacultyFilter).forEach(f => {
-    rows.push([f.firstName, f.lastName, f.email, "Faculty", courseLabel, ""]);
+    rows.push([f.firstName, f.middleName || "", f.lastName, f.email, ERC_COUNTRY]);
   });
   downloadCsv(`erc-precourse-${courseLabel.toLowerCase().replace(/\s+/g, "-")}.csv`,
-    toCsv(PLACEHOLDER_HEADERS, rows));
+    toCsv(ERC_HEADERS, rows));
 }
 
 function exportBlsProvider() {
@@ -222,11 +244,12 @@ function render() {
 
   document.getElementById("pageContent").innerHTML = `
     <div class="warn-banner">
-      <strong>⚠ Placeholder column headers — not yet checked against the real ERC template</strong>
-      These exports pull real, correctly-joined data from the platform, but the actual
-      column names/order ERC wants on upload haven't been confirmed. Get the real
-      template before submitting anything generated here. See the comment block at
-      the top of this page's source for the full data-model notes.
+      <strong>✓ Pre-course exports use the real ERC template's column names</strong>
+      Verified against import_participants_template.xlsx (2026-07-07): FIRST NAME, MIDDLE NAME,
+      LAST NAME, EMAIL, COUNTRY — Jon confirmed these 5 fields are all that's needed; Country is
+      always "United Kingdom". The real template has 10 further fields (DOB, Title, Address, etc.)
+      that are deliberately left out — see the comment block at the top of this page's source
+      before adding any of them back in.
     </div>
 
     <div class="card">
