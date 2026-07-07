@@ -64,29 +64,29 @@
   const FACULTY = {
     student: [
       { team: "Student Faculty Chair", members: [
-        { name: "Tanwen Bird", role: "Chair" }
+        { name: "Tanwen Bird", role: "Chair", photo: "assets/faculty-photos/tanwen-bird.jpg" }
       ]},
       { team: "Team Teachers", members: [
-        { name: "Alessandro Pace", role: "Team Lead" },
-        { name: "Isabel (Issy) Winfield", role: "Team Member" },
-        { name: "Theresa (Tess) Brock", role: "Team Member" },
-        { name: "Tegan Bailey", role: "Team Member" }
+        { name: "Alessandro Pace", role: "Team Lead", photo: "assets/faculty-photos/alessandro-pace.jpg" },
+        { name: "Isabel (Issy) Winfield", role: "Team Member", photo: "assets/faculty-photos/issy-winfield.jpg" },
+        { name: "Theresa (Tess) Brock", role: "Team Member", photo: "assets/faculty-photos/tess-brock.jpg" },
+        { name: "Tegan Bailey", role: "Team Member", photo: "assets/faculty-photos/tegan-bailey.jpg" }
       ]},
       { team: "Team Admin", members: [
-        { name: "Stella Szeckler", role: "Team Lead" },
-        { name: "Holly Smyth", role: "Team Member" },
-        { name: "Stephanie (Ellie) Scholes", role: "Team Member" },
-        { name: "Georgia Crutchfield", role: "Team Member" }
+        { name: "Stella Szeckler", role: "Team Lead", photo: "assets/faculty-photos/stella-szeckler.jpg" },
+        { name: "Holly Smyth", role: "Team Member", photo: "assets/faculty-photos/holly-smyth.jpg" },
+        { name: "Stephanie (Ellie) Scholes", role: "Team Member", photo: "assets/faculty-photos/ellie-scholes.jpg" },
+        { name: "Georgia Crutchfield", role: "Team Member", photo: "assets/faculty-photos/georgia-crutchfield.jpg" }
       ]},
       { team: "Team Logistics", members: [
-        { name: "Krishan (Krish) Patel", role: "Team Lead" },
-        { name: "Megan Harrison", role: "Team Member" },
-        { name: "Jaimini Lakhani", role: "Team Member" },
-        { name: "Sophie McKillop", role: "Team Member" }
+        { name: "Krishan (Krish) Patel", role: "Team Lead", photo: "assets/faculty-photos/krish-patel.jpg" },
+        { name: "Megan Harrison", role: "Team Member", photo: "assets/faculty-photos/megan-harrison.jpg" },
+        { name: "Jaimini Lakhani", role: "Team Member", photo: "assets/faculty-photos/jaimini-lakhani.jpg" },
+        { name: "Sophie McKillop", role: "Team Member", photo: "assets/faculty-photos/sophie-mckillop.jpg" }
       ]},
       { team: "Nurse Refresher Co-leads", members: [
-        { name: "Emily Bracegirdle-Morais", role: "Co-lead" },
-        { name: "Kit (Katharine) Smith", role: "Co-lead" }
+        { name: "Emily Bracegirdle-Morais", role: "Co-lead", photo: "assets/faculty-photos/emily-bracegirdle-morais.jpg" },
+        { name: "Kit (Katharine) Smith", role: "Co-lead", photo: "assets/faculty-photos/kit-smith.jpg" }
       ]}
     ],
     senior: [
@@ -129,6 +129,7 @@
     });
   } else {
     // Grouped by team, with lead/member/co-lead roles.
+    noteEl.textContent = "Roles are drawn from the current academic year's RMD Birmingham student faculty structure.";
     FACULTY.student.forEach(team => {
       const wrap = document.createElement("div");
       wrap.className = "faculty-team-group";
@@ -143,10 +144,26 @@
       team.members.forEach(m => {
         const li = document.createElement("li");
 
-        const photo = document.createElement("div");
-        photo.className = "faculty-photo-placeholder";
-        photo.textContent = initials(m.name);
-        li.appendChild(photo);
+        if (m.photo) {
+          const img = document.createElement("img");
+          img.className = "faculty-photo";
+          img.src = m.photo;
+          img.alt = m.name;
+          img.loading = "lazy";
+          // Fall back to the initials placeholder if the photo fails to load.
+          img.onerror = function () {
+            const fallback = document.createElement("div");
+            fallback.className = "faculty-photo-placeholder";
+            fallback.textContent = initials(m.name);
+            img.replaceWith(fallback);
+          };
+          li.appendChild(img);
+        } else {
+          const photo = document.createElement("div");
+          photo.className = "faculty-photo-placeholder";
+          photo.textContent = initials(m.name);
+          li.appendChild(photo);
+        }
 
         const nameSpan = document.createElement("span");
         nameSpan.textContent = m.name;
