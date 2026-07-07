@@ -89,11 +89,53 @@
         { name: "Kit (Katharine) Smith", role: "Co-lead", photo: "assets/faculty-photos/kit-smith.jpg" }
       ]}
     ],
+    // Rebuilt 2026-07-07 from the RMD senior faculty roster PDF (rmdbirmingham
+    // Drive, "2025-26 - RMD senior faculty.pdf"), which is a print export of the
+    // rmd.uk.com "Senior Faculty" Google Site. Roles below are copied verbatim
+    // from that source. Two known gaps, both TBC as of this rebuild:
+    //  - Zanita Volschenk: on the prior flat roster but absent from the Site/PDF
+    //    entirely — no role, no photo yet.
+    //  - Juliette Horobin: present in the Site/PDF with a photo, but the source
+    //    doesn't label her role/team (everyone else does).
     senior: [
-      "Tom Burton", "Ben Stanley", "Chesca Harper", "Zanita Volschenk",
-      "Rosie Lilwall", "Breanna Blackboro", "Cameron Parkes",
-      "Naveed Kordmahalleh", "Laura Smith", "Jon Hulme", "Nick Coffin",
-      "Joe Alderman"
+      { team: "Course Director", members: [
+        { name: "Jon Hulme", role: "Course Director", photo: "assets/faculty-photos/jon-hulme.jpg" }
+      ]},
+      { team: "Finance", members: [
+        { name: "Nick Coffin", role: "Finance", photo: "assets/faculty-photos/nick-coffin.jpg" }
+      ]},
+      { team: "Research", members: [
+        { name: "Joe Alderman", role: "Research", photo: "assets/faculty-photos/joe-alderman.jpg" }
+      ]},
+      { team: "Student Support", members: [
+        { name: "Chesca Harper", role: "Student Support", photo: "assets/faculty-photos/chesca-harper.jpg" },
+        { name: "Ellen Murgatroyd", role: "Student Support", photo: "assets/faculty-photos/ellen-murgatroyd.jpg" },
+        { name: "Becca Everitt", role: "Student Support", photo: "assets/faculty-photos/becca-everitt.jpg" },
+        { name: "Emily Beesley", role: "Student Support", photo: "assets/faculty-photos/emily-beesley.jpg" }
+      ]},
+      { team: "Guidelines", members: [
+        { name: "Laura Smith", role: "Support / Guidelines", photo: "assets/faculty-photos/laura-smith.jpg" },
+        { name: "Bre Blackboro", role: "Guidelines", photo: "assets/faculty-photos/bre-blackboro.jpg" },
+        { name: "Tom Burton", role: "Guidelines", photo: "assets/faculty-photos/tom-burton.jpg" },
+        { name: "Ben Stanley", role: "Guidelines", photo: "assets/faculty-photos/ben-stanley.jpg" }
+      ]},
+      { team: "Assessors", members: [
+        { name: "Naveed Kordmahalleh", role: "Assessors", photo: "assets/faculty-photos/naveed-kordmahalleh.jpg" },
+        { name: "Rosie Lilwall", role: "Assessors", photo: "assets/faculty-photos/rosie-lilwall.jpg" },
+        { name: "Abi King", role: "Assessors", photo: "assets/faculty-photos/abi-king.jpg" }
+      ]},
+      { team: "Technical Support", members: [
+        { name: "Neal Pankhania", role: "Technical Support", photo: "assets/faculty-photos/neal-pankhania.jpg" },
+        { name: "Cameron Parkes", role: "Technical Support", photo: "assets/faculty-photos/cameron-parkes.jpg" }
+      ]},
+      { team: "Refresher Training", members: [
+        { name: "Lauren Baldwin", role: "Refresher Training", photo: "assets/faculty-photos/lauren-baldwin.jpg" },
+        { name: "Danielle Pollitt-Walmsley", role: "Refresher Training", photo: "assets/faculty-photos/danielle-pollitt-walmsley.jpg" }
+      ]},
+      { team: "Role TBC", members: [
+        { name: "Juliette Horobin", role: "Role TBC", photo: "assets/faculty-photos/juliette-horobin.jpg" },
+        { name: "Zanita Volschenk", role: "Role TBC" }
+      ]}
     ]
   };
 
@@ -119,67 +161,64 @@
   const listEl  = document.getElementById("facultyList");
   const noteEl  = document.getElementById("groupNote");
 
-  if (group === "senior") {
-    // Flat list — no team structure for senior faculty.
-    noteEl.textContent = "Photos coming soon. Names are drawn from the current academic year's RMD Birmingham MOU roster.";
-    FACULTY.senior.forEach(name => {
+  // Both groups share the same shape now (array of { team, members }), so
+  // one renderer covers both. Members without a `photo` fall back to the
+  // initials placeholder (also used at runtime if a photo fails to load).
+  const notes = {
+    student: "Roles are drawn from the current academic year's RMD Birmingham student faculty structure.",
+    senior: "Roles are drawn from the current academic year's RMD Birmingham senior faculty roster. A couple of roles are marked TBC pending confirmation."
+  };
+  noteEl.textContent = notes[group];
+
+  FACULTY[group].forEach(team => {
+    const wrap = document.createElement("div");
+    wrap.className = "faculty-team-group";
+
+    const title = document.createElement("div");
+    title.className = "faculty-team-title";
+    title.textContent = team.team;
+    wrap.appendChild(title);
+
+    const ul = document.createElement("ul");
+    ul.className = "faculty-list has-photos";
+    team.members.forEach(m => {
       const li = document.createElement("li");
-      li.textContent = name;
-      listEl.appendChild(li);
+
+      if (m.photo) {
+        const img = document.createElement("img");
+        img.className = "faculty-photo";
+        img.src = m.photo;
+        img.alt = m.name;
+        img.loading = "lazy";
+        // Fall back to the initials placeholder if the photo fails to load.
+        img.onerror = function () {
+          const fallback = document.createElement("div");
+          fallback.className = "faculty-photo-placeholder";
+          fallback.textContent = initials(m.name);
+          img.replaceWith(fallback);
+        };
+        li.appendChild(img);
+      } else {
+        const photo = document.createElement("div");
+        photo.className = "faculty-photo-placeholder";
+        photo.textContent = initials(m.name);
+        li.appendChild(photo);
+      }
+
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = m.name;
+      li.appendChild(nameSpan);
+
+      const roleSpan = document.createElement("span");
+      roleSpan.className = "faculty-role";
+      roleSpan.textContent = m.role;
+      li.appendChild(roleSpan);
+
+      ul.appendChild(li);
     });
-  } else {
-    // Grouped by team, with lead/member/co-lead roles.
-    noteEl.textContent = "Roles are drawn from the current academic year's RMD Birmingham student faculty structure.";
-    FACULTY.student.forEach(team => {
-      const wrap = document.createElement("div");
-      wrap.className = "faculty-team-group";
-
-      const title = document.createElement("div");
-      title.className = "faculty-team-title";
-      title.textContent = team.team;
-      wrap.appendChild(title);
-
-      const ul = document.createElement("ul");
-      ul.className = "faculty-list has-photos";
-      team.members.forEach(m => {
-        const li = document.createElement("li");
-
-        if (m.photo) {
-          const img = document.createElement("img");
-          img.className = "faculty-photo";
-          img.src = m.photo;
-          img.alt = m.name;
-          img.loading = "lazy";
-          // Fall back to the initials placeholder if the photo fails to load.
-          img.onerror = function () {
-            const fallback = document.createElement("div");
-            fallback.className = "faculty-photo-placeholder";
-            fallback.textContent = initials(m.name);
-            img.replaceWith(fallback);
-          };
-          li.appendChild(img);
-        } else {
-          const photo = document.createElement("div");
-          photo.className = "faculty-photo-placeholder";
-          photo.textContent = initials(m.name);
-          li.appendChild(photo);
-        }
-
-        const nameSpan = document.createElement("span");
-        nameSpan.textContent = m.name;
-        li.appendChild(nameSpan);
-
-        const roleSpan = document.createElement("span");
-        roleSpan.className = "faculty-role";
-        roleSpan.textContent = m.role;
-        li.appendChild(roleSpan);
-
-        ul.appendChild(li);
-      });
-      wrap.appendChild(ul);
-      teamsEl.appendChild(wrap);
-    });
-  }
+    wrap.appendChild(ul);
+    teamsEl.appendChild(wrap);
+  });
 </script>
 
 <footer class="rmd-footer">
