@@ -323,9 +323,12 @@ async function loadResponses() {
     const snap = await db.collection("faculty_responses").get();
     allResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .sort((a, b) => {
-        const ta = a.submittedAt ? a.submittedAt.seconds : 0;
-        const tb = b.submittedAt ? b.submittedAt.seconds : 0;
-        return tb - ta;
+        // Alphabetical by first name (falls back to email if no name on file),
+        // last name as tiebreaker. Was previously most-recent-submission-first.
+        const aFirst = (a.firstName || a.email || "").toLowerCase();
+        const bFirst = (b.firstName || b.email || "").toLowerCase();
+        return aFirst.localeCompare(bFirst) ||
+               (a.lastName || "").toLowerCase().localeCompare((b.lastName || "").toLowerCase());
       });
   } catch (err) {
     document.getElementById("tabContent").innerHTML =
