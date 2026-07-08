@@ -203,6 +203,10 @@
         ⚠️ This page creates Firebase login accounts. Use for Faculty, ITC and Director only — Instructor and Assessor Candidates use QR codes and do not need accounts.
       </div>
 
+      <div class="hint" style="margin-bottom:12px;">
+        Each account gets a random one-time password that nobody, including you, ever sees. Immediately after creation, that person is sent a standard Firebase "set your password" email so they choose their own login before ever signing in.
+      </div>
+
       <label>Role</label>
       <select id="roleSelect">
         <option value="faculty">Faculty</option>
@@ -210,9 +214,6 @@
         <option value="assessor-lead">Assessor Lead (e.g. Naveed)</option>
         <option value="director">Director</option>
       </select>
-
-      <label>Default password for new accounts</label>
-      <input type="text" id="defaultPassword" value="RMD2026!" placeholder="e.g. RMD2026!">
 
       <label>Email addresses — one per line</label>
       <textarea id="emailList" placeholder="n.coffin@bham.ac.uk
@@ -250,8 +251,9 @@ j.smith@example.com
         ⚠️ Creates Firebase login accounts for everyone currently in the <code>mou_roster</code> collection (imported via the MOU dashboard's "Manage roster" tab), so they can sign in to <a href="mou-form.html">mou-form.html</a> and submit the MOU. Existing accounts are skipped automatically. This does <strong>not</strong> write to the <code>people</code> collection or touch any IW-specific data — it only creates the login.
       </div>
 
-      <label>Default password for new MOU accounts</label>
-      <input type="text" id="mouPassword" value="RMD2026!" placeholder="e.g. RMD2026!">
+      <div class="hint" style="margin-bottom:12px;">
+        Same as above: each account gets a random one-time password nobody sees, and an immediate "set your password" email.
+      </div>
 
       <button class="btn-secondary" id="loadRosterBtn" onclick="loadMouRosterPreview()">Load MOU roster</button>
 
@@ -283,6 +285,48 @@ j.smith@example.com
     </div>
   </div>
 
+  <!-- Force reset on existing accounts -->
+  <div class="card">
+    <div class="card-header">Reset Existing Accounts Off The Old Shared Password</div>
+    <div class="card-body">
+      <div class="director-note">
+        ⚠️ Anyone created via this page before 2026-07-07 was set up with the old
+        shared default password (<code>RMD2026!</code>), which was hardcoded in
+        this page's source and sat in the public GitHub repo. This sends each
+        listed email a standard "set your password" reset link.
+        <br><br>
+        <strong>Important limit:</strong> this does not remotely invalidate
+        anyone's current password — Firebase's client API won't let a director
+        force that from here. Someone who never opens the reset email could
+        still sign in with the old shared password until they do. If you need a
+        hard guarantee for a specific account, use Firebase Console →
+        Authentication → Users → that person → "Reset password", which can
+        disable the account until they reset.
+      </div>
+
+      <label>Email addresses to reset — one per line</label>
+      <textarea id="resetEmailList" placeholder="n.coffin@bham.ac.uk
+r.everitt@bham.ac.uk
+..."></textarea>
+      <div class="hint">Paste every email you've ever created via this page with the old default password.</div>
+
+      <div class="progress-bar-wrap" id="resetProgressWrap" style="display:none;">
+        <div class="progress-bar" id="resetProgressBar"></div>
+      </div>
+
+      <button class="btn-primary" id="resetBtn" onclick="startForceReset()">Send reset emails</button>
+    </div>
+  </div>
+
+  <!-- Force reset results card -->
+  <div class="card" id="resetResultsCard" style="display:none;">
+    <div class="card-header">Reset Email Results</div>
+    <div class="card-body">
+      <div class="summary-bar" id="resetSummaryBar"></div>
+      <div id="resetLogList"></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Firebase SDK -->
@@ -310,15 +354,40 @@ function parseEmails(raw) {
     .filter(({ email }) => email.includes("@"));
 }
 
+// ── Password bootstrap ──────────────────────────────────────────────────────
+// Every account is created with its own random, never-displayed password —
+// nobody (including the director running this page) ever knows it. The
+// person then gets Firebase's standard password-reset email immediately
+// after creation, so they set their own password before ever signing in.
+// Replaces the old shared hardcoded default (was "RMD2026!", visible in page
+// source and public repo history — a real credential exposure, fixed 2026-07-07).
+function randomPassword(len = 24) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*";
+  const bytes = new Uint32Array(len);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => chars[b % chars.length]).join("");
+}
+
+async function sendPasswordResetEmail(email) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_CONFIG.apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ requestType: "PASSWORD_RESET", email })
+    }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+}
+
 // ── Main creation flow ────────────────────────────────────────────────────
 async function startCreation() {
   const raw      = document.getElementById("emailList").value;
-  const password = document.getElementById("defaultPassword").value.trim();
   const role     = document.getElementById("roleSelect").value;
   const entries  = parseEmails(raw);
 
   if (entries.length === 0) { alert("No valid email addresses found."); return; }
-  if (!password) { alert("Please set a default password."); return; }
 
   const btn = document.getElementById("createBtn");
   btn.disabled    = true;
@@ -339,13 +408,14 @@ async function startCreation() {
     let icon, statusClass, statusText;
 
     try {
-      // Create Auth account via REST API (works from browser with API key)
+      // Create Auth account via REST API (works from browser with API key).
+      // Password is random and thrown away — see sendPasswordResetEmail below.
       const res = await fetch(
         `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_CONFIG.apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, returnSecureToken: false })
+          body: JSON.stringify({ email, password: randomPassword(), returnSecureToken: false })
         }
       );
       const data = await res.json();
@@ -369,7 +439,13 @@ async function startCreation() {
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
         }
-        icon = "✅"; statusClass = "ok"; statusText = "Created";
+        try {
+          await sendPasswordResetEmail(email);
+          icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
+        } catch (resetErr) {
+          icon = "⚠️"; statusClass = "skip";
+          statusText = "Created, but reset email failed to send: " + resetErr.message;
+        }
         ok++;
       }
     } catch (e) {
@@ -450,8 +526,6 @@ async function loadMouRosterPreview() {
 
 async function startMouRosterCreation() {
   if (!mouRosterEntries.length) return;
-  const password = document.getElementById("mouPassword").value.trim();
-  if (!password) { alert("Please set a default password."); return; }
 
   if (!confirm(`Create Firebase accounts for ${mouRosterEntries.length} roster member(s)?\n\nAccounts that already exist will be skipped automatically. This cannot easily be undone.`)) return;
 
@@ -479,7 +553,7 @@ async function startMouRosterCreation() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, returnSecureToken: false })
+          body: JSON.stringify({ email, password: randomPassword(), returnSecureToken: false })
         }
       );
       const data = await res.json();
@@ -492,7 +566,13 @@ async function startMouRosterCreation() {
           throw new Error(data.error.message);
         }
       } else {
-        icon = "✅"; statusClass = "ok"; statusText = "Created";
+        try {
+          await sendPasswordResetEmail(email);
+          icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
+        } catch (resetErr) {
+          icon = "⚠️"; statusClass = "skip";
+          statusText = "Created, but reset email failed to send: " + resetErr.message;
+        }
         ok++;
       }
     } catch (e) {
@@ -519,6 +599,60 @@ async function startMouRosterCreation() {
 
   btn.disabled    = false;
   btn.textContent = `Create accounts for ${mouRosterEntries.length} member(s)`;
+}
+
+// ── Force reset on existing (old-default-password) accounts ────────────────
+async function startForceReset() {
+  const raw     = document.getElementById("resetEmailList").value;
+  const entries = parseEmails(raw);
+  if (entries.length === 0) { alert("No valid email addresses found."); return; }
+
+  if (!confirm(`Send a password reset email to ${entries.length} address(es)?`)) return;
+
+  const btn = document.getElementById("resetBtn");
+  btn.disabled    = true;
+  btn.textContent = `Sending ${entries.length} reset email(s)…`;
+
+  document.getElementById("resetProgressWrap").style.display = "block";
+  document.getElementById("resetResultsCard").style.display  = "block";
+  document.getElementById("resetLogList").innerHTML = "";
+  document.getElementById("resetSummaryBar").innerHTML = "";
+
+  let ok = 0, err = 0;
+
+  for (let i = 0; i < entries.length; i++) {
+    const { email } = entries[i];
+    const pct = Math.round(((i + 1) / entries.length) * 100);
+    document.getElementById("resetProgressBar").style.width = pct + "%";
+
+    let icon, statusClass, statusText;
+    try {
+      await sendPasswordResetEmail(email);
+      icon = "✅"; statusClass = "ok"; statusText = "Reset email sent";
+      ok++;
+    } catch (e) {
+      icon = "❌"; statusClass = "err"; statusText = e.message || "Failed";
+      err++;
+    }
+
+    const entry = document.createElement("div");
+    entry.className = "log-entry";
+    entry.innerHTML = `
+      <div class="log-icon">${icon}</div>
+      <div class="log-email">${email}</div>
+      <div class="log-status ${statusClass}">${statusText}</div>`;
+    document.getElementById("resetLogList").appendChild(entry);
+
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  document.getElementById("resetSummaryBar").innerHTML = `
+    ${ok  ? `<span class="sum sum-ok">✅ ${ok} sent</span>` : ""}
+    ${err ? `<span class="sum sum-err">❌ ${err} failed</span>` : ""}
+  `;
+
+  btn.disabled    = false;
+  btn.textContent = "Send reset emails";
 }
 
 </script>
