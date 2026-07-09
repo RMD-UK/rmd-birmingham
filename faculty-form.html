@@ -247,10 +247,17 @@
   <p>Pre-course information · Birmingham Medical School · 9-11 October 2026</p>
 </div>
 
-<!-- RMD Student Faculty — obvious "can't attend" shortcut, no need to touch the form below -->
+<!-- RMD Faculty (student or senior) — obvious "can't attend" shortcut, no need to touch the form below -->
 <div class="sf-decline-box" id="sfDeclineBox">
-  <p class="sf-decline-title">Are you an RMD Student Faculty member who can't attend?</p>
-  <p class="sf-decline-sub">If so, just tell us who you are below and hit submit — no need to fill in the rest of this form.</p>
+  <p class="sf-decline-title">RMD Faculty member who can't attend?</p>
+  <p class="sf-decline-sub">Whether you're RMD Student Faculty or senior faculty, if you can't make the Instructor Weekend, just tell us who you are below and hit submit — no need to fill in the rest of this form.</p>
+  <div class="field">
+    <label>Which are you?</label>
+    <div class="option-group" id="sfDeclineRoleGroup">
+      <button class="option-btn" data-value="RMD Student Faculty" onclick="selectSfDeclineRole('RMD Student Faculty', this)">RMD Student Faculty</button>
+      <button class="option-btn" data-value="Faculty" onclick="selectSfDeclineRole('Faculty', this)">Senior / Faculty</button>
+    </div>
+  </div>
   <div class="field-row">
     <div class="field">
       <label>First name</label>
@@ -511,6 +518,13 @@ const state = {
   sfAttending: ""
 };
 
+// Roles that get the "will you be attending?" decline shortcut in section 1 —
+// RMD Student Faculty and regular/senior Faculty. ITC and Course Logistics do
+// not get this (they weren't asked for).
+function canDeclineAttendance(role) {
+  return role === "RMD Student Faculty" || role === "Faculty";
+}
+
 // ── Generic single-select option ──────────────────────────────────────────
 function selectOption(key, value, btn) {
   state[key] = value;
@@ -525,9 +539,9 @@ function selectOption(key, value, btn) {
     document.getElementById("ercOtherField").style.display = value === "Other" ? "block" : "none";
   }
   if (key === "role") {
-    const isStudentFaculty = value === "RMD Student Faculty";
-    document.getElementById("sfAttendField").style.display = isStudentFaculty ? "block" : "none";
-    if (!isStudentFaculty) {
+    const canDecline = canDeclineAttendance(value);
+    document.getElementById("sfAttendField").style.display = canDecline ? "block" : "none";
+    if (!canDecline) {
       state.sfAttending = "";
       document.getElementById("sfAttendHint").style.display = "none";
       document.querySelectorAll("#sfAttendGroup .option-btn").forEach(b => b.classList.remove("selected","selected-yes","selected-no"));
@@ -536,7 +550,7 @@ function selectOption(key, value, btn) {
   }
 }
 
-// ── RMD Student Faculty attendance sub-question ──────────────────────────
+// ── RMD Student Faculty / Faculty attendance sub-question ────────────────
 function selectSfAttend(value, btn) {
   state.sfAttending = value;
   document.querySelectorAll("#sfAttendGroup .option-btn").forEach(b => b.classList.remove("selected","selected-yes","selected-no"));
@@ -546,7 +560,7 @@ function selectSfAttend(value, btn) {
 }
 
 function updateDaysFieldVisibility() {
-  const hide = state.role === "RMD Student Faculty" && state.sfAttending === "no";
+  const hide = canDeclineAttendance(state.role) && state.sfAttending === "no";
   document.getElementById("daysField").style.display = hide ? "none" : "block";
 }
 
@@ -597,7 +611,7 @@ async function nextSection() {
     btn.textContent = originalText;
   }
 
-  if (currentSection === 1 && state.role === "RMD Student Faculty" && state.sfAttending === "no") {
+  if (currentSection === 1 && canDeclineAttendance(state.role) && state.sfAttending === "no") {
     submitCannotAttend();
     return;
   }
@@ -650,7 +664,7 @@ function prefillForm(data) {
     state.role = data.role;
     selectButtonByValue(document.getElementById("roleGroup"), data.role);
   }
-  if (data.role === "RMD Student Faculty") {
+  if (canDeclineAttendance(data.role)) {
     document.getElementById("sfAttendField").style.display = "block";
     const inferredAttend = data.attendanceStatus === "declined" ? "no" : "yes";
     state.sfAttending = inferredAttend;
@@ -785,7 +799,7 @@ function validateSection(n) {
   }
   if (n === 1) {
     if (!state.role) { alert("Please select your role."); return false; }
-    if (state.role === "RMD Student Faculty") {
+    if (canDeclineAttendance(state.role)) {
       if (!state.sfAttending) { alert("Please tell us whether you'll be attending."); return false; }
       if (state.sfAttending === "yes" && !state.days.friday && !state.days.saturday && !state.days.sunday) {
         alert("Please select at least one day."); return false;
@@ -869,7 +883,7 @@ async function submitForm() {
   }
 }
 
-// ── RMD Student Faculty "can't attend" short-circuit submit ───────────────
+// ── RMD Student Faculty / Faculty "can't attend" short-circuit submit ─────
 // Skips ERC/meals/accommodation/other sections entirely — only personal
 // details, role, and the attendance answer are recorded.
 async function submitCannotAttend() {
@@ -883,7 +897,7 @@ async function submitCannotAttend() {
     middleName: document.getElementById("middleName").value.trim(),
     lastName:   document.getElementById("lastName").value.trim(),
     email:      email,
-    role:       "RMD Student Faculty",
+    role:       state.role,
     attendanceStatus: "declined",
     cannotAttend: true,
     source: "faculty-form-2026"
@@ -914,13 +928,25 @@ async function submitCannotAttend() {
 
 // ── Standalone "can't attend" box at the top of the page ──────────────────
 // A self-contained shortcut, independent of the section wizard below it —
-// name + email + submit. Writes the same declined record as the in-wizard
-// RMD Student Faculty flow, so both paths land in the same place.
+// role + name + email + submit. Open to both RMD Student Faculty and
+// regular/senior Faculty. Writes the same declined record shape as the
+// in-wizard flow, so all paths land in the same place.
+let sfDeclineRole = "";
+function selectSfDeclineRole(value, btn) {
+  sfDeclineRole = value;
+  document.querySelectorAll("#sfDeclineRoleGroup .option-btn").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+}
+
 async function submitStandaloneDecline() {
   const firstName = document.getElementById("sfDeclineFirstName").value.trim();
   const lastName  = document.getElementById("sfDeclineLastName").value.trim();
   const email     = document.getElementById("sfDeclineEmail").value.trim().toLowerCase();
 
+  if (!sfDeclineRole) {
+    alert("Please tell us whether you're RMD Student Faculty or senior/Faculty.");
+    return;
+  }
   if (!firstName || !lastName || !email || !email.includes("@")) {
     alert("Please enter your first name, last name, and a valid email address.");
     return;
@@ -932,7 +958,7 @@ async function submitStandaloneDecline() {
 
   const record = {
     firstName, lastName, email,
-    role: "RMD Student Faculty",
+    role: sfDeclineRole,
     attendanceStatus: "declined",
     cannotAttend: true,
     source: "faculty-form-2026-standalone-decline"
