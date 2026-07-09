@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>ITC Observation — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 90px; }
+
+    /* ── Top bar ── */
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .top-bar img { height: 28px; border-radius: 50%; background: white; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub   { font-size: 11px; font-weight: 400; opacity: 0.7; display: block; }
+    .top-bar-time  { font-size: 13px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+    /* ── Session header ── */
+    #sessionHeader {
+      background: white; padding: 12px 14px;
+      border-bottom: 2px solid var(--rmd-blue);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    /* ── Blind-feedback notice ── */
+    .blind-notice {
+      background: #E3DCF2;
+      color: var(--rmd-navy);
+      font-size: 12px;
+      padding: 8px 14px;
+      text-align: center;
+      border-bottom: 1px solid #dce3ea;
+    }
+
+    /* ── Content wrap ── */
+    .wrap { max-width: 720px; margin: 0 auto; padding: 12px 14px 0; }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--rmd-muted);
+      font-size: 14px;
+    }
+    .empty-state h3 { color: var(--rmd-navy); margin-bottom: 6px; }
+
+    /* ── ITC card ── */
+    .itc-card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+      margin-bottom: 14px;
+      overflow: hidden;
+      border-left: 4px solid #dce3ea;
+    }
+    .itc-card.has-concern { border-left-color: var(--rmd-warn); }
+    .itc-header {
+      padding: 12px 14px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #f0f3f6;
+    }
+    .itc-name { flex: 1; font-size: 15px; font-weight: 700; color: var(--rmd-navy); }
+    .itc-sub  { font-size: 11px; font-weight: 400; color: var(--rmd-muted); margin-top: 2px; }
+
+    /* ── Dimension rows ── */
+    .dim-row { padding: 10px 14px; border-bottom: 1px solid #f5f7fa; }
+    .dim-label { font-size: 13px; font-weight: 600; color: var(--rmd-text); margin-bottom: 6px; }
+    .dim-scale { display: flex; gap: 6px; }
+    .dim-btn {
+      flex: 1;
+      padding: 8px 4px;
+      border-radius: 6px;
+      border: 2px solid #dce3ea;
+      background: #f5f7fa;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--rmd-muted);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      line-height: 1.25;
+    }
+    .dim-btn:active { transform: scale(0.96); }
+    .dim-btn.active-1 { background: #fde8e4; border-color: #b7410e; color: #b7410e; }
+    .dim-btn.active-2 { background: #fdf1de; border-color: #c17a00; color: #c17a00; }
+    .dim-btn.active-3 { background: #e6f4ea; border-color: #1a6e31; color: #1a6e31; }
+    .dim-btn.active-4 { background: #1a6e31; border-color: #145727; color: white; }
+
+    /* ── Comment box ── */
+    .comment-wrap { padding: 10px 14px 12px; }
+    .comment-label { font-size: 12px; font-weight: 700; color: var(--rmd-navy); margin-bottom: 5px; }
+    .comment-label.required { color: var(--rmd-warn); }
+    .comment-textarea {
+      width: 100%;
+      min-height: 72px;
+      padding: 9px 11px;
+      border: 2px solid #dce3ea;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: var(--font);
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .comment-textarea:focus { outline: none; border-color: var(--rmd-blue); }
+    .comment-prompt { font-size: 11px; color: var(--rmd-muted); margin-top: 4px; }
+
+    /* ── Submit bar ── */
+    .submit-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: white;
+      padding: 12px 14px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.12);
+      z-index: 50;
+    }
+    .submit-bar-inner { max-width: 720px; margin: 0 auto; }
+    .btn-submit {
+      width: 100%;
+      padding: 15px;
+      background: var(--rmd-blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-submit:hover  { background: var(--rmd-navy); }
+    .btn-submit:active { opacity: 0.85; }
+    .btn-submit:disabled { background: #aab8c2; cursor: default; }
+    .submit-note { font-size: 11px; color: var(--rmd-muted); text-align: center; margin-top: 6px; }
+    .auto-save-indicator { font-size: 11px; color: var(--rmd-muted); text-align: center; margin-top: 4px; }
+    .auto-save-indicator.saving { color: var(--rmd-blue); }
+    .auto-save-indicator.saved  { color: #1a6e31; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      top: 70px; left: 50%; transform: translateX(-50%);
+      background: #1a333f;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.25s;
+      pointer-events: none;
+      white-space: nowrap;
+      max-width: 90vw;
+    }
+    .toast.show  { opacity: 1; }
+    .toast.green { background: #1a6e31; }
+    .toast.red   { background: #b7410e; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="top-bar">
+  <a href="timetable.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">
+    ITC Observation
+    <span class="top-bar-sub">Blind rating — Instructor Trainer Candidates</span>
+  </div>
+  <div class="top-bar-time" id="topBarTime">--:--</div>
+</div>
+
+<!-- ── Session header ── -->
+<div id="sessionHeader">
+  <div style="flex:1;">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--rmd-muted);margin-bottom:2px;">Current session</div>
+    <div id="sessionHeaderTitle" style="font-size:15px;font-weight:700;color:var(--rmd-navy);"></div>
+  </div>
+  <a href="timetable.html" style="font-size:12px;color:var(--rmd-blue);text-decoration:none;white-space:nowrap;">← Timetable</a>
+</div>
+
+<div class="blind-notice">🔒 Your ratings are private. Other observers cannot see them — only the Course Director sees the collated view.</div>
+
+<!-- ── ITC list ── -->
+<div class="wrap" id="itcWrap">
+  <div class="empty-state" id="emptyState">
+    <h3>Loading…</h3>
+  </div>
+</div>
+
+<!-- ── Submit bar ── -->
+<div class="submit-bar">
+  <div class="submit-bar-inner">
+    <button class="btn-submit" id="submitBtn" onclick="submitAll()" disabled>Loading…</button>
+    <div class="auto-save-indicator" id="saveIndicator">Changes save automatically</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/programme-data.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Competency dimensions — per Course Administration thread decision, 2026-07-09.
+// 4-point scale per dimension (traffic-light style per row, not one overall light).
+// ─────────────────────────────────────────────────────────────────────────────
+const DIMENSIONS = [
+  { key: "clarity",     label: "Clarity of instruction" },
+  { key: "engagement",  label: "Candidate engagement" },
+  { key: "accuracy",    label: "Technical accuracy" },
+  { key: "space",       label: "Management of teaching space" },
+  { key: "response",    label: "Response to difficulty or questions" }
+];
+const SCALE_LABELS = ["Needs development", "Developing", "Meeting expectations", "Exceeding expectations"];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session-id → ITC-schedule-key mapping.
+//
+// admin-room-allocation.html's ITC Schedule tab stores rotation assignments in
+// config/itc_schedule under keys "sat_group" / "sat_conv" / "sun_teaching" /
+// "sun_assess" (see ITC_SESSIONS in that file). programme-data.js identifies
+// the same two Sunday blocks with the "itc-observation" tag on session ids
+// "sun-4" (Group Practice: Teaching) and "sun-10" (Group Practice: Continuous
+// Assessment). There is no shared key between the two files — this mapping is
+// inferred from matching session titles, not verified by any existing code
+// reference. If admin-room-allocation.html's ITC_SESSIONS labels or
+// programme-data.js's session ids change, update this map.
+// ─────────────────────────────────────────────────────────────────────────────
+const SESSION_ID_TO_ITC_KEY = {
+  "sun-4":  "sun_teaching",
+  "sun-10": "sun_assess"
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+const params     = new URLSearchParams(window.location.search);
+const preSession = params.get("session") || "";
+
+let currentUser    = null;
+let currentUserDoc = null;   // people doc for the signed-in rater
+let myRoom         = null;   // this rater's assigned room (group/room field)
+let myItcs         = [];     // [{ email, name }] — ITCs rotating into myRoom this block
+let ratings        = {};     // { itcEmail: { dims: {clarity:1-4,...}, comment, firestoreId } }
+let saveDebounce   = {};
+let currentSession = preSession;
+let itcKey         = SESSION_ID_TO_ITC_KEY[preSession] || null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────────────────────────────────────
+initFirebase();
+
+window.addEventListener("load", () => {
+  updateClock();
+  setInterval(updateClock, 15000);
+
+  if (!preSession || !itcKey) { window.location.href = "timetable.html"; return; }
+
+  const sessionObj = findSession(preSession);
+  if (!sessionObj) { window.location.href = "timetable.html"; return; }
+  document.getElementById("sessionHeaderTitle").textContent =
+    `${sessionObj.start} — ${sessionObj.title}`;
+
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "signin.html"; return; }
+    currentUser = user;
+
+    try {
+      const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (snap.exists) currentUserDoc = { id: snap.id, ...snap.data() };
+    } catch (e) { console.warn("Could not load user doc:", e.message); }
+
+    // Faculty/director only — candidates and ITCs must never reach this page
+    // (blind write depends on the observer being distinct from the observed;
+    // firestore.rules enforces this server-side via canAssess(), this is a
+    // client-side UX guard on top of that).
+    const role = await resolveRole(user.uid, user.email || "");
+    if (role !== ROLES.DIRECTOR && role !== ROLES.FACULTY) {
+      document.getElementById("itcWrap").innerHTML =
+        `<div class="empty-state"><h3>Faculty only</h3><p>This tool is for Instructor Trainers observing ITCs. Contact the Course Director if you believe this is wrong.</p></div>`;
+      document.getElementById("submitBtn").style.display = "none";
+      return;
+    }
+
+    myRoom = currentUserDoc?.group || currentUserDoc?.room || null;
+
+    await loadItcPool();
+    await loadMyRatings();
+    renderItcs();
+  });
+});
+
+function findSession(id) {
+  for (const day of ["friday","saturday","sunday"]) {
+    const s = (PROGRAMME[day]?.sessions || []).find(x => x.id === id);
+    if (s) return { ...s, day };
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load which ITC(s) rotate into my room for this session block
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadItcPool() {
+  myItcs = [];
+  if (!myRoom) return;
+  try {
+    const doc = await db.collection("config").doc("itc_schedule").get();
+    if (!doc.exists) return;
+    const d = doc.data();
+    const itcs = d.itcs || [];
+    const assignments = d.assignments || {};
+    myItcs = itcs.filter(itc => (assignments[itc.email] || {})[itcKey] === myRoom);
+  } catch (e) {
+    console.warn("Could not load ITC schedule:", e.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load my own previously-saved ratings for this session (blind — my docs only,
+// scoped by raterUid so this query is provable against firestore.rules without
+// needing to read anyone else's observation of the same ITC).
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadMyRatings() {
+  if (!currentUser || !currentSession) return;
+  try {
+    const snap = await db.collection(COLLECTIONS.itcObs)
+      .where("sessionId", "==", currentSession)
+      .where("raterUid",  "==", currentUser.uid)
+      .get();
+    snap.docs.forEach(d => {
+      const data = d.data();
+      ratings[data.itcEmail] = { dims: data.dims || {}, comment: data.comment || "", firestoreId: d.id };
+    });
+  } catch (e) { /* no saved ratings yet */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render
+// ─────────────────────────────────────────────────────────────────────────────
+function renderItcs() {
+  const wrap = document.getElementById("itcWrap");
+  const btn  = document.getElementById("submitBtn");
+
+  if (!myRoom) {
+    wrap.innerHTML = `<div class="empty-state"><h3>No room assignment found</h3><p>Your account isn't linked to a room for this weekend. Contact the Course Director.</p></div>`;
+    btn.disabled = true; btn.textContent = "No room assignment"; btn.style.display = "";
+    return;
+  }
+  if (!myItcs.length) {
+    wrap.innerHTML = `<div class="empty-state"><h3>No ITC in your room this block</h3><p>No Instructor Trainer Candidate is scheduled to rotate into ${esc(myRoom)} for this session.</p></div>`;
+    btn.disabled = true; btn.textContent = "No ITC to observe"; btn.style.display = "";
+    return;
+  }
+
+  wrap.innerHTML = myItcs.map(itc => buildCard(itc)).join("");
+  btn.disabled = false; btn.style.display = "";
+  btn.textContent = "Submit observation";
+}
+
+function buildCard(itc) {
+  const r = ratings[itc.email] || { dims: {}, comment: "" };
+  const hasConcern = Object.values(r.dims).some(v => v === 1);
+
+  const dimRows = DIMENSIONS.map(d => {
+    const val = r.dims[d.key] || 0;
+    const btns = [1,2,3,4].map(n =>
+      `<button class="dim-btn ${val === n ? `active-${n}` : ''}" title="${SCALE_LABELS[n-1]}"
+        onclick="setDim('${itc.email}','${d.key}',${n})">${n}<br>${SCALE_LABELS[n-1].split(" ")[0]}</button>`
+    ).join("");
+    return `<div class="dim-row" id="dim-${itc.email}-${d.key}">
+      <div class="dim-label">${d.label}</div>
+      <div class="dim-scale">${btns}</div>
+    </div>`;
+  }).join("");
+
+  return `
+    <div class="itc-card ${hasConcern ? 'has-concern' : ''}" id="card-${itc.email}">
+      <div class="itc-header">
+        <div class="itc-name">${esc(itc.name)}<div class="itc-sub">Instructor Trainer Candidate · ${esc(myRoom)}</div></div>
+      </div>
+      ${dimRows}
+      <div class="comment-wrap">
+        <div class="comment-label ${hasConcern ? 'required' : ''}" id="commentLabel-${itc.email}">
+          ${hasConcern ? "Comment required — a dimension is rated ‘Needs development’ *" : "Comment"}
+        </div>
+        <textarea class="comment-textarea" id="text-${itc.email}"
+          placeholder="Describe what you observed"
+          oninput="onCommentInput('${itc.email}')">${esc(r.comment)}</textarea>
+        <div class="comment-prompt">Be specific — this feeds the end-of-course summary for this ITC.</div>
+      </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Set a dimension rating
+// ─────────────────────────────────────────────────────────────────────────────
+function setDim(itcEmail, dimKey, value) {
+  const r = ratings[itcEmail] || { dims: {}, comment: "" };
+  const newVal = r.dims[dimKey] === value ? 0 : value; // tap again to clear
+  r.dims = { ...r.dims, [dimKey]: newVal };
+  ratings[itcEmail] = r;
+
+  // Re-render just this dimension row's buttons
+  const row = document.getElementById(`dim-${itcEmail}-${dimKey}`);
+  if (row) {
+    const btns = [1,2,3,4].map(n =>
+      `<button class="dim-btn ${newVal === n ? `active-${n}` : ''}" title="${SCALE_LABELS[n-1]}"
+        onclick="setDim('${itcEmail}','${dimKey}',${n})">${n}<br>${SCALE_LABELS[n-1].split(" ")[0]}</button>`
+    ).join("");
+    row.querySelector(".dim-scale").innerHTML = btns;
+  }
+
+  // Update concern styling + comment requirement
+  const hasConcern = Object.values(r.dims).some(v => v === 1);
+  const card = document.getElementById("card-" + itcEmail);
+  if (card) card.classList.toggle("has-concern", hasConcern);
+  const label = document.getElementById("commentLabel-" + itcEmail);
+  if (label) {
+    label.classList.toggle("required", hasConcern);
+    label.textContent = hasConcern ? "Comment required — a dimension is rated ‘Needs development’ *" : "Comment";
+  }
+
+  scheduleAutoSave(itcEmail);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comment input
+// ─────────────────────────────────────────────────────────────────────────────
+function onCommentInput(itcEmail) {
+  const text = document.getElementById("text-" + itcEmail)?.value || "";
+  const r = ratings[itcEmail] || { dims: {}, comment: "" };
+  r.comment = text;
+  ratings[itcEmail] = r;
+  scheduleAutoSave(itcEmail);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-save (debounced)
+// ─────────────────────────────────────────────────────────────────────────────
+function scheduleAutoSave(itcEmail) {
+  clearTimeout(saveDebounce[itcEmail]);
+  saveDebounce[itcEmail] = setTimeout(() => saveSingle(itcEmail), 1200);
+  setSaveIndicator("saving");
+}
+
+async function saveSingle(itcEmail) {
+  if (!currentUser || !currentSession) return;
+  const r = ratings[itcEmail];
+  if (!r || !Object.values(r.dims || {}).some(v => v)) return; // nothing rated yet
+
+  const itc = myItcs.find(x => x.email === itcEmail);
+  const payload = {
+    sessionId:  currentSession,
+    itcSessionKey: itcKey,
+    itcEmail,
+    itcName:    itc?.name || "",
+    roomId:     myRoom,
+    raterUid:   currentUser.uid,
+    raterName:  currentUserDoc?.name || currentUser.email || "",
+    dims:       r.dims,
+    comment:    r.comment || "",
+    savedAt:    firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  try {
+    const docRef = r.firestoreId
+      ? db.collection(COLLECTIONS.itcObs).doc(r.firestoreId)
+      : db.collection(COLLECTIONS.itcObs).doc();
+
+    await docRef.set(payload, { merge: true });
+    ratings[itcEmail] = { ...r, firestoreId: docRef.id };
+
+    setSaveIndicator("saved");
+    setTimeout(() => setSaveIndicator(""), 3000);
+  } catch (err) {
+    console.error("Auto-save failed:", err.message);
+    setSaveIndicator("");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Submit all (validate + confirm)
+// ─────────────────────────────────────────────────────────────────────────────
+async function submitAll() {
+  const missing = myItcs.filter(itc => {
+    const r = ratings[itc.email];
+    const hasConcern = r && Object.values(r.dims || {}).some(v => v === 1);
+    return hasConcern && !(r.comment || "").trim();
+  });
+
+  if (missing.length) {
+    showToast(`Add a comment for ${missing.map(i => i.name.split(" ")[0]).join(", ")} (development concern flagged)`, "red");
+    document.getElementById("commentLabel-" + missing[0].email)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
+  const rated = myItcs.filter(itc => ratings[itc.email] && Object.values(ratings[itc.email].dims || {}).some(v => v)).length;
+  if (rated === 0) {
+    showToast("Rate at least one dimension before submitting");
+    return;
+  }
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  try {
+    const saves = myItcs
+      .filter(itc => ratings[itc.email])
+      .map(itc => saveSingle(itc.email));
+    await Promise.all(saves);
+
+    showToast(`Observation submitted for ${rated} ITC${rated !== 1 ? "s" : ""}`, "green");
+    btn.textContent = "✓ Submitted";
+  } catch (err) {
+    showToast("Submit failed — check connection", "red");
+    btn.disabled = false;
+    btn.textContent = "Submit observation";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function setSaveIndicator(state) {
+  const el = document.getElementById("saveIndicator");
+  el.className = "auto-save-indicator" + (state ? " " + state : "");
+  el.textContent = state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : "Changes save automatically";
+}
+
+let toastTimer;
+function showToast(msg, type) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast show" + (type ? " " + type : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById("topBarTime").textContent =
+    String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+}
+
+function esc(s) {
+  return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+</body>
+</html>

@@ -127,13 +127,30 @@ service cloud.firestore {
     }
 
     // ── ITC observations ────────────────────────────────────────────────────
-    // Read: any signed-in user (ITC being observed can see their own feed).
-    // Create/update: faculty or director only — the ITC being observed must
-    //   never be able to write their own observation record.
+    // Blind feedback (decided 2026-07-09): each observer's rating of an ITC
+    //   must not be visible to other observers rating the same ITC — only
+    //   the rater themselves and the director can see a given doc.
+    // Read: the rater who wrote the doc (resource.data.raterUid), or director.
+    //   NOTE: list queries (e.g. "my saved ratings for this session") must
+    //   include .where("raterUid","==", auth.uid) for a non-director caller —
+    //   itc-observations.html's loadMyRatings() does this. A query without
+    //   that filter will be denied for non-directors, which is intentional:
+    //   it's what stops one Instructor Trainer listing another's observations.
+    // Create: faculty or director only, and only self-attributed
+    //   (request.resource.data.raterUid must equal the caller) — the ITC
+    //   being observed must never be able to write their own record, and no
+    //   rater can write a doc claiming to be someone else's observation.
+    // Update: same self-attribution check against the EXISTING doc
+    //   (resource.data.raterUid) — a rater can only amend their own doc.
     // Delete: director only.
     match /itc_observations/{docId} {
-      allow read: if isSignedIn();
-      allow create, update: if canAssess();
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.raterUid == request.auth.uid);
+      allow create: if canAssess() &&
+        request.resource.data.raterUid == request.auth.uid;
+      allow update: if canAssess() &&
+        resource.data.raterUid == request.auth.uid &&
+        request.resource.data.raterUid == request.auth.uid;
       allow delete: if isDirector();
     }
 

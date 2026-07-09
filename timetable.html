@@ -341,13 +341,21 @@
       ? `<a class="feedback-btn" href="session-feedback.html?session=${s.id}" onclick="event.stopPropagation()">📝 Rate candidates</a>`
       : "";
 
+    // ITC observation button — faculty/director only, on the two Sunday
+    // rotation blocks tagged "itc-observation" in programme-data.js.
+    const showItcObs = ["faculty","full-instructor","director"].includes(currentRole) && isITC;
+    const itcObsBtn = showItcObs
+      ? `<a class="feedback-btn" href="itc-observations.html?session=${s.id}" onclick="event.stopPropagation()">🔍 Observe ITC</a>`
+      : "";
+
     // Detail section (notes + resources + feedback button) — only if there's something to show
-    const hasDetail = notes || resources || feedbackBtn;
+    const hasDetail = notes || resources || feedbackBtn || itcObsBtn;
     const detailSection = hasDetail ? `
       <div class="session-detail" id="detail-${s.id}">
         ${notes}
         ${resources ? `<div class="resource-links">${resources}</div>` : ""}
         ${feedbackBtn}
+        ${itcObsBtn}
       </div>` : "";
 
     // Timer button (director only, non-break)
