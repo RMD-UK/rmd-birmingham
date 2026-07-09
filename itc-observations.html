@@ -236,15 +236,22 @@ const SCALE_LABELS = ["Needs development", "Developing", "Meeting expectations",
 //
 // admin-room-allocation.html's ITC Schedule tab stores rotation assignments in
 // config/itc_schedule under keys "sat_group" / "sat_conv" / "sun_teaching" /
-// "sun_assess" (see ITC_SESSIONS in that file). programme-data.js identifies
-// the same two Sunday blocks with the "itc-observation" tag on session ids
-// "sun-4" (Group Practice: Teaching) and "sun-10" (Group Practice: Continuous
-// Assessment). There is no shared key between the two files — this mapping is
-// inferred from matching session titles, not verified by any existing code
-// reference. If admin-room-allocation.html's ITC_SESSIONS labels or
-// programme-data.js's session ids change, update this map.
+// "sun_assess" (see ITC_SESSIONS in that file). Jon confirmed 2026-07-09 that
+// observation should run on exactly these three sessions (not the sat_group
+// block — Equipment Practice / BLS/AED / First Aid practice are excluded):
+//   sat_conv     → sat-20 (Group Practice: The Learning Conversation)
+//   sun_teaching → sun-4  (Group Practice: Teaching)
+//   sun_assess   → sun-10 (Group Practice: Continuous Assessment)
+// There is no shared key between the two files — this mapping is inferred
+// from matching session titles, not verified by any existing code reference.
+// If admin-room-allocation.html's ITC_SESSIONS labels or programme-data.js's
+// session ids change, update this map. Note config/itc_schedule still has a
+// sat_group column (ITCs still get a room assigned for that block) — it's
+// just not an observable session, so itc-observations.html has no entry
+// point for it and any rating logged against it would be orphaned.
 // ─────────────────────────────────────────────────────────────────────────────
 const SESSION_ID_TO_ITC_KEY = {
+  "sat-20": "sat_conv",
   "sun-4":  "sun_teaching",
   "sun-10": "sun_assess"
 };

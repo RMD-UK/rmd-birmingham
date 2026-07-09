@@ -656,6 +656,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/programme-data.js"></script>
 <script>
@@ -675,10 +676,26 @@ let presSlides = [];
 let presIndex  = 0;
 let notesSaveTimer;
 
+// ITC observation + AI summary state (config/itc_schedule, itc_observations, itc_summaries)
+let itcSchedule  = {};    // { itcs:[{name,email}], assignments:{email:{sat_group,...}} }
+let itcSummaries = {};    // { itcEmail: {summary, observationCount, generatedAt, ...} }
+let fns; // firebase.functions() — set in boot, after initFirebase()
+
+// Mirrors ITC_SESSIONS in admin-room-allocation.html — the 4 rotation blocks
+// ITCs are assigned rooms for. Duplicated locally (small, stable constant;
+// no shared module for it exists yet in this codebase).
+const ITC_SESSIONS = [
+  { key: "sat_group",    label: "Sat — Equipment/BLS/First Aid" },
+  { key: "sat_conv",     label: "Sat — Learning Conversation" },
+  { key: "sun_teaching", label: "Sun — Teaching" },
+  { key: "sun_assess",   label: "Sun — Continuous Assessment" }
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BOOT
 // ─────────────────────────────────────────────────────────────────────────────
 initFirebase();
+if (typeof firebase !== "undefined" && firebase.functions) fns = firebase.functions();
 
 window.addEventListener("load", () => {
   updateClock();
@@ -687,11 +704,13 @@ window.addEventListener("load", () => {
   requireDirector("timetable.html").then(async user => {
     currentUser = user;
 
-    await Promise.all([loadPeople(), loadFeedback(), loadDecisions()]);
+    await Promise.all([loadPeople(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries()]);
     renderOverview();
     renderProgramme("saturday");
     renderFeedback("saturday");
     renderMeetingSlides("saturday");
+    renderITCs();
+    renderItcSummaries();
     loadMeetingNotes();
     loadReport();
     watchAlerts();
@@ -733,6 +752,21 @@ async function loadDecisions() {
     const snap = await db.collection("decisions").get();
     snap.docs.forEach(d => { decisions[d.id] = d.data().decision; });
   } catch (e) { decisions = {}; }
+}
+
+async function loadItcSchedule() {
+  try {
+    const doc = await db.collection("config").doc("itc_schedule").get();
+    if (doc.exists) itcSchedule = doc.data();
+  } catch (e) { console.warn("ITC schedule load failed:", e.message); }
+}
+
+async function loadItcSummaries() {
+  try {
+    const snap = await db.collection("itc_summaries").get();
+    itcSummaries = {};
+    snap.docs.forEach(d => { itcSummaries[d.id] = d.data(); });
+  } catch (e) { console.warn("ITC summaries load failed:", e.message); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -893,39 +927,91 @@ function filterCandidates(val) { renderCandidates(val); }
 // ─────────────────────────────────────────────────────────────────────────────
 // ITCs
 // ─────────────────────────────────────────────────────────────────────────────
+// Real rotation tracker, sourced from config/itc_schedule (written by
+// admin-room-allocation.html's ITC Schedule tab). Replaces a previous
+// version of this card that showed a fabricated "currentRoom" field and
+// localStorage-only checkboxes with no link to real assignment or
+// observation data — found and corrected 2026-07-09 while wiring up the
+// real itc_observations / itc_summaries pipeline.
 function renderITCs() {
-  const itcs = allPeople.filter(p => p.role === ROLES.ITC);
-  const rooms = ["WF15", "WF19", "ATH", "Skills Lab"];
   const body = document.getElementById("itcBody");
+  const itcs = itcSchedule.itcs || [];
+  const assignments = itcSchedule.assignments || {};
 
   if (!itcs.length) {
-    body.innerHTML = `<div class="empty-msg">No ITCs found in people records.</div>`;
+    body.innerHTML = `<div class="empty-msg">No ITCs configured yet — set them up in Room Allocation → ITC Schedule.</div>`;
     return;
   }
 
-  body.innerHTML = itcs.map(itc => `
+  body.innerHTML = itcs.map(itc => {
+    const sched = assignments[itc.email] || {};
+    return `
     <div class="itc-row">
       <div>
         <div class="itc-name">${esc(itc.name)}</div>
-        <div class="itc-room">Current room: ${esc(itc.currentRoom || "Not assigned")}</div>
       </div>
       <div class="itc-check">
-        ${rooms.map(room => {
-          const key = `${itc.id}_${room}`;
-          const done = !!localStorage.getItem("itc_obs_" + key);
-          return `<div class="itc-cb ${done ? "done" : ""}" title="${room}" onclick="toggleItcObs('${itc.id}','${room}',this)">${done ? "✓" : room.substring(0,3)}</div>`;
+        ${ITC_SESSIONS.map(s => {
+          const room = sched[s.key];
+          return `<div class="itc-cb ${room ? "done" : ""}" style="width:auto;min-width:24px;padding:0 6px;" title="${esc(s.label)}${room ? ": " + esc(room) : " — not assigned"}">${room || "—"}</div>`;
         }).join("")}
       </div>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
-function toggleItcObs(itcId, room, el) {
-  const key = `itc_obs_${itcId}_${room}`;
-  const done = !el.classList.contains("done");
-  el.classList.toggle("done", done);
-  el.textContent = done ? "✓" : room.substring(0,3);
-  if (done) { localStorage.setItem(key, "1"); }
-  else       { localStorage.removeItem(key); }
+// ─────────────────────────────────────────────────────────────────────────────
+// ITC end-of-course AI summaries (item 3/4 of the ITC Observation spec)
+// ─────────────────────────────────────────────────────────────────────────────
+function renderItcSummaries() {
+  const body = document.getElementById("itcObsBody");
+  const itcs = itcSchedule.itcs || [];
+
+  if (!itcs.length) {
+    body.innerHTML = `<div class="empty-msg">Configure ITCs in Room Allocation first.</div>`;
+    return;
+  }
+
+  body.innerHTML = itcs.map(itc => {
+    const docId  = itc.email.replace(/[^a-z0-9]/g, "_");
+    const s      = itcSummaries[docId];
+    const genAt  = s?.generatedAt?.toDate ? s.generatedAt.toDate().toLocaleString() : null;
+
+    return `
+    <div class="itc-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="itc-name" style="flex:1;">${esc(itc.name)}</div>
+        <button class="btn-sm btn-primary" style="padding:6px 12px;font-size:12px;" id="genbtn-${docId}"
+          onclick="generateItcSummary('${itc.email}','${docId}')">
+          ${s ? "🔄 Regenerate summary" : "✨ Generate summary"}
+        </button>
+      </div>
+      ${s ? `
+        <div style="background:#F5F7FA;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.5;color:var(--rmd-text);white-space:pre-wrap;">${esc(s.summary)}</div>
+        <div style="font-size:11px;color:var(--rmd-muted);">Generated ${genAt || ""} · from ${s.observationCount} observation${s.observationCount === 1 ? "" : "s"}</div>
+      ` : `<div class="empty-msg" style="padding:8px 0;">No summary generated yet.</div>`}
+    </div>`;
+  }).join("");
+}
+
+async function generateItcSummary(itcEmail, docId) {
+  if (!fns) { alert("Firebase Functions not available in this browser session."); return; }
+  const btn = document.getElementById(`genbtn-${docId}`);
+  if (btn) { btn.disabled = true; btn.textContent = "Generating…"; }
+
+  try {
+    const call = fns.httpsCallable("generateItcSummary");
+    const res  = await call({ itcEmail });
+    itcSummaries[docId] = {
+      itcEmail, summary: res.data.summary, observationCount: res.data.observationCount,
+      generatedAt: { toDate: () => new Date() }
+    };
+    renderItcSummaries();
+  } catch (err) {
+    console.error("generateItcSummary failed:", err);
+    alert(`Couldn't generate summary: ${err.message || err.code || "unknown error"}`);
+    if (btn) { btn.disabled = false; btn.textContent = "✨ Generate summary"; }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

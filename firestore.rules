@@ -154,6 +154,17 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+    // ── ITC summaries (AI-generated) ────────────────────────────────────────
+    // Written only by the generateItcSummary Cloud Function via the Admin
+    // SDK, which bypasses these rules entirely — so "write: false" here is
+    // just belt-and-braces against any client ever writing directly.
+    // Read: director only — this is the collated, de-blinded view, so it
+    //   must stay behind the same gate as the raw itc_observations aggregate.
+    match /itc_summaries/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
     // ── Gateway assessments ─────────────────────────────────────────────────
     // Read: any signed-in user (candidate can see their own gateway outcome).
     // Create/update: faculty or director only — recordOutcome()/toggleFlag()/

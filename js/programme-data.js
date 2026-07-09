@@ -344,7 +344,7 @@ const PROGRAMME = {
         resources: [
           { title: "Session guide", path: "resources/instructor/4-learning-conversation-group-practice.docx", icon: "📄" }
         ],
-        tags: []
+        tags: ["itc-observation"]
       },
       {
         id: "sat-21",
