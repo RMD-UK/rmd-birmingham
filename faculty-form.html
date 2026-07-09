@@ -200,6 +200,42 @@
       color: var(--rmd-navy);
       margin-bottom: 16px;
     }
+
+    /* ── RMD Student Faculty "can't attend" shortcut ── */
+    .sf-decline-box {
+      background: #fff8e6;
+      border: 2px solid #f0c14b;
+      border-radius: 10px;
+      padding: 16px;
+      max-width: 640px;
+      margin: 16px auto;
+    }
+    .sf-decline-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #7b5800;
+      margin: 0 0 4px;
+    }
+    .sf-decline-sub {
+      font-size: 13px;
+      color: #8a6d00;
+      margin: 0 0 14px;
+    }
+    .sf-decline-box .field label { color: #7b5800; }
+    .btn-sf-decline {
+      width: 100%;
+      padding: 13px;
+      background: #c17a00;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+    }
+    .btn-sf-decline:hover { background: #a56600; }
+    .btn-sf-decline:disabled { background: #d8c8a0; cursor: default; }
   </style>
 </head>
 <body>
@@ -209,6 +245,27 @@
   <img src="assets/rmd-logo.png" alt="RMD logo">
   <h1>RMD Instructor Weekend 2026</h1>
   <p>Pre-course information · Birmingham Medical School · 9-11 October 2026</p>
+</div>
+
+<!-- RMD Student Faculty — obvious "can't attend" shortcut, no need to touch the form below -->
+<div class="sf-decline-box" id="sfDeclineBox">
+  <p class="sf-decline-title">Are you an RMD Student Faculty member who can't attend?</p>
+  <p class="sf-decline-sub">If so, just tell us who you are below and hit submit — no need to fill in the rest of this form.</p>
+  <div class="field-row">
+    <div class="field">
+      <label>First name</label>
+      <input type="text" id="sfDeclineFirstName" placeholder="e.g. Jane">
+    </div>
+    <div class="field">
+      <label>Last name</label>
+      <input type="text" id="sfDeclineLastName" placeholder="e.g. Smith">
+    </div>
+  </div>
+  <div class="field">
+    <label>Email address</label>
+    <input type="email" id="sfDeclineEmail" placeholder="your@email.com">
+  </div>
+  <button class="btn-sf-decline" id="sfDeclineBtn" onclick="submitStandaloneDecline()">Submit — I can't attend</button>
 </div>
 
 <!-- Progress strip -->
@@ -851,6 +908,53 @@ async function submitCannotAttend() {
   } catch (err) {
     btn.disabled    = false;
     btn.textContent = "Continue →";
+    alert("Submission failed — please check your connection and try again.\n\n" + err.message);
+  }
+}
+
+// ── Standalone "can't attend" box at the top of the page ──────────────────
+// A self-contained shortcut, independent of the section wizard below it —
+// name + email + submit. Writes the same declined record as the in-wizard
+// RMD Student Faculty flow, so both paths land in the same place.
+async function submitStandaloneDecline() {
+  const firstName = document.getElementById("sfDeclineFirstName").value.trim();
+  const lastName  = document.getElementById("sfDeclineLastName").value.trim();
+  const email     = document.getElementById("sfDeclineEmail").value.trim().toLowerCase();
+
+  if (!firstName || !lastName || !email || !email.includes("@")) {
+    alert("Please enter your first name, last name, and a valid email address.");
+    return;
+  }
+
+  const btn = document.getElementById("sfDeclineBtn");
+  btn.disabled    = true;
+  btn.textContent = "Submitting…";
+
+  const record = {
+    firstName, lastName, email,
+    role: "RMD Student Faculty",
+    attendanceStatus: "declined",
+    cannotAttend: true,
+    source: "faculty-form-2026-standalone-decline"
+  };
+
+  try {
+    const existing = await db.collection("faculty_responses").doc(emailDocId(email)).get();
+    record[existing.exists ? "updatedAt" : "submittedAt"] = firebase.firestore.FieldValue.serverTimestamp();
+
+    await db.collection("faculty_responses").doc(emailDocId(email)).set(record, { merge: true });
+
+    document.getElementById("sfDeclineBox").style.display = "none";
+    document.querySelector(".progress-strip").style.display = "none";
+    document.getElementById("section-0").classList.remove("active");
+    document.getElementById("navRow").style.display = "none";
+    document.getElementById("successHeading").textContent = "Thanks for letting us know";
+    document.getElementById("successMessage").textContent = "We've recorded that you won't be able to attend the Instructor Weekend. No further action needed.";
+    document.getElementById("successPage").style.display = "block";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = "Submit — I can't attend";
     alert("Submission failed — please check your connection and try again.\n\n" + err.message);
   }
 }
