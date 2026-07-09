@@ -134,7 +134,13 @@
     .badge-director   { background: #7b2d00; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-faculty    { background: #ddeeff; color: #0067A4; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-itc        { background: #e8f0fe; color: #3d52a0; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-logistics  { background: #fff3cd; color: #856404; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-hardcoded  { background: #f0f3f6; color: #637282; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+
+    .role-select {
+      font-size: 12px; padding: 5px 8px; border-radius: 6px; border: 1.5px solid #ccd6dd;
+      font-family: var(--font); color: var(--rmd-navy); background: white; cursor: pointer;
+    }
 
     .btn-promote {
       padding: 6px 14px; background: #7b2d00; color: white;
@@ -506,16 +512,28 @@ async function deleteResponse(docId, name) {
   }
 }
 
+const ASSIGNABLE_ROLES = ["Faculty", "ITC", "Course Logistics"];
+
+function roleBadgeHtml(r) {
+  if (isDirector(r.email)) return `<span class="badge-director">Course Director</span>`;
+  if (r.role === "ITC")               return `<span class="badge-itc">ITC</span>`;
+  if (r.role === "Course Logistics")  return `<span class="badge-logistics">Course Logistics</span>`;
+  return `<span class="badge-faculty">${r.role || "Faculty"}</span>`;
+}
+
+function roleSelectHtml(r, name) {
+  const safeName = (name || "").replace(/'/g, "\\'");
+  const opts = ASSIGNABLE_ROLES.map(role =>
+    `<option value="${role}" ${r.role === role ? "selected" : ""}>${role}</option>`).join("");
+  return `<select class="role-select" onchange="changeRole('${r.id}', this.value, '${safeName}')">${opts}</select>`;
+}
+
 function renderDirectors() {
   const makeRow = (r) => {
     const name   = fullName(r) || r.email;
     const dir    = isDirector(r.email);
     const hard   = isHardcoded(r.email);
-    const roleBadge = dir
-      ? `<span class="badge-director">Course Director</span>`
-      : r.role === "ITC"
-        ? `<span class="badge-itc">ITC</span>`
-        : `<span class="badge-faculty">Faculty</span>`;
+    const roleBadge = roleBadgeHtml(r);
 
     let actionBtn = "";
     if (r.role === "Faculty") {
@@ -527,24 +545,26 @@ function renderDirectors() {
         actionBtn = `<button class="btn-promote" onclick="makeDirector('${r.email}','${name}')">Make director</button>`;
       }
     } else {
-      actionBtn = `<span style="font-size:12px;color:var(--rmd-muted);">ITC — not applicable</span>`;
+      actionBtn = `<span style="font-size:12px;color:var(--rmd-muted);">${r.role || "Non-faculty"} — not applicable</span>`;
     }
 
     return `<tr>
       <td style="font-weight:700;color:var(--rmd-navy);">${name}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${roleBadge}</td>
+      <td>${roleSelectHtml(r, name)}</td>
       <td>${actionBtn}</td>
     </tr>`;
   };
 
   const allRows = allResponses.length
     ? allResponses.map(makeRow).join("")
-    : `<tr><td colspan="4" style="color:#aab8c2;text-align:center;padding:20px;">No faculty responses yet</td></tr>`;
+    : `<tr><td colspan="5" style="color:#aab8c2;text-align:center;padding:20px;">No faculty responses yet</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="info-banner">
-      <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. ITCs cannot be made directors here.
+      <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. ITCs and Course Logistics cannot be made directors here.
+      Use <strong>Reassign role</strong> to correct anyone who registered under the wrong option (e.g. said Faculty but should be ITC).
     </div>
     <div class="section-block">
       <div class="section-heading">Faculty who have responded (${allResponses.length})</div>
@@ -553,11 +573,31 @@ function renderDirectors() {
           <th>Name</th>
           <th>Email</th>
           <th>Self-declared role</th>
+          <th>Reassign role</th>
           <th>Platform access</th>
         </tr></thead>
         <tbody>${allRows}</tbody>
       </table>
     </div>`;
+}
+
+async function changeRole(docId, newRole, name) {
+  const r = allResponses.find(x => x.id === docId);
+  if (!r || newRole === r.role) return;
+  const oldRole = r.role || "(none)";
+  if (!confirm(`Change ${name}'s registered role from "${oldRole}" to "${newRole}"?`)) {
+    renderTab(currentTab); // reset the dropdown back to the stored value
+    return;
+  }
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ role: newRole });
+    r.role = newRole;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update role: " + err.message);
+    renderTab(currentTab);
+  }
 }
 
 function renderNameEmailTable(filtered, title, cols) {
