@@ -215,7 +215,10 @@
 <script src="js/firebase-config.js"></script>
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────
-const DIRECTOR_EMAILS = ["console_brews.6f@icloud.com", "j.hulme.1@bham.ac.uk"];
+// DIRECTOR_EMAILS is declared once in js/firebase-config.js, loaded above.
+// Re-declaring it here as a second top-level `const` throws a SyntaxError
+// (two <script> tags share one global scope) and silently kills this entire
+// script block — confirmed 2026-07-15. Do not redeclare it.
 
 const ITC_SESSIONS = [
   { key: "sat_group",    label: "Sat — Equipment Practice / BLS/AED / First Aid & Catastrophic Haemorrhage" },
@@ -244,20 +247,8 @@ let selectedEmail = null;
 ROOMS.forEach(r => { groups[r] = { faculty: null, candidates: [], instructors: [] }; });
 
 // ── Auth ───────────────────────────────────────────────────────────────────
-async function resolveRole(uid, email) {
-  try {
-    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
-    if (snap.exists && snap.data().role) return snap.data().role;
-  } catch(e) {}
-  const el = (email || "").toLowerCase();
-  if (DIRECTOR_EMAILS.includes(el)) return ROLES.DIRECTOR;
-  try {
-    const cfg = await db.collection("config").doc("platform").get();
-    const extra = cfg.exists ? (cfg.data().directors || []) : [];
-    if ([...DIRECTOR_EMAILS, ...extra.map(x => x.toLowerCase())].includes(el)) return ROLES.DIRECTOR;
-  } catch(e) {}
-  return null;
-}
+// resolveRole() is the shared one from js/firebase-config.js — do not
+// redeclare it locally (see note above re: duplicate DIRECTOR_EMAILS).
 
 initFirebase();
 

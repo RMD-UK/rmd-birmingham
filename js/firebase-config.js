@@ -61,21 +61,29 @@ const DIRECTOR_EMAILS = [
 ];
 
 // resolveRole(uid, email) → role string or null
-// 1. Checks people/{uid} in Firestore for role field
-// 2. Falls back to DIRECTOR_EMAILS check
-// 3. Falls back to config/platform directors array
+// 1. Checks DIRECTOR_EMAILS (hardcoded directors)
+// 2. Falls back to config/platform directors array
+// 3. Falls back to people/{uid} in Firestore for role field
 // db must be initialised before calling.
+//
+// Director checks run FIRST and win outright. This is deliberate: director
+// status granted via config/platform.directors (e.g. the "Make director"
+// button in admin-faculty-responses.html) must work even for someone who
+// already has a people/{uid} record with an unrelated role (faculty,
+// instructor, etc. — true for most bulk-imported staff). Checking people/{uid}
+// first, as this used to, silently masked director promotion for anyone
+// already in the people collection.
 async function resolveRole(uid, email) {
-  try {
-    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
-    if (snap.exists && snap.data().role) return snap.data().role;
-  } catch(e) {}
   const el = (email || "").toLowerCase();
   if (DIRECTOR_EMAILS.map(x => x.toLowerCase()).includes(el)) return ROLES.DIRECTOR;
   try {
     const cfg = await db.collection("config").doc("platform").get();
     const extra = cfg.exists ? (cfg.data().directors || []) : [];
     if (extra.map(x => x.toLowerCase()).includes(el)) return ROLES.DIRECTOR;
+  } catch(e) {}
+  try {
+    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
+    if (snap.exists && snap.data().role) return snap.data().role;
   } catch(e) {}
   return null;
 }

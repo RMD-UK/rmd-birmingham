@@ -53,7 +53,12 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
-  const DIRECTOR_EMAILS = ["console_brews.6f@icloud.com"];
+  // DIRECTOR_EMAILS/resolveRole are declared once in js/firebase-config.js,
+  // loaded above. Re-declaring DIRECTOR_EMAILS here as a second top-level
+  // `const` throws a SyntaxError (two <script> tags share one global scope)
+  // and silently kills this ENTIRE script block — the login form handler,
+  // the candidate QR check-in, everything. Confirmed 2026-07-15. Do not
+  // redeclare either identifier in this file.
 
   initFirebase();
 
@@ -115,20 +120,8 @@
     }
   }
 
-  async function resolveRole(uid, email) {
-    try {
-      const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
-      if (snap.exists && snap.data().role) return snap.data().role;
-    } catch (e) { /* continue */ }
-    try {
-      const configSnap = await db.collection("config").doc("platform").get();
-      const firestoreDirectors = configSnap.exists ? (configSnap.data().directors || []) : [];
-      const allDirectors = [...DIRECTOR_EMAILS, ...firestoreDirectors.map(x => x.toLowerCase())];
-      if (allDirectors.includes(email)) return "director";
-    } catch (e) { /* continue */ }
-    if (DIRECTOR_EMAILS.includes(email)) return "director";
-    return "faculty";
-  }
+  // resolveRole() is the shared one from js/firebase-config.js — do not
+  // redeclare it locally (see note above re: duplicate DIRECTOR_EMAILS).
 
   function routeByRole(role) {
     window.location.href = "timetable.html";
