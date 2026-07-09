@@ -263,10 +263,20 @@
       <button class="option-btn" data-value="Faculty" onclick="selectOption('role','Faculty',this)">Faculty</button>
       <button class="option-btn" data-value="ITC" onclick="selectOption('role','ITC',this)">ITC</button>
       <button class="option-btn" data-value="Course Logistics" onclick="selectOption('role','Course Logistics',this)">Course Logistics</button>
+      <button class="option-btn" data-value="RMD Student Faculty" onclick="selectOption('role','RMD Student Faculty',this)">RMD Student Faculty</button>
     </div>
   </div>
 
-  <div class="field">
+  <div class="field" id="sfAttendField" style="display:none;">
+    <label>Will you be attending the Instructor Weekend? <span class="req">*</span></label>
+    <div class="option-group" id="sfAttendGroup">
+      <button class="option-btn" data-value="yes" onclick="selectSfAttend('yes',this)">Yes, I'll attend</button>
+      <button class="option-btn" data-value="no" onclick="selectSfAttend('no',this)">No, I can't attend</button>
+    </div>
+    <div class="hint-text" id="sfAttendHint" style="display:none;">No problem — press Continue and we'll record that you can't make it. You won't need to fill in anything else.</div>
+  </div>
+
+  <div class="field" id="daysField">
     <label>Which days will you attend? <span class="req">*</span></label>
     <div class="option-group">
       <button class="option-btn" id="day-fri" onclick="toggleDay('friday',this)">Friday 9 Oct</button>
@@ -440,7 +450,8 @@ const state = {
   days:  { friday: false, saturday: false, sunday: false },
   meals: { friday: "", saturday: "" },
   accom: { friday: "", saturday: "" },
-  ercQualification: "", ercCorrect: ""
+  ercQualification: "", ercCorrect: "",
+  sfAttending: ""
 };
 
 // ── Generic single-select option ──────────────────────────────────────────
@@ -456,6 +467,30 @@ function selectOption(key, value, btn) {
   if (key === "ercQualification") {
     document.getElementById("ercOtherField").style.display = value === "Other" ? "block" : "none";
   }
+  if (key === "role") {
+    const isStudentFaculty = value === "RMD Student Faculty";
+    document.getElementById("sfAttendField").style.display = isStudentFaculty ? "block" : "none";
+    if (!isStudentFaculty) {
+      state.sfAttending = "";
+      document.getElementById("sfAttendHint").style.display = "none";
+      document.querySelectorAll("#sfAttendGroup .option-btn").forEach(b => b.classList.remove("selected","selected-yes","selected-no"));
+    }
+    updateDaysFieldVisibility();
+  }
+}
+
+// ── RMD Student Faculty attendance sub-question ──────────────────────────
+function selectSfAttend(value, btn) {
+  state.sfAttending = value;
+  document.querySelectorAll("#sfAttendGroup .option-btn").forEach(b => b.classList.remove("selected","selected-yes","selected-no"));
+  btn.classList.add(value === "yes" ? "selected-yes" : "selected-no");
+  document.getElementById("sfAttendHint").style.display = value === "no" ? "block" : "none";
+  updateDaysFieldVisibility();
+}
+
+function updateDaysFieldVisibility() {
+  const hide = state.role === "RMD Student Faculty" && state.sfAttending === "no";
+  document.getElementById("daysField").style.display = hide ? "none" : "block";
 }
 
 // ── ERC correct / needs correcting ───────────────────────────────────────
@@ -505,6 +540,11 @@ async function nextSection() {
     btn.textContent = originalText;
   }
 
+  if (currentSection === 1 && state.role === "RMD Student Faculty" && state.sfAttending === "no") {
+    submitCannotAttend();
+    return;
+  }
+
   if (currentSection === TOTAL_SECTIONS - 1) { submitForm(); return; }
   goToSection(currentSection + 1);
 }
@@ -552,6 +592,14 @@ function prefillForm(data) {
   if (data.role) {
     state.role = data.role;
     selectButtonByValue(document.getElementById("roleGroup"), data.role);
+  }
+  if (data.role === "RMD Student Faculty") {
+    document.getElementById("sfAttendField").style.display = "block";
+    const inferredAttend = data.attendanceStatus === "declined" ? "no" : "yes";
+    state.sfAttending = inferredAttend;
+    const sfBtn = document.querySelector(`#sfAttendGroup .option-btn[data-value="${inferredAttend}"]`);
+    if (sfBtn) sfBtn.classList.add(inferredAttend === "yes" ? "selected-yes" : "selected-no");
+    document.getElementById("sfAttendHint").style.display = inferredAttend === "no" ? "block" : "none";
   }
 
   // Days
@@ -627,6 +675,7 @@ function prefillForm(data) {
   document.getElementById("travelNotes").value         = data.travelNotes        || "";
   document.getElementById("otherNotes").value          = data.otherNotes         || "";
 
+  updateDaysFieldVisibility();
   showEditingBanner();
 }
 
@@ -679,7 +728,12 @@ function validateSection(n) {
   }
   if (n === 1) {
     if (!state.role) { alert("Please select your role."); return false; }
-    if (!state.days.friday && !state.days.saturday && !state.days.sunday) {
+    if (state.role === "RMD Student Faculty") {
+      if (!state.sfAttending) { alert("Please tell us whether you'll be attending."); return false; }
+      if (state.sfAttending === "yes" && !state.days.friday && !state.days.saturday && !state.days.sunday) {
+        alert("Please select at least one day."); return false;
+      }
+    } else if (!state.days.friday && !state.days.saturday && !state.days.sunday) {
       alert("Please select at least one day."); return false;
     }
   }
@@ -754,6 +808,49 @@ async function submitForm() {
   } catch (err) {
     btn.disabled    = false;
     btn.textContent = "Submit →";
+    alert("Submission failed — please check your connection and try again.\n\n" + err.message);
+  }
+}
+
+// ── RMD Student Faculty "can't attend" short-circuit submit ───────────────
+// Skips ERC/meals/accommodation/other sections entirely — only personal
+// details, role, and the attendance answer are recorded.
+async function submitCannotAttend() {
+  const btn = document.getElementById("nextBtn");
+  btn.disabled    = true;
+  btn.textContent = "Submitting…";
+
+  const email = document.getElementById("email").value.trim().toLowerCase();
+  const record = {
+    firstName:  document.getElementById("firstName").value.trim(),
+    middleName: document.getElementById("middleName").value.trim(),
+    lastName:   document.getElementById("lastName").value.trim(),
+    email:      email,
+    role:       "RMD Student Faculty",
+    attendanceStatus: "declined",
+    cannotAttend: true,
+    source: "faculty-form-2026"
+  };
+
+  if (existingDocId) {
+    record.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+  } else {
+    record.submittedAt = firebase.firestore.FieldValue.serverTimestamp();
+  }
+
+  try {
+    await db.collection("faculty_responses").doc(emailDocId(email)).set(record, { merge: true });
+    document.getElementById("section-" + currentSection).classList.remove("active");
+    document.getElementById("navRow").style.display = "none";
+    document.querySelector(".progress-strip").style.display = "none";
+    document.getElementById("editingBannerContainer").innerHTML = "";
+    document.getElementById("successHeading").textContent = "Thanks for letting us know";
+    document.getElementById("successMessage").textContent = "We've recorded that you won't be able to attend the Instructor Weekend. No further action needed.";
+    document.getElementById("successPage").style.display = "block";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = "Continue →";
     alert("Submission failed — please check your connection and try again.\n\n" + err.message);
   }
 }
