@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Members — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+    /* ── Top bar (matches site-info.html) ── */
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .top-bar img { height: 32px; border-radius: 50%; background: white; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub   { font-size: 11px; font-weight: 400; opacity: 0.7; display: block; }
+    .role-pill {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.18);
+      color: white;
+      letter-spacing: 0.02em;
+    }
+    .top-bar-signout {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.35);
+      color: white;
+      font-size: 12px;
+      font-family: var(--font);
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .top-bar-signout:hover { background: rgba(255,255,255,0.12); }
+
+    /* ── Welcome banner ── */
+    .welcome-banner {
+      background: linear-gradient(135deg, var(--rmd-navy) 0%, var(--rmd-blue) 100%);
+      color: white;
+      padding: 20px 16px 24px;
+    }
+    .welcome-name { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
+    .welcome-sub  { font-size: 13px; opacity: 0.78; }
+
+    /* ── Content wrap ── */
+    .wrap { max-width: 680px; margin: 0 auto; padding: 16px 14px 0; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--rmd-muted);
+      margin: 20px 0 8px;
+    }
+    .section-label:first-child { margin-top: 4px; }
+
+    /* ── Menu action card ── */
+    .action-card {
+      background: white;
+      border: 1px solid #e2e8ed;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 10px;
+      text-decoration: none;
+      transition: box-shadow 0.15s, transform 0.15s;
+    }
+    .action-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); transform: translateY(-1px); }
+    .action-card-icon  { font-size: 26px; flex-shrink: 0; }
+    .action-card-text  { flex: 1; }
+    .action-card-title { font-size: 15px; font-weight: 800; color: var(--rmd-navy); }
+    .action-card-sub   { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
+    .action-card-arrow { font-size: 20px; color: var(--rmd-muted); }
+
+    /* Director / faculty tools use a filled variant to stand apart visually */
+    .action-card.is-admin {
+      background: var(--rmd-navy);
+      border-color: var(--rmd-navy);
+    }
+    .action-card.is-admin .action-card-title { color: white; }
+    .action-card.is-admin .action-card-sub   { color: rgba(255,255,255,0.7); }
+    .action-card.is-admin .action-card-arrow { color: rgba(255,255,255,0.5); }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="top-bar">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <div class="top-bar-title">
+    RMD Birmingham
+    <span class="top-bar-sub">Members</span>
+  </div>
+  <span class="role-pill" id="rolePill">Loading…</span>
+  <button class="top-bar-signout" onclick="handleSignOut()">Sign out</button>
+</div>
+
+<!-- ── Welcome banner ── -->
+<div class="welcome-banner">
+  <div class="welcome-name" id="welcomeName">Welcome</div>
+  <div class="welcome-sub">Your quick links are below.</div>
+</div>
+
+<div class="wrap">
+
+  <div class="section-label">Your links</div>
+
+  <a class="action-card" id="iwLink" href="site-info.html">
+    <div class="action-card-icon">📋</div>
+    <div class="action-card-text">
+      <div class="action-card-title">RMD Instructor Weekend</div>
+      <div class="action-card-sub">Course info, timetable and your programme</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <a class="action-card" href="mou-form.html">
+    <div class="action-card-icon">📜</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Memorandum of Understanding</div>
+      <div class="action-card-sub">Submit or review your annual MOU</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <a class="action-card" id="resourcesLink" href="site-info.html#courseMaterials">
+    <div class="action-card-icon">📚</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Resources</div>
+      <div class="action-card-sub">Slide decks and session guides</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <a class="action-card" href="faculty-directory.html">
+    <div class="action-card-icon">👥</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Faculty Directory</div>
+      <div class="action-card-sub">Student and senior faculty listings</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <!-- ── Faculty / director tools ── -->
+  <div class="section-label hidden" id="facultySectionLabel">Faculty tools</div>
+
+  <a class="action-card hidden" id="itcObsLink" href="itc-observations.html">
+    <div class="action-card-icon">🎯</div>
+    <div class="action-card-text">
+      <div class="action-card-title">ITC Observations</div>
+      <div class="action-card-sub">Rate and log instructor trainer candidates</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <!-- ── Director-only tools ── -->
+  <div class="section-label hidden" id="directorSectionLabel">Director tools</div>
+
+  <a class="action-card is-admin hidden" id="cdDashboardLink" href="cd-dashboard.html">
+    <div class="action-card-icon">🛠</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Course Director Dashboard</div>
+      <div class="action-card-sub">Registrations, rooms, MOU tracking, bulk accounts</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+</div><!-- /.wrap -->
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+  initFirebase();
+
+  // Same convention as site-info.html: roles that see faculty-level tools
+  const FACULTY_ROLES = new Set(["director", "faculty", "full-instructor", "instructor", "itc"]);
+
+  // Mirrors ROLE_LABELS in timetable.html / attendance.html — kept in sync
+  // manually since it isn't shared via firebase-config.js.
+  const ROLE_LABELS = {
+    director:          "Course Director",
+    faculty:           "Faculty",
+    "full-instructor": "Full Instructor",
+    instructor:        "Instructor Candidate",
+    assessor:          "Assessor Candidate",
+    itc:               "ITC"
+  };
+
+  auth.onAuthStateChanged(async function (user) {
+    if (!user) {
+      window.location.href = "signin.html";
+      return;
+    }
+
+    let role = "instructor";
+    try {
+      role = (await resolveRole(user.uid, user.email || "")) || role;
+    } catch (e) { /* fall back to default role */ }
+
+    try {
+      const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (snap.exists && snap.data().name) {
+        document.getElementById("welcomeName").textContent = `Welcome, ${snap.data().name.split(" ")[0]}`;
+      }
+    } catch (e) { /* keep generic welcome */ }
+
+    applyRole(role);
+  });
+
+  function applyRole(role) {
+    document.getElementById("rolePill").textContent = (ROLE_LABELS && ROLE_LABELS[role]) || role;
+
+    // Carry role through to pages that read it from the URL
+    document.getElementById("iwLink").href        = `site-info.html?role=${role}`;
+    document.getElementById("resourcesLink").href = `site-info.html?role=${role}#courseMaterials`;
+
+    if (role === "director" || FACULTY_ROLES.has(role)) {
+      document.getElementById("facultySectionLabel").classList.remove("hidden");
+      document.getElementById("itcObsLink").classList.remove("hidden");
+      document.getElementById("itcObsLink").href = `itc-observations.html?role=${role}`;
+    }
+
+    if (role === "director") {
+      document.getElementById("directorSectionLabel").classList.remove("hidden");
+      document.getElementById("cdDashboardLink").classList.remove("hidden");
+    }
+  }
+
+  function handleSignOut() {
+    auth.signOut().then(() => { window.location.href = "index.html"; });
+  }
+</script>
+</body>
+</html>
