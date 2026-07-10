@@ -30,7 +30,7 @@
 
 <div class="content-wrap">
 
-  <a href="rmd-birmingham.html" class="back-link">← Back to RMD Birmingham</a>
+  <a href="rmd-birmingham.html" class="back-link" id="backLink">← Back to RMD Birmingham</a>
 
   <div class="faculty-toggle">
     <a id="tabStudent" href="faculty.html?group=student">Student Faculty</a>
@@ -151,6 +151,20 @@
 
   const params = new URLSearchParams(window.location.search);
   const group  = params.get("group") === "senior" ? "senior" : "student";
+
+  // Reached from the signed-in members menu vs. the public RMD Birmingham
+  // page — keep both the back-link and the student/senior tabs pointing at
+  // wherever the visitor actually came from, so tabbing between groups
+  // doesn't lose that context.
+  const fromMembers = params.get("from") === "members";
+  const fromSuffix  = fromMembers ? "&from=members" : "";
+  if (fromMembers) {
+    const backLink = document.getElementById("backLink");
+    backLink.href = "member-menu.html";
+    backLink.textContent = "← Back to members menu";
+  }
+  document.getElementById("tabStudent").href = "faculty.html?group=student" + fromSuffix;
+  document.getElementById("tabSenior").href  = "faculty.html?group=senior" + fromSuffix;
 
   document.getElementById("rosterYear").textContent = ROSTER_YEAR;
   document.getElementById("tab" + (group === "senior" ? "Senior" : "Student")).classList.add("active");
