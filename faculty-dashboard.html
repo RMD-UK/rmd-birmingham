@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Organising Faculty Dashboard — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+    .back-btn {
+      color: rgba(255,255,255,0.85);
+      text-decoration: none;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .back-btn:hover { color: white; }
+    .wrap { max-width: 680px; margin: 0 auto; padding: 16px 14px 0; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+      padding: 24px 22px;
+      margin-bottom: 14px;
+    }
+    .card h1 { font-size: 19px; color: var(--rmd-navy); margin: 0 0 8px; }
+    .card p { font-size: 14px; color: var(--rmd-muted); line-height: 1.6; margin: 8px 0 0; }
+    .pending-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #8a5a00;
+      background: #fff3d6;
+      border: 1px solid #f0c96a;
+      border-radius: 999px;
+      padding: 4px 10px;
+      margin-bottom: 12px;
+    }
+    #authMsg { font-size: 13px; color: var(--rmd-warn); font-weight: 600; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a class="back-btn" href="member-menu.html">← Menu</a>
+  <div class="top-bar-title">Organising Faculty Dashboard</div>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <span class="pending-badge">Placeholder</span>
+    <h1>Tools for running Semesters 1 &amp; 2</h1>
+    <p>This dashboard is for organising faculty — separate from the Course Director Dashboard, which covers the annual Instructor Weekend. It'll hold the tools for running the ongoing Provider Course sessions across the academic year: rotas, session sign-up, room bookings and delivery tracking.</p>
+    <p>Nothing is built here yet. Contact the Course Director with what you need this dashboard to do.</p>
+    <p id="authMsg"></p>
+  </div>
+</div>
+
+<!-- Firebase SDK — gated to director/faculty only, matching the member-menu.html visibility rule -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+  initFirebase();
+  auth.onAuthStateChanged(async function (user) {
+    if (!user) { window.location.href = "signin.html"; return; }
+    const role = await resolveRole(user.uid, user.email || "");
+    if (role !== ROLES.DIRECTOR && role !== ROLES.FACULTY) {
+      document.getElementById("authMsg").textContent = "Organising faculty only.";
+      setTimeout(function () { window.location.href = "member-menu.html"; }, 1500);
+    }
+  });
+</script>
+
+</body>
+</html>

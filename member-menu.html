@@ -168,14 +168,14 @@
     <div class="action-card-arrow">›</div>
   </a>
 
-  <!-- ── Faculty / director tools ── -->
-  <div class="section-label hidden" id="facultySectionLabel">Faculty tools</div>
+  <!-- ── Organising faculty tools ── -->
+  <div class="section-label hidden" id="orgFacultySectionLabel">Organising faculty tools</div>
 
-  <a class="action-card hidden" id="itcObsLink" href="itc-observations.html">
-    <div class="action-card-icon">🎯</div>
+  <a class="action-card is-admin hidden" id="facultyDashboardLink" href="faculty-dashboard.html">
+    <div class="action-card-icon">🗂</div>
     <div class="action-card-text">
-      <div class="action-card-title">ITC Observations</div>
-      <div class="action-card-sub">Rate and log instructor trainer candidates</div>
+      <div class="action-card-title">Organising Faculty Dashboard</div>
+      <div class="action-card-sub">Semester 1 &amp; 2 session running tools</div>
     </div>
     <div class="action-card-arrow">›</div>
   </a>
@@ -187,7 +187,7 @@
     <div class="action-card-icon">🛠</div>
     <div class="action-card-text">
       <div class="action-card-title">Course Director Dashboard</div>
-      <div class="action-card-sub">Registrations, rooms, MOU tracking, bulk accounts</div>
+      <div class="action-card-sub">Instructor Weekend: registrations, rooms, MOU tracking, bulk accounts</div>
     </div>
     <div class="action-card-arrow">›</div>
   </a>
@@ -201,9 +201,6 @@
 <script src="js/firebase-config.js"></script>
 <script>
   initFirebase();
-
-  // Same convention as site-info.html: roles that see faculty-level tools
-  const FACULTY_ROLES = new Set(["director", "faculty", "full-instructor", "instructor", "itc"]);
 
   // Mirrors ROLE_LABELS in timetable.html / attendance.html — kept in sync
   // manually since it isn't shared via firebase-config.js.
@@ -243,10 +240,11 @@
     // Carry role through to pages that read it from the URL
     document.getElementById("iwLink").href = `site-info.html?role=${role}`;
 
-    if (role === "director" || FACULTY_ROLES.has(role)) {
-      document.getElementById("facultySectionLabel").classList.remove("hidden");
-      document.getElementById("itcObsLink").classList.remove("hidden");
-      document.getElementById("itcObsLink").href = `itc-observations.html?role=${role}`;
+    // Organising Faculty Dashboard — director + faculty only (placeholder page
+    // for semester 1 & 2 tools, separate from the Course Director Dashboard).
+    if (role === "director" || role === "faculty") {
+      document.getElementById("orgFacultySectionLabel").classList.remove("hidden");
+      document.getElementById("facultyDashboardLink").classList.remove("hidden");
     }
 
     if (role === "director") {
