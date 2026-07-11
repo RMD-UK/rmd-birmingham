@@ -284,8 +284,12 @@ async function loadData() {
   } catch(e) { console.warn("Roster load failed:", e.message); }
 
   // ② Confirmed IW attendees from faculty_responses
-  //   Faculty role → room-lead dropdown (allFaculty) + pool if full-instructor (allInstructors)
+  //   Faculty or Instructor Trainer role → room-lead dropdown (allFaculty) + pool if full-instructor (allInstructors)
   //   ITC role → ITC picker only (via allPeople)
+  //   Note: "Instructor Trainer" and "Assessor Faculty" were added as distinct faculty-form.html
+  //   role options 2026-07-11 (previously Instructor Trainers had to pick "Faculty" as the closest
+  //   fit). Assessor Faculty are deliberately NOT added to this gate — this tool is instructor-track
+  //   room allocation only, it has no assessor-day equivalent yet.
   try {
     const fSnap = await db.collection("faculty_responses").get();
     fSnap.forEach(doc => {
@@ -295,9 +299,9 @@ async function loadData() {
       const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || em;
       const p   = { name, email: em };
       if (!allPeople.some(x => x.email === em)) allPeople.push(p);
-      if (d.role === "Faculty") {
-        allFaculty.push(p);  // all Faculty respondents → room-lead dropdown
-        if (rosterRoleByEmail[em] === "full-instructor") {
+      if (d.role === "Faculty" || d.role === "Instructor Trainer") {
+        allFaculty.push(p);  // all Faculty/Instructor Trainer respondents → room-lead dropdown
+        if (rosterRoleByEmail[em] === "full-instructor" || d.role === "Instructor Trainer") {
           allInstructors.push(p);  // full instructors also go in the room pool
         }
       }

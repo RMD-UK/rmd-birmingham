@@ -513,12 +513,11 @@ async function deleteResponse(docId, name) {
   }
 }
 
-const ASSIGNABLE_ROLES = ["Faculty", "Instructor Trainer Candidate", "Course Logistics", "RMD Student Faculty"];
+const ASSIGNABLE_ROLES = ["Faculty", "Instructor Trainer", "Assessor Faculty", "Instructor Trainer Candidate", "RMD Student Faculty"];
 
 function roleBadgeHtml(r) {
   if (isDirector(r.email)) return `<span class="badge-director">Course Director</span>`;
   if (r.role === "Instructor Trainer Candidate") return `<span class="badge-itc">ITC</span>`;
-  if (r.role === "Course Logistics")     return `<span class="badge-logistics">Course Logistics</span>`;
   if (r.role === "RMD Student Faculty")  return `<span class="badge-student">RMD Student Faculty</span>`;
   return `<span class="badge-faculty">${r.role || "Faculty"}</span>`;
 }
@@ -537,15 +536,23 @@ function renderDirectors() {
     const hard   = isHardcoded(r.email);
     const roleBadge = roleBadgeHtml(r);
 
+    // Gate was originally "r.role === 'Faculty'" only, from back when Faculty was the
+    // only senior self-declared role. Now that Instructor Trainer, Assessor Faculty and
+    // Director are distinct picker options (2026-07-11), that gate would (a) hide the
+    // demote button from someone who IS already a real director (isDirector(email)===true)
+    // but self-declared role "Director" rather than "Faculty", and (b) block promoting
+    // Instructor Trainers/Assessor Faculty even though they're senior roles too.
+    // `dir` (isDirector) is the actual access source of truth — checked first, independent
+    // of self-declared role — so a real director always gets the correct demote/permanent
+    // treatment regardless of what they picked on the form.
+    const seniorTier = ["Faculty", "Instructor Trainer", "Assessor Faculty", "Director"].includes(r.role);
     let actionBtn = "";
-    if (r.role === "Faculty") {
-      if (hard) {
-        actionBtn = `<span class="badge-hardcoded">Permanent director</span>`;
-      } else if (dir) {
-        actionBtn = `<button class="btn-demote" onclick="removeDirector('${r.email}','${name}')">Remove director</button>`;
-      } else {
-        actionBtn = `<button class="btn-promote" onclick="makeDirector('${r.email}','${name}')">Make director</button>`;
-      }
+    if (dir) {
+      actionBtn = hard
+        ? `<span class="badge-hardcoded">Permanent director</span>`
+        : `<button class="btn-demote" onclick="removeDirector('${r.email}','${name}')">Remove director</button>`;
+    } else if (seniorTier) {
+      actionBtn = `<button class="btn-promote" onclick="makeDirector('${r.email}','${name}')">Make director</button>`;
     } else {
       actionBtn = `<span style="font-size:12px;color:var(--rmd-muted);">${r.role || "Non-faculty"} — not applicable</span>`;
     }
@@ -565,7 +572,7 @@ function renderDirectors() {
 
   document.getElementById("tabContent").innerHTML = `
     <div class="info-banner">
-      <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. Instructor Trainer Candidates and Course Logistics cannot be made directors here.
+      <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. Instructor Trainer Candidates cannot be made directors here.
       Use <strong>Reassign role</strong> to correct anyone who registered under the wrong option (e.g. said Faculty but should be Instructor Trainer Candidate).
     </div>
     <div class="section-block">
