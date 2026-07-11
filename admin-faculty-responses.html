@@ -354,7 +354,7 @@ function updateSummary() {
   document.getElementById("sum-sat-accom").textContent  = r.filter(x => x.accommodation && x.accommodation.saturday === "yes").length;
   document.getElementById("sum-dietary").textContent    = r.filter(x => x.diet && x.diet !== "None" && x.diet !== "").length;
   document.getElementById("sum-erc-fix").textContent    = r.filter(x => x.ercCorrectlyListed === "no").length;
-  document.getElementById("sum-itc").textContent        = r.filter(x => x.role === "ITC").length;
+  document.getElementById("sum-itc").textContent        = r.filter(x => x.role === "Instructor Trainer Candidate").length;
   document.getElementById("sum-confirmed").textContent  = r.filter(x => x.attendanceStatus === "confirmed").length;
   document.getElementById("sum-declined").textContent   = r.filter(x => x.attendanceStatus === "declined").length;
 }
@@ -410,7 +410,7 @@ function getFiltered() {
     case "sat-accom":  return allResponses.filter(r => r.accommodation && r.accommodation.saturday === "yes");
     case "dietary":    return allResponses.filter(r => r.diet && r.diet !== "None" && r.diet !== "");
     case "erc":        return allResponses.filter(r => r.ercCorrectlyListed === "no");
-    case "itc":        return allResponses.filter(r => r.role === "ITC");
+    case "itc":        return allResponses.filter(r => r.role === "Instructor Trainer Candidate");
     case "confirmed":  return allResponses.filter(r => r.attendanceStatus === "confirmed");
     case "declined":   return allResponses.filter(r => r.attendanceStatus === "declined");
     default:           return allResponses;
@@ -513,11 +513,11 @@ async function deleteResponse(docId, name) {
   }
 }
 
-const ASSIGNABLE_ROLES = ["Faculty", "ITC", "Course Logistics", "RMD Student Faculty"];
+const ASSIGNABLE_ROLES = ["Faculty", "Instructor Trainer Candidate", "Course Logistics", "RMD Student Faculty"];
 
 function roleBadgeHtml(r) {
   if (isDirector(r.email)) return `<span class="badge-director">Course Director</span>`;
-  if (r.role === "ITC")                  return `<span class="badge-itc">ITC</span>`;
+  if (r.role === "Instructor Trainer Candidate") return `<span class="badge-itc">ITC</span>`;
   if (r.role === "Course Logistics")     return `<span class="badge-logistics">Course Logistics</span>`;
   if (r.role === "RMD Student Faculty")  return `<span class="badge-student">RMD Student Faculty</span>`;
   return `<span class="badge-faculty">${r.role || "Faculty"}</span>`;
@@ -565,8 +565,8 @@ function renderDirectors() {
 
   document.getElementById("tabContent").innerHTML = `
     <div class="info-banner">
-      <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. ITCs and Course Logistics cannot be made directors here.
-      Use <strong>Reassign role</strong> to correct anyone who registered under the wrong option (e.g. said Faculty but should be ITC).
+      <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. Instructor Trainer Candidates and Course Logistics cannot be made directors here.
+      Use <strong>Reassign role</strong> to correct anyone who registered under the wrong option (e.g. said Faculty but should be Instructor Trainer Candidate).
     </div>
     <div class="section-block">
       <div class="section-heading">Faculty who have responded (${allResponses.length})</div>
@@ -680,7 +680,7 @@ function renderERC() {
 }
 
 function renderITC() {
-  const itcs = allResponses.filter(r => r.role === "ITC");
+  const itcs = allResponses.filter(r => r.role === "Instructor Trainer Candidate");
   setFilterLabel(`${itcs.length} ITC(s)`);
 
   const rows = itcs.length

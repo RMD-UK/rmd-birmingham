@@ -730,11 +730,12 @@ async function loadPeople() {
     allPeople = [
       { id: "c1", name: "Alice Tan",    role: "instructor", stream: "Instructor Candidate", group: "Group 1" },
       { id: "c2", name: "Ben Osei",     role: "instructor", stream: "Instructor Candidate", group: "Group 1" },
-      { id: "c3", name: "Cara Patel",   role: "assessor",   stream: "Assessor Candidate",   group: "Group 2" },
+      { id: "c3", name: "Cara Patel",   role: "assessor",   stream: "Assessor / Senior Instructor", group: "Group 2" },
       { id: "c4", name: "Dan Williams", role: "instructor", stream: "Instructor Candidate", group: "Group 2" },
-      { id: "i1", name: "Dr Emma Singh",role: "itc",        stream: "ITC",                  group: "" },
+      { id: "i1", name: "Dr Emma Singh",role: "itc",        stream: "Instructor Trainer Candidate", group: "" },
       { id: "f1", name: "Dr James Liu", role: "faculty",    stream: "Faculty",              group: "Group 1" },
-      { id: "f2", name: "Dr Yemi Addo", role: "full-instructor", stream: "Full Instructor", group: "Group 2" }
+      { id: "f2", name: "Dr Yemi Addo", role: "full-instructor", stream: "Instructor Trainer", group: "Group 2" },
+      { id: "f3", name: "Dr Priya Nair",role: "assessor-faculty", stream: "Assessor Faculty", group: "" }
     ];
   }
 }
@@ -775,7 +776,7 @@ async function loadItcSummaries() {
 // ─────────────────────────────────────────────────────────────────────────────
 function renderOverview() {
   const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(p.role));
-  const faculty    = allPeople.filter(p => [ROLES.FACULTY, ROLES.FULL_INSTRUCTOR, ROLES.ITC].includes(p.role));
+  const faculty    = allPeople.filter(p => [ROLES.FACULTY, ROLES.FULL_INSTRUCTOR, ROLES.ITC, ROLES.ASSESSOR_FACULTY].includes(p.role));
 
   const ratings = feedbackData.map(f => f.rating);
   const green   = ratings.filter(r => r === "green").length;
@@ -1392,7 +1393,7 @@ async function loadFacultyResponses() {
 
     document.getElementById("facStatTotal").textContent     = rs.length;
     document.getElementById("facStatFaculty").textContent   = rs.filter(r => r.role === "Faculty").length;
-    document.getElementById("facStatITC").textContent       = rs.filter(r => r.role === "ITC").length;
+    document.getElementById("facStatITC").textContent       = rs.filter(r => r.role === "Instructor Trainer Candidate").length;
     document.getElementById("facStatFriDinner").textContent = rs.filter(r => r.meals && r.meals.friday   === "yes").length;
     document.getElementById("facStatSatDinner").textContent = rs.filter(r => r.meals && r.meals.saturday === "yes").length;
     document.getElementById("facStatERC").textContent       = rs.filter(r => r.ercCorrectlyListed === "no").length;
@@ -1403,7 +1404,7 @@ async function loadFacultyResponses() {
     }
 
     const sorted = rs.slice().sort((a,b) => (b.submittedAt?.seconds||0) - (a.submittedAt?.seconds||0));
-    const roleColour = r => r.role === "ITC" ? "#3d52a0" : "#0067A4";
+    const roleColour = r => r.role === "Instructor Trainer Candidate" ? "#3d52a0" : "#0067A4";
     document.getElementById("facResponsesBody").innerHTML =
       sorted.slice(0, 12).map(r => {
         const name = [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email || "–";

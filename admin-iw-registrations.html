@@ -191,7 +191,7 @@
     <div class="sum-pill"><div class="val" id="sum-pending" style="color:#856404;">–</div><div class="lbl">Pending</div></div>
     <div class="sum-pill"><div class="val" id="sum-declined" style="color:#b7410e;">–</div><div class="lbl">Declined</div></div>
     <div class="sum-pill"><div class="val" id="sum-candidates">–</div><div class="lbl">Instr. Candidates</div></div>
-    <div class="sum-pill"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor Cands</div></div>
+    <div class="sum-pill"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor/Sr Instr.</div></div>
     <div class="sum-pill"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From roster</div></div>
     <div class="sum-pill"><div class="val" id="sum-manual" style="color:#856404;">–</div><div class="lbl">Added manually</div></div>
   </div>
@@ -225,9 +225,9 @@
           <label>Role</label>
           <select id="addRole">
             <option value="Instructor Candidate">Instructor Candidate</option>
-            <option value="Assessor Candidate">Assessor Candidate</option>
+            <option value="Assessor / Senior Instructor">Assessor / Senior Instructor</option>
             <option value="Faculty">Faculty</option>
-            <option value="ITC">ITC</option>
+            <option value="Instructor Trainer Candidate">Instructor Trainer Candidate</option>
             <option value="Other">Other</option>
           </select>
         </div>
@@ -255,7 +255,7 @@
         <label>Role for all imported people</label>
         <select id="pasteRole" style="max-width:300px;">
           <option value="Instructor Candidate">Instructor Candidate</option>
-          <option value="Assessor Candidate">Assessor Candidate</option>
+          <option value="Assessor / Senior Instructor">Assessor / Senior Instructor</option>
           <option value="Faculty">Faculty</option>
           <option value="Other">Other</option>
         </select>
@@ -280,7 +280,7 @@
     </div>
     <div class="panel-body">
       <div class="warn-box">
-        This will add all <strong>Instructor Candidates</strong> and <strong>Assessor Candidates</strong> from the MOU roster to the IW registrations list (as Pending). People already on the list will not be duplicated.
+        This will add all <strong>Instructor Candidates</strong> and <strong>Assessor / Senior Instructors</strong> from the MOU roster to the IW registrations list (as Pending). People already on the list will not be duplicated.
       </div>
       <div id="rosterPreview" class="loading">Loading roster…</div>
       <div id="rosterActions" style="display:none;margin-top:12px;">
@@ -316,7 +316,7 @@
     <button class="filter-btn" onclick="setFilter('pending',this)">Pending</button>
     <button class="filter-btn" onclick="setFilter('declined',this)">✗ Declined</button>
     <button class="filter-btn" onclick="setFilter('instructor',this)">Instr. Candidates</button>
-    <button class="filter-btn" onclick="setFilter('assessor',this)">Assessor Candidates</button>
+    <button class="filter-btn" onclick="setFilter('assessor',this)">Assessor / Sr. Instructors</button>
     <button class="filter-btn" onclick="setFilter('manual',this)">Manually added</button>
   </div>
 
@@ -378,7 +378,7 @@ function updateSummary() {
   document.getElementById("sum-pending").textContent    = r.filter(x => !x.status || x.status === "pending").length;
   document.getElementById("sum-declined").textContent   = r.filter(x => x.status === "declined").length;
   document.getElementById("sum-candidates").textContent = r.filter(x => x.role === "Instructor Candidate").length;
-  document.getElementById("sum-assessors").textContent  = r.filter(x => x.role === "Assessor Candidate").length;
+  document.getElementById("sum-assessors").textContent  = r.filter(x => x.role === "Assessor / Senior Instructor").length;
   document.getElementById("sum-roster").textContent     = r.filter(x => x.source === "roster").length;
   document.getElementById("sum-manual").textContent     = r.filter(x => x.source === "manual" || x.source === "paste").length;
 }
@@ -397,7 +397,7 @@ function getFiltered() {
     case "pending":     return allRegistrations.filter(r => !r.status || r.status === "pending");
     case "declined":    return allRegistrations.filter(r => r.status === "declined");
     case "instructor":  return allRegistrations.filter(r => r.role === "Instructor Candidate");
-    case "assessor":    return allRegistrations.filter(r => r.role === "Assessor Candidate");
+    case "assessor":    return allRegistrations.filter(r => r.role === "Assessor / Senior Instructor");
     case "manual":      return allRegistrations.filter(r => r.source === "manual" || r.source === "paste");
     default:            return allRegistrations;
   }
@@ -405,9 +405,9 @@ function getFiltered() {
 
 function roleBadge(role) {
   if (role === "Instructor Candidate") return `<span class="badge-candidate">Instr. Cand.</span>`;
-  if (role === "Assessor Candidate")   return `<span class="badge-assessor">Assess. Cand.</span>`;
+  if (role === "Assessor / Senior Instructor") return `<span class="badge-assessor">Assessor/Sr Instr.</span>`;
   if (role === "Faculty")              return `<span class="badge-faculty">Faculty</span>`;
-  if (role === "ITC")                  return `<span class="badge-faculty" style="background:#e8f0fe;color:#3d52a0;">ITC</span>`;
+  if (role === "Instructor Trainer Candidate") return `<span class="badge-faculty" style="background:#e8f0fe;color:#3d52a0;">ITC</span>`;
   return `<span class="badge-manual">${role||"Other"}</span>`;
 }
 
@@ -632,7 +632,7 @@ async function loadRosterPreview() {
       const d = doc.data();
       if (d.role === ROLES.INSTRUCTOR || d.role === ROLES.ASSESSOR || d.role === "assessor") {
         const email = (d.email || doc.id).toLowerCase();
-        const roleLabel = d.role === ROLES.INSTRUCTOR ? "Instructor Candidate" : "Assessor Candidate";
+        const roleLabel = d.role === ROLES.INSTRUCTOR ? "Instructor Candidate" : "Assessor / Senior Instructor";
         rosterCandidates.push({ name: d.name || doc.id, email, role: roleLabel, alreadyAdded: existing.has(email) });
       }
     });
@@ -723,10 +723,10 @@ function togglePanel(id) {
 // constants people.html/resolveRole() expect. "Other" has no equivalent, so
 // those are flagged rather than guessed at.
 const IW_TO_PEOPLE_ROLE = {
-  "Instructor Candidate": ROLES.INSTRUCTOR,
-  "Assessor Candidate":   ROLES.ASSESSOR,
-  "Faculty":              ROLES.FACULTY,
-  "ITC":                  ROLES.ITC
+  "Instructor Candidate":          ROLES.INSTRUCTOR,
+  "Assessor / Senior Instructor":  ROLES.ASSESSOR,
+  "Faculty":                       ROLES.FACULTY,
+  "Instructor Trainer Candidate":  ROLES.ITC
 };
 
 async function loadSyncPreview() {

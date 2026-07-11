@@ -44,11 +44,13 @@ const INSTRUCTOR_ROOMS = ["CM01","CM02","CM03","CM04","CM13","CM14","CM15","CM16
 
 // ── Roles ───────────────────────────────────────────────────────────────────
 const ROLES = {
-  DIRECTOR:   "director",
-  FACULTY:    "faculty",
-  INSTRUCTOR: "instructor",   // instructor candidate
-  ASSESSOR:   "assessor",     // assessor candidate
-  ITC:        "itc"           // instructor trainer candidate (rotates rooms)
+  DIRECTOR:        "director",
+  FACULTY:         "faculty",
+  INSTRUCTOR:      "instructor",       // instructor candidate
+  ASSESSOR:        "assessor",         // assessor / senior instructor candidate
+  ITC:             "itc",              // instructor trainer candidate (rotates rooms)
+  FULL_INSTRUCTOR: "full-instructor",  // instructor trainer (senior tier)
+  ASSESSOR_FACULTY: "assessor-faculty" // assessor faculty (senior tier, mirrors full-instructor)
 };
 
 // ── Director access ─────────────────────────────────────────────────────────
