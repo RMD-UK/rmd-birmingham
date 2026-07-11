@@ -402,7 +402,7 @@
           <span class="faq-chevron">›</span>
         </button>
         <div class="faq-a">
-          On Saturday morning, before the 11:45 break, every participant must demonstrate competent BLS to a full instructor in their small group. This is a formative checkpoint, not a pass/fail exam. If you are assessed as not yet meeting the standard, your instructor will work with you to consolidate your skills.
+          On Saturday morning, before the 11:45 break, every participant must demonstrate competent Basic Life Support to a full instructor in their small group. This is a checkpoint you must pass to proceed to the rest of the course — you need to show you can perform competent BLS. If you don't yet meet the standard, your instructor will work with you to consolidate your skills before you continue.
         </div>
       </div>
 
@@ -498,10 +498,19 @@
 <script>
   initFirebase();
 
-  // ── Roles that see faculty materials ──────────────────────────────────────
+  // ── Roles that see faculty-topic slide decks (the teaching-technique
+  // content itself — instructor candidates are being taught this material
+  // over the weekend, so they need it too, same as staff who deliver it) ──
   const FACULTY_ROLES = new Set(["director", "faculty", "full-instructor", "instructor", "itc"]);
   // ── Roles that submit session feedback ────────────────────────────────────
   const FEEDBACK_ROLES = new Set(["director", "faculty", "full-instructor"]);
+  // ── Roles that lead/run sessions — see session guides (the leader's own
+  // crib sheet, not learner content) and the "submit feedback" FAQ. Deliberately
+  // excludes "instructor": instructor candidates are being taught to become
+  // full instructors over the weekend and don't rate or lead sessions
+  // themselves. Kept separate from FACULTY_ROLES above so slide-deck access
+  // for instructor candidates is unaffected. ──
+  const SESSION_LEADER_ROLES = new Set(["director", "faculty", "full-instructor", "itc"]);
 
   // Mirrors ROLE_LABELS in timetable.html / attendance.html — was referenced
   // below but never defined here, which would have thrown a ReferenceError
@@ -572,9 +581,15 @@
       }
     }
 
-    // Faculty materials (slides + session guides)
+    // Faculty-topic slide decks — instructor candidates included, they're
+    // being taught this content over the weekend.
     if (FACULTY_ROLES.has(role)) {
       document.querySelectorAll(".faculty-resource").forEach(el => el.classList.remove("hidden"));
+    }
+
+    // Session guides + "submit feedback" FAQ — session leaders only,
+    // instructor candidates excluded (see SESSION_LEADER_ROLES above).
+    if (SESSION_LEADER_ROLES.has(role)) {
       document.querySelectorAll(".faculty-card").forEach(el => el.classList.remove("hidden"));
       document.querySelectorAll(".faculty-faq").forEach(el => el.classList.remove("hidden"));
     }
