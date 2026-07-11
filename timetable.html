@@ -65,10 +65,11 @@
   <select id="roleSelect" onchange="setRole(this.value)">
     <option value="director">Course Director</option>
     <option value="faculty">Faculty</option>
-    <option value="full-instructor">Full Instructor</option>
+    <option value="full-instructor">Instructor Trainer</option>
     <option value="instructor">Instructor Candidate</option>
-    <option value="assessor">Assessor Candidate</option>
-    <option value="itc">ITC</option>
+    <option value="assessor">Assessor / Senior Instructor</option>
+    <option value="assessor-faculty">Assessor Faculty</option>
+    <option value="itc">Instructor Trainer Candidate</option>
   </select>
   <span class="text-muted text-sm">Dev mode — role selector hidden once accounts are set up</span>
 </div>
@@ -229,12 +230,13 @@
   let currentDay  = "saturday";
 
   const ROLE_LABELS = {
-    director:         "Course Director",
-    faculty:          "Faculty",
-    "full-instructor":"Full Instructor",
-    instructor:       "Instructor Candidate",
-    assessor:         "Assessor Candidate",
-    itc:              "ITC"
+    director:            "Course Director",
+    faculty:             "Faculty",
+    "full-instructor":   "Instructor Trainer",
+    instructor:          "Instructor Candidate",
+    assessor:            "Assessor / Senior Instructor",
+    "assessor-faculty":  "Assessor Faculty",
+    itc:                 "Instructor Trainer Candidate"
   };
 
   // ── Role management ────────────────────────────────────────────────────────
@@ -338,8 +340,8 @@
     // Notes
     const notes = s.notes ? `<p class="session-notes">${s.notes}</p>` : "";
 
-    // Candidate feedback button — faculty/director only, non-break, non-faculty-only, instructor present
-    const showFeedback = ["faculty","full-instructor","director"].includes(currentRole)
+    // Candidate feedback button — faculty/director/assessor-faculty only, non-break, non-faculty-only, instructor present
+    const showFeedback = ["faculty","full-instructor","director","assessor-faculty"].includes(currentRole)
       && !isBreak && !isFacultyOnly && s.roles.includes("instructor");
     const feedbackBtn = showFeedback
       ? `<a class="feedback-btn" href="session-feedback.html?session=${s.id}" onclick="event.stopPropagation()">📝 Rate candidates</a>`

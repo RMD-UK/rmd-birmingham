@@ -501,29 +501,35 @@
   // ── Roles that see faculty-topic slide decks (the teaching-technique
   // content itself — instructor candidates are being taught this material
   // over the weekend, so they need it too, same as staff who deliver it) ──
-  const FACULTY_ROLES = new Set(["director", "faculty", "full-instructor", "instructor", "itc"]);
+  const FACULTY_ROLES = new Set(["director", "faculty", "full-instructor", "instructor", "itc", "assessor-faculty"]);
   // ── Roles that submit session feedback ────────────────────────────────────
-  const FEEDBACK_ROLES = new Set(["director", "faculty", "full-instructor"]);
+  const FEEDBACK_ROLES = new Set(["director", "faculty", "full-instructor", "assessor-faculty"]);
   // ── Roles that lead/run sessions — see session guides (the leader's own
   // crib sheet, not learner content) and the "submit feedback" FAQ. Deliberately
-  // excludes "instructor": instructor candidates are being taught to become
-  // full instructors over the weekend and don't rate or lead sessions
-  // themselves. Kept separate from FACULTY_ROLES above so slide-deck access
-  // for instructor candidates is unaffected. ──
-  const SESSION_LEADER_ROLES = new Set(["director", "faculty", "full-instructor", "itc"]);
+  // excludes "instructor" and "assessor": candidates are being taught/assessed
+  // over the weekend and don't rate or lead sessions themselves. Kept separate
+  // from FACULTY_ROLES above so slide-deck access for candidates is unaffected. ──
+  const SESSION_LEADER_ROLES = new Set(["director", "faculty", "full-instructor", "itc", "assessor-faculty"]);
 
-  // Mirrors ROLE_LABELS in timetable.html / attendance.html — was referenced
-  // below but never defined here, which would have thrown a ReferenceError
-  // and silently killed this whole script block the first time the page was
-  // actually used. Fixed 2026-07-10 while wiring this page into the new
-  // member-menu.html navigation.
+  // Role taxonomy finalised 2026-07-11 (Jon). Two tracks, each with a
+  // candidate tier and a senior/qualified tier:
+  //   Instructor track: instructor (candidate) → itc (training to lead) → full-instructor (qualified, now labelled "Instructor Trainer")
+  //   Assessor track:   assessor (candidate, now labelled "Assessor / Senior Instructor") → assessor-faculty (qualified, new role)
+  // "assessor-faculty" is new — added to the same gates full-instructor has
+  // (slide decks, session guides, session feedback) since it's the assessor
+  // track's equivalent senior tier. Mirrors ROLE_LABELS in timetable.html /
+  // attendance.html / member-menu.html — was referenced below but never
+  // defined here, which would have thrown a ReferenceError and silently
+  // killed this whole script block the first time the page was actually
+  // used. Fixed 2026-07-10 while wiring this page into member-menu.html.
   const ROLE_LABELS = {
-    director:          "Course Director",
-    faculty:           "Faculty",
-    "full-instructor": "Full Instructor",
-    instructor:        "Instructor Candidate",
-    assessor:          "Assessor Candidate",
-    itc:               "ITC"
+    director:            "Course Director",
+    faculty:             "Faculty",
+    "full-instructor":   "Instructor Trainer",
+    instructor:          "Instructor Candidate",
+    assessor:            "Assessor / Senior Instructor",
+    "assessor-faculty":  "Assessor Faculty",
+    itc:                 "Instructor Trainer Candidate"
   };
 
   // ── Get role from URL, then verify with auth ──────────────────────────────

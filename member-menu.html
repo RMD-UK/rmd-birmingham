@@ -211,15 +211,18 @@
 <script>
   initFirebase();
 
-  // Mirrors ROLE_LABELS in timetable.html / attendance.html — kept in sync
-  // manually since it isn't shared via firebase-config.js.
+  // Mirrors ROLE_LABELS in timetable.html / attendance.html / site-info.html —
+  // kept in sync manually since it isn't shared via firebase-config.js.
+  // Role taxonomy finalised 2026-07-11 (Jon) — see the longer comment in
+  // site-info.html for the two-track (instructor / assessor) explanation.
   const ROLE_LABELS = {
-    director:          "Course Director",
-    faculty:           "Faculty",
-    "full-instructor": "Full Instructor",
-    instructor:        "Instructor Candidate",
-    assessor:          "Assessor Candidate",
-    itc:               "ITC"
+    director:            "Course Director",
+    faculty:             "Faculty",
+    "full-instructor":   "Instructor Trainer",
+    instructor:          "Instructor Candidate",
+    assessor:            "Assessor / Senior Instructor",
+    "assessor-faculty":  "Assessor Faculty",
+    itc:                 "Instructor Trainer Candidate"
   };
 
   auth.onAuthStateChanged(async function (user) {
@@ -249,9 +252,10 @@
     // Carry role through to pages that read it from the URL
     document.getElementById("iwLink").href = `site-info.html?role=${role}`;
 
-    // Organising Faculty Dashboard — director + faculty only (placeholder page
-    // for semester 1 & 2 tools, separate from the Course Director Dashboard).
-    if (role === "director" || role === "faculty") {
+    // Organising Faculty Dashboard — director + faculty + assessor-faculty
+    // (placeholder page for semester 1 & 2 tools, separate from the Course
+    // Director Dashboard).
+    if (role === "director" || role === "faculty" || role === "assessor-faculty") {
       document.getElementById("orgFacultySectionLabel").classList.remove("hidden");
       document.getElementById("facultyDashboardLink").classList.remove("hidden");
     }
