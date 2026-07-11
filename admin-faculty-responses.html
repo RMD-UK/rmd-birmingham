@@ -484,11 +484,13 @@ function renderAll() {
           ${r.travelNotes?`<div style="font-size:13px;margin-top:6px;padding:10px;background:#f5f7fa;border-radius:6px;"><strong>Travel:</strong> ${r.travelNotes}</div>`:""}
           ${r.otherNotes?`<div style="font-size:13px;margin-top:6px;padding:10px;background:#f5f7fa;border-radius:6px;"><strong>Other:</strong> ${r.otherNotes}</div>`:""}
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f0f3f6;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-            <div style="display:flex;gap:6px;align-items:center;">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
               <span style="font-size:12px;color:var(--rmd-muted);margin-right:4px;">Attendance:</span>
               <button class="btn-confirm${isConf?" active":""}" onclick="setAttendanceStatus('${r.id}','confirmed',${i})">✓ Confirm</button>
               <button class="btn-decline${isDecl?" active":""}" onclick="setAttendanceStatus('${r.id}','declined',${i})">✗ Decline</button>
               ${r.attendanceStatus ? `<button class="btn-reset-status" onclick="setAttendanceStatus('${r.id}','pending',${i})" title="Reset to pending">↺</button>` : ""}
+              <span style="font-size:12px;color:var(--rmd-muted);margin:0 4px 0 10px;">Role:</span>
+              ${roleSelectHtml(r, fullName(r) || r.email)}
             </div>
             <button onclick="deleteResponse('${r.id}','${fullName(r)||r.email}')" style="padding:7px 14px;background:#fce8e6;color:#b7410e;border:1px solid #f5b8b0;border-radius:6px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button>
           </div>
@@ -513,7 +515,7 @@ async function deleteResponse(docId, name) {
   }
 }
 
-const ASSIGNABLE_ROLES = ["Faculty", "Instructor Trainer", "Assessor Faculty", "Instructor Trainer Candidate", "RMD Student Faculty"];
+const ASSIGNABLE_ROLES = ["Faculty", "Instructor Trainer", "Assessor Faculty", "Instructor Trainer Candidate", "Director", "RMD Student Faculty"];
 
 function roleBadgeHtml(r) {
   if (isDirector(r.email)) return `<span class="badge-director">Course Director</span>`;
@@ -524,9 +526,17 @@ function roleBadgeHtml(r) {
 
 function roleSelectHtml(r, name) {
   const safeName = (name || "").replace(/'/g, "\\'");
+  // If their stored role isn't one of the current options (a retired category like
+  // "Course Logistics", or a pre-rename value like "ITC"), show it as its own selected
+  // option rather than silently defaulting to whichever option happens to be first —
+  // that would visually misrepresent their actual stored role. Picking a real option
+  // from the list still reassigns them normally via changeRole().
+  const isKnown = r.role && ASSIGNABLE_ROLES.includes(r.role);
+  const legacyOpt = (r.role && !isKnown)
+    ? `<option value="${r.role}" selected>${r.role} (retired/legacy)</option>` : "";
   const opts = ASSIGNABLE_ROLES.map(role =>
     `<option value="${role}" ${r.role === role ? "selected" : ""}>${role}</option>`).join("");
-  return `<select class="role-select" onchange="changeRole('${r.id}', this.value, '${safeName}')">${opts}</select>`;
+  return `<select class="role-select" onchange="changeRole('${r.id}', this.value, '${safeName}')">${legacyOpt}${opts}</select>`;
 }
 
 function renderDirectors() {

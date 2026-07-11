@@ -203,20 +203,43 @@
     }
 
     /* ── RMD Student Faculty "can't attend" shortcut ── */
+    /* Collapsed by default — a slim banner so the real form is always visible without
+       scrolling. Expands inline only if someone actually clicks it. */
     .sf-decline-box {
       background: #fff8e6;
       border: 2px solid #f0c14b;
       border-radius: 10px;
-      padding: 16px;
       max-width: 640px;
-      margin: 16px auto;
+      margin: 12px auto;
+      overflow: hidden;
+    }
+    .sf-decline-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 14px;
+      cursor: pointer;
+      user-select: none;
     }
     .sf-decline-title {
-      font-size: 15px;
+      font-size: 13px;
       font-weight: 700;
       color: #7b5800;
-      margin: 0 0 4px;
+      margin: 0;
     }
+    .sf-decline-toggle {
+      font-size: 12px;
+      font-weight: 700;
+      color: #c17a00;
+      white-space: nowrap;
+    }
+    .sf-decline-panel {
+      display: none;
+      padding: 0 16px 16px;
+    }
+    .sf-decline-box.expanded .sf-decline-panel { display: block; }
+    .sf-decline-box.expanded .sf-decline-toggle::after { content: " (hide)"; }
     .sf-decline-sub {
       font-size: 13px;
       color: #8a6d00;
@@ -248,32 +271,38 @@
   <p>Pre-course information · Birmingham Medical School · 9-11 October 2026</p>
 </div>
 
-<!-- RMD Faculty (student or senior) — obvious "can't attend" shortcut, no need to touch the form below -->
+<!-- RMD Faculty (student or senior) — obvious "can't attend" shortcut, no need to touch the form below.
+     Collapsed to a slim banner by default so the real form is always visible; expands on click. -->
 <div class="sf-decline-box" id="sfDeclineBox">
-  <p class="sf-decline-title">RMD Faculty member who can't attend?</p>
-  <p class="sf-decline-sub">Whether you're RMD Student Faculty or senior faculty, if you can't make the Instructor Weekend, just tell us who you are below and hit submit — no need to fill in the rest of this form.</p>
-  <div class="field">
-    <label>Which are you?</label>
-    <div class="option-group" id="sfDeclineRoleGroup">
-      <button class="option-btn" data-value="RMD Student Faculty" onclick="selectSfDeclineRole('RMD Student Faculty', this)">RMD Student Faculty</button>
-      <button class="option-btn" data-value="Faculty" onclick="selectSfDeclineRole('Faculty', this)">RMD Senior Faculty</button>
-    </div>
+  <div class="sf-decline-bar" onclick="toggleSfDecline()">
+    <p class="sf-decline-title">Can't attend the Instructor Weekend?</p>
+    <span class="sf-decline-toggle" id="sfDeclineToggle">Tell us here →</span>
   </div>
-  <div class="field-row">
+  <div class="sf-decline-panel">
+    <p class="sf-decline-sub">Whether you're RMD Student Faculty or senior faculty, if you can't make the Instructor Weekend, just tell us who you are below and hit submit — no need to fill in the rest of this form.</p>
     <div class="field">
-      <label>First name</label>
-      <input type="text" id="sfDeclineFirstName" placeholder="e.g. Jane">
+      <label>Which are you?</label>
+      <div class="option-group" id="sfDeclineRoleGroup">
+        <button class="option-btn" data-value="RMD Student Faculty" onclick="selectSfDeclineRole('RMD Student Faculty', this)">RMD Student Faculty</button>
+        <button class="option-btn" data-value="Faculty" onclick="selectSfDeclineRole('Faculty', this)">RMD Senior Faculty</button>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>First name</label>
+        <input type="text" id="sfDeclineFirstName" placeholder="e.g. Jane">
+      </div>
+      <div class="field">
+        <label>Last name</label>
+        <input type="text" id="sfDeclineLastName" placeholder="e.g. Smith">
+      </div>
     </div>
     <div class="field">
-      <label>Last name</label>
-      <input type="text" id="sfDeclineLastName" placeholder="e.g. Smith">
+      <label>Email address</label>
+      <input type="email" id="sfDeclineEmail" placeholder="your@email.com">
     </div>
+    <button class="btn-sf-decline" id="sfDeclineBtn" onclick="submitStandaloneDecline()">Submit — I can't attend</button>
   </div>
-  <div class="field">
-    <label>Email address</label>
-    <input type="email" id="sfDeclineEmail" placeholder="your@email.com">
-  </div>
-  <button class="btn-sf-decline" id="sfDeclineBtn" onclick="submitStandaloneDecline()">Submit — I can't attend</button>
 </div>
 
 <!-- Progress strip -->
@@ -510,6 +539,7 @@ const TOTAL_SECTIONS = 6;
 let currentSection = 0;
 let existingDocId = null;
 let existingDocChecked = false;
+let legacyRoleNotice = ""; // set in prefillForm() when a saved role has no current picker button
 
 // ── Option state ──────────────────────────────────────────────────────────
 const state = {
@@ -663,9 +693,29 @@ function prefillForm(data) {
   document.getElementById("lastName").value   = data.lastName   || "";
 
   // Role
+  // Legacy value compatibility: role labels have been renamed over time (e.g. "ITC" →
+  // "Instructor Trainer Candidate"). Existing submitted responses are NEVER rewritten to
+  // match — they stay exactly as originally submitted unless the person resubmits — but
+  // the picker should still highlight the right button on load rather than showing nothing
+  // selected, which reads as "your answer wasn't saved" even though it was.
+  const ROLE_LEGACY_MAP = { "ITC": "Instructor Trainer Candidate" };
+  legacyRoleNotice = "";
   if (data.role) {
     state.role = data.role;
-    selectButtonByValue(document.getElementById("roleGroup"), data.role);
+    const roleGroup = document.getElementById("roleGroup");
+    const hasButton = !!roleGroup.querySelector(`.option-btn[data-value="${CSS.escape(data.role)}"]`);
+    if (hasButton) {
+      selectButtonByValue(roleGroup, data.role);
+    } else if (ROLE_LEGACY_MAP[data.role]) {
+      // Known rename with a direct successor — highlight it for clarity, but state.role
+      // (and therefore what gets saved if they don't touch this field) stays untouched
+      // unless they explicitly click a role button themselves.
+      selectButtonByValue(roleGroup, ROLE_LEGACY_MAP[data.role]);
+    } else {
+      // Retired category with no successor (e.g. "Course Logistics") — don't guess.
+      // Leave nothing highlighted, but say why, rather than looking like data loss.
+      legacyRoleNotice = data.role;
+    }
   }
   if (canDeclineAttendance(data.role)) {
     document.getElementById("sfAttendField").style.display = "block";
@@ -754,10 +804,13 @@ function prefillForm(data) {
 }
 
 function showEditingBanner() {
+  const legacyNote = legacyRoleNotice
+    ? ` Your role was previously recorded as "${legacyRoleNotice}", a category we no longer use — please pick your current role below before saving.`
+    : "";
   document.getElementById("editingBannerContainer").innerHTML =
     `<div class="info-box" style="max-width:608px;margin:0 auto 0;">
        We found a previous submission for this email — your answers have been loaded below.
-       Update anything and submit again to save your changes.
+       Update anything and submit again to save your changes.${legacyNote}
      </div>`;
 }
 
@@ -934,6 +987,13 @@ async function submitCannotAttend() {
 // role + name + email + submit. Open to both RMD Student Faculty and
 // regular/senior Faculty. Writes the same declined record shape as the
 // in-wizard flow, so all paths land in the same place.
+// Collapsed to a slim banner by default (see .sf-decline-bar/.sf-decline-panel CSS)
+// so the real form below is always visible without scrolling — only expands if
+// someone actually clicks it.
+function toggleSfDecline() {
+  document.getElementById("sfDeclineBox").classList.toggle("expanded");
+}
+
 let sfDeclineRole = "";
 function selectSfDeclineRole(value, btn) {
   sfDeclineRole = value;
