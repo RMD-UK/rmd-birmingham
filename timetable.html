@@ -118,13 +118,14 @@
 <div id="roomBanner" style="display:none">
   <!-- Main strip -->
   <div style="background:var(--rmd-blue);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <div style="display:flex;align-items:center;gap:14px;">
+    <div id="yourRoomBlock" style="display:none;align-items:center;gap:14px;">
       <div>
         <div style="font-size:10px;opacity:.65;text-transform:uppercase;letter-spacing:.5px;font-weight:700;">Your room</div>
         <strong id="roomBannerID" style="font-size:22px;letter-spacing:1px;line-height:1.1"></strong>
       </div>
       <div id="roomBannerFaculty" style="font-size:12px;opacity:.75;border-left:1px solid rgba(255,255,255,.3);padding-left:14px;line-height:1.4"></div>
     </div>
+    <div id="noRoomBlock" style="font-size:12px;opacity:.8;">All groups &amp; rooms:</div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
       <select id="roomFilter" onchange="setRoomFilter(this.value)"
               style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;padding:5px 8px;border-radius:5px;font-size:12px;font-family:var(--font);">
@@ -550,6 +551,12 @@
         if (!_userRoomId && all.some(p => p.email === email)) _userRoomId = rid;
       });
 
+      // Room browser (dropdown + "Group" button) is for everyone, whether or
+      // not they personally have a room — director, faculty not tied to a
+      // specific group, and anyone not yet allocated should still be able to
+      // see who's in every group and which room they're in.
+      document.getElementById("roomBanner").style.display = "block";
+
       if (_userRoomId) {
         const g   = _allGroupData[_userRoomId] || {};
         const fac = g.faculty;
@@ -557,11 +564,11 @@
         document.getElementById("roomBannerFaculty").innerHTML =
           fac ? `<span style="opacity:.65">Faculty lead</span><br><strong>${fac.name}</strong>` : "";
         document.getElementById("roomFilter").value = _userRoomId;
-        document.getElementById("roomBanner").style.display = "block";
+        document.getElementById("yourRoomBlock").style.display = "flex";
+        document.getElementById("noRoomBlock").style.display = "none";
       }
 
       if (role === ROLES.ITC || role === "itc") {
-        document.getElementById("roomBanner").style.display = "block";
         await loadITCRotation(email);
       }
     } catch(e) { console.warn("Room lookup failed:", e); }
