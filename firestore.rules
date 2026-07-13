@@ -227,5 +227,20 @@ service cloud.firestore {
       allow read, write: if isDirector();
     }
 
+    // ── Summer meeting dietary requirements ─────────────────────────────────
+    // Document ID is the lowercased submitter email (see summer-meeting-dietary.html)
+    //   — same no-login edit-by-email pattern as faculty_responses.
+    // get:  public — caller must already know the exact email (= docId).
+    // list: director only — stops one unauthenticated request dumping every
+    //   attendee's dietary/allergy data.
+    // create/update: public — supports pre-login submit and resubmit-to-edit.
+    // delete: authenticated only.
+    match /summer_meeting_dietary/{docId} {
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
   }
 }

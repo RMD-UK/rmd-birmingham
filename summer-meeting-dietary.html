@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RMD Summer Meeting — Dietary Requirements</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      background: #f0f3f6;
+      font-family: var(--font);
+      margin: 0;
+      padding: 0 0 60px;
+    }
+
+    /* ── Header ── */
+    .form-header {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 20px 20px 24px;
+      text-align: center;
+    }
+    .form-header img { height: 52px; margin-bottom: 10px; }
+    .form-header h1 { font-size: 20px; margin: 0 0 4px; }
+    .form-header p  { font-size: 13px; opacity: 0.75; margin: 0; }
+
+    /* ── Form body ── */
+    .section { padding: 24px 16px 8px; max-width: 640px; margin: 0 auto; }
+
+    .section-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--rmd-navy);
+      margin: 0 0 4px;
+    }
+    .section-sub {
+      font-size: 13px;
+      color: var(--rmd-muted);
+      margin: 0 0 18px;
+    }
+
+    /* ── Form fields ── */
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--rmd-navy);
+      margin-bottom: 5px;
+    }
+    .field label .req { color: #b7410e; }
+    .field input, .field select, .field textarea {
+      width: 100%;
+      padding: 11px 12px;
+      border: 2px solid #ccd6dd;
+      border-radius: 6px;
+      font-size: 15px;
+      font-family: var(--font);
+      color: var(--rmd-navy);
+      background: white;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: none;
+      border-color: var(--rmd-blue);
+    }
+    .field input.error { border-color: #b7410e; }
+    .field textarea { min-height: 80px; resize: vertical; }
+
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 480px) { .field-row { grid-template-columns: 1fr; } }
+
+    .hint-text { font-size: 12px; color: var(--rmd-muted); margin-top: 4px; }
+
+    /* ── Option cards ── */
+    .option-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .option-btn {
+      padding: 10px 18px;
+      border: 2px solid #ccd6dd;
+      border-radius: 8px;
+      background: white;
+      font-size: 14px;
+      font-weight: 600;
+      font-family: var(--font);
+      color: var(--rmd-muted);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .option-btn:active { transform: scale(0.97); }
+    .option-btn.selected {
+      background: var(--rmd-navy);
+      color: white;
+      border-color: var(--rmd-navy);
+    }
+
+    /* ── Info / warning box ── */
+    .info-box {
+      background: #e8f0fe;
+      border-left: 4px solid var(--rmd-blue);
+      border-radius: 0 6px 6px 0;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: var(--rmd-navy);
+      margin-bottom: 16px;
+    }
+    .warn-box {
+      background: #fff3cd;
+      border-left: 4px solid #c17a00;
+      border-radius: 0 6px 6px 0;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #7b5800;
+      margin-bottom: 16px;
+    }
+
+    /* ── Submit button ── */
+    .nav-row {
+      max-width: 640px;
+      margin: 16px auto 0;
+      padding: 0 16px;
+    }
+    .btn-submit {
+      width: 100%;
+      padding: 16px;
+      background: #1a6e31;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+    }
+    .btn-submit:hover { background: #145727; }
+    .btn-submit:disabled { background: #aab8c2; cursor: default; }
+
+    /* ── Success page ── */
+    .success-page {
+      display: none;
+      text-align: center;
+      padding: 60px 20px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .success-page .tick { font-size: 64px; margin-bottom: 16px; }
+    .success-page h2 { color: var(--rmd-navy); margin-bottom: 8px; }
+    .success-page p { color: var(--rmd-muted); font-size: 14px; line-height: 1.6; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="form-header">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <h1>RMD Summer Meeting</h1>
+  <p>Dietary requirements</p>
+</div>
+
+<div class="section" id="formSection">
+  <p class="section-title">Tell us about your dietary requirements</p>
+  <p class="section-sub">This helps us give accurate catering numbers to the venue. Please complete one form per person attending.</p>
+
+  <div class="field-row">
+    <div class="field">
+      <label>First name <span class="req">*</span></label>
+      <input type="text" id="firstName" placeholder="e.g. Jane" autocomplete="given-name">
+    </div>
+    <div class="field">
+      <label>Last name <span class="req">*</span></label>
+      <input type="text" id="lastName" placeholder="e.g. Smith" autocomplete="family-name">
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Email address <span class="req">*</span></label>
+    <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
+    <div class="hint-text">If you've already filled this in and need to change something, use the same email address so we update your existing response instead of creating a new one.</div>
+  </div>
+
+  <div class="field">
+    <label>Dietary requirement <span class="req">*</span></label>
+    <div class="option-group" id="dietGroup">
+      <button class="option-btn" data-value="None" onclick="selectDiet('None',this)">None</button>
+      <button class="option-btn" data-value="Vegetarian" onclick="selectDiet('Vegetarian',this)">Vegetarian</button>
+      <button class="option-btn" data-value="Vegan" onclick="selectDiet('Vegan',this)">Vegan</button>
+      <button class="option-btn" data-value="Halal" onclick="selectDiet('Halal',this)">Halal</button>
+      <button class="option-btn" data-value="Gluten-free" onclick="selectDiet('Gluten-free',this)">Gluten-free</button>
+      <button class="option-btn" data-value="Allergy" onclick="selectDiet('Allergy',this)">Allergy</button>
+      <button class="option-btn" data-value="Other" onclick="selectDiet('Other',this)">Other</button>
+    </div>
+  </div>
+
+  <div class="field" id="dietDetailField" style="display:none;">
+    <label>Please specify <span class="req">*</span></label>
+    <input type="text" id="dietDetail" placeholder="e.g. nut allergy, coeliac, lactose intolerant…">
+  </div>
+
+  <div class="field" id="severityField" style="display:none;">
+    <div class="warn-box" id="severityWarn" style="display:none;">
+      If this is a <strong>severe or life-threatening allergy</strong> (e.g. anaphylaxis risk), please make that clear below so we can flag it directly to the venue.
+    </div>
+    <label>Severity / additional notes</label>
+    <textarea id="severityNotes" placeholder="e.g. anaphylaxis risk — carries own EpiPen, or any other detail the caterers should know…"></textarea>
+  </div>
+
+  <div class="info-box">
+    If your requirement changes closer to the meeting, just resubmit this form using the same email address to update your response.
+  </div>
+</div>
+
+<div class="nav-row">
+  <button class="btn-submit" id="submitBtn" onclick="submitForm()">Submit</button>
+</div>
+
+<!-- ── SUCCESS ── -->
+<div class="success-page" id="successPage">
+  <div class="tick">✅</div>
+  <h2 id="successHeading">Thank you!</h2>
+  <p id="successMessage">Your dietary requirements have been recorded. We'll pass this on to the venue.</p>
+  <p style="margin-top:16px;"><strong>RMD Summer Meeting</strong></p>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+let existingDocId = null;
+let selectedDiet = "";
+
+function emailDocId(email) {
+  return (email || "").trim().toLowerCase();
+}
+
+function selectDiet(value, btn) {
+  selectedDiet = value;
+  document.querySelectorAll("#dietGroup .option-btn").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+
+  const needsDetail = value !== "None";
+  document.getElementById("dietDetailField").style.display = (value === "Other" || value === "Allergy") ? "block" : "none";
+  document.getElementById("severityField").style.display = needsDetail ? "block" : "none";
+  document.getElementById("severityWarn").style.display = value === "Allergy" ? "block" : "none";
+}
+
+async function checkExistingSubmission(email) {
+  existingDocId = null;
+  if (!email) return false;
+  try {
+    const snap = await db.collection("summer_meeting_dietary").doc(emailDocId(email)).get();
+    if (snap.exists) {
+      existingDocId = snap.id;
+      return true;
+    }
+  } catch (err) {
+    console.error("Could not check for an existing submission:", err);
+  }
+  return false;
+}
+
+function validateForm() {
+  const required = ["firstName", "lastName", "email"];
+  let ok = true;
+  required.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el.value.trim()) { el.classList.add("error"); ok = false; }
+    else el.classList.remove("error");
+  });
+  if (!ok) { alert("Please complete all required fields."); return false; }
+  if (!document.getElementById("email").value.includes("@")) {
+    alert("Please enter a valid email address."); return false;
+  }
+  if (!selectedDiet) {
+    alert("Please select a dietary requirement (choose \"None\" if you don't have one)."); return false;
+  }
+  if ((selectedDiet === "Other" || selectedDiet === "Allergy") && !document.getElementById("dietDetail").value.trim()) {
+    alert("Please specify your dietary requirement."); return false;
+  }
+  return true;
+}
+
+async function submitForm() {
+  if (!validateForm()) return;
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  const email = document.getElementById("email").value.trim().toLowerCase();
+  await checkExistingSubmission(email);
+
+  const record = {
+    firstName:      document.getElementById("firstName").value.trim(),
+    lastName:       document.getElementById("lastName").value.trim(),
+    email:          email,
+    diet:           selectedDiet,
+    dietDetail:     document.getElementById("dietDetail").value.trim(),
+    severityNotes:  document.getElementById("severityNotes").value.trim(),
+    source: "summer-meeting-dietary-form"
+  };
+
+  if (existingDocId) {
+    record.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+  } else {
+    record.submittedAt = firebase.firestore.FieldValue.serverTimestamp();
+  }
+
+  try {
+    await db.collection("summer_meeting_dietary").doc(emailDocId(email)).set(record, { merge: true });
+    document.getElementById("formSection").style.display = "none";
+    document.querySelector(".nav-row").style.display = "none";
+    if (existingDocId) {
+      document.getElementById("successHeading").textContent = "Updated!";
+      document.getElementById("successMessage").textContent = "Your dietary requirements have been updated. Thanks for keeping it current.";
+    }
+    document.getElementById("successPage").style.display = "block";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "Submit";
+    alert("Submission failed — please check your connection and try again.\n\n" + err.message);
+  }
+}
+
+</script>
+</body>
+</html>
