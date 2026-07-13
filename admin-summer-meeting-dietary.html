@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Summer Meeting — Dietary Responses</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+    .top-bar {
+      background: var(--rmd-navy); color: white;
+      padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .top-bar img { height: 28px; }
+    .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+
+    .content { padding: 14px; max-width: 900px; margin: 0 auto; }
+
+    .summary-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; margin-top: 14px; }
+    .sum-pill {
+      background: white; border-radius: 8px; padding: 10px 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; min-width: 90px;
+    }
+    .sum-pill .val { font-size: 24px; font-weight: 700; color: var(--rmd-navy); }
+    .sum-pill .lbl { font-size: 11px; color: var(--rmd-muted); font-weight: 600; text-transform: uppercase; }
+
+    .action-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+    .btn-action {
+      padding: 8px 16px; background: var(--rmd-blue); color: white;
+      border: none; border-radius: 6px; font-size: 13px; font-weight: 700;
+      font-family: var(--font); cursor: pointer;
+    }
+    .btn-action:hover { background: var(--rmd-navy); }
+    .btn-action.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
+
+    .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 13px; }
+    .data-table th { background: var(--rmd-navy); color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .data-table td { padding: 10px 12px; border-bottom: 1px solid #f0f3f6; vertical-align: top; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: #f8f9fa; }
+
+    .badge-none  { background: #f0f3f6; color: #aab8c2; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .badge-diet  { background: #e6f4ea; color: #1a6e31; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .badge-allergy { background: #fce8e6; color: #b7410e; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+
+    .missing-name { color: #b7410e; font-weight: 700; }
+
+    .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
+    .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
+
+    .info-banner {
+      background: #e8f0fe; border-left: 4px solid var(--rmd-blue);
+      border-radius: 0 6px 6px 0; padding: 10px 14px;
+      font-size: 13px; color: var(--rmd-navy); margin-bottom: 16px;
+    }
+
+    .btn-delete {
+      padding: 5px 10px; background: #fce8e6; color: #b7410e;
+      border: 1px solid #f5b8b0; border-radius: 6px; font-size: 11px; font-weight: 700;
+      font-family: var(--font); cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
+  <div class="top-bar-title">Summer Meeting — Dietary Responses</div>
+  <button onclick="loadAll()" style="background:rgba(255,255,255,0.15);border:none;color:white;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">↻ Refresh</button>
+</div>
+
+<div class="content">
+
+  <div class="info-banner">
+    Guest list: 13 invitees + host (14 total). Anyone missing from the table below hasn't submitted the <a href="summer-meeting-dietary.html" target="_blank">dietary form</a> yet.
+  </div>
+
+  <div class="summary-strip">
+    <div class="sum-pill"><div class="val" id="sum-total">–</div><div class="lbl">Submitted</div></div>
+    <div class="sum-pill"><div class="val" id="sum-outstanding" style="color:#b7410e;">–</div><div class="lbl">Outstanding</div></div>
+    <div class="sum-pill"><div class="val" id="sum-dietary">–</div><div class="lbl">With requirements</div></div>
+    <div class="sum-pill"><div class="val" id="sum-allergy" style="color:#b7410e;">–</div><div class="lbl">Allergies</div></div>
+  </div>
+
+  <div class="action-bar">
+    <button class="btn-action secondary" onclick="copyOutstandingNames()">📋 Copy outstanding names</button>
+    <button class="btn-action secondary" onclick="exportCSV()">⬇ Download CSV</button>
+  </div>
+
+  <div id="tabContent"><div class="loading">Loading responses…</div></div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+// Master guest list (13 invitees) — kept in sync with summer-meeting-dietary.html's
+// dropdown and Summer_Meeting_Dietary_Tracker.xlsx. Update in both places if the
+// guest list changes.
+const GUEST_LIST = [
+  "Alessandro Pace", "Elizabeth Baxter", "Jaimini Lakhani", "Joe Alderman",
+  "Krish Patel", "Megan Harrison", "Naveed Kordmahalleh", "Neal Pankhania",
+  "Nicholas Coffin", "Stella Szeckler", "Tanwen Bird", "Thomas Burton",
+  "Zanita Volschenk"
+];
+
+let allResponses = [];
+
+window.addEventListener("load", () => {
+  requireDirector("timetable.html").then(() => {
+    loadAll();
+  });
+});
+
+async function loadAll() {
+  document.getElementById("tabContent").innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const snap = await db.collection("summer_meeting_dietary").get();
+    allResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => fullName(a).toLowerCase().localeCompare(fullName(b).toLowerCase()));
+  } catch (err) {
+    document.getElementById("tabContent").innerHTML =
+      `<div class="empty-state">Could not load responses. Check you are signed in as director.<br><small>${err.message}</small></div>`;
+    return;
+  }
+  updateSummary();
+  render();
+}
+
+function fullName(r) { return [r.firstName, r.lastName].filter(Boolean).join(" "); }
+
+function respondedNames() {
+  return allResponses.map(r => fullName(r).toLowerCase());
+}
+
+function outstandingGuests() {
+  const responded = respondedNames();
+  return GUEST_LIST.filter(g => !responded.includes(g.toLowerCase()));
+}
+
+function updateSummary() {
+  document.getElementById("sum-total").textContent       = allResponses.length;
+  document.getElementById("sum-outstanding").textContent = outstandingGuests().length;
+  document.getElementById("sum-dietary").textContent     = allResponses.filter(r => r.diet && r.diet !== "None").length;
+  document.getElementById("sum-allergy").textContent     = allResponses.filter(r => r.diet === "Allergy").length;
+}
+
+function dietBadge(r) {
+  if (!r.diet || r.diet === "None") return `<span class="badge-none">None</span>`;
+  if (r.diet === "Allergy") return `<span class="badge-allergy">Allergy${r.dietDetail ? " — " + r.dietDetail : ""}</span>`;
+  return `<span class="badge-diet">${r.diet}${r.dietDetail ? " — " + r.dietDetail : ""}</span>`;
+}
+
+function render() {
+  const missing = outstandingGuests();
+
+  const rows = allResponses.length
+    ? allResponses.map(r => `
+        <tr>
+          <td style="font-weight:700;color:var(--rmd-navy);">${fullName(r) || "–"}</td>
+          <td style="color:var(--rmd-muted);font-size:12px;">${r.email || "–"}</td>
+          <td>${dietBadge(r)}</td>
+          <td>${r.severityNotes ? r.severityNotes : "–"}</td>
+          <td><button class="btn-delete" onclick="deleteResponse('${r.id}','${(fullName(r)||r.email).replace(/'/g,"\\'")}')">🗑 Delete</button></td>
+        </tr>`).join("")
+    : `<tr><td colspan="5" style="color:#aab8c2;text-align:center;">No responses yet</td></tr>`;
+
+  const missingRows = missing.length
+    ? `<div style="margin-top:20px;">
+         <div style="font-size:14px;font-weight:700;color:#b7410e;margin-bottom:8px;">Outstanding (${missing.length})</div>
+         <div style="background:white;border-radius:8px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,0.1);font-size:13px;color:var(--rmd-navy);">
+           ${missing.join(", ")}
+         </div>
+       </div>`
+    : `<div style="margin-top:20px;color:#1a6e31;font-weight:700;font-size:13px;">✓ Everyone on the guest list has responded.</div>`;
+
+  document.getElementById("tabContent").innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Dietary requirement</th><th>Severity / notes</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${missingRows}
+  `;
+}
+
+async function deleteResponse(docId, name) {
+  if (!confirm(`Delete response from ${name}?\n\nThis cannot be undone.`)) return;
+  try {
+    await db.collection("summer_meeting_dietary").doc(docId).delete();
+    allResponses = allResponses.filter(r => r.id !== docId);
+    updateSummary();
+    render();
+  } catch (err) {
+    alert("Delete failed: " + err.message);
+  }
+}
+
+function copyOutstandingNames() {
+  const missing = outstandingGuests();
+  if (!missing.length) { alert("Everyone has responded."); return; }
+  navigator.clipboard.writeText(missing.join(", ")).then(() =>
+    alert(`${missing.length} outstanding name(s) copied to clipboard.`));
+}
+
+function exportCSV() {
+  const headers = ["Name", "Email", "Dietary requirement", "Detail", "Severity/Notes", "Submitted"];
+  const rows = allResponses.map(r => [
+    fullName(r), r.email, r.diet, r.dietDetail, r.severityNotes,
+    r.submittedAt ? new Date(r.submittedAt.seconds * 1000).toISOString() : ""
+  ].map(v => `"${(v || "").toString().replace(/"/g, '""')}"`));
+  const csv  = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = "summer-meeting-dietary-responses.csv"; a.click();
+}
+
+</script>
+</body>
+</html>

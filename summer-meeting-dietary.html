@@ -161,7 +161,28 @@
   <p class="section-title">Tell us about your dietary requirements</p>
   <p class="section-sub">This helps us give accurate catering numbers to the venue. Please complete one form per person attending.</p>
 
-  <div class="field-row">
+  <div class="field">
+    <label>Your name <span class="req">*</span></label>
+    <select id="guestSelect" onchange="onGuestChange(this.value)">
+      <option value="">Select your name…</option>
+      <option value="Alessandro Pace">Alessandro Pace</option>
+      <option value="Elizabeth Baxter">Elizabeth Baxter</option>
+      <option value="Jaimini Lakhani">Jaimini Lakhani</option>
+      <option value="Joe Alderman">Joe Alderman</option>
+      <option value="Krish Patel">Krish Patel</option>
+      <option value="Megan Harrison">Megan Harrison</option>
+      <option value="Naveed Kordmahalleh">Naveed Kordmahalleh</option>
+      <option value="Neal Pankhania">Neal Pankhania</option>
+      <option value="Nicholas Coffin">Nicholas Coffin</option>
+      <option value="Stella Szeckler">Stella Szeckler</option>
+      <option value="Tanwen Bird">Tanwen Bird</option>
+      <option value="Thomas Burton">Thomas Burton</option>
+      <option value="Zanita Volschenk">Zanita Volschenk</option>
+      <option value="__other__">Not on this list…</option>
+    </select>
+  </div>
+
+  <div class="field-row" id="manualNameRow" style="display:none;">
     <div class="field">
       <label>First name <span class="req">*</span></label>
       <input type="text" id="firstName" placeholder="e.g. Jane" autocomplete="given-name">
@@ -237,6 +258,31 @@ function emailDocId(email) {
   return (email || "").trim().toLowerCase();
 }
 
+// Splits a guest-list display name ("Nicholas Coffin") into first/last for the
+// existing record schema — first word is firstName, remainder is lastName.
+function splitName(fullName) {
+  const parts = fullName.trim().split(/\s+/);
+  return { first: parts[0] || "", last: parts.slice(1).join(" ") || "" };
+}
+
+function onGuestChange(value) {
+  const manualRow = document.getElementById("manualNameRow");
+  if (value === "__other__") {
+    manualRow.style.display = "grid";
+    document.getElementById("firstName").value = "";
+    document.getElementById("lastName").value = "";
+  } else if (value) {
+    manualRow.style.display = "none";
+    const { first, last } = splitName(value);
+    document.getElementById("firstName").value = first;
+    document.getElementById("lastName").value = last;
+  } else {
+    manualRow.style.display = "none";
+    document.getElementById("firstName").value = "";
+    document.getElementById("lastName").value = "";
+  }
+}
+
 function selectDiet(value, btn) {
   selectedDiet = value;
   document.querySelectorAll("#dietGroup .option-btn").forEach(b => b.classList.remove("selected"));
@@ -264,6 +310,9 @@ async function checkExistingSubmission(email) {
 }
 
 function validateForm() {
+  if (!document.getElementById("guestSelect").value) {
+    alert("Please select your name from the list (or \"Not on this list…\")."); return false;
+  }
   const required = ["firstName", "lastName", "email"];
   let ok = true;
   required.forEach(id => {
