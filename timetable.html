@@ -288,15 +288,40 @@
     const container = document.getElementById("day-" + day);
     const sessions = sessionsForRole(day, currentRole);
 
-    // Sort by start time
-    sessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
-
     if (sessions.length === 0) {
       container.innerHTML = `<p class="text-muted text-sm" style="padding:24px;text-align:center;">No sessions for your role on this day.</p>`;
       return;
     }
 
-    container.innerHTML = sessions.map(s => renderSession(s)).join("");
+    // Sessions tagged "assessor-stream" run in parallel with the main
+    // instructor-candidate programme (same day, overlapping times, different
+    // room). Roles that can see both (director, faculty) previously got one
+    // flat list sorted by start time, which reads as a single confusing
+    // agenda rather than two simultaneous tracks. Split them into clearly
+    // labelled sections instead.
+    const mainSessions     = sessions.filter(s => !s.tags.includes("assessor-stream"));
+    const assessorSessions = sessions.filter(s =>  s.tags.includes("assessor-stream"));
+
+    mainSessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+    assessorSessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+
+    if (assessorSessions.length === 0) {
+      // This role never sees the assessor stream — behaviour unchanged.
+      container.innerHTML = mainSessions.map(s => renderSession(s)).join("");
+      return;
+    }
+
+    const mainHeader = mainSessions.length
+      ? `<div class="stream-header">🎓 Instructor Candidate Programme</div>`
+      : "";
+    const assessorHeader = `<div class="stream-header stream-header--assessor">🧑‍🏫 Assessor / Senior Instructor Programme <span class="stream-tbc">— provisional, to be confirmed</span></div>`;
+
+    container.innerHTML = `
+      ${mainHeader}
+      ${mainSessions.map(s => renderSession(s)).join("")}
+      ${assessorHeader}
+      ${assessorSessions.map(s => renderSession(s)).join("")}
+    `;
   }
 
   function renderSession(s) {
