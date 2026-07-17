@@ -377,8 +377,11 @@
           return `<div class="video-embed"><iframe src="${r.embedUrl}" allow="autoplay" allowfullscreen></iframe></div>`;
         }
         const href = r.url || r.path || "#";
-        const target = r.url ? 'target="_blank"' : '';
-        return `<a class="resource-btn" href="${href}" ${target}><span class="icon">${r.icon || "📄"}</span>${r.title}</a>`;
+        // Open in a new tab so it doesn't navigate away from the live
+        // timetable. PDFs (slide decks) render inline in the browser's
+        // built-in viewer instead of forcing a download, the way the old
+        // .pptx links used to.
+        return `<a class="resource-btn" href="${href}" target="_blank" rel="noopener"><span class="icon">${r.icon || "📄"}</span>${r.title}</a>`;
       }).join("");
     }
 
