@@ -115,6 +115,13 @@
   <button class="day-tab" id="tab-sunday"   onclick="switchDay('sunday')">Sunday 11 Oct</button>
 </nav>
 
+<!-- ── Stream toggle (director/faculty only — they're the only roles that see
+     both the instructor-candidate and assessor programmes) ── -->
+<nav class="stream-nav hidden" id="streamNav">
+  <button class="stream-tab active" id="stream-tab-instructor" onclick="setStream('instructor')">🎓 Instructor Candidate Programme</button>
+  <button class="stream-tab" id="stream-tab-assessor" onclick="setStream('assessor')">🧑‍🏫 Assessor / Senior Instructor Programme</button>
+</nav>
+
 <!-- ── Room banner ── -->
 <div id="roomBanner" style="display:none">
   <!-- Main strip -->
@@ -228,6 +235,12 @@
   // ── State ──────────────────────────────────────────────────────────────────
   let currentRole = "instructor"; // set by auth on load
   let currentDay  = "saturday";
+  let currentStream = localStorage.getItem("rmd-iw-stream") || "instructor"; // "instructor" | "assessor" — only relevant for roles that see both (director, faculty)
+
+  // Roles that see both the instructor-candidate and assessor programmes and
+  // therefore need the stream toggle to view them as separate pages instead
+  // of one merged/interleaved list.
+  const ROLES_WITH_BOTH_STREAMS = ["director", "faculty"];
 
   const ROLE_LABELS = {
     director:            "Course Director",
@@ -251,7 +264,19 @@
     // Noticeboard visibility
     document.getElementById("noticeboard").classList.toggle("hidden", role === "director");
 
+    // Stream toggle — only shown for roles that see both programmes
+    document.getElementById("streamNav").classList.toggle("hidden", !ROLES_WITH_BOTH_STREAMS.includes(role));
+
     // Regenerate timetable for new role
+    renderAll();
+  }
+
+  // ── Stream toggle (instructor candidate vs assessor programme) ─────────────
+  function setStream(stream) {
+    currentStream = stream;
+    localStorage.setItem("rmd-iw-stream", stream);
+    document.getElementById("stream-tab-instructor").classList.toggle("active", stream === "instructor");
+    document.getElementById("stream-tab-assessor").classList.toggle("active", stream === "assessor");
     renderAll();
   }
 
@@ -286,42 +311,35 @@
 
   function renderDay(day) {
     const container = document.getElementById("day-" + day);
-    const sessions = sessionsForRole(day, currentRole);
-
-    if (sessions.length === 0) {
-      container.innerHTML = `<p class="text-muted text-sm" style="padding:24px;text-align:center;">No sessions for your role on this day.</p>`;
-      return;
-    }
+    let sessions = sessionsForRole(day, currentRole);
 
     // Sessions tagged "assessor-stream" run in parallel with the main
     // instructor-candidate programme (same day, overlapping times, different
-    // room). Roles that can see both (director, faculty) previously got one
-    // flat list sorted by start time, which reads as a single confusing
-    // agenda rather than two simultaneous tracks. Split them into clearly
-    // labelled sections instead.
-    const mainSessions     = sessions.filter(s => !s.tags.includes("assessor-stream"));
-    const assessorSessions = sessions.filter(s =>  s.tags.includes("assessor-stream"));
+    // room). Roles that can see both (director, faculty) get a toggle to view
+    // them as two separate pages rather than one merged/interleaved list.
+    if (ROLES_WITH_BOTH_STREAMS.includes(currentRole)) {
+      sessions = sessions.filter(s =>
+        currentStream === "assessor"
+          ? s.tags.includes("assessor-stream")
+          : !s.tags.includes("assessor-stream")
+      );
+    }
 
-    mainSessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
-    assessorSessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+    sessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
 
-    if (assessorSessions.length === 0) {
-      // This role never sees the assessor stream — behaviour unchanged.
-      container.innerHTML = mainSessions.map(s => renderSession(s)).join("");
+    if (sessions.length === 0) {
+      const msg = (ROLES_WITH_BOTH_STREAMS.includes(currentRole) && currentStream === "assessor")
+        ? "No assessor programme sessions on this day."
+        : "No sessions for your role on this day.";
+      container.innerHTML = `<p class="text-muted text-sm" style="padding:24px;text-align:center;">${msg}</p>`;
       return;
     }
 
-    const mainHeader = mainSessions.length
-      ? `<div class="stream-header">🎓 Instructor Candidate Programme</div>`
+    const tbcBanner = (ROLES_WITH_BOTH_STREAMS.includes(currentRole) && currentStream === "assessor")
+      ? `<p class="text-muted text-sm" style="padding:0 4px 12px;">⚠ Assessor programme is provisional — to be confirmed.</p>`
       : "";
-    const assessorHeader = `<div class="stream-header stream-header--assessor">🧑‍🏫 Assessor / Senior Instructor Programme <span class="stream-tbc">— provisional, to be confirmed</span></div>`;
 
-    container.innerHTML = `
-      ${mainHeader}
-      ${mainSessions.map(s => renderSession(s)).join("")}
-      ${assessorHeader}
-      ${assessorSessions.map(s => renderSession(s)).join("")}
-    `;
+    container.innerHTML = tbcBanner + sessions.map(s => renderSession(s)).join("");
   }
 
   function renderSession(s) {
