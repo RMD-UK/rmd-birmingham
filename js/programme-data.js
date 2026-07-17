@@ -606,10 +606,32 @@ function isSessionPast(session) {
 }
 
 /**
+ * Some sign-in roles aren't distinct programme tracks in their own right —
+ * they just need the same session visibility as one of the core tracks
+ * ("director", "faculty", "instructor", "assessor") used in each session's
+ * `roles` array above. Rather than repeating every role name in every
+ * session object (fragile — easy to miss one when adding a session), map
+ * those roles here to the track they should see.
+ *
+ *   assessor-faculty  — faculty running the assessor stream; sees both
+ *                       programmes (same content access as "faculty")
+ *   logistics         — course logistics team; sees both programmes
+ *   full-instructor   — Instructor Trainer; instructor programme only
+ *   itc               — Instructor Trainer Candidate; instructor programme only
+ */
+const ROLE_CONTENT_ALIAS = {
+  "assessor-faculty": "faculty",
+  "logistics":        "faculty",
+  "full-instructor":  "instructor",
+  "itc":              "instructor"
+};
+
+/**
  * Filter sessions for a given role
  */
 function sessionsForRole(day, role) {
+  const effectiveRole = ROLE_CONTENT_ALIAS[role] || role;
   return PROGRAMME[day].sessions.filter(s =>
-    s.roles.includes("all") || s.roles.includes(role)
+    s.roles.includes("all") || s.roles.includes(effectiveRole)
   );
 }
