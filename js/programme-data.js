@@ -152,7 +152,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "Small group practice. ⚠ Gateway assessment: all Instructor Candidates must pass the BLS/AED competency check by 12:00 noon. Candidates who have not passed by noon cannot progress to the afternoon instructor development sessions.",
         resources: [
-          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" }
         ],
         tags: ["gateway-deadline"]
       },
@@ -193,7 +193,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "To include: Choking, Bleeding, Recovery position, Drowning, Paediatrics.",
         resources: [
-          { title: "Session guide", path: "resources/provider/5-first-aid-practice.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/provider/5-first-aid-practice.html", icon: "📄" }
         ],
         tags: []
       },
@@ -300,7 +300,7 @@ const PROGRAMME = {
         notes: "",
         resources: [
           { title: "Slides (to be uploaded)", path: "", icon: "📊" },
-          { title: "Session guide", path: "resources/instructor/2-five-minute-lecture-summary.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/2-five-minute-lecture-summary.html", icon: "📄" }
         ],
         tags: []
       },
@@ -314,7 +314,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/3-debrief-5-min-presentation.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/3-debrief-5-min-presentation.html", icon: "📄" }
         ],
         tags: []
       },
@@ -342,7 +342,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/4-learning-conversation-group-practice.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/4-learning-conversation-group-practice.html", icon: "📄" }
         ],
         tags: ["itc-observation"]
       },
@@ -388,7 +388,7 @@ const PROGRAMME = {
         notes: "",
         resources: [
           { title: "Learning slides", path: "resources/6-learning---2026.pdf", icon: "📊" },
-          { title: "Session guide", path: "resources/instructor/5-learning-lecture.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/5-learning-lecture.html", icon: "📄" }
         ],
         tags: []
       },
@@ -402,7 +402,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/6-skills-teaching-demonstration.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/6-skills-teaching-demonstration.html", icon: "📄" }
         ],
         tags: []
       },
@@ -416,7 +416,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/7-skills-teaching-practical.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/7-skills-teaching-practical.html", icon: "📄" }
         ],
         tags: ["itc-observation"]
       },
@@ -443,7 +443,7 @@ const PROGRAMME = {
         notes: "",
         resources: [
           { title: "Assessing slides", path: "resources/7-assessing---2026.pdf", icon: "📊" },
-          { title: "Session guide", path: "resources/instructor/8-how-to-assess-lecture-and-demo.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/8-how-to-assess-lecture-and-demo.html", icon: "📄" }
         ],
         tags: []
       },
@@ -495,7 +495,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Session guide", path: "resources/instructor/9-skills-assessing-practical.docx", icon: "📄" }
+          { title: "Session guide", path: "resources/instructor/9-skills-assessing-practical.html", icon: "📄" }
         ],
         tags: ["itc-observation"]
       },
