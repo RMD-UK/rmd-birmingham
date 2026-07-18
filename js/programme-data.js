@@ -213,10 +213,119 @@ const PROGRAMME = {
       },
 
       // ── Assessor / Senior Instructor stream (Saturday) — from draft deck, 2026-07-18.
-      // Morning up to midday (registration through the 11:45 break) is shared with the
-      // instructor stream — see sat-1 through sat-9 above, now tagged "assessor" too —
-      // per Jon's instruction 2026-07-18 that the assessor programme should match the
-      // instructor course up to midday on Saturday. Assessor-specific content resumes here. ──
+      // Morning up to midday matches the instructor stream exactly. Real "assessor"-role
+      // viewers already see sat-1/2/3/4/6/7/8/9 above directly (sat-6/7/8 carry "assessor"
+      // in their roles array). The duplicates below exist ONLY so the dedicated
+      // "Assessor / Senior Instructor Programme" tab (which director/faculty toggle to via
+      // setStream(), filtered purely on the "assessor-stream" tag — see timetable.html
+      // renderDay()) also shows this content. Deliberately roles:["faculty","director"]
+      // (no "assessor") on these duplicates, so real assessor-role viewers don't see the
+      // morning listed twice — see [[project_instructor_weekend_2026]]. ──
+      {
+        id: "sat-assessor-0a",
+        start: "08:00",
+        duration: 45,
+        title: "Registration",
+        location: "ATH",
+        lead: "Student faculty",
+        roles: ["faculty", "director"],
+        notes: "Report to the registration desk on arrival.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0b",
+        start: "08:45",
+        duration: 30,
+        title: "Plenary Introduction & Welcome",
+        location: "ATH",
+        lead: "Jon",
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Intro slides", path: "resources/1-intro-to-weekend.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0c",
+        start: "09:15",
+        duration: 20,
+        title: "Equipment Demonstration",
+        location: "ATH",
+        lead: "",
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "QCPR App", url: "https://laerdal.com/gb/products/simulation-training/resuscitation-training/qcpr-app/", icon: "📱" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0d",
+        start: "09:35",
+        duration: 30,
+        title: "Equipment Practice",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0e",
+        start: "10:10",
+        duration: 20,
+        title: "Plenary Lecture: BLS/AED",
+        location: "ATH",
+        lead: "",
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0f",
+        start: "10:30",
+        duration: 15,
+        title: "Plenary Demonstration: BLS/AED",
+        location: "ATH",
+        lead: "",
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0g",
+        start: "10:45",
+        duration: 60,
+        title: "Group Practice: BLS/AED",
+        subtitle: "Including: Closing the Gender Gap",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["faculty", "director"],
+        notes: "Small group practice. Assessor candidates use this session as their BLS Provider recertification.",
+        resources: [
+          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0h",
+        start: "11:45",
+        duration: 15,
+        title: "Break",
+        location: "",
+        lead: "",
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "break"]
+      },
       {
         id: "sat-assessor-3",
         start: "12:00",
