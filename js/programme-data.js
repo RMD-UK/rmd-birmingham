@@ -567,17 +567,118 @@ const PROGRAMME = {
         resources: [],
         tags: ["assessor-stream"]
       },
+      // ── Senior Instructor Role Briefing (Sunday, after 09:45) — broken into individual
+      // section placeholders 2026-07-18, per Jon. Order confirmed, timings not — each
+      // section shows the "To be confirmed" badge via the "placeholder" tag rather than
+      // a fabricated time. All stacked at 09:45 (immediately after registration); stable
+      // sort keeps them in this order since they share a start time. ──
       {
-        id: "sun-assessor-2",
+        id: "sun-assessor-2a",
         start: "09:45",
-        duration: 195,
-        title: "Senior Instructor Role Briefing",
+        duration: 0,
+        title: "Introduction to BLS Senior Instructor Role",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
-        notes: "Covers: role on Monday evenings; grey areas from the assessor course and navigating them with instructors/common questions; Reasonable Adjustment Plan (RAP) students (teaching and assessing); kit issues and troubleshooting; difficult students; research opportunities and wider RMD involvement. After lunch, Senior Instructors rejoin the instructor group to explain their Monday-evening role.",
+        notes: "",
         resources: [],
-        tags: ["assessor-stream"]
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sun-assessor-2b",
+        start: "09:45",
+        duration: 0,
+        title: "Discuss Role on Monday Evenings",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sun-assessor-2c",
+        start: "09:45",
+        duration: 0,
+        title: "Reinforce Grey Areas Covered in the Assessor Course",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "And how to navigate these with instructors / common questions.",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sun-assessor-2d",
+        start: "09:45",
+        duration: 0,
+        title: "Reasonable Adjustment Plan (RAP) Students",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Including teaching and examining.",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sun-assessor-2e",
+        start: "09:45",
+        duration: 0,
+        title: "Kit Issues and Troubleshooting",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sun-assessor-2f",
+        start: "09:45",
+        duration: 0,
+        title: "Difficult Students",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sun-assessor-2g",
+        start: "09:45",
+        duration: 0,
+        title: "Research Opportunities and Wider Involvement with RMD",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
+      },
+      {
+        id: "sun-assessor-2h",
+        start: "09:45",
+        duration: 0,
+        title: "Lunch Break",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "placeholder", "break"]
+      },
+      {
+        id: "sun-assessor-2i",
+        start: "09:45",
+        duration: 0,
+        title: "Senior Instructors Rejoin Instructors",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Rejoin Instructors in room and explain role on Monday evening.",
+        resources: [],
+        tags: ["assessor-stream", "placeholder"]
       },
       {
         id: "sun-1",
