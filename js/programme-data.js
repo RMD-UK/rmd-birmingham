@@ -2,7 +2,9 @@
  * RMD Instructor Weekend 2026 — Programme Data
  *
  * Source: 2025 programme (xlsx). Update timings/sessions for 2026.
- * Assessor stream (Saturday) is a placeholder — Naveed to confirm.
+ * Assessor/Senior Instructor stream (Saturday + Sunday) — added 2026-07-18 from Jon's
+ * draft deck ("BLS assessor course 2026.pptx"). Locations mostly TBC pending Naveed's
+ * confirmation; timings and session content are as specified in the deck.
  *
  * Session roles:
  *   "all"        — everyone sees this
@@ -210,30 +212,114 @@ const PROGRAMME = {
         tags: ["break"]
       },
 
-      // ── Assessor stream (Saturday) — placeholder until Naveed confirms ──
+      // ── Assessor / Senior Instructor stream (Saturday) — from draft deck, 2026-07-18 ──
       {
-        id: "sat-assessor-am",
-        start: "09:35",
-        duration: 235,
-        title: "Assessor Training (Morning)",
-        location: "TBC",
+        id: "sat-assessor-1",
+        start: "09:30",
+        duration: 30,
+        title: "Assessor Course Introduction",
+        location: "WF15",
         lead: "Naveed",
         roles: ["assessor", "faculty", "director"],
-        notes: "Programme to be confirmed by Naveed. Runs parallel to instructor candidate morning sessions.",
+        notes: "For assessor candidates and senior instructors.",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
-        id: "sat-assessor-pm",
-        start: "13:30",
-        duration: 210,
-        title: "Assessor Training (Afternoon)",
+        id: "sat-assessor-2",
+        start: "10:00",
+        duration: 120,
+        title: "BLS Provider Recertification",
         location: "TBC",
-        lead: "Naveed",
+        lead: "",
         roles: ["assessor", "faculty", "director"],
-        notes: "Assessor training concludes Saturday. Assessor candidates do not return Sunday.",
+        notes: "",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-3",
+        start: "12:00",
+        duration: 30,
+        title: "Introduction to Examining a BLS Candidate",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-4",
+        start: "12:30",
+        duration: 60,
+        title: "Lunch",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Assessor/SI stream breaks for lunch an hour earlier than the instructor stream (12:30, not 13:30).",
+        resources: [],
+        tags: ["assessor-stream", "break"]
+      },
+      {
+        id: "sat-assessor-5",
+        start: "13:30",
+        duration: 45,
+        title: "Examination of the Successful Candidate",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Introduction, making the candidate feel at ease, observing, delivering the verdict, learning conversation, closure — followed by group sessions.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-6",
+        start: "14:15",
+        duration: 60,
+        title: "Examination of the Unsuccessful Candidate",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Delivering the verdict, being direct, learning conversation, re-sits, avoiding confrontation/debate — followed by group sessions.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-7",
+        start: "15:15",
+        duration: 15,
+        title: "Coffee Break",
+        location: "",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "break"]
+      },
+      {
+        id: "sat-assessor-8",
+        start: "15:30",
+        duration: 90,
+        title: "Grey Areas & the Borderline Candidate",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Standardisation, common issues from previous examinations, and fail-point criteria (approach, 999 call, chest compressions, rescue breaths, AED).",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-9",
+        start: "17:00",
+        duration: 30,
+        title: "Feedback & Course Closure",
+        location: "",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Assessor candidate training concludes here. Senior Instructors continue with an additional session Sunday morning.",
+        resources: [],
+        tags: ["assessor-stream"]
       },
 
       // ── Instructor development (Saturday afternoon) ──
@@ -365,6 +451,33 @@ const PROGRAMME = {
     label: "Sunday 11 Oct",
     date: "Sunday 11 October 2026",
     sessions: [
+      // ── Senior Instructor stream (Sunday) — from draft deck, 2026-07-18 ──
+      // Assessor candidates do not return Sunday — this is for Senior Instructors only,
+      // shown under the combined "Assessor / Senior Instructor" role per Jon's confirmation.
+      {
+        id: "sun-assessor-1",
+        start: "09:30",
+        duration: 15,
+        title: "Senior Instructor Registration & Arrival",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Senior Instructors only — assessor candidates do not return Sunday.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2",
+        start: "09:45",
+        duration: 195,
+        title: "Senior Instructor Role Briefing",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Covers: role on Monday evenings; grey areas from the assessor course and navigating them with instructors/common questions; Reasonable Adjustment Plan (RAP) students (teaching and assessing); kit issues and troubleshooting; difficult students; research opportunities and wider RMD involvement. After lunch, Senior Instructors rejoin the instructor group to explain their Monday-evening role.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
       {
         id: "sun-1",
         start: "09:30",
@@ -480,7 +593,7 @@ const PROGRAMME = {
         title: "Lunch",
         location: "Atrium",
         lead: "",
-        roles: ["instructor", "faculty", "director"],
+        roles: ["instructor", "assessor", "faculty", "director"],
         notes: "",
         resources: [],
         tags: ["break"]
