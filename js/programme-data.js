@@ -399,6 +399,22 @@ const PROGRAMME = {
         tags: ["assessor-stream"]
       },
       {
+        id: "sat-assessor-8x",
+        start: "16:45",
+        duration: 30,
+        title: "Whole Course Photo",
+        location: "Medical School steps",
+        lead: "",
+        // Duplicate of sat-21, roles:["faculty","director"] only — real "assessor"-role
+        // viewers already see it via sat-21's roles:["all"]; this copy exists purely so
+        // the assessor-stream tab (tag-filtered, see director/faculty toggle note above)
+        // shows it too, same pattern as the sat-assessor-0a..0h morning duplicates.
+        roles: ["faculty", "director"],
+        notes: "All groups please. Wear your course polo shirts.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
         id: "sat-assessor-8b",
         start: "17:15",
         duration: 15,
