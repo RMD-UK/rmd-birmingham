@@ -124,7 +124,7 @@ const PROGRAMME = {
         title: "Plenary Lecture: BLS/AED",
         location: "ATH",
         lead: "",
-        roles: ["instructor", "faculty", "director"],
+        roles: ["instructor", "assessor", "faculty", "director"],
         notes: "",
         resources: [
           { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" }
@@ -138,7 +138,7 @@ const PROGRAMME = {
         title: "Plenary Demonstration: BLS/AED",
         location: "ATH",
         lead: "",
-        roles: ["instructor", "faculty", "director"],
+        roles: ["instructor", "assessor", "faculty", "director"],
         notes: "",
         resources: [],
         tags: []
@@ -151,8 +151,8 @@ const PROGRAMME = {
         subtitle: "Including: Closing the Gender Gap",
         location: "Teaching rooms",
         lead: "Room faculty lead",
-        roles: ["instructor", "faculty", "director"],
-        notes: "Small group practice. ⚠ Gateway assessment: all Instructor Candidates must pass the BLS/AED competency check by 12:00 noon. Candidates who have not passed by noon cannot progress to the afternoon instructor development sessions.",
+        roles: ["instructor", "assessor", "faculty", "director"],
+        notes: "Small group practice. ⚠ Gateway assessment: all Instructor Candidates must pass the BLS/AED competency check by 12:00 noon. Candidates who have not passed by noon cannot progress to the afternoon instructor development sessions. Assessor candidates use this session as their BLS Provider recertification.",
         resources: [
           { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" }
         ],
@@ -212,31 +212,11 @@ const PROGRAMME = {
         tags: ["break"]
       },
 
-      // ── Assessor / Senior Instructor stream (Saturday) — from draft deck, 2026-07-18 ──
-      {
-        id: "sat-assessor-1",
-        start: "09:30",
-        duration: 30,
-        title: "Assessor Course Introduction",
-        location: "WF15",
-        lead: "Naveed",
-        roles: ["assessor", "faculty", "director"],
-        notes: "For assessor candidates and senior instructors.",
-        resources: [],
-        tags: ["assessor-stream"]
-      },
-      {
-        id: "sat-assessor-2",
-        start: "10:00",
-        duration: 120,
-        title: "BLS Provider Recertification",
-        location: "TBC",
-        lead: "",
-        roles: ["assessor", "faculty", "director"],
-        notes: "",
-        resources: [],
-        tags: ["assessor-stream"]
-      },
+      // ── Assessor / Senior Instructor stream (Saturday) — from draft deck, 2026-07-18.
+      // Morning up to midday (registration through the 11:45 break) is shared with the
+      // instructor stream — see sat-1 through sat-9 above, now tagged "assessor" too —
+      // per Jon's instruction 2026-07-18 that the assessor programme should match the
+      // instructor course up to midday on Saturday. Assessor-specific content resumes here. ──
       {
         id: "sat-assessor-3",
         start: "12:00",
