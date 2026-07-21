@@ -102,6 +102,33 @@ async function resolveRole(uid, email) {
 
 // requireDirector() — call on director-only pages instead of writing auth
 // logic inline. Waits for auth state, resolves role, redirects if not director.
+// ── Self-service password reset ─────────────────────────────────────────────
+// Sends a Firebase "reset your password" email directly via the REST API —
+// works whether or not the caller is currently signed in. Deliberately
+// swallows EMAIL_NOT_FOUND so callers always show the same generic outcome
+// message rather than letting a page reveal which emails have accounts.
+// continueUrl controls where the "back to site" link on the reset
+// confirmation page points afterward (defaults to the site root).
+async function requestPasswordReset(email, continueUrl) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_CONFIG.apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestType: "PASSWORD_RESET",
+        email,
+        continueUrl: continueUrl || (window.location.origin + "/index.html"),
+        canHandleCodeInApp: false
+      })
+    }
+  );
+  const data = await res.json();
+  if (data.error && data.error.message !== "EMAIL_NOT_FOUND") {
+    throw new Error(data.error.message);
+  }
+}
+
 // Usage:
 //   initFirebase();
 //   requireDirector().then(user => { /* load page content */ });

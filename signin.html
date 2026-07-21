@@ -22,6 +22,15 @@
         <button type="submit" class="btn-login">Sign in</button>
       </form>
       <p id="loginError" style="color:var(--rmd-warn);font-size:13px;margin-top:10px;display:none;"></p>
+
+      <p style="text-align:center;margin-top:10px;">
+        <a href="#" onclick="toggleForgotPassword(event)" style="font-size:13px;color:var(--rmd-blue);text-decoration:underline;">Forgot password?</a>
+      </p>
+      <div id="forgotPasswordPanel" style="display:none;margin-top:12px;">
+        <input class="form-input" type="email" id="forgotEmail" placeholder="Email address" autocomplete="email">
+        <button type="button" class="btn-login" onclick="sendForgotPasswordEmail()" style="margin-top:8px;">Send reset link</button>
+        <p id="forgotStatus" style="font-size:13px;margin-top:8px;display:none;"></p>
+      </div>
     </div>
 
     <!-- Candidate QR landing (shown when ?id=xxx in URL) -->
@@ -116,6 +125,44 @@
 
   // resolveRole() is the shared one from js/firebase-config.js — do not
   // redeclare it locally (see note above re: duplicate DIRECTOR_EMAILS).
+
+  // ── Forgot password ────────────────────────────────────────────────────────
+  // requestPasswordReset() is the shared helper from js/firebase-config.js.
+  function toggleForgotPassword(e) {
+    e.preventDefault();
+    const panel = document.getElementById("forgotPasswordPanel");
+    const shown = panel.style.display === "block";
+    panel.style.display = shown ? "none" : "block";
+    if (!shown) {
+      document.getElementById("forgotEmail").value = document.getElementById("loginEmail").value;
+      document.getElementById("forgotStatus").style.display = "none";
+    }
+  }
+
+  async function sendForgotPasswordEmail() {
+    const email    = document.getElementById("forgotEmail").value.trim().toLowerCase();
+    const statusEl = document.getElementById("forgotStatus");
+
+    if (!email || !email.includes("@")) {
+      statusEl.style.color   = "var(--rmd-warn)";
+      statusEl.textContent   = "Enter a valid email address first.";
+      statusEl.style.display = "block";
+      return;
+    }
+
+    statusEl.style.color   = "var(--rmd-muted)";
+    statusEl.textContent   = "Sending…";
+    statusEl.style.display = "block";
+
+    try {
+      await requestPasswordReset(email, window.location.origin + "/signin.html");
+      statusEl.style.color = "#1a6e31";
+      statusEl.textContent = "If that address has an RMD account, a reset link is on its way — check your inbox.";
+    } catch (err) {
+      statusEl.style.color = "var(--rmd-warn)";
+      statusEl.textContent = "Something went wrong — try again, or contact RMD directly.";
+    }
+  }
 
   function routeByRole(role) {
     // All password-authenticated members land on the members menu first,
