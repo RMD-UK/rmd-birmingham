@@ -48,6 +48,16 @@ service cloud.firestore {
         get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "faculty";
     }
 
+    // True if the signed-in user's people/{uid} doc has role == "assessor-faculty".
+    // Used to gate the assessor-stream timing/messaging portal (2026-07-21) —
+    // this role may post to the assessor-stream target only, never "all",
+    // "faculty", or "instructor-stream".
+    function isAssessorFaculty() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "assessor-faculty";
+    }
+
     // Can record/amend an assessment: faculty or director.
     function canAssess() {
       return isFaculty() || isDirector();
@@ -109,9 +119,23 @@ service cloud.firestore {
     }
 
     // ── Messages ────────────────────────────────────────────────────────────
-    // Authenticated only — broadcast messages to room screens / noticeboard
+    // Read: authenticated — recipient filtering by role/stream happens
+    //   client-side in timetable.html (isMessageForRole()), same posture as
+    //   the rest of this ruleset (e.g. sessionsForRole filtering on the client).
+    // Create: director can post any target. Assessor-faculty can post ONLY
+    //   target == "assessor-stream" — this is the write-side enforcement of
+    //   "assessor course faculty portal, assessor-stream audience only"
+    //   (2026-07-21). No other role (including generic "faculty" and
+    //   candidates) may create a message at all — matches the pre-existing
+    //   posture where only the director's panel could send.
+    // Update/delete: director only — previously any signed-in user could
+    //   edit or delete any message (isSignedIn() covered write); tightened
+    //   as part of this change since it was an open gap.
     match /messages/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow create: if isDirector() ||
+        (isAssessorFaculty() && request.resource.data.target == "assessor-stream");
+      allow update, delete: if isDirector();
     }
 
     // ── Rooms ────────────────────────────────────────────────────────────────

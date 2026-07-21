@@ -53,6 +53,16 @@ const ROLES = {
   ASSESSOR_FACULTY: "assessor-faculty" // assessor faculty (senior tier, mirrors full-instructor)
 };
 
+// ── Stream-scoped message audiences ─────────────────────────────────────────
+// Which roles receive a "messages" doc sent with target "instructor-stream" /
+// "assessor-stream" (timetable.html noticeboard listener + room screens).
+// Decided 2026-07-21: candidates (instructor/assessor roles) are never
+// included in either stream; each stream also excludes the other stream's
+// dedicated faculty. Mirrored in firestore.rules for the write side —
+// keep both in sync if these change.
+const INSTRUCTOR_STREAM_RECIPIENTS = ["director", "faculty", "full-instructor", "itc", "logistics"];
+const ASSESSOR_STREAM_RECIPIENTS   = ["director", "assessor-faculty", "logistics"];
+
 // ── Director access ─────────────────────────────────────────────────────────
 // Canonical list of director emails. Any page that gates on director role
 // should use resolveRole() / requireDirector() from this file rather than
