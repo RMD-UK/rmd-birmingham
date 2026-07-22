@@ -63,6 +63,24 @@ service cloud.firestore {
       return isFaculty() || isDirector();
     }
 
+    // True if the signed-in user's people/{uid} doc has role == "full-instructor".
+    // These are Instructor Trainers — room leads who observe ITCs rotating
+    // through their room (admin-room-allocation.html assigns them the same
+    // room-lead slot as faculty). Kept separate from canAssess() rather than
+    // folded into it, so this role gains ITC-observation rights only, not the
+    // broader assessments/gateway_assessments/development_assessments powers
+    // faculty and director have over instructor/assessor-stream candidates.
+    function isFullInstructor() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "full-instructor";
+    }
+
+    // Can record/amend an ITC observation: faculty, full-instructor, or director.
+    function canObserveItc() {
+      return isFaculty() || isFullInstructor() || isDirector();
+    }
+
     // ── People directory ────────────────────────────────────────────────────
     // Read: public — QR landing page looks up candidate name without login
     // Write: director only — this collection decides who counts as a director,
@@ -160,19 +178,20 @@ service cloud.firestore {
     //   itc-observations.html's loadMyRatings() does this. A query without
     //   that filter will be denied for non-directors, which is intentional:
     //   it's what stops one Instructor Trainer listing another's observations.
-    // Create: faculty or director only, and only self-attributed
-    //   (request.resource.data.raterUid must equal the caller) — the ITC
-    //   being observed must never be able to write their own record, and no
-    //   rater can write a doc claiming to be someone else's observation.
+    // Create: faculty, full-instructor, or director only, and only
+    //   self-attributed (request.resource.data.raterUid must equal the
+    //   caller) — the ITC being observed must never be able to write their
+    //   own record, and no rater can write a doc claiming to be someone
+    //   else's observation.
     // Update: same self-attribution check against the EXISTING doc
     //   (resource.data.raterUid) — a rater can only amend their own doc.
     // Delete: director only.
     match /itc_observations/{docId} {
       allow read: if isSignedIn() &&
         (isDirector() || resource.data.raterUid == request.auth.uid);
-      allow create: if canAssess() &&
+      allow create: if canObserveItc() &&
         request.resource.data.raterUid == request.auth.uid;
-      allow update: if canAssess() &&
+      allow update: if canObserveItc() &&
         resource.data.raterUid == request.auth.uid &&
         request.resource.data.raterUid == request.auth.uid;
       allow delete: if isDirector();
