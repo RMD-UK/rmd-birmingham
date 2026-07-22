@@ -193,6 +193,7 @@
     <div class="sum-pill"><div class="val" id="sum-candidates">–</div><div class="lbl">Instr. Candidates</div></div>
     <div class="sum-pill"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor/Sr Instr.</div></div>
     <div class="sum-pill"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From roster</div></div>
+    <div class="sum-pill"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">From faculty</div></div>
     <div class="sum-pill"><div class="val" id="sum-manual" style="color:#856404;">–</div><div class="lbl">Added manually</div></div>
   </div>
 
@@ -201,6 +202,7 @@
     <button class="btn-action" onclick="togglePanel('addPanel')">+ Add person</button>
     <button class="btn-action secondary" onclick="togglePanel('pastePanel')">📋 Paste import</button>
     <button class="btn-action secondary" onclick="togglePanel('rosterPanel')">⬇ Import from roster</button>
+    <button class="btn-action secondary" onclick="togglePanel('facultyPanel')">🎓 Import confirmed faculty</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()">📧 Copy confirmed emails</button>
     <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn-action secondary" onclick="togglePanel('syncPanel')">🔗 Sync to People</button>
@@ -290,6 +292,25 @@
     </div>
   </div>
 
+  <!-- Import from Faculty Responses panel -->
+  <div class="panel" id="facultyPanel" style="display:none;">
+    <div class="panel-header">Import confirmed faculty
+      <button onclick="togglePanel('facultyPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="warn-box">
+        This will add everyone in <strong>Faculty Responses</strong> whose attendance status is <strong>Confirmed</strong>
+        (pending and declined responses are left out) to the IW registrations list, as Pending. People already on the
+        list will not be duplicated.
+      </div>
+      <div id="facultyPreview" class="loading">Loading faculty responses…</div>
+      <div id="facultyActions" style="display:none;margin-top:12px;">
+        <button class="btn-action" onclick="importFromFaculty()">Import listed people</button>
+        <span id="facultyFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
+      </div>
+    </div>
+  </div>
+
   <!-- Sync to People panel -->
   <div class="panel" id="syncPanel" style="display:none;">
     <div class="panel-header">Sync confirmed candidates → People
@@ -336,6 +357,7 @@ const IW_COLL          = "iw_registrations";
 
 let allRegistrations   = [];   // [{id, name, email, role, status, source, notes, addedAt}]
 let rosterCandidates   = [];   // from mou_roster (for import panel)
+let facultyCandidates  = [];   // from faculty_responses, attendanceStatus === "confirmed" (for import panel)
 let currentFilter      = "all";
 let pasteData          = [];   // parsed paste rows
 let syncCandidates     = [];   // confirmed regs mapped for People sync
@@ -380,6 +402,7 @@ function updateSummary() {
   document.getElementById("sum-candidates").textContent = r.filter(x => x.role === "Instructor Candidate").length;
   document.getElementById("sum-assessors").textContent  = r.filter(x => x.role === "Assessor / Senior Instructor").length;
   document.getElementById("sum-roster").textContent     = r.filter(x => x.source === "roster").length;
+  document.getElementById("sum-faculty").textContent    = r.filter(x => x.source === "faculty").length;
   document.getElementById("sum-manual").textContent     = r.filter(x => x.source === "manual" || x.source === "paste").length;
 }
 
@@ -702,17 +725,114 @@ async function importFromRoster() {
   }
 }
 
+// ── Import from Faculty Responses ───────────────────────────────────────────
+// Faculty submit their availability via faculty-form.html; those responses
+// land in faculty_responses (managed by admin-faculty-responses.html). Nothing
+// else copies them into iw_registrations, so without this step confirmed
+// faculty never reach the Sync-to-People panel below. Only pulls
+// attendanceStatus === "confirmed" — pending or declined responses are left
+// out on purpose (2026-07-22, Jon: pull once attendance is confirmed, not
+// pending). Role is passed through as-is from faculty_responses (Faculty,
+// Instructor Trainer, Assessor Faculty, Instructor Trainer Candidate,
+// Director, RMD Student Faculty — see ASSIGNABLE_ROLES in
+// admin-faculty-responses.html), which IW_TO_PEOPLE_ROLE above now resolves.
+async function loadFacultyPreview() {
+  const preview = document.getElementById("facultyPreview");
+  const actions = document.getElementById("facultyActions");
+  preview.innerHTML = '<div class="loading">Loading faculty responses…</div>';
+  actions.style.display = "none";
+
+  try {
+    const snap = await db.collection("faculty_responses").get();
+    const existing = new Set(allRegistrations.map(r => r.email));
+    facultyCandidates = [];
+
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.attendanceStatus !== "confirmed") return;
+      const email = (d.email || "").toLowerCase();
+      if (!email) return;
+      const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || email;
+      facultyCandidates.push({ name, email, role: d.role || "Faculty", alreadyAdded: existing.has(email) });
+    });
+
+    if (!facultyCandidates.length) {
+      preview.innerHTML = '<div class="empty-state">No confirmed faculty responses found.</div>';
+      return;
+    }
+
+    const toAdd     = facultyCandidates.filter(r => !r.alreadyAdded);
+    const alreadyIn = facultyCandidates.filter(r => r.alreadyAdded);
+
+    preview.innerHTML = `
+      <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:8px;">
+        Found <strong style="color:var(--rmd-navy);">${facultyCandidates.length}</strong> confirmed faculty:
+        <strong style="color:#1a6e31;">${toAdd.length} new</strong> to add,
+        <strong style="color:#637282;">${alreadyIn.length} already on list</strong>
+      </div>
+      <div class="import-preview">
+        ${toAdd.map(p => `<div class="preview-row">
+          <span class="preview-name">${p.name}</span>
+          <span class="preview-email">${p.email}</span>
+          <span class="badge-candidate">${p.role}</span>
+        </div>`).join("")}
+        ${alreadyIn.map(p => `<div class="preview-row" style="opacity:0.45;">
+          <span class="preview-name">${p.name}</span>
+          <span class="preview-email">${p.email}</span>
+          <span style="font-size:11px;color:#637282;">Already on list</span>
+        </div>`).join("")}
+      </div>`;
+    actions.style.display = toAdd.length ? "block" : "none";
+    document.getElementById("facultyFeedback").textContent = "";
+  } catch(err) {
+    preview.innerHTML = `<div class="empty-state">Failed to load faculty responses: ${err.message}</div>`;
+  }
+}
+
+async function importFromFaculty() {
+  const existing = new Set(allRegistrations.map(r => r.email));
+  const toAdd    = facultyCandidates.filter(r => !existing.has(r.email));
+  const fb       = document.getElementById("facultyFeedback");
+
+  if (!toAdd.length) { fb.textContent = "Nothing new to import."; return; }
+  fb.textContent = `Importing ${toAdd.length} faculty…`;
+
+  try {
+    const batch   = db.batch();
+    const ts      = firebase.firestore.FieldValue.serverTimestamp();
+    const newDocs = [];
+
+    toAdd.forEach(p => {
+      const ref = db.collection(IW_COLL).doc();
+      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes: "", source: "faculty", status: "pending", addedAt: ts });
+      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes: "", source: "faculty", status: "pending" });
+    });
+    await batch.commit();
+
+    allRegistrations.push(...newDocs);
+    allRegistrations.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+    updateSummary();
+    renderTable();
+    fb.textContent = `✓ ${toAdd.length} faculty imported`;
+    setTimeout(() => { fb.textContent = ""; }, 4000);
+    document.getElementById("facultyPanel").style.display = "none";
+  } catch(err) {
+    fb.textContent = "Error: " + err.message;
+  }
+}
+
 // ── Panel toggling ────────────────────────────────────────────────────────────
 function togglePanel(id) {
   const el      = document.getElementById(id);
   const visible = el.style.display !== "none";
   // Close all panels first
-  ["addPanel","pastePanel","rosterPanel","syncPanel"].forEach(p => {
+  ["addPanel","pastePanel","rosterPanel","facultyPanel","syncPanel"].forEach(p => {
     document.getElementById(p).style.display = "none";
   });
   if (!visible) {
     el.style.display = "block";
     if (id === "rosterPanel") loadRosterPreview();
+    if (id === "facultyPanel") loadFacultyPreview();
     if (id === "syncPanel") loadSyncPreview();
   }
 }
