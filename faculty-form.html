@@ -639,6 +639,12 @@ function selectAccom(night, value, btn) {
   btn.classList.add("selected");
 }
 
+// ── Provisional flag ──────────────────────────────────────────────────────
+function toggleProvisional(checked) {
+  state.provisional = checked;
+  document.getElementById("provisionalHint").style.display = checked ? "block" : "none";
+}
+
 // ── Navigation ────────────────────────────────────────────────────────────
 async function nextSection() {
   if (!validateSection(currentSection)) return;
@@ -810,6 +816,13 @@ function prefillForm(data) {
   document.getElementById("travelNotes").value         = data.travelNotes        || "";
   document.getElementById("otherNotes").value          = data.otherNotes         || "";
 
+  // Provisional flag — pre-checked if their last submission was left provisional,
+  // so returning to finalize means consciously unticking it rather than resubmitting
+  // silently under the old flag.
+  state.provisional = !!data.provisional;
+  document.getElementById("provisionalCheckbox").checked = state.provisional;
+  document.getElementById("provisionalHint").style.display = state.provisional ? "block" : "none";
+
   updateDaysFieldVisibility();
   showEditingBanner();
 }
@@ -918,6 +931,10 @@ async function submitForm() {
     accessibilityNeeds: document.getElementById("accessibilityNeeds").value.trim(),
     travelNotes:        document.getElementById("travelNotes").value.trim(),
     otherNotes:         document.getElementById("otherNotes").value.trim(),
+    // Provisional — self-declared, separate from the director-controlled
+    // attendanceStatus (confirmed/declined/pending). True means the faculty
+    // member expects to come back and confirm/update these answers later.
+    provisional: state.provisional,
     // Meta
     source: "faculty-form-2026"
   };
@@ -937,7 +954,10 @@ async function submitForm() {
     document.getElementById("navRow").style.display = "none";
     document.querySelector(".progress-strip").style.display = "none";
     document.getElementById("editingBannerContainer").innerHTML = "";
-    if (existingDocId) {
+    if (state.provisional) {
+      document.getElementById("successHeading").textContent = "Saved as provisional";
+      document.getElementById("successMessage").textContent = "Your response has been saved and clearly flagged as provisional. Please come back and confirm your final details using the same email address as soon as you can.";
+    } else if (existingDocId) {
       document.getElementById("successHeading").textContent = "Updated!";
       document.getElementById("successMessage").textContent = "Your information has been updated. Thanks for keeping it current.";
     }
