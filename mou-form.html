@@ -96,6 +96,15 @@
     </form>
     <p id="signinError" style="color:var(--rmd-warn);font-size:13px;margin-top:10px;display:none;"></p>
 
+    <p style="text-align:center;margin-top:10px;">
+      <a href="#" onclick="toggleMouForgotPassword(event)" style="font-size:13px;color:var(--rmd-blue);text-decoration:underline;">Forgot password?</a>
+    </p>
+    <div id="mouForgotPanel" style="display:none;margin-top:12px;">
+      <input class="form-input" type="email" id="mouForgotEmail" placeholder="Email address" autocomplete="email">
+      <button type="button" class="btn-login" onclick="sendMouForgotPasswordEmail()" style="margin-top:8px;">Send reset link</button>
+      <p id="mouForgotStatus" style="font-size:13px;margin-top:8px;display:none;"></p>
+    </div>
+
     <hr class="login-divider">
     <p class="qr-hint">Don&rsquo;t have an account yet? Contact RMD Birmingham to be added.</p>
   </div>
@@ -346,7 +355,11 @@ async function handleMouSignin(e) {
   } catch (err) {
     btn.textContent = "Sign in";
     btn.disabled    = false;
-    if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+    if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential" || err.code === "auth/invalid-login-credentials") {
+      // See signin.html for why "auth/invalid-login-credentials" is here —
+      // confirmed 2026-07-22 as the real code this Firebase project returns
+      // for any wrong email/password combo; without it every failed sign-in
+      // fell through to the generic "check your connection" message.
       errEl.textContent = "Incorrect email or password.";
     } else if (err.code === "auth/too-many-requests") {
       errEl.textContent = "Too many attempts — try again in a few minutes.";
@@ -360,6 +373,44 @@ async function handleMouSignin(e) {
 function handleMouSignout(e) {
   e.preventDefault();
   auth.signOut();
+}
+
+// ── Forgot password ──────────────────────────────────────────────────────────
+// requestPasswordReset() is the shared helper from js/firebase-config.js.
+function toggleMouForgotPassword(e) {
+  e.preventDefault();
+  const panel = document.getElementById("mouForgotPanel");
+  const shown = panel.style.display === "block";
+  panel.style.display = shown ? "none" : "block";
+  if (!shown) {
+    document.getElementById("mouForgotEmail").value = document.getElementById("signinEmail").value;
+    document.getElementById("mouForgotStatus").style.display = "none";
+  }
+}
+
+async function sendMouForgotPasswordEmail() {
+  const email    = document.getElementById("mouForgotEmail").value.trim().toLowerCase();
+  const statusEl = document.getElementById("mouForgotStatus");
+
+  if (!email || !email.includes("@")) {
+    statusEl.style.color   = "var(--rmd-warn)";
+    statusEl.textContent   = "Enter a valid email address first.";
+    statusEl.style.display = "block";
+    return;
+  }
+
+  statusEl.style.color   = "var(--rmd-muted)";
+  statusEl.textContent   = "Sending…";
+  statusEl.style.display = "block";
+
+  try {
+    await requestPasswordReset(email, window.location.origin + "/mou-form.html");
+    statusEl.style.color = "#1a6e31";
+    statusEl.textContent = "If that address has an RMD account, a reset link is on its way — check your inbox.";
+  } catch (err) {
+    statusEl.style.color = "var(--rmd-warn)";
+    statusEl.textContent = "Something went wrong — try again, or contact RMD directly.";
+  }
 }
 
 let agreed = null;

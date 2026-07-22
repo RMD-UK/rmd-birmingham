@@ -173,6 +173,8 @@
       <select id="msgTarget" style="flex:1;padding:6px;border:1px solid #ccd6dd;border-radius:4px;font-family:var(--font);">
         <option value="all">→ Everyone (all groups + faculty)</option>
         <option value="faculty">→ Faculty only</option>
+        <option value="instructor-stream">→ Instructor programme running early/late (faculty + ITCs, not candidates, not assessor faculty)</option>
+        <option value="assessor-stream">→ Assessor programme running early/late (assessor faculty only, not candidates, not instructor faculty)</option>
       </select>
     </div>
     <div class="msg-compose">
@@ -181,6 +183,22 @@
       <button class="btn" onclick="sendMessage()">Send</button>
     </div>
     <p class="text-sm text-muted mt-8">Messages appear on room screens and candidate noticeboards immediately.</p>
+  </div>
+</div>
+
+<!-- ── Assessor faculty: programme timing panel (running early/late) ── -->
+<div class="director-panel hidden" id="assessorMessagePanel" style="margin-top:12px;">
+  <div class="panel-header">
+    ⏱ Assessor Programme Timing
+    <button class="btn btn-sm" onclick="togglePanel('assessorMessagePanel')">Close</button>
+  </div>
+  <div class="panel-body">
+    <div class="msg-compose">
+      <input class="msg-input" id="msgTextAssessor" type="text" placeholder="e.g. Running 10 min behind…" maxlength="160"
+             onkeydown="if(event.key==='Enter') sendAssessorStreamMessage()">
+      <button class="btn" onclick="sendAssessorStreamMessage()">Send</button>
+    </div>
+    <p class="text-sm text-muted mt-8">Goes to assessor-programme faculty only — not candidates, not the instructor programme.</p>
   </div>
 </div>
 
@@ -227,6 +245,13 @@
   <button class="btn btn-sm" onclick="doSignOut()" style="margin-left:auto;background:rgba(255,255,255,0.15);">↩ Sign out</button>
 </div>
 
+<!-- ── Assessor faculty floating action (mirrors director toolbar's Message button, scoped to assessor-faculty role only) ── -->
+<button id="assessorTimingBtn" class="hidden btn" onclick="togglePanel('assessorMessagePanel')" style="
+  position:fixed; bottom:16px; right:16px; z-index:150;
+  background:var(--rmd-navy); color:white; padding:10px 16px;
+  border-radius:24px; box-shadow:0 2px 10px rgba(0,0,0,0.25); font-weight:700;
+">⏱ Report Timing</button>
+
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -235,7 +260,9 @@
 <script>
   // ── State ──────────────────────────────────────────────────────────────────
   let currentRole = "instructor"; // set by auth on load
+  let currentUser = null;         // set by onAuthStateChanged — used as sentByUid on messages
   let currentDay  = "saturday";
+  let messagesCache = [];         // latest messages from Firestore, re-filtered per role on each render
   let currentStream = localStorage.getItem("rmd-iw-stream") || "instructor"; // "instructor" | "assessor" — only relevant for roles that see both (director, faculty)
 
   // Roles that see both the instructor-candidate and assessor programmes and
@@ -268,6 +295,15 @@
 
     // Stream toggle — only shown for roles that see both programmes
     document.getElementById("streamNav").classList.toggle("hidden", !ROLES_WITH_BOTH_STREAMS.includes(role));
+
+    // Assessor-faculty timing/messaging portal — only this role gets the
+    // floating button (director already has the equivalent via the toolbar's
+    // 📣 Message button, which now also offers the instructor-stream/
+    // assessor-stream targets).
+    document.getElementById("assessorTimingBtn").classList.toggle("hidden", role !== "assessor-faculty");
+
+    // Re-filter the noticeboard for the new role (message audience depends on it)
+    renderNoticeboardForRole();
 
     // Regenerate timetable for new role
     renderAll();
@@ -378,9 +414,9 @@
         }
         const href = r.url || r.path || "#";
         // Open in a new tab so it doesn't navigate away from the live
-        // timetable. PDFs (slide decks) render inline in the browser's
-        // built-in viewer instead of forcing a download, the way the old
-        // .pptx links used to.
+        // timetable. Slide decks link to the reveal.js HTML build in
+        // resources/ so they open as a full presentation (not a PDF
+        // viewer or a forced .pptx download).
         return `<a class="resource-btn" href="${href}" target="_blank" rel="noopener"><span class="icon">${r.icon || "📄"}</span>${r.title}</a>`;
       }).join("");
     }
@@ -537,32 +573,100 @@
     document.getElementById(id).classList.toggle("hidden");
   }
 
-  function sendMessage() {
-    const text   = document.getElementById("msgText").value.trim();
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  // Single shared writer — both the director panel (any target) and the
+  // assessor-faculty panel (assessor-stream only, via sendAssessorStreamMessage
+  // below) go through this. Previously this page had its own sendMessage()
+  // using a hardcoded author:"director" field and a local-only "demo" append,
+  // while cd-dashboard.html had a separate sendBroadcast() writing a
+  // differently-named timestamp field (sentAt vs this one's old "ts") — that
+  // duplication/inconsistency is why messages never actually showed up
+  // anywhere: fixed by using one field shape (matching cd-dashboard's) and a
+  // real Firestore listener below instead of a local DOM hack.
+  async function writeMessage(text, target) {
+    if (!text || !db) return;
+    await db.collection(COLLECTIONS.messages).add({
+      text, target,
+      sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+      sentByUid: currentUser ? currentUser.uid : null
+    });
+  }
+
+  async function sendMessage() {
+    const textEl = document.getElementById("msgText");
+    const text   = textEl.value.trim();
     const target = document.getElementById("msgTarget").value;
     if (!text) return;
-
-    // Write to Firebase messages collection
-    if (typeof db !== "undefined") {
-      db.collection(COLLECTIONS.messages).add({
-        text, target,
-        ts: firebase.firestore.FieldValue.serverTimestamp(),
-        author: "director"
-      }).catch(e => console.warn("Message send failed:", e));
+    try {
+      await writeMessage(text, target);
+      textEl.value = "";
+    } catch (e) {
+      console.warn("Message send failed:", e.message);
+      alert("Send failed: " + e.message);
     }
+  }
 
-    // Demo: show in noticeboard immediately
+  async function sendAssessorStreamMessage() {
+    const textEl = document.getElementById("msgTextAssessor");
+    const text   = textEl.value.trim();
+    if (!text) return;
+    try {
+      await writeMessage(text, "assessor-stream");
+      textEl.value = "";
+      togglePanel("assessorMessagePanel");
+    } catch (e) {
+      console.warn("Message send failed:", e.message);
+      alert("Send failed: " + e.message);
+    }
+  }
+
+  // ── Noticeboard: receive side ───────────────────────────────────────────────
+  // Determines whether a message with a given `target` should be shown to a
+  // given role. Candidates (instructor/assessor) never see stream-scoped
+  // timing messages or the "faculty" target — only "all". Stream membership
+  // uses the same INSTRUCTOR_STREAM_RECIPIENTS / ASSESSOR_STREAM_RECIPIENTS
+  // lists as the rest of the app (js/firebase-config.js), so this stays in
+  // sync with the write-side rule in firestore.rules automatically.
+  function isMessageForRole(target, role) {
+    if (target === "all") return true;
+    if (target === "faculty") return role !== "instructor" && role !== "assessor";
+    if (target === "instructor-stream") return INSTRUCTOR_STREAM_RECIPIENTS.includes(role);
+    if (target === "assessor-stream") return ASSESSOR_STREAM_RECIPIENTS.includes(role);
+    // room-* targets: no dedicated room-screen page exists yet to filter by
+    // room, so treat as faculty-only rather than showing to candidates.
+    if (target.indexOf("room-") === 0) return role !== "instructor" && role !== "assessor";
+    return false;
+  }
+
+  function renderNoticeboardForRole() {
     const body = document.getElementById("noticeboardBody");
-    const now  = new Date();
-    const time = `${now.getHours().toString().padStart(2,"0")}:${now.getMinutes().toString().padStart(2,"0")}`;
-    const item = document.createElement("div");
-    item.className = "message-item";
-    item.innerHTML = `<div>${text}</div><div class="message-time">${time} · to: ${target}</div>`;
-    body.querySelector(".no-messages") && body.querySelector(".no-messages").remove();
-    body.prepend(item);
+    if (!body) return;
+    const visible = messagesCache.filter(m => isMessageForRole(m.target, currentRole));
+    if (!visible.length) {
+      body.innerHTML = `<p class="no-messages">No messages at this time.</p>`;
+      return;
+    }
+    body.innerHTML = visible.map(m => {
+      const t = (m.sentAt && m.sentAt.toDate) ? m.sentAt.toDate() : new Date();
+      const time = `${t.getHours().toString().padStart(2,"0")}:${t.getMinutes().toString().padStart(2,"0")}`;
+      return `<div class="message-item"><div>${escapeHtml(m.text)}</div><div class="message-time">${time} · to: ${escapeHtml(m.target)}</div></div>`;
+    }).join("");
+  }
 
-    document.getElementById("msgText").value = "";
-    document.getElementById("noticeboard").classList.remove("hidden");
+  function listenMessages() {
+    if (!db) return;
+    db.collection(COLLECTIONS.messages)
+      .orderBy("sentAt", "desc")
+      .limit(20)
+      .onSnapshot(snap => {
+        messagesCache = snap.docs.map(d => d.data());
+        renderNoticeboardForRole();
+      }, err => console.warn("Message listener:", err.message));
   }
 
   // ── Sign out ───────────────────────────────────────────────────────────────
@@ -714,6 +818,8 @@
 
     auth.onAuthStateChanged(async user => {
       if (!user) { window.location.href = "index.html"; return; }
+      currentUser = user;
+      listenMessages();
 
       // Load role from people collection
       let role = null;

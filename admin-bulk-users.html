@@ -378,7 +378,14 @@ async function sendPasswordResetEmail(email) {
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requestType: "PASSWORD_RESET", email })
+      body: JSON.stringify({
+        requestType: "PASSWORD_RESET",
+        email,
+        // After resetting, the page shows a link back into the site rather
+        // than leaving the user stranded on Firebase's bare confirmation page.
+        continueUrl: "https://rmd.uk.com/index.html",
+        canHandleCodeInApp: false
+      })
     }
   );
   const data = await res.json();

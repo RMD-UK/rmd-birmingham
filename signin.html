@@ -22,6 +22,15 @@
         <button type="submit" class="btn-login">Sign in</button>
       </form>
       <p id="loginError" style="color:var(--rmd-warn);font-size:13px;margin-top:10px;display:none;"></p>
+
+      <p style="text-align:center;margin-top:10px;">
+        <a href="#" onclick="toggleForgotPassword(event)" style="font-size:13px;color:var(--rmd-blue);text-decoration:underline;">Forgot password?</a>
+      </p>
+      <div id="forgotPasswordPanel" style="display:none;margin-top:12px;">
+        <input class="form-input" type="email" id="forgotEmail" placeholder="Email address" autocomplete="email">
+        <button type="button" class="btn-login" onclick="sendForgotPasswordEmail()" style="margin-top:8px;">Send reset link</button>
+        <p id="forgotStatus" style="font-size:13px;margin-top:8px;display:none;"></p>
+      </div>
     </div>
 
     <!-- Candidate QR landing (shown when ?id=xxx in URL) -->
@@ -103,7 +112,18 @@
     } catch (err) {
       btn.textContent = "Sign in";
       btn.disabled    = false;
-      if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+      if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential" || err.code === "auth/invalid-login-credentials") {
+        // "auth/invalid-login-credentials" confirmed 2026-07-22 as the actual
+        // code Firebase's identitytoolkit backend now returns for ANY wrong
+        // email/password combo (Google's 2023 email-enumeration-protection
+        // change). The older "auth/invalid-credential" string this block
+        // already checked for is what some SDK versions/docs describe, but
+        // it's not what firebase-auth-compat.js 9.23.0 actually throws —
+        // every sign-in failure was falling through to the generic
+        // "check your connection" message below instead. Verified live
+        // against rmd.uk.com/signin.html with both a nonexistent test email
+        // and a real account + deliberately wrong password — same wrong code
+        // every time.
         errEl.textContent = "Incorrect email or password.";
       } else if (err.code === "auth/too-many-requests") {
         errEl.textContent = "Too many attempts — try again in a few minutes.";
@@ -116,6 +136,44 @@
 
   // resolveRole() is the shared one from js/firebase-config.js — do not
   // redeclare it locally (see note above re: duplicate DIRECTOR_EMAILS).
+
+  // ── Forgot password ────────────────────────────────────────────────────────
+  // requestPasswordReset() is the shared helper from js/firebase-config.js.
+  function toggleForgotPassword(e) {
+    e.preventDefault();
+    const panel = document.getElementById("forgotPasswordPanel");
+    const shown = panel.style.display === "block";
+    panel.style.display = shown ? "none" : "block";
+    if (!shown) {
+      document.getElementById("forgotEmail").value = document.getElementById("loginEmail").value;
+      document.getElementById("forgotStatus").style.display = "none";
+    }
+  }
+
+  async function sendForgotPasswordEmail() {
+    const email    = document.getElementById("forgotEmail").value.trim().toLowerCase();
+    const statusEl = document.getElementById("forgotStatus");
+
+    if (!email || !email.includes("@")) {
+      statusEl.style.color   = "var(--rmd-warn)";
+      statusEl.textContent   = "Enter a valid email address first.";
+      statusEl.style.display = "block";
+      return;
+    }
+
+    statusEl.style.color   = "var(--rmd-muted)";
+    statusEl.textContent   = "Sending…";
+    statusEl.style.display = "block";
+
+    try {
+      await requestPasswordReset(email, window.location.origin + "/signin.html");
+      statusEl.style.color = "#1a6e31";
+      statusEl.textContent = "If that address has an RMD account, a reset link is on its way — check your inbox.";
+    } catch (err) {
+      statusEl.style.color = "var(--rmd-warn)";
+      statusEl.textContent = "Something went wrong — try again, or contact RMD directly.";
+    }
+  }
 
   function routeByRole(role) {
     // All password-authenticated members land on the members menu first,
