@@ -297,12 +297,16 @@ window.addEventListener("load", () => {
       if (snap.exists) currentUserDoc = { id: snap.id, ...snap.data() };
     } catch (e) { console.warn("Could not load user doc:", e.message); }
 
-    // Faculty/director only — candidates and ITCs must never reach this page
-    // (blind write depends on the observer being distinct from the observed;
-    // firestore.rules enforces this server-side via canAssess(), this is a
-    // client-side UX guard on top of that).
+    // Faculty/full-instructor/director only — candidates and ITCs must never
+    // reach this page (blind write depends on the observer being distinct
+    // from the observed; firestore.rules enforces this server-side via
+    // canObserveItc(), this is a client-side UX guard on top of that).
+    // full-instructor (Instructor Trainer) is included because timetable.html
+    // surfaces this page's link to that role too (showItcObs check) — room
+    // leads doing the observing are drawn from faculty AND full-instructor,
+    // per admin-room-allocation.html's room-lead assignment.
     const role = await resolveRole(user.uid, user.email || "");
-    if (role !== ROLES.DIRECTOR && role !== ROLES.FACULTY) {
+    if (role !== ROLES.DIRECTOR && role !== ROLES.FACULTY && role !== ROLES.FULL_INSTRUCTOR) {
       document.getElementById("itcWrap").innerHTML =
         `<div class="empty-state"><h3>Faculty only</h3><p>This tool is for Instructor Trainers observing ITCs. Contact the Course Director if you believe this is wrong.</p></div>`;
       document.getElementById("submitBtn").style.display = "none";

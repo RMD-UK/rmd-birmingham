@@ -105,6 +105,32 @@
  *   - Assessor candidates are NOT included in ERC exports below — per the
  *     handoff, their RMD assessor certificate is a separate, non-ERC credential.
  *
+ * "NOT SUCCESSFUL" EXCLUSIONS — added 2026-07-22, Jon's spec:
+ *   - Provider Course export (run after Saturday's Gateway assessment):
+ *     excludes any confirmed instructor candidate whose gateway_assessments
+ *     outcome is explicitly "fail" (set on assessment-gateway.html). Anyone
+ *     pending, not yet recorded, or not yet linked to people/ is INCLUDED —
+ *     same over-include-and-let-Jon-check default used elsewhere in this file.
+ *     Only an explicit fail mark holds someone back.
+ *   - Instructor Course export (run end of Sunday): development assessment
+ *     (assessment-development.html) only produces a red/amber/green traffic
+ *     light, not a pass/fail — Jon confirmed (2026-07-22) that traffic light
+ *     should NOT auto-decide the export; the Course Director must explicitly
+ *     confirm pass/fail per candidate first. This page adds that confirm step
+ *     (see the review list under the Instructor Course card) and stores the
+ *     decision as development_assessments/{personId}.directorDecision
+ *     ("pass" | "fail"). The export only includes candidates with
+ *     directorDecision === "pass" — no decision yet means excluded, not
+ *     over-included, because "successful" here can't be inferred, only
+ *     confirmed by Jon.
+ *   - PEOPLE/ SYNC GAP (fixed 2026-07-22): both checks above depend on
+ *     personByEmail() finding a people/ record. Rather than sending Jon to
+ *     admin-iw-registrations.html mid-flow, this page now detects confirmed
+ *     instructor candidates missing from people/ and offers a "Sync N now"
+ *     button right here — syncMissingCandidatesToPeople() writes the exact
+ *     same shape as that page's syncToPeople() (role always ROLES.INSTRUCTOR,
+ *     since this only ever handles the "Instructor Candidate" IW role).
+ *
  * POST-COURSE OUTCOMES EXPORT — still a placeholder, unlike the pre-course one.
  * Jon confirmed (2026-07-07) ERC does support bulk results upload by CSV, but
  * we still don't have their actual results/outcomes template — the headers
@@ -175,6 +201,29 @@ function personByEmail(email) {
   return people.find(p => (p.email || "").trim().toLowerCase() === e);
 }
 
+// Same write shape as admin-iw-registrations.html's "Sync listed people" tool
+// (syncToPeople()) — kept in sync deliberately rather than diverging. Only
+// covers confirmed instructor candidates, since faculty rows never join
+// through people/ in this export (their name/email come straight from
+// faculty_responses). role is always ROLES.INSTRUCTOR here because
+// confirmedInstructorCandidates() is already filtered to that IW role.
+async function syncMissingCandidatesToPeople() {
+  const missing = confirmedInstructorCandidates().filter(c => !personByEmail(c.email));
+  if (!missing.length) return;
+  const batch = db.batch();
+  const ts = firebase.firestore.FieldValue.serverTimestamp();
+  const added = [];
+  missing.forEach(c => {
+    const ref = db.collection("people").doc();
+    const data = { name: c.name, email: c.email, role: ROLES.INSTRUCTOR, syncedFrom: "iw_registrations", syncedAt: ts };
+    batch.set(ref, data);
+    added.push({ id: ref.id, ...data });
+  });
+  await batch.commit();
+  people = people.concat(added);
+  render();
+}
+
 function candidateOutcome(email) {
   const person = personByEmail(email);
   if (!person) return { gateway: "not linked to people/ — sync needed", development: "" };
@@ -182,8 +231,68 @@ function candidateOutcome(email) {
   const dev = developmentAssessments[person.id];
   return {
     gateway: gw ? (gw.outcome || "pending") : "not recorded",
-    development: dev ? (dev.overallStatus || dev.status || "recorded, see platform") : "not recorded"
+    development: dev ? devDecisionLabel(dev) : "not recorded"
   };
+}
+
+// Gateway outcome is a direct pass/fail set by assessors on the day
+// (assessment-gateway.html). null covers pending/not-recorded/not-linked —
+// all treated as "not explicitly failed" for export purposes.
+function gatewayOutcomeFor(email) {
+  const person = personByEmail(email);
+  if (!person) return null;
+  const gw = person ? gatewayAssessments[person.id] : null;
+  return gw ? (gw.outcome || null) : null;
+}
+
+// Development assessment only has a red/amber/green traffic light, computed
+// the same way assessment-development.html computes it (ratings + optional
+// override). This is a DISPLAY hint only — it is deliberately NOT used to
+// decide export inclusion, because Jon confirmed (2026-07-22) the traffic
+// light must not auto-decide pass/fail. See directorDecisionFor().
+function computeDevTrafficLight(dev) {
+  if (!dev) return null;
+  if (dev.overallOverride) return dev.overallOverride;
+  const vals = Object.values(dev.ratings || {});
+  if (vals.length === 0) return null;
+  if (vals.includes("red"))   return "red";
+  if (vals.includes("amber")) return "amber";
+  return "green";
+}
+
+// The Course Director's explicit pass/fail confirmation for the Instructor
+// Course export — set via the review list on this page, stored on
+// development_assessments/{personId}.directorDecision.
+function directorDecisionFor(email) {
+  const person = personByEmail(email);
+  if (!person) return null;
+  const dev = developmentAssessments[person.id];
+  return dev ? (dev.directorDecision || null) : null;
+}
+
+function devDecisionLabel(dev) {
+  if (dev.directorDecision === "pass") return "Confirmed successful";
+  if (dev.directorDecision === "fail") return "Confirmed not successful";
+  const tl = computeDevTrafficLight(dev);
+  return tl ? `traffic light: ${tl} — awaiting Course Director confirmation` : "not recorded";
+}
+
+async function setDirectorDecision(email, decision) {
+  const person = personByEmail(email);
+  if (!person) {
+    alert(`${email} isn't linked to people/ yet — run the "sync confirmed candidates to people" step on Course Administration first.`);
+    return;
+  }
+  await db.collection("development_assessments").doc(person.id).set({
+    directorDecision:   decision,
+    directorDecisionAt: firebase.firestore.FieldValue.serverTimestamp(),
+    directorDecisionBy: auth.currentUser ? auth.currentUser.uid : null
+  }, { merge: true });
+  developmentAssessments[person.id] = {
+    ...(developmentAssessments[person.id] || {}),
+    directorDecision: decision
+  };
+  render();
 }
 
 function toCsv(headers, rows) {
@@ -206,31 +315,42 @@ function downloadCsv(filename, csv) {
 const ERC_HEADERS = ["FIRST NAME", "MIDDLE NAME", "LAST NAME", "EMAIL", "COUNTRY"];
 const ERC_COUNTRY = "United Kingdom";
 
-function exportPreCourse(courseLabel, includeFacultyFilter) {
-  const rows = [];
-  confirmedInstructorCandidates().forEach(c => {
-    const n = splitName(c.name);
-    rows.push([n.first, n.middle, n.last, c.email, ERC_COUNTRY]);
+function rowsToCsvRows(list, nameFn) {
+  return list.map(x => {
+    const n = nameFn(x);
+    return [n.first, n.middle, n.last, x.email, ERC_COUNTRY];
   });
-  confirmedFaculty().filter(includeFacultyFilter).forEach(f => {
-    rows.push([f.firstName, f.middleName || "", f.lastName, f.email, ERC_COUNTRY]);
-  });
-  downloadCsv(`erc-precourse-${courseLabel.toLowerCase().replace(/\s+/g, "-")}.csv`,
-    toCsv(ERC_HEADERS, rows));
 }
 
 function exportBlsProvider() {
-  // Assumption: faculty attending the BLS Provider (Saturday morning) session
-  // are those confirmed for Saturday. If a faculty record has no `days` data
-  // at all (shouldn't happen post-form, but just in case), they're included
-  // rather than silently dropped — better to over-include and let you check.
-  exportPreCourse("BLS Provider Course", f => !f.days || f.days.saturday);
+  // Run this AFTER Saturday's Gateway assessment. Excludes only candidates
+  // explicitly marked "fail" on assessment-gateway.html — pending/unlinked
+  // candidates are still included (over-include, let Jon check).
+  const candidates = confirmedInstructorCandidates()
+    .filter(c => gatewayOutcomeFor(c.email) !== "fail");
+  const faculty = confirmedFaculty().filter(f => !f.days || f.days.saturday);
+
+  const rows = [
+    ...rowsToCsvRows(candidates, c => splitName(c.name)),
+    ...rowsToCsvRows(faculty, f => ({ first: f.firstName, middle: f.middleName || "", last: f.lastName }))
+  ];
+  downloadCsv("erc-precourse-provider-course.csv", toCsv(ERC_HEADERS, rows));
 }
 
 function exportInstructorTraining() {
-  // Assumption: instructor training course (the full weekend) needs faculty
-  // confirmed for the full weekend, i.e. both Saturday and Sunday.
-  exportPreCourse("Instructor Training Course", f => !f.days || (f.days.saturday && f.days.sunday));
+  // Run this at the END of Sunday. Only includes candidates the Course
+  // Director has explicitly confirmed "pass" via the review list below —
+  // no decision yet means excluded (not over-included), since "successful"
+  // here can't be inferred from the traffic light alone.
+  const candidates = confirmedInstructorCandidates()
+    .filter(c => directorDecisionFor(c.email) === "pass");
+  const faculty = confirmedFaculty().filter(f => !f.days || (f.days.saturday && f.days.sunday));
+
+  const rows = [
+    ...rowsToCsvRows(candidates, c => splitName(c.name)),
+    ...rowsToCsvRows(faculty, f => ({ first: f.firstName, middle: f.middleName || "", last: f.lastName }))
+  ];
+  downloadCsv("erc-precourse-instructor-course.csv", toCsv(ERC_HEADERS, rows));
 }
 
 function exportPostCourseOutcomes() {
@@ -248,28 +368,69 @@ function render() {
   const icCount  = confirmedInstructorCandidates().length;
   const facCount = confirmedFaculty().length;
 
+  const missingFromPeople = confirmedInstructorCandidates().filter(c => !personByEmail(c.email));
+
+  const gwFailCount = confirmedInstructorCandidates()
+    .filter(c => gatewayOutcomeFor(c.email) === "fail").length;
+
+  const awaitingDecision = confirmedInstructorCandidates()
+    .filter(c => directorDecisionFor(c.email) === null);
+  const passCount = confirmedInstructorCandidates()
+    .filter(c => directorDecisionFor(c.email) === "pass").length;
+  const failCount = confirmedInstructorCandidates()
+    .filter(c => directorDecisionFor(c.email) === "fail").length;
+
+  const trafficDot = tl => tl === "red" ? "🔴" : tl === "amber" ? "🟠" : tl === "green" ? "🟢" : "⚪";
+
+  const reviewRows = awaitingDecision.map(c => {
+    const person = personByEmail(c.email);
+    const dev = person ? developmentAssessments[person.id] : null;
+    const tl = computeDevTrafficLight(dev);
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #eee;font-size:13px;">
+        <span style="width:20px;">${trafficDot(tl)}</span>
+        <span style="flex:1;">${c.name} <span style="color:var(--rmd-muted);">(${c.email})</span></span>
+        <button class="btn-action secondary" style="padding:5px 10px;font-size:12px;" onclick="setDirectorDecision('${c.email}','pass')">Pass</button>
+        <button class="btn-action secondary" style="padding:5px 10px;font-size:12px;color:#c0392b;border-color:#c0392b;" onclick="setDirectorDecision('${c.email}','fail')">Fail</button>
+      </div>`;
+  }).join("");
+
   document.getElementById("pageContent").innerHTML = `
     <div class="warn-banner">
       <strong>✓ Pre-course exports use the real ERC template's column names</strong>
       Verified against import_participants_template.xlsx (2026-07-07): FIRST NAME, MIDDLE NAME,
       LAST NAME, EMAIL, COUNTRY — Jon confirmed these 5 fields are all that's needed; Country is
       always "United Kingdom". The real template has 10 further fields (DOB, Title, Address, etc.)
-      that are deliberately left out — see the comment block at the top of this page's source
-      before adding any of them back in.
+      that are deliberately left out. Candidates marked "not successful" are excluded from both
+      exports below — see each card for how.
+    </div>
+
+    ${missingFromPeople.length ? `
+    <div class="warn-banner" style="background:#e8f0fe;border-left-color:var(--rmd-blue);color:var(--rmd-navy);">
+      <strong>⚠ ${missingFromPeople.length} confirmed instructor candidate(s) not linked to people/ yet</strong>
+      Gateway outcome and Pass/Fail can't be looked up for them until they're synced. Same sync as
+      Course Administration's "Sync listed people" step — this only adds people/ records for these
+      ${missingFromPeople.length}, nothing else changes.
+      <div style="margin-top:8px;"><button class="btn-action" onclick="syncMissingCandidatesToPeople()">Sync ${missingFromPeople.length} now</button></div>
+    </div>` : ""}
+
+    <div class="card">
+      <div class="card-title">1 · Provider Course export — run after Saturday's Gateway</div>
+      <div class="card-sub">Confirmed instructor candidates who did NOT fail the Gateway assessment, plus confirmed faculty attending Saturday.</div>
+      <div class="card-counts">${icCount - gwFailCount} of ${icCount} instructor candidate(s) included${gwFailCount ? ` · ${gwFailCount} excluded (failed Gateway)` : ""}</div>
+      <button class="btn-action" onclick="exportBlsProvider()">⬇ Download CSV — Provider Course</button>
     </div>
 
     <div class="card">
-      <div class="card-title">Pre-course: BLS Provider Course (Saturday morning)</div>
-      <div class="card-sub">All confirmed instructor candidates, plus confirmed faculty attending Saturday.</div>
-      <div class="card-counts">${icCount} instructor candidate(s) · faculty filtered by Saturday attendance at export time</div>
-      <button class="btn-action" onclick="exportBlsProvider()">⬇ Download CSV</button>
-    </div>
-
-    <div class="card">
-      <div class="card-title">Pre-course: Instructor Training Course (full weekend)</div>
-      <div class="card-sub">All confirmed instructor candidates, plus confirmed faculty attending both Saturday and Sunday.</div>
-      <div class="card-counts">${icCount} instructor candidate(s) · faculty filtered by full-weekend attendance at export time</div>
-      <button class="btn-action" onclick="exportInstructorTraining()">⬇ Download CSV</button>
+      <div class="card-title">2 · Instructor Course export — run at the end of Sunday</div>
+      <div class="card-sub">Confirmed instructor candidates YOU have confirmed "Pass" below, plus confirmed faculty attending the full weekend. Candidates with no decision yet are excluded until you decide.</div>
+      <div class="card-counts">${passCount} of ${icCount} instructor candidate(s) included${failCount ? ` · ${failCount} excluded (failed)` : ""}${awaitingDecision.length ? ` · ${awaitingDecision.length} awaiting your decision` : ""}</div>
+      ${awaitingDecision.length ? `
+        <div style="margin:10px 0;">
+          <div style="font-size:12px;font-weight:700;color:var(--rmd-navy);margin-bottom:4px;">Confirm before exporting — traffic light is a hint only, not the decision:</div>
+          ${reviewRows}
+        </div>` : ""}
+      <button class="btn-action" onclick="exportInstructorTraining()" style="margin-top:10px;">⬇ Download CSV — Instructor Course</button>
     </div>
 
     <div class="card">

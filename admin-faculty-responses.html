@@ -110,6 +110,7 @@
     .badge-confirmed { background: #e6f4ea; color: #1a6e31; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
     .badge-declined  { background: #fce8e6; color: #b7410e; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
     .badge-pending   { background: #f0f3f6; color: #637282; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+    .badge-provisional { background: #fff3cd; color: #856404; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }
 
     .btn-confirm {
       padding: 6px 14px; background: #e6f4ea; color: #1a6e31;
@@ -212,6 +213,9 @@
     <div class="sum-pill" id="pill-declined"   onclick="switchTab('declined')">
       <div class="val" id="sum-declined" style="color:#b7410e;">–</div><div class="lbl">Declined</div>
     </div>
+    <div class="sum-pill" id="pill-provisional" onclick="switchTab('provisional')">
+      <div class="val" id="sum-provisional" style="color:#856404;">–</div><div class="lbl">Provisional</div>
+    </div>
   </div>
 
   <!-- Tabs -->
@@ -227,6 +231,7 @@
     <button class="tab-btn"             onclick="switchTab('itc')"        id="tab-itc">ITCs</button>
     <button class="tab-btn"             onclick="switchTab('confirmed')"  id="tab-confirmed">✓ Confirmed</button>
     <button class="tab-btn"             onclick="switchTab('declined')"   id="tab-declined">✗ Declined</button>
+    <button class="tab-btn"             onclick="switchTab('provisional')" id="tab-provisional">⏳ Provisional</button>
     <button class="tab-btn"             onclick="switchTab('export')"     id="tab-export">Export</button>
   </div>
 
@@ -357,6 +362,7 @@ function updateSummary() {
   document.getElementById("sum-itc").textContent        = r.filter(x => x.role === "Instructor Trainer Candidate").length;
   document.getElementById("sum-confirmed").textContent  = r.filter(x => x.attendanceStatus === "confirmed").length;
   document.getElementById("sum-declined").textContent   = r.filter(x => x.attendanceStatus === "declined").length;
+  document.getElementById("sum-provisional").textContent = r.filter(x => x.provisional === true).length;
 }
 
 function switchTab(tab) {
@@ -393,6 +399,7 @@ function renderTab(tab) {
   else if (tab === "itc")        renderITC();
   else if (tab === "confirmed")  renderAttendanceFilter("confirmed", "Confirmed to attend");
   else if (tab === "declined")   renderAttendanceFilter("declined",  "Unable to attend / Declined");
+  else if (tab === "provisional") renderProvisional();
   else if (tab === "export")     renderExport();
 }
 
@@ -413,6 +420,7 @@ function getFiltered() {
     case "itc":        return allResponses.filter(r => r.role === "Instructor Trainer Candidate");
     case "confirmed":  return allResponses.filter(r => r.attendanceStatus === "confirmed");
     case "declined":   return allResponses.filter(r => r.attendanceStatus === "declined");
+    case "provisional": return allResponses.filter(r => r.provisional === true);
     default:           return allResponses;
   }
 }
@@ -447,6 +455,7 @@ function renderAll() {
       : r.attendanceStatus === "declined"
         ? `<span class="badge-declined">✗ Declined</span>`
         : `<span class="badge-pending">Pending</span>`;
+    const provisionalBadge = r.provisional ? `<span class="badge-provisional">⏳ Provisional</span>` : "";
     const isConf = r.attendanceStatus === "confirmed";
     const isDecl = r.attendanceStatus === "declined";
     return `
@@ -455,6 +464,7 @@ function renderAll() {
           <div class="rc-name">${fullName(r) || r.email}</div>
           ${dirBadge}
           ${statusBadge}
+          ${provisionalBadge}
           <span class="rc-role">${r.role||"–"}</span>
           <span class="rc-time">${fmtDate(r)}</span>
         </div>
@@ -491,6 +501,7 @@ function renderAll() {
               ${r.attendanceStatus ? `<button class="btn-reset-status" onclick="setAttendanceStatus('${r.id}','pending',${i})" title="Reset to pending">↺</button>` : ""}
               <span style="font-size:12px;color:var(--rmd-muted);margin:0 4px 0 10px;">Role:</span>
               ${roleSelectHtml(r, fullName(r) || r.email)}
+              ${r.provisional ? `<button class="btn-action secondary" onclick="clearProvisional('${r.id}')" style="margin-left:6px;">Mark finalized</button>` : ""}
             </div>
             <button onclick="deleteResponse('${r.id}','${fullName(r)||r.email}')" style="padding:7px 14px;background:#fce8e6;color:#b7410e;border:1px solid #f5b8b0;border-radius:6px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button>
           </div>
@@ -785,6 +796,51 @@ function renderAttendanceFilter(status, heading) {
     </div>`;
 }
 
+function renderProvisional() {
+  const filtered = allResponses.filter(r => r.provisional === true);
+  setFilterLabel(`${filtered.length} person(s)`);
+
+  if (!filtered.length) {
+    document.getElementById("tabContent").innerHTML =
+      `<div class="empty-state">No provisional responses right now.</div>`;
+    return;
+  }
+
+  const rows = filtered.map(r => `
+    <tr>
+      <td style="font-weight:700;color:var(--rmd-navy);">${fullName(r)||"–"}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
+      <td>${r.role||"–"}</td>
+      <td>${fmtDate(r)}</td>
+      <td><button class="btn-action secondary" onclick="clearProvisional('${r.id}')">Mark finalized</button></td>
+    </tr>`).join("");
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="info-banner" style="background:#fff8e6;border-left-color:#f0c14b;color:#7b5800;">
+      These faculty members ticked "provisional" on their pre-course form — their answers may still change. Follow up before relying on their meal, accommodation, or ERC data for final numbers. The flag clears automatically if they resubmit with the box unticked, or you can clear it manually below.
+    </div>
+    <div class="section-block">
+      <div class="section-heading" style="color:#856404;">Provisional responses (${filtered.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Submitted</th><th>Action</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function clearProvisional(docId) {
+  if (!confirm("Mark this response as finalized? This clears the provisional flag.")) return;
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ provisional: false });
+    const r = allResponses.find(x => x.id === docId);
+    if (r) r.provisional = false;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update: " + err.message);
+  }
+}
+
 function renderExport() {
   setFilterLabel("All responses");
   document.getElementById("tabContent").innerHTML = `
@@ -795,14 +851,14 @@ function renderExport() {
         <button class="btn-action secondary" onclick="copyAllEmails()">📋 Copy all emails</button>
       </div>
       <p style="font-size:12px;color:var(--rmd-muted);margin:16px 0 0;">
-        CSV includes: name, email, role, platform role, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
+        CSV includes: name, email, role, platform role, attendance status, provisional flag, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
       </p>
     </div>`;
 }
 
 function exportCSV() {
   const headers = ["First Name","Last Name","Email","Self-declared Role","Platform Role",
-    "Attendance Status",
+    "Attendance Status","Provisional",
     "Days-Fri","Days-Sat","Days-Sun","Meal-Fri","Meal-Sat",
     "Accom-Fri","Accom-Sat","Diet","Diet Detail",
     "ERC Qualification","ERC Correctly Listed","ERC Liaison Confirmed",
@@ -812,6 +868,7 @@ function exportCSV() {
     r.firstName, r.lastName, r.email, r.role,
     isDirector(r.email) ? "Director" : "Faculty",
     r.attendanceStatus || "pending",
+    r.provisional ? "Yes" : "No",
     r.days&&r.days.friday?"Yes":"No", r.days&&r.days.saturday?"Yes":"No", r.days&&r.days.sunday?"Yes":"No",
     r.meals&&r.meals.friday||"", r.meals&&r.meals.saturday||"",
     r.accommodation&&r.accommodation.friday||"", r.accommodation&&r.accommodation.saturday||"",

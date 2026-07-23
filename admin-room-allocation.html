@@ -252,14 +252,7 @@ ROOMS.forEach(r => { groups[r] = { faculty: null, candidates: [], instructors: [
 
 initFirebase();
 
-auth.onAuthStateChanged(async user => {
-  if (!user) { window.location.href = "signin.html"; return; }
-  const role = await resolveRole(user.uid, user.email || "");
-  if (role !== ROLES.DIRECTOR) {
-    document.getElementById("authMsg").textContent = "Course Directors only.";
-    setTimeout(() => { window.location.href = "timetable.html"; }, 2000);
-    return;
-  }
+requireDirector("timetable.html").then(async () => {
   document.getElementById("authOverlay").style.display = "none";
   await loadData();
 });

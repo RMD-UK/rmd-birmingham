@@ -355,7 +355,11 @@ async function handleMouSignin(e) {
   } catch (err) {
     btn.textContent = "Sign in";
     btn.disabled    = false;
-    if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+    if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential" || err.code === "auth/invalid-login-credentials") {
+      // See signin.html for why "auth/invalid-login-credentials" is here —
+      // confirmed 2026-07-22 as the real code this Firebase project returns
+      // for any wrong email/password combo; without it every failed sign-in
+      // fell through to the generic "check your connection" message.
       errEl.textContent = "Incorrect email or password.";
     } else if (err.code === "auth/too-many-requests") {
       errEl.textContent = "Too many attempts — try again in a few minutes.";

@@ -112,7 +112,18 @@
     } catch (err) {
       btn.textContent = "Sign in";
       btn.disabled    = false;
-      if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential") {
+      if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential" || err.code === "auth/invalid-login-credentials") {
+        // "auth/invalid-login-credentials" confirmed 2026-07-22 as the actual
+        // code Firebase's identitytoolkit backend now returns for ANY wrong
+        // email/password combo (Google's 2023 email-enumeration-protection
+        // change). The older "auth/invalid-credential" string this block
+        // already checked for is what some SDK versions/docs describe, but
+        // it's not what firebase-auth-compat.js 9.23.0 actually throws —
+        // every sign-in failure was falling through to the generic
+        // "check your connection" message below instead. Verified live
+        // against rmd.uk.com/signin.html with both a nonexistent test email
+        // and a real account + deliberately wrong password — same wrong code
+        // every time.
         errEl.textContent = "Incorrect email or password.";
       } else if (err.code === "auth/too-many-requests") {
         errEl.textContent = "Too many attempts — try again in a few minutes.";

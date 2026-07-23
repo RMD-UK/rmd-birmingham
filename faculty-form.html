@@ -510,6 +510,16 @@
     <label>Anything else for the organising team</label>
     <textarea id="otherNotes" placeholder="Any other questions or information…"></textarea>
   </div>
+
+  <div class="field" style="margin-top:20px;padding:14px;background:#fff8e6;border:2px solid #f0c14b;border-radius:8px;">
+    <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:0;">
+      <input type="checkbox" id="provisionalCheckbox" style="width:auto;margin-top:3px;flex-shrink:0;" onchange="toggleProvisional(this.checked)">
+      <span style="color:#7b5800;font-weight:700;">This is a provisional submission — I'll confirm final details later</span>
+    </label>
+    <div class="hint-text" id="provisionalHint" style="display:none;margin-top:8px;color:#8a6d00;">
+      We'll save your answers and flag them clearly as provisional for the organising team. Come back to this form with the same email address once your details are confirmed, and untick this box before resubmitting.
+    </div>
+  </div>
 </div>
 
 <!-- ── SUCCESS ── -->
@@ -548,7 +558,8 @@ const state = {
   meals: { friday: "", saturday: "" },
   accom: { friday: "", saturday: "" },
   ercQualification: "", ercCorrect: "",
-  sfAttending: ""
+  sfAttending: "",
+  provisional: false
 };
 
 // Roles that get the "will you be attending?" decline shortcut in section 1 —
@@ -626,6 +637,12 @@ function selectAccom(night, value, btn) {
   const group = btn.closest(".option-group") || btn.parentElement;
   group.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected"));
   btn.classList.add("selected");
+}
+
+// ── Provisional flag ──────────────────────────────────────────────────────
+function toggleProvisional(checked) {
+  state.provisional = checked;
+  document.getElementById("provisionalHint").style.display = checked ? "block" : "none";
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────
@@ -799,6 +816,13 @@ function prefillForm(data) {
   document.getElementById("travelNotes").value         = data.travelNotes        || "";
   document.getElementById("otherNotes").value          = data.otherNotes         || "";
 
+  // Provisional flag — pre-checked if their last submission was left provisional,
+  // so returning to finalize means consciously unticking it rather than resubmitting
+  // silently under the old flag.
+  state.provisional = !!data.provisional;
+  document.getElementById("provisionalCheckbox").checked = state.provisional;
+  document.getElementById("provisionalHint").style.display = state.provisional ? "block" : "none";
+
   updateDaysFieldVisibility();
   showEditingBanner();
 }
@@ -907,6 +931,10 @@ async function submitForm() {
     accessibilityNeeds: document.getElementById("accessibilityNeeds").value.trim(),
     travelNotes:        document.getElementById("travelNotes").value.trim(),
     otherNotes:         document.getElementById("otherNotes").value.trim(),
+    // Provisional — self-declared, separate from the director-controlled
+    // attendanceStatus (confirmed/declined/pending). True means the faculty
+    // member expects to come back and confirm/update these answers later.
+    provisional: state.provisional,
     // Meta
     source: "faculty-form-2026"
   };
@@ -926,7 +954,10 @@ async function submitForm() {
     document.getElementById("navRow").style.display = "none";
     document.querySelector(".progress-strip").style.display = "none";
     document.getElementById("editingBannerContainer").innerHTML = "";
-    if (existingDocId) {
+    if (state.provisional) {
+      document.getElementById("successHeading").textContent = "Saved as provisional";
+      document.getElementById("successMessage").textContent = "Your response has been saved and clearly flagged as provisional. Please come back and confirm your final details using the same email address as soon as you can.";
+    } else if (existingDocId) {
       document.getElementById("successHeading").textContent = "Updated!";
       document.getElementById("successMessage").textContent = "Your information has been updated. Thanks for keeping it current.";
     }

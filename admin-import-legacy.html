@@ -91,6 +91,7 @@
       </div>
 
       <button class="btn-import" id="importBtn" onclick="runImport()">Import 19 responses →</button>
+      <div id="authMsg" style="font-size:13px;color:#856404;margin-top:8px;text-align:center;"></div>
     </div>
   </div>
 
@@ -109,16 +110,15 @@
 
 initFirebase();
 
-// Wait for auth before enabling the button
+// Wait for auth + director role before enabling the button.
+// Previously this only checked `if (user)` — any signed-in Faculty/ITC/
+// Assessor account (not just Directors) could trigger the import. Fixed
+// 2026-07-22 to use the shared requireDirector() gate from firebase-config.js.
 document.getElementById("importBtn").disabled = true;
-document.getElementById("importBtn").textContent = "Checking sign-in…";
-auth.onAuthStateChanged(user => {
-  if (user) {
-    document.getElementById("importBtn").disabled = false;
-    document.getElementById("importBtn").textContent = "Import 19 responses →";
-  } else {
-    document.getElementById("importBtn").textContent = "Sign in required — go to rmd-birmingham.html first";
-  }
+document.getElementById("importBtn").textContent = "Checking access…";
+requireDirector("timetable.html").then(() => {
+  document.getElementById("importBtn").disabled = false;
+  document.getElementById("importBtn").textContent = "Import 19 responses →";
 });
 
 // ── 2026 Google Form records, mapped to faculty_responses schema ──────────
