@@ -373,6 +373,14 @@ function randomPassword(len = 24) {
 }
 
 async function sendPasswordResetEmail(email) {
+  // 2026-07-23 incident: continueUrl pointing at rmd.uk.com made every
+  // request fail with "UNAUTHORIZED_DOMAIN" because rmd.uk.com wasn't yet in
+  // Firebase Console → Authentication → Settings → Authorized domains —
+  // silently breaking every reset email sent from this page (both account
+  // creation and the "Reset Existing Accounts" card) since continueUrl was
+  // added. Jon added rmd.uk.com to Authorized domains same day; confirmed
+  // fixed via a live test call before restoring continueUrl here. See
+  // [[project_mou]] for the full diagnosis if this ever recurs.
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_CONFIG.apiKey}`,
     {

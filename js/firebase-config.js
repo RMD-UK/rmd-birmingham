@@ -109,6 +109,16 @@ async function resolveRole(uid, email) {
 // message rather than letting a page reveal which emails have accounts.
 // continueUrl controls where the "back to site" link on the reset
 // confirmation page points afterward (defaults to the site root).
+//
+// 2026-07-23 incident: continueUrl pointing at rmd.uk.com made every request
+// fail with "UNAUTHORIZED_DOMAIN" because rmd.uk.com wasn't yet in Firebase
+// Console → Authentication → Settings → Authorized domains — this silently
+// broke password resets for real members (Anisha, Amelie, Isabel, Bonheur
+// all reported it the same evening). Jon added rmd.uk.com to Authorized
+// domains same day; confirmed fixed via a live test call before restoring
+// continueUrl here. If this ever breaks again, test with/without continueUrl
+// via a raw fetch to isolate it before assuming it's an account-specific
+// problem — see [[project_mou]] for the full diagnosis.
 async function requestPasswordReset(email, continueUrl) {
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_CONFIG.apiKey}`,
