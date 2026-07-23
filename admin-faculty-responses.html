@@ -472,10 +472,10 @@ function renderAll() {
           <div class="rc-grid">
             <div><div class="rc-label">Email</div><div class="rc-value">${r.email||"–"}</div></div>
             <div><div class="rc-label">Days</div><div class="rc-value"><div class="day-badges">${days}</div></div></div>
-            <div><div class="rc-label">Meals</div><div class="rc-value">
+            <div><div class="rc-label">Meals <span style="font-weight:400;text-transform:none;letter-spacing:0;">(click to toggle)</span></div><div class="rc-value">
               <div class="meal-badges">
-                <span class="meal-badge badge-${r.meals&&r.meals.friday||'no'}">Fri: ${r.meals&&r.meals.friday||'–'}</span>
-                <span class="meal-badge badge-${r.meals&&r.meals.saturday||'no'}">Sat: ${r.meals&&r.meals.saturday||'–'}</span>
+                <span class="meal-badge badge-${r.meals&&r.meals.friday||'no'}" style="cursor:pointer;" onclick="toggleMeal('${r.id}','friday',${i})" title="Click to toggle Friday dinner">Fri: ${r.meals&&r.meals.friday||'no'}</span>
+                <span class="meal-badge badge-${r.meals&&r.meals.saturday||'no'}" style="cursor:pointer;" onclick="toggleMeal('${r.id}','saturday',${i})" title="Click to toggle Saturday dinner">Sat: ${r.meals&&r.meals.saturday||'no'}</span>
               </div></div></div>
             <div><div class="rc-label">Accommodation</div><div class="rc-value">
               Fri: ${r.accommodation&&r.accommodation.friday||'–'} · Sat: ${r.accommodation&&r.accommodation.saturday||'–'}
@@ -748,6 +748,22 @@ async function setAttendanceStatus(docId, status, cardIndex) {
     renderTab(currentTab);
   } catch(err) {
     alert("Failed to update status: " + err.message);
+  }
+}
+
+async function toggleMeal(docId, day, cardIndex) {
+  const r = allResponses.find(x => x.id === docId);
+  if (!r) return;
+  const current = (r.meals && r.meals[day]) || "no";
+  const next = current === "yes" ? "no" : "yes";
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ [`meals.${day}`]: next });
+    if (!r.meals) r.meals = {};
+    r.meals[day] = next;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update meal: " + err.message);
   }
 }
 
