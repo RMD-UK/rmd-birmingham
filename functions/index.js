@@ -22,25 +22,35 @@
  * be run from a Cowork sandbox, no network route to *.googleapis.com):
  *   cd functions && npm install
  *   firebase functions:secrets:set ANTHROPIC_API_KEY
- *   firebase functions:secrets:set SENDGRID_API_KEY
+ *   firebase functions:secrets:set RESEND_API_KEY
  *   firebase deploy --only functions
  *
  * Requires the Blaze plan (done 2026-07-09), a funded Anthropic API console
  * account (console.anthropic.com — separate from Claude.ai billing), and a
- * SendGrid account with FROM_EMAIL (below) verified as a sender.
+ * Resend account with the rmd.uk.com domain verified (see FROM_EMAIL below).
+ *
+ * Switched from SendGrid to Resend 2026-07-28: SendGrid free-tier signups hit
+ * an automated risk-review hold ("You are not authorized to access this
+ * account") that blocked dashboard access with no fast resolution. Resend has
+ * no such gate, but it also has no SendGrid-style "single sender" option — it
+ * requires verifying a whole domain via DNS before it will send anything.
+ * Since Jon already owns rmd.uk.com's DNS (used for the GitHub Pages custom
+ * domain), FROM_EMAIL below sends as reminders@rmd.uk.com with replyTo set to
+ * the monitored rmdbirmingham@googlemail.com inbox — verified sending
+ * infrastructure plus a reply address a person actually reads.
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
-const sgMail = require("@sendgrid/mail");
+const { Resend } = require("resend");
 
 admin.initializeApp();
 const db = admin.firestore();
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
-const sendgridApiKey  = defineSecret("SENDGRID_API_KEY");
+const resendApiKey    = defineSecret("RESEND_API_KEY");
 
 // Mirrors DIRECTOR_EMAILS in js/firebase-config.js and firestore.rules —
 // keep these three in sync if the director list ever changes.
@@ -158,15 +168,14 @@ Ground every claim only in what's provided above — do not invent details or as
  * here — they're counted in skippedNoEmail so the dashboard can surface
  * them for manual follow-up instead.
  *
- * Requires a SendGrid account and API key (free tier: 100 emails/day is
- * plenty for this — a UoB senior faculty roster is a handful of people).
- * FROM_EMAIL below must be a Verified Sender (or part of a verified/
- * authenticated domain) in that SendGrid account, or every send will bounce
- * with a 403 — verify it in SendGrid before the first real send.
+ * Requires a Resend account with the rmd.uk.com domain verified (free tier:
+ * 3,000 emails/month, plenty for this). FROM_EMAIL below sends as
+ * reminders@rmd.uk.com — that address only works once rmd.uk.com's DNS has
+ * Resend's verification records added, or every send fails.
  *
  * Deploy (from Jon's own machine — see header note above, same reason):
  *   cd functions && npm install
- *   firebase functions:secrets:set SENDGRID_API_KEY
+ *   firebase functions:secrets:set RESEND_API_KEY
  *   firebase deploy --only functions
  */
 
@@ -176,14 +185,18 @@ const FACULTY_ROSTER_COLLECTION = "faculty_roster";
 const SFR_RESPONSES_COLLECTION  = "senior_faculty_review";
 const SFR_REMINDERS_COLLECTION  = "senior_faculty_review_reminders";
 
-// Changed 2026-07-28 from colmds-c-rmdbirmingham@adf.bham.ac.uk (a university
-// system address) to the monitored RMD Birmingham inbox, so replies land
-// somewhere a person actually reads. Now shared with sendAccountCreationReminders
-// below — one verified sender for all automated reminders.
-const FROM_EMAIL = "RMD Birmingham <rmdbirmingham@googlemail.com>"; // must be verified in SendGrid — see deploy note above
+// Changed 2026-07-28: was colmds-c-rmdbirmingham@adf.bham.ac.uk (a university
+// system address), then briefly rmdbirmingham@googlemail.com sent directly
+// via SendGrid's single-sender option. Now sends as reminders@rmd.uk.com
+// (Resend requires a verified domain, not a bare Gmail address) with replies
+// routed to the monitored RMD Birmingham inbox via replyTo. Shared with
+// sendAccountCreationReminders below — one verified domain for all
+// automated reminders.
+const FROM_EMAIL  = "RMD Birmingham <reminders@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
+const REPLY_TO     = "rmdbirmingham@googlemail.com";
 const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 
-exports.sendSeniorFacultyReminders = onCall({ secrets: [sendgridApiKey], region: "us-central1" }, async (request) => {
+exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
   if (!(await callerIsDirector(auth))) {
@@ -206,7 +219,7 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [sendgridApiKey], region:
     return { sent: 0, failed: 0, skipped: responsesSnap.size, skippedNoEmail, failedEmails: [] };
   }
 
-  sgMail.setApiKey(sendgridApiKey.value());
+  const resend = new Resend(resendApiKey.value());
 
   let sent = 0;
   const failedEmails = [];
@@ -215,9 +228,10 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [sendgridApiKey], region:
   for (const person of outstanding) {
     const firstName = (person.name || "").split(" ")[0] || "there";
     try {
-      await sgMail.send({
-        to: person.email,
+      const { error } = await resend.emails.send({
         from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
         subject: "RMD Senior Faculty — review & future plans (reminder)",
         text:
 `Hi ${firstName},
@@ -231,6 +245,7 @@ If you've already submitted this and are seeing this message anyway, sorry — l
 Thanks,
 Jon`
       });
+      if (error) throw new Error(error.message || JSON.stringify(error));
       sent++;
       sentTo.push(person.email);
     } catch (err) {
@@ -282,14 +297,14 @@ Jon`
  * button on admin-account-reminders.html uses before the real "Send
  * reminders" call (dryRun: false / omitted).
  *
- * Requires rmdbirmingham@googlemail.com to be verified as a Single Sender in
- * SendGrid (Settings → Sender Authentication → Verify a Single Sender)
- * before the first real send, or every send bounces with a 403. Shares
- * FROM_EMAIL with sendSeniorFacultyReminders above (both changed 2026-07-28
- * to this monitored RMD Birmingham inbox, replacing the old university
- * system address) — one verified sender covers every automated reminder.
+ * Requires rmd.uk.com to be verified as a domain in Resend before the first
+ * real send, or every send fails. Shares FROM_EMAIL/REPLY_TO with
+ * sendSeniorFacultyReminders above — one verified domain covers every
+ * automated reminder; replies still land in the monitored RMD Birmingham
+ * Gmail inbox via replyTo, not in the rmd.uk.com mailbox (which isn't a real
+ * inbox anyone checks).
  *
- * Deploy: same as sendSeniorFacultyReminders (SENDGRID_API_KEY secret is
+ * Deploy: same as sendSeniorFacultyReminders (RESEND_API_KEY secret is
  * shared — no new secret needed for this function).
  */
 
@@ -300,7 +315,7 @@ const MAX_REMINDERS        = 3;
 
 const SIGNIN_URL = "https://rmd.uk.com/signin.html";
 
-exports.sendAccountCreationReminders = onCall({ secrets: [sendgridApiKey], region: "us-central1" }, async (request) => {
+exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
   if (!(await callerIsDirector(auth))) {
@@ -382,7 +397,7 @@ exports.sendAccountCreationReminders = onCall({ secrets: [sendgridApiKey], regio
     return { checked: authUsers.length, eligible, sent: 0, failed: 0, failedEmails: [] };
   }
 
-  sgMail.setApiKey(sendgridApiKey.value());
+  const resend = new Resend(resendApiKey.value());
 
   let sent = 0;
   const failedEmails = [];
@@ -390,9 +405,10 @@ exports.sendAccountCreationReminders = onCall({ secrets: [sendgridApiKey], regio
   for (const person of eligible) {
     const firstName = (person.name || "").split(" ")[0] || "there";
     try {
-      await sgMail.send({
-        to: person.email,
+      const { error } = await resend.emails.send({
         from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
         subject: "RMD Birmingham — finish setting up your account",
         text:
 `Hi ${firstName},
@@ -408,6 +424,7 @@ If you've already sorted this, or aren't sure why you're getting this, just repl
 Thanks,
 RMD Birmingham`
       });
+      if (error) throw new Error(error.message || JSON.stringify(error));
       sent++;
       await db.collection(ACCOUNT_REMINDERS_COLLECTION).doc(person.uid).set({
         remindersSent:  person.reminderNumber,
