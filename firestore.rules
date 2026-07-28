@@ -255,6 +255,58 @@ service cloud.firestore {
       allow read, write: if isDirector();
     }
 
+    // ── Senior faculty annual review ────────────────────────────────────────
+    // Create/update: authenticated — member submits/edits ONLY their own
+    //   review response. Doc id must be exactly {cycleYear}_{uid} and the
+    //   uid field must match the caller — prevents overwriting someone
+    //   else's submission even if their doc id were guessed.
+    //   (see senior-faculty-review.html)
+    // Read/delete: director only — admin-senior-faculty-review.html
+    match /senior_faculty_review/{docId} {
+      allow create, update: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && docId == request.resource.data.cycleYear + "_" + request.auth.uid;
+      allow read, delete: if isDirector();
+    }
+
+    // ── Annual faculty roster ───────────────────────────────────────────────
+    // Populated once a year via a single bulk paste on
+    // admin-faculty-roster.html — see js/firebase-config.js for the full
+    // picture. Two collections, split because one holds emails:
+    //
+    // faculty_roster (has email — director tooling + reminder function only):
+    //   get: also allowed for a signed-in user fetching ONLY their own doc
+    //     (docId == their lowercased email) — this is how
+    //     senior-faculty-review.html checks "am I on the roster" without
+    //     exposing the rest of the roster's emails to them.
+    //   list (querying the whole collection) and all writes: director only.
+    match /faculty_roster/{docId} {
+      allow get: if isDirector() || (isSignedIn() && docId == request.auth.token.email.lower());
+      allow list, write: if isDirector();
+    }
+
+    // faculty_directory (no email — public display copy for faculty.html):
+    //   read: public, same as the people collection above.
+    //   write: director only (written alongside faculty_roster by the bulk
+    //     upload tool — never add an email field here).
+    match /faculty_directory/{docId} {
+      allow read: if true;
+      allow write: if isDirector();
+    }
+
+    // ── Senior faculty review reminder log ──────────────────────────────────
+    // Written only by the sendSeniorFacultyReminders Cloud Function (admin
+    // SDK bypasses these rules) — no client should ever write here directly.
+    match /senior_faculty_review_reminders/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    match /account_reminders/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
     // ── Room groups ──────────────────────────────────────────────────────────
     // Read: authenticated — all staff need to see their room assignment
     //   (timetable.html room banner reads this for every signed-in user)

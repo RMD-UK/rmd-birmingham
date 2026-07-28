@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Reminders — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+
+    .page { max-width: 720px; margin: 0 auto; }
+
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 12px 18px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size: 16px; font-weight: 700; }
+    .top-bar-sub   { font-size: 12px; opacity: 0.7; }
+
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .card-header {
+      background: var(--rmd-blue);
+      color: white;
+      padding: 11px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card-body { padding: 16px; }
+
+    .director-note {
+      background: #fff3cd;
+      border: 1px solid #ffd700;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #856404;
+      margin-bottom: 12px;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--rmd-muted);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: var(--rmd-blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .btn-primary:disabled { background: #aab8c2; cursor: default; }
+    .btn-primary:hover:not(:disabled) { background: var(--rmd-navy); }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 12px;
+      background: white;
+      color: var(--rmd-navy);
+      border: 2px solid #ccd6dd;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .btn-secondary:hover { border-color: var(--rmd-blue); color: var(--rmd-blue); }
+    .btn-secondary:disabled { color: #aab8c2; cursor: default; }
+
+    .preview-wrap {
+      max-height: 320px;
+      overflow-y: auto;
+      margin-top: 12px;
+      border: 1px solid #e8edf2;
+      border-radius: 6px;
+    }
+    .preview-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .preview-table th {
+      background: #eef2f6; color: var(--rmd-muted); text-align: left;
+      padding: 6px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+      position: sticky; top: 0;
+    }
+    .preview-table td { padding: 6px 10px; border-bottom: 1px solid #f0f3f6; }
+    .source-tag {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 11px; font-weight: 700;
+    }
+    .source-faculty { background: #e6f4ea; color: #1a6e31; }
+    .source-mou      { background: #eef2f6; color: var(--rmd-navy); }
+    .source-unknown  { background: #fde8e4; color: #b7410e; }
+
+    #resultsCard { display: none; }
+    .log-entry {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f3f6;
+      font-size: 13px;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-icon { font-size: 16px; flex-shrink: 0; width: 20px; text-align: center; }
+    .log-email { flex: 1; color: var(--rmd-navy); font-family: monospace; }
+    .log-status { font-size: 12px; color: var(--rmd-muted); }
+    .log-status.ok  { color: #1a6e31; font-weight: 700; }
+    .log-status.err { color: #b7410e; font-weight: 700; }
+
+    .summary-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .sum { padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; }
+    .sum-ok  { background: #e6f4ea; color: #1a6e31; }
+    .sum-err { background: #fde8e4; color: #b7410e; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
+    <div>
+      <div class="top-bar-title">Account Reminders</div>
+      <div class="top-bar-sub">RMD Instructor Weekend 2026 · Director only</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Overdue Account Sign-ins</div>
+    <div class="card-body">
+
+      <div class="director-note">
+        ⚠️ Reminds anyone with a login created via <a href="admin-bulk-users.html">Bulk User Setup</a> (Faculty accounts or MOU roster accounts) who has never actually signed in. First reminder goes out 3 days after the account was created, then every 7 days after that, capped at 3 reminders per person. Sent from <strong>rmdbirmingham@googlemail.com</strong>.
+      </div>
+
+      <div class="hint" style="margin-bottom:12px;">
+        Always load the list first and check it before sending — nothing is emailed until you click "Send reminders".
+      </div>
+
+      <button class="btn-secondary" id="loadBtn" onclick="loadOverdue()">Load overdue list</button>
+
+      <div id="previewSection" style="display:none;">
+        <div class="hint" id="previewSummary" style="margin-top:14px;margin-bottom:0;"></div>
+        <div class="preview-wrap">
+          <table class="preview-table">
+            <thead>
+              <tr><th>Name</th><th>Email</th><th>Source</th><th>Days since created</th><th>Reminder #</th></tr>
+            </thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+        <button class="btn-primary" id="sendBtn" onclick="sendReminders()" disabled>Send reminders</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Results card -->
+  <div class="card" id="resultsCard">
+    <div class="card-header">Results</div>
+    <div class="card-body">
+      <div class="summary-bar" id="summaryBar"></div>
+      <div id="logList"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+requireDirector("timetable.html");
+var fns = firebase.functions();
+
+var currentEligible = [];
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function sourceTag(source) {
+  if (source === "faculty") return `<span class="source-tag source-faculty">Faculty</span>`;
+  if (source === "mou")     return `<span class="source-tag source-mou">MOU</span>`;
+  return `<span class="source-tag source-unknown">Unknown</span>`;
+}
+
+async function loadOverdue() {
+  const btn = document.getElementById("loadBtn");
+  btn.disabled    = true;
+  btn.textContent = "Loading…";
+
+  try {
+    const call = fns.httpsCallable("sendAccountCreationReminders");
+    const res  = await call({ dryRun: true });
+    const d    = res.data || {};
+    currentEligible = d.eligible || [];
+
+    const previewSection = document.getElementById("previewSection");
+    const summaryEl       = document.getElementById("previewSummary");
+    const bodyEl          = document.getElementById("previewBody");
+    const sendBtn         = document.getElementById("sendBtn");
+
+    previewSection.style.display = "block";
+
+    if (!currentEligible.length) {
+      summaryEl.textContent = `Checked ${d.checked || 0} account(s) — nobody is currently due a reminder.`;
+      bodyEl.innerHTML = "";
+      sendBtn.disabled    = true;
+      sendBtn.textContent = "Send reminders";
+    } else {
+      summaryEl.textContent = `Checked ${d.checked || 0} account(s) — ${currentEligible.length} due a reminder now.`;
+      bodyEl.innerHTML = currentEligible.map(p => `
+        <tr>
+          <td>${esc(p.name)}</td>
+          <td style="font-family:monospace;">${esc(p.email)}</td>
+          <td>${sourceTag(p.source)}</td>
+          <td>${p.daysSinceCreation}</td>
+          <td>${p.reminderNumber}</td>
+        </tr>`).join("");
+      sendBtn.disabled    = false;
+      sendBtn.textContent = `Send ${currentEligible.length} reminder(s)`;
+    }
+  } catch (err) {
+    console.error("loadOverdue failed:", err);
+    alert(`Couldn't load the list: ${err.message || err.code || "unknown error"}`);
+  }
+
+  btn.disabled    = false;
+  btn.textContent = "Reload overdue list";
+}
+
+async function sendReminders() {
+  if (!currentEligible.length) return;
+  if (!confirm(`Send reminder emails to ${currentEligible.length} person/people?\n\nThis cannot be undone — check the list above first.`)) return;
+
+  const sendBtn = document.getElementById("sendBtn");
+  sendBtn.disabled    = true;
+  sendBtn.textContent = "Sending…";
+
+  const resultsCard = document.getElementById("resultsCard");
+  const summaryBar   = document.getElementById("summaryBar");
+  const logList      = document.getElementById("logList");
+  resultsCard.style.display = "block";
+  summaryBar.innerHTML = "";
+  logList.innerHTML = "";
+
+  try {
+    const call = fns.httpsCallable("sendAccountCreationReminders");
+    const res  = await call({ dryRun: false });
+    const d    = res.data || {};
+    const failedSet = new Set(d.failedEmails || []);
+
+    logList.innerHTML = currentEligible.map(p => {
+      const failed = failedSet.has(p.email);
+      return `
+        <div class="log-entry">
+          <div class="log-icon">${failed ? "❌" : "✅"}</div>
+          <div class="log-email">${esc(p.email)} <span style="color:var(--rmd-muted)">(${esc(p.name)})</span></div>
+          <div class="log-status ${failed ? "err" : "ok"}">${failed ? "Failed to send" : `Reminder #${p.reminderNumber} sent`}</div>
+        </div>`;
+    }).join("");
+
+    summaryBar.innerHTML = `
+      ${d.sent   ? `<span class="sum sum-ok">✅ ${d.sent} sent</span>` : ""}
+      ${d.failed ? `<span class="sum sum-err">❌ ${d.failed} failed</span>` : ""}
+    `;
+
+    // Force a reload before allowing another send, so the list reflects
+    // what's actually still outstanding.
+    currentEligible = [];
+    sendBtn.textContent = "Reload the list above to send again";
+  } catch (err) {
+    console.error("sendReminders failed:", err);
+    logList.innerHTML = `<div style="color:var(--rmd-warn);">Send failed: ${err.message || err.code || "unknown error"}</div>`;
+    sendBtn.disabled    = false;
+    sendBtn.textContent = `Send ${currentEligible.length} reminder(s)`;
+  }
+}
+</script>
+</body>
+</html>

@@ -46,98 +46,19 @@
 
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
-  // ── Static faculty roster, sourced from the MOU roster + student faculty
-  // role list ──────────────────────────────────────────────────────────────
-  // The mou_roster Firestore collection is authenticated-read-only (it holds
-  // member emails — see firestore.rules), so this public page uses a static
-  // name-only list instead of querying it live, to avoid exposing emails.
-  //
-  // Refresh this each academic year alongside the MOU roster reimport (see
-  // admin-mou-dashboard.html "Manage roster" tab) and the student faculty
-  // role document Jon circulates at the start of the year: filter the roster
-  // for role "RMD Student Faculty" / "RMD Senior Faculty" for names, and use
-  // the role document for team/lead structure on the student side.
+  // ── Live faculty roster ──────────────────────────────────────────────────
+  // Replaced 2026-07-27: this used to be a hand-edited FACULTY object baked
+  // into this page. It now reads faculty_directory (public, no email — see
+  // js/firebase-config.js), populated once a year via a single bulk paste on
+  // admin-faculty-roster.html. To update names, teams, roles or photos, use
+  // that tool — don't hand-edit this file.
   const ROSTER_YEAR = (typeof CURRENT_MOU_YEAR !== "undefined") ? CURRENT_MOU_YEAR : "2026/27";
 
-  const FACULTY = {
-    student: [
-      { team: "Student Faculty Chair", members: [
-        { name: "Tanwen Bird", role: "Chair", photo: "assets/faculty-photos/tanwen-bird.jpg" }
-      ]},
-      { team: "Team Teachers", members: [
-        { name: "Alessandro Pace", role: "Team Lead", photo: "assets/faculty-photos/alessandro-pace.jpg" },
-        { name: "Isabel (Issy) Winfield", role: "Team Member", photo: "assets/faculty-photos/issy-winfield.jpg" },
-        { name: "Theresa (Tess) Brock", role: "Team Member", photo: "assets/faculty-photos/tess-brock.jpg" },
-        { name: "Tegan Bailey", role: "Team Member", photo: "assets/faculty-photos/tegan-bailey.jpg" }
-      ]},
-      { team: "Team Admin", members: [
-        { name: "Stella Szeckler", role: "Team Lead", photo: "assets/faculty-photos/stella-szeckler.jpg" },
-        { name: "Holly Smyth", role: "Team Member", photo: "assets/faculty-photos/holly-smyth.jpg" },
-        { name: "Stephanie (Ellie) Scholes", role: "Team Member", photo: "assets/faculty-photos/ellie-scholes.jpg" },
-        { name: "Georgia Crutchfield", role: "Team Member", photo: "assets/faculty-photos/georgia-crutchfield.jpg" }
-      ]},
-      { team: "Team Logistics", members: [
-        { name: "Krishan (Krish) Patel", role: "Team Lead", photo: "assets/faculty-photos/krish-patel.jpg" },
-        { name: "Megan Harrison", role: "Team Member", photo: "assets/faculty-photos/megan-harrison.jpg" },
-        { name: "Jaimini Lakhani", role: "Team Member", photo: "assets/faculty-photos/jaimini-lakhani.jpg" },
-        { name: "Sophie McKillop", role: "Team Member", photo: "assets/faculty-photos/sophie-mckillop.jpg" }
-      ]},
-      { team: "Nurse Refresher Co-leads", members: [
-        { name: "Emily Bracegirdle-Morais", role: "Co-lead", photo: "assets/faculty-photos/emily-bracegirdle-morais.jpg" },
-        { name: "Kit (Katharine) Smith", role: "Co-lead", photo: "assets/faculty-photos/kit-smith.jpg" }
-      ]}
-    ],
-    // Rebuilt 2026-07-07 from the RMD senior faculty roster PDF (rmdbirmingham
-    // Drive, "2025-26 - RMD senior faculty.pdf"), which is a print export of the
-    // rmd.uk.com "Senior Faculty" Google Site. Roles below are copied verbatim
-    // from that source. Two known gaps, both TBC as of this rebuild:
-    //  - Zanita Volschenk: on the prior flat roster but absent from the Site/PDF
-    //    entirely — no role, no photo yet.
-    //  - Juliette Horobin: present in the Site/PDF with a photo, but the source
-    //    doesn't label her role/team (everyone else does).
-    senior: [
-      { team: "Course Director", members: [
-        { name: "Jon Hulme", role: "Course Director", photo: "assets/faculty-photos/jon-hulme.jpg" }
-      ]},
-      { team: "Finance", members: [
-        { name: "Nick Coffin", role: "Finance", photo: "assets/faculty-photos/nick-coffin.jpg" }
-      ]},
-      { team: "Research", members: [
-        { name: "Joe Alderman", role: "Research", photo: "assets/faculty-photos/joe-alderman.jpg" }
-      ]},
-      { team: "Student Support", members: [
-        { name: "Chesca Harper", role: "Student Support", photo: "assets/faculty-photos/chesca-harper.jpg" },
-        { name: "Ellen Murgatroyd", role: "Student Support", photo: "assets/faculty-photos/ellen-murgatroyd.jpg" },
-        { name: "Becca Everitt", role: "Student Support", photo: "assets/faculty-photos/becca-everitt.jpg" },
-        { name: "Emily Beesley", role: "Student Support", photo: "assets/faculty-photos/emily-beesley.jpg" }
-      ]},
-      { team: "Guidelines", members: [
-        { name: "Laura Smith", role: "Support / Guidelines", photo: "assets/faculty-photos/laura-smith.jpg" },
-        { name: "Bre Blackboro", role: "Guidelines", photo: "assets/faculty-photos/bre-blackboro.jpg" },
-        { name: "Tom Burton", role: "Guidelines", photo: "assets/faculty-photos/tom-burton.jpg" },
-        { name: "Ben Stanley", role: "Guidelines", photo: "assets/faculty-photos/ben-stanley.jpg" }
-      ]},
-      { team: "Assessors", members: [
-        { name: "Naveed Kordmahalleh", role: "Assessors", photo: "assets/faculty-photos/naveed-kordmahalleh.jpg" },
-        { name: "Rosie Lilwall", role: "Assessors", photo: "assets/faculty-photos/rosie-lilwall.jpg" },
-        { name: "Abi King", role: "Assessors", photo: "assets/faculty-photos/abi-king.jpg" }
-      ]},
-      { team: "Technical Support", members: [
-        { name: "Neal Pankhania", role: "Technical Support", photo: "assets/faculty-photos/neal-pankhania.jpg" },
-        { name: "Cameron Parkes", role: "Technical Support", photo: "assets/faculty-photos/cameron-parkes.jpg" }
-      ]},
-      { team: "Refresher Training", members: [
-        { name: "Lauren Baldwin", role: "Refresher Training", photo: "assets/faculty-photos/lauren-baldwin.jpg" },
-        { name: "Danielle Pollitt-Walmsley", role: "Refresher Training", photo: "assets/faculty-photos/danielle-pollitt-walmsley.jpg" }
-      ]},
-      { team: "Role TBC", members: [
-        { name: "Juliette Horobin", role: "Role TBC", photo: "assets/faculty-photos/juliette-horobin.jpg" },
-    { name: "Zanita Volschenk", role: "Role TBC", photo: "assets/faculty-photos/zanita-volschenk.png", photoPosition: "center 5%" }
-      ]}
-    ]
-  };
+  initFirebase();
 
   // Initials for the photo placeholder (e.g. "Krishan (Krish) Patel" → "KP").
   // Strips bracketed nicknames before taking first + last name initials.
@@ -184,56 +105,91 @@
   };
   noteEl.textContent = notes[group];
 
-  FACULTY[group].forEach(team => {
-    const wrap = document.createElement("div");
-    wrap.className = "faculty-team-group";
+  function renderTeams(teams) {
+    teamsEl.innerHTML = "";
+    teams.forEach(team => {
+      const wrap = document.createElement("div");
+      wrap.className = "faculty-team-group";
 
-    const title = document.createElement("div");
-    title.className = "faculty-team-title";
-    title.textContent = team.team;
-    wrap.appendChild(title);
+      const title = document.createElement("div");
+      title.className = "faculty-team-title";
+      title.textContent = team.team;
+      wrap.appendChild(title);
 
-    const ul = document.createElement("ul");
-    ul.className = "faculty-list has-photos";
-    team.members.forEach(m => {
-      const li = document.createElement("li");
+      const ul = document.createElement("ul");
+      ul.className = "faculty-list has-photos";
+      team.members.forEach(m => {
+        const li = document.createElement("li");
 
-      if (m.photo) {
-        const img = document.createElement("img");
-        img.className = "faculty-photo";
-        img.src = m.photo;
-        img.alt = m.name;
-        img.loading = "lazy";
-     if (m.photoPosition) img.style.objectPosition = m.photoPosition;
-// Fall back to the initials placeholder if the photo fails to load.
-        img.onerror = function () {
-          const fallback = document.createElement("div");
-          fallback.className = "faculty-photo-placeholder";
-          fallback.textContent = initials(m.name);
-          img.replaceWith(fallback);
-        };
-        li.appendChild(img);
-      } else {
-        const photo = document.createElement("div");
-        photo.className = "faculty-photo-placeholder";
-        photo.textContent = initials(m.name);
-        li.appendChild(photo);
+        if (m.photo) {
+          const img = document.createElement("img");
+          img.className = "faculty-photo";
+          img.src = "assets/faculty-photos/" + m.photo;
+          img.alt = m.name;
+          img.loading = "lazy";
+          // Fall back to the initials placeholder if the photo fails to load
+          // (also covers "no photo on file yet" since we just skip the <img>
+          // entirely below when m.photo is empty).
+          img.onerror = function () {
+            const fallback = document.createElement("div");
+            fallback.className = "faculty-photo-placeholder";
+            fallback.textContent = initials(m.name);
+            img.replaceWith(fallback);
+          };
+          li.appendChild(img);
+        } else {
+          const photo = document.createElement("div");
+          photo.className = "faculty-photo-placeholder";
+          photo.textContent = initials(m.name);
+          li.appendChild(photo);
+        }
+
+        const nameSpan = document.createElement("span");
+        nameSpan.textContent = m.name;
+        li.appendChild(nameSpan);
+
+        const roleSpan = document.createElement("span");
+        roleSpan.className = "faculty-role";
+        roleSpan.textContent = m.role;
+        li.appendChild(roleSpan);
+
+        ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+      teamsEl.appendChild(wrap);
+    });
+  }
+
+  async function loadRoster() {
+    teamsEl.innerHTML = `<p class="text-muted text-sm">Loading…</p>`;
+    try {
+      // Single-field orderBy only (no composite index needed) — group
+      // filtering happens client-side below.
+      const snap = await db.collection(COLLECTIONS.facultyDirectory).orderBy("order").get();
+      const rows = snap.docs.map(d => d.data()).filter(r => r.group === group);
+
+      if (!rows.length) {
+        teamsEl.innerHTML = `<p class="text-muted text-sm">Roster not loaded yet for this academic year — check back soon.</p>`;
+        return;
       }
 
-      const nameSpan = document.createElement("span");
-      nameSpan.textContent = m.name;
-      li.appendChild(nameSpan);
+      // Group by team, preserving the order teams first appear (i.e. the
+      // order they were pasted into admin-faculty-roster.html).
+      const teamOrder = [];
+      const byTeam = {};
+      rows.forEach(r => {
+        if (!byTeam[r.team]) { byTeam[r.team] = []; teamOrder.push(r.team); }
+        byTeam[r.team].push(r);
+      });
+      const teams = teamOrder.map(team => ({ team, members: byTeam[team] }));
 
-      const roleSpan = document.createElement("span");
-      roleSpan.className = "faculty-role";
-      roleSpan.textContent = m.role;
-      li.appendChild(roleSpan);
+      renderTeams(teams);
+    } catch (err) {
+      teamsEl.innerHTML = `<p class="text-muted text-sm">Could not load the roster: ${err.message}</p>`;
+    }
+  }
 
-      ul.appendChild(li);
-    });
-    wrap.appendChild(ul);
-    teamsEl.appendChild(wrap);
-  });
+  loadRoster();
 </script>
 
 <footer class="rmd-footer">

@@ -31,13 +31,48 @@ const COLLECTIONS = {
   itcObs:      "itc_observations", // ITC observation records
   groups:      "groups",         // room assignments: IT + candidates + ITC rotation
   mouResponses: "mou_responses", // annual Memorandum of Understanding submissions
-  mouRoster:    "mou_roster"     // expected RMD Birmingham member roster (for MOU completion tracking)
+  mouRoster:    "mou_roster",    // expected RMD Birmingham member roster (for MOU completion tracking)
+  sfrResponses: "senior_faculty_review",           // annual senior faculty review & future-plans submissions
+  sfrReminders: "senior_faculty_review_reminders", // log of reminder email batches sent by admin-senior-faculty-review.html
+  facultyRoster:    "faculty_roster",    // director-only annual roster (name, email, group, team, role) — see below
+  facultyDirectory: "faculty_directory"  // public display copy of the same roster, no email — feeds faculty.html
 };
 
 // ── Memorandum of Understanding ─────────────────────────────────────────────
 // Bump this every academic year — drives the form's locked "year" field and
 // the dashboard's completion matching. Nothing else needs to change annually.
 const CURRENT_MOU_YEAR = "2026/27";
+
+// ── Senior faculty annual review & future plans ─────────────────────────────
+// Built 2026-07-27 for first live use in the June/July 2027 review cycle
+// (Jon ran the 2026 round via a Google Form). Bump SFR_CYCLE_YEAR and
+// SFR_NEXT_ACADEMIC_YEAR every June/July before that year's round opens —
+// nothing else needs to change annually.
+//
+// Roster comes from faculty_roster (group == "senior") — see below —
+// deliberately NOT derived from people.role. The "senior faculty" shown on
+// faculty.html?group=senior (Course Director, Finance, Research, Guidelines,
+// Assessors, etc.) is a broader/different set than people docs with role
+// full-instructor/assessor-faculty — several named individuals (e.g.
+// Finance, Research) have no teaching role at all and likely no people doc
+// to match against.
+const SFR_CYCLE_YEAR        = "2027";     // the calendar year this review round runs in (June/July 2027)
+const SFR_NEXT_ACADEMIC_YEAR = "2027/28"; // the academic year the form is asking people to plan for
+
+// ── Annual faculty roster (single source for both faculty.html groups) ─────
+// Built 2026-07-27: one bulk paste on admin-faculty-roster.html each year
+// replaces both collections below, replacing the old approach of a
+// hand-edited FACULTY object baked into faculty.html and a separately
+// pasted senior_faculty_roster. Split into two collections because one of
+// them holds email addresses and must NOT be publicly readable:
+//   - faculty_roster    (director-only): name, email, group ("student"/
+//     "senior"), team, role, photo, order. Feeds admin-senior-faculty-review.html
+//     and the reminder Cloud Function.
+//   - faculty_directory (public, read: true): same minus email. Feeds the
+//     public faculty.html page. Never add an email field here.
+// "order" is the row's position in the pasted list, preserved so faculty.html
+// can group by team in the order Jon pasted them, same as the old hardcoded
+// object's insertion order.
 
 // ── Rooms ───────────────────────────────────────────────────────────────────
 const INSTRUCTOR_ROOMS = ["CM01","CM02","CM03","CM04","CM13","CM14","CM15","CM16"];

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Faculty Roster — Bulk Upload — RMD</title>
+<link rel="stylesheet" href="css/rmd.css">
+<style>
+  * { box-sizing: border-box; }
+  body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+  .top-bar {
+    background: var(--rmd-navy); color: white;
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .top-bar img { height: 28px; }
+  .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+
+  .content { padding: 14px; max-width: 900px; margin: 0 auto; }
+
+  .info-banner {
+    background: #e8f0fe; border-left: 4px solid var(--rmd-blue);
+    border-radius: 0 6px 6px 0; padding: 10px 14px;
+    font-size: 13px; color: var(--rmd-navy); margin: 14px 0 16px;
+  }
+
+  .card { background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; color: var(--rmd-navy); margin: 0 0 10px; }
+  .card p.hint { font-size: 13px; color: var(--rmd-muted); margin: 0 0 12px; line-height: 1.5; }
+
+  textarea {
+    width: 100%; min-height: 260px; border: 2px solid #ccd6dd; border-radius: 6px;
+    padding: 12px; font-family: monospace; font-size: 13px; resize: vertical;
+  }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .btn-action {
+    padding: 9px 16px; background: var(--rmd-blue); color: white;
+    border: none; border-radius: 6px; font-size: 13px; font-weight: 700;
+    font-family: var(--font); cursor: pointer;
+  }
+  .btn-action:hover { background: var(--rmd-navy); }
+  .btn-action.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
+  .btn-action.danger { background: var(--rmd-warn); }
+  .btn-action:disabled { background: #aab8c2; cursor: default; }
+
+  .summary-strip { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
+  .sum-pill { background: #f5f7fa; border-radius: 8px; padding: 8px 14px; text-align: center; min-width: 90px; }
+  .sum-pill .val { font-size: 20px; font-weight: 700; color: var(--rmd-navy); }
+  .sum-pill .lbl { font-size: 10px; color: var(--rmd-muted); font-weight: 600; text-transform: uppercase; }
+  .sum-pill.warn .val { color: var(--rmd-warn); }
+
+  .preview-wrap { max-height: 420px; overflow-y: auto; border: 1px solid #e8edf2; border-radius: 6px; margin-top: 10px; }
+  .preview-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .preview-table th {
+    background: #eef2f6; color: var(--rmd-muted); text-align: left;
+    padding: 7px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+    position: sticky; top: 0;
+  }
+  .preview-table td { padding: 7px 10px; border-bottom: 1px solid #f0f3f6; }
+  .preview-table tr.group-row td { background: #f5f7fa; font-weight: 700; color: var(--rmd-navy); }
+  .flag-missing-email { color: var(--rmd-warn); font-size: 11px; font-weight: 700; }
+  .flag-missing-photo { color: #856404; font-size: 11px; }
+  .flag-error { color: var(--rmd-warn); font-size: 12px; font-weight: 700; }
+
+  .import-log { margin-top: 14px; font-size: 13px; max-height: 220px; overflow-y: auto; background: #f5f7fa; border-radius: 6px; padding: 10px 14px; display: none; }
+  .import-log div { padding: 2px 0; }
+
+  .error-list { font-size: 12.5px; color: var(--rmd-warn); margin-top: 10px; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="member-menu.html" title="Back to members menu" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Faculty Roster — Bulk Upload</div>
+</div>
+
+<div class="content">
+
+  <div class="info-banner">
+    One paste, once a year, replaces the whole roster and feeds everywhere it's needed: the public <a href="faculty.html?group=student" target="_blank">Student Faculty</a> and <a href="faculty.html?group=senior" target="_blank">Senior Faculty</a> pages, and the roster on the <a href="admin-senior-faculty-review.html">Senior Faculty Review Dashboard</a>. It does <strong>not</strong> touch the MOU roster or create any login accounts — those stay separate (<a href="admin-mou-dashboard.html">MOU dashboard</a> / <a href="admin-bulk-users.html">Bulk User Setup</a>).
+  </div>
+
+  <div class="card">
+    <h2>Paste roster</h2>
+    <p class="hint">
+      One person per line: <strong>Name, Email, Group, Team, Role, Photo</strong><br>
+      &middot; <strong>Group</strong> must be exactly <code>student</code> or <code>senior</code>.<br>
+      &middot; <strong>Team</strong> is the section they're grouped under on the public page (e.g. "Team Teachers", "Assessors", "Course Director") — people are shown grouped by team, in the order teams first appear below.<br>
+      &middot; <strong>Role</strong> is the label shown next to their name (e.g. "Team Lead", "Team Member") — leave blank to just repeat the team name, as senior faculty currently do.<br>
+      &middot; <strong>Email</strong> and <strong>Photo</strong> (filename only, e.g. <code>jane-smith.jpg</code> — must already exist under <code>assets/faculty-photos/</code>) are both optional. No email means that person can't be reached for the senior faculty review reminder and won't sign in to it either. No photo means their initials show instead.<br>
+      &middot; Importing <strong>replaces the entire current roster</strong> (both groups) — this cannot be undone.
+    </p>
+    <textarea id="rosterPaste" placeholder="Tanwen Bird, , student, Student Faculty Chair, Chair, tanwen-bird.jpg
+Jon Hulme, j.hulme.1@bham.ac.uk, senior, Course Director, , jon-hulme.jpg"></textarea>
+    <div class="btn-row">
+      <button class="btn-action" onclick="parsePreview()">👁 Parse &amp; preview</button>
+      <button class="btn-action secondary" onclick="loadCurrentRosterIntoTextarea()">↺ Load current roster</button>
+      <button class="btn-action secondary" onclick="loadStarterNames()">📋 Load starter names (from faculty.html, 2026-07-27)</button>
+    </div>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none;">
+    <h2>Preview</h2>
+    <div class="summary-strip" id="previewSummary"></div>
+    <div id="previewErrors"></div>
+    <div class="preview-wrap">
+      <table class="preview-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Group</th><th>Team</th><th>Role</th><th>Photo</th></tr></thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+    <div class="btn-row">
+      <button class="btn-action danger" id="confirmImportBtn" onclick="confirmImport()">⬆ Confirm import (replace all)</button>
+    </div>
+    <div class="import-log" id="importLog"></div>
+  </div>
+
+  <div class="card">
+    <h2>Current roster (live)</h2>
+    <div class="summary-strip" id="currentSummary"><div class="sum-pill"><div class="val">–</div><div class="lbl">Loading</div></div></div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+window.addEventListener("load", () => {
+  requireDirector("member-menu.html").then(() => {
+    loadCurrentSummary();
+  });
+});
+
+// Names/teams/photos as they appeared in faculty.html's old hardcoded
+// FACULTY object at the point this tool replaced it (2026-07-27). One-time
+// starter seed for the first import — not kept in sync afterwards. Emails
+// were never stored in that object, so they're blank here; add them before
+// importing, or leave blank and add later via "Load current roster".
+const STARTER_ROSTER = [
+  ["Tanwen Bird", "", "student", "Student Faculty Chair", "Chair", "tanwen-bird.jpg"],
+  ["Alessandro Pace", "", "student", "Team Teachers", "Team Lead", "alessandro-pace.jpg"],
+  ["Isabel (Issy) Winfield", "", "student", "Team Teachers", "Team Member", "issy-winfield.jpg"],
+  ["Theresa (Tess) Brock", "", "student", "Team Teachers", "Team Member", "tess-brock.jpg"],
+  ["Tegan Bailey", "", "student", "Team Teachers", "Team Member", "tegan-bailey.jpg"],
+  ["Stella Szeckler", "", "student", "Team Admin", "Team Lead", "stella-szeckler.jpg"],
+  ["Holly Smyth", "", "student", "Team Admin", "Team Member", "holly-smyth.jpg"],
+  ["Stephanie (Ellie) Scholes", "", "student", "Team Admin", "Team Member", "ellie-scholes.jpg"],
+  ["Georgia Crutchfield", "", "student", "Team Admin", "Team Member", "georgia-crutchfield.jpg"],
+  ["Krishan (Krish) Patel", "", "student", "Team Logistics", "Team Lead", "krish-patel.jpg"],
+  ["Megan Harrison", "", "student", "Team Logistics", "Team Member", "megan-harrison.jpg"],
+  ["Jaimini Lakhani", "", "student", "Team Logistics", "Team Member", "jaimini-lakhani.jpg"],
+  ["Sophie McKillop", "", "student", "Team Logistics", "Team Member", "sophie-mckillop.jpg"],
+  ["Emily Bracegirdle-Morais", "", "student", "Nurse Refresher Co-leads", "Co-lead", "emily-bracegirdle-morais.jpg"],
+  ["Kit (Katharine) Smith", "", "student", "Nurse Refresher Co-leads", "Co-lead", "kit-smith.jpg"],
+  ["Jon Hulme", "", "senior", "Course Director", "", "jon-hulme.jpg"],
+  ["Nick Coffin", "", "senior", "Finance", "", "nick-coffin.jpg"],
+  ["Joe Alderman", "", "senior", "Research", "", "joe-alderman.jpg"],
+  ["Chesca Harper", "", "senior", "Student Support", "", "chesca-harper.jpg"],
+  ["Ellen Murgatroyd", "", "senior", "Student Support", "", "ellen-murgatroyd.jpg"],
+  ["Becca Everitt", "", "senior", "Student Support", "", "becca-everitt.jpg"],
+  ["Emily Beesley", "", "senior", "Student Support", "", "emily-beesley.jpg"],
+  ["Laura Smith", "", "senior", "Guidelines", "Support / Guidelines", "laura-smith.jpg"],
+  ["Bre Blackboro", "", "senior", "Guidelines", "", "bre-blackboro.jpg"],
+  ["Tom Burton", "", "senior", "Guidelines", "", "tom-burton.jpg"],
+  ["Ben Stanley", "", "senior", "Guidelines", "", "ben-stanley.jpg"],
+  ["Naveed Kordmahalleh", "", "senior", "Assessors", "", "naveed-kordmahalleh.jpg"],
+  ["Rosie Lilwall", "", "senior", "Assessors", "", "rosie-lilwall.jpg"],
+  ["Abi King", "", "senior", "Assessors", "", "abi-king.jpg"],
+  ["Neal Pankhania", "", "senior", "Technical Support", "", "neal-pankhania.jpg"],
+  ["Cameron Parkes", "", "senior", "Technical Support", "", "cameron-parkes.jpg"],
+  ["Lauren Baldwin", "", "senior", "Refresher Training", "", "lauren-baldwin.jpg"],
+  ["Danielle Pollitt-Walmsley", "", "senior", "Refresher Training", "", "danielle-pollitt-walmsley.jpg"],
+  ["Juliette Horobin", "", "senior", "Role TBC", "", "juliette-horobin.jpg"],
+  ["Zanita Volschenk", "", "senior", "Role TBC", "", "zanita-volschenk.png"]
+];
+
+function loadStarterNames() {
+  const lines = STARTER_ROSTER.map(r => r.join(", ")).join("\n");
+  document.getElementById("rosterPaste").value = lines;
+}
+
+async function loadCurrentRosterIntoTextarea() {
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).orderBy("order").get();
+    if (snap.empty) { alert("faculty_roster is empty — nothing to load. Try 'Load starter names' instead."); return; }
+    const lines = snap.docs.map(d => {
+      const m = d.data();
+      return [m.name||"", m.email||"", m.group||"", m.team||"", m.role||"", m.photo||""].join(", ");
+    }).join("\n");
+    document.getElementById("rosterPaste").value = lines;
+  } catch (err) {
+    alert("Could not load the current roster: " + err.message);
+  }
+}
+
+async function loadCurrentSummary() {
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).get();
+    const docs = snap.docs.map(d => d.data());
+    const student = docs.filter(d => d.group === "student").length;
+    const senior   = docs.filter(d => d.group === "senior").length;
+    const noEmail  = docs.filter(d => !d.email).length;
+    document.getElementById("currentSummary").innerHTML = `
+      <div class="sum-pill"><div class="val">${docs.length}</div><div class="lbl">Total</div></div>
+      <div class="sum-pill"><div class="val">${student}</div><div class="lbl">Student</div></div>
+      <div class="sum-pill"><div class="val">${senior}</div><div class="lbl">Senior</div></div>
+      <div class="sum-pill warn"><div class="val">${noEmail}</div><div class="lbl">No email</div></div>`;
+  } catch (err) {
+    document.getElementById("currentSummary").innerHTML =
+      `<div style="color:var(--rmd-warn);font-size:13px;">Could not load current roster: ${err.message}</div>`;
+  }
+}
+
+let parsedRows = null; // set by parsePreview(), consumed by confirmImport()
+
+function slugify(name) {
+  return (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unnamed";
+}
+function rosterDocId(email, group, name) {
+  return email ? email.toLowerCase() : "noemail_" + group + "_" + slugify(name);
+}
+
+function parsePreview() {
+  const raw = document.getElementById("rosterPaste").value.trim();
+  if (!raw) { alert("Paste at least one person first."); return; }
+
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const rows = [];
+  const errors = [];
+
+  lines.forEach((line, i) => {
+    const parts = line.split(",").map(p => p.trim());
+    const [name, emailRaw, groupRaw, team, role, photo] = parts;
+
+    if (!name) { errors.push(`Line ${i+1}: no name found in "${line}"`); return; }
+
+    const group = (groupRaw || "").toLowerCase();
+    if (group !== "student" && group !== "senior") {
+      errors.push(`Line ${i+1} (${name}): group must be "student" or "senior", got "${groupRaw||""}" — row skipped`);
+      return;
+    }
+    if (!team) { errors.push(`Line ${i+1} (${name}): no team given — row skipped`); return; }
+
+    const email = (emailRaw || "").toLowerCase();
+    if (email && !email.includes("@")) {
+      errors.push(`Line ${i+1} (${name}): "${email}" doesn't look like an email — kept as-is`);
+    }
+
+    rows.push({
+      order: rows.length,
+      name, email, group, team,
+      role: role || team,
+      photo: photo || ""
+    });
+  });
+
+  // De-duplicate by doc id (email, or group+name-slug when no email)
+  const seen = new Set();
+  const deduped = [];
+  rows.forEach(r => {
+    const id = rosterDocId(r.email, r.group, r.name);
+    if (seen.has(id)) {
+      errors.push(`Duplicate entry for "${r.name}" (${r.email || "no email"}, ${r.group}) — kept the first, skipped the rest.`);
+      return;
+    }
+    seen.add(id);
+    deduped.push(r);
+  });
+
+  parsedRows = deduped;
+
+  const studentCount = deduped.filter(r => r.group === "student").length;
+  const seniorCount  = deduped.filter(r => r.group === "senior").length;
+  const noEmailCount = deduped.filter(r => !r.email).length;
+  const noPhotoCount = deduped.filter(r => !r.photo).length;
+
+  document.getElementById("previewSummary").innerHTML = `
+    <div class="sum-pill"><div class="val">${deduped.length}</div><div class="lbl">Total</div></div>
+    <div class="sum-pill"><div class="val">${studentCount}</div><div class="lbl">Student</div></div>
+    <div class="sum-pill"><div class="val">${seniorCount}</div><div class="lbl">Senior</div></div>
+    <div class="sum-pill warn"><div class="val">${noEmailCount}</div><div class="lbl">No email</div></div>
+    <div class="sum-pill warn"><div class="val">${noPhotoCount}</div><div class="lbl">No photo</div></div>`;
+
+  document.getElementById("previewErrors").innerHTML = errors.length
+    ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : "";
+
+  let lastGroupTeam = null;
+  const bodyRows = deduped.map(r => {
+    const groupTeam = r.group + "|" + r.team;
+    let groupRow = "";
+    if (groupTeam !== lastGroupTeam) {
+      lastGroupTeam = groupTeam;
+      groupRow = `<tr class="group-row"><td colspan="6">${r.group === "senior" ? "Senior" : "Student"} Faculty — ${r.team}</td></tr>`;
+    }
+    return groupRow + `<tr>
+      <td style="font-weight:700;color:var(--rmd-navy);">${r.name}</td>
+      <td style="font-size:12px;">${r.email || `<span class="flag-missing-email">⚠ none</span>`}</td>
+      <td>${r.group}</td>
+      <td>${r.team}</td>
+      <td>${r.role}</td>
+      <td style="font-size:12px;">${r.photo || `<span class="flag-missing-photo">initials only</span>`}</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("previewBody").innerHTML = bodyRows;
+  document.getElementById("previewCard").style.display = "block";
+  document.getElementById("importLog").style.display = "none";
+  document.getElementById("previewCard").scrollIntoView({ behavior: "smooth" });
+}
+
+async function confirmImport() {
+  if (!parsedRows || !parsedRows.length) { alert("Parse & preview first."); return; }
+
+  if (!confirm(`Replace the entire faculty roster with ${parsedRows.length} new entr${parsedRows.length===1?'y':'ies'}?\n\nThis affects the public Student/Senior Faculty pages and the senior faculty review roster. This cannot be undone.`)) return;
+
+  const btn = document.getElementById("confirmImportBtn");
+  btn.disabled = true;
+  btn.textContent = "Importing…";
+
+  const logEl = document.getElementById("importLog");
+  logEl.style.display = "block";
+  logEl.innerHTML = "<div>Starting import…</div>";
+
+  try {
+    // Clear both collections
+    for (const coll of [COLLECTIONS.facultyRoster, COLLECTIONS.facultyDirectory]) {
+      const existingSnap = await db.collection(coll).get();
+      let batch = db.batch();
+      let opCount = 0;
+      for (const doc of existingSnap.docs) {
+        batch.delete(doc.ref);
+        opCount++;
+        if (opCount >= 450) { await batch.commit(); batch = db.batch(); opCount = 0; }
+      }
+      if (opCount > 0) { await batch.commit(); }
+      logEl.innerHTML += `<div>Cleared ${existingSnap.size} existing ${coll} entr${existingSnap.size===1?'y':'ies'}.</div>`;
+    }
+
+    // Write both collections — faculty_roster (has email), faculty_directory (no email)
+    let batch = db.batch();
+    let opCount = 0;
+    for (const r of parsedRows) {
+      const docId = rosterDocId(r.email, r.group, r.name);
+      const addedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+      const rosterRef = db.collection(COLLECTIONS.facultyRoster).doc(docId);
+      batch.set(rosterRef, { ...r, addedAt });
+
+      const { email, ...publicFields } = r; // never write email to the public collection
+      const dirRef = db.collection(COLLECTIONS.facultyDirectory).doc(docId);
+      batch.set(dirRef, { ...publicFields, addedAt });
+
+      opCount += 2;
+      if (opCount >= 400) { await batch.commit(); batch = db.batch(); opCount = 0; }
+    }
+    if (opCount > 0) { await batch.commit(); }
+
+    logEl.innerHTML += `<div>✅ Imported ${parsedRows.length} member(s) into both collections.</div>`;
+    await loadCurrentSummary();
+  } catch (err) {
+    logEl.innerHTML += `<div style="color:var(--rmd-warn);">Import failed: ${err.message}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = "⬆ Confirm import (replace all)";
+}
+
+</script>
+</body>
+</html>

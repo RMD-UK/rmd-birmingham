@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Senior Faculty Review Dashboard — RMD</title>
+<link rel="stylesheet" href="css/rmd.css">
+<style>
+  * { box-sizing: border-box; }
+  body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+  .top-bar {
+    background: var(--rmd-navy); color: white;
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .top-bar img { height: 28px; }
+  .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+  .top-bar .year-tag { font-size: 12px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 12px; }
+
+  .content { padding: 14px; max-width: 960px; margin: 0 auto; }
+
+  .summary-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; margin-top: 14px; }
+  .sum-pill {
+    background: white; border-radius: 8px; padding: 10px 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; min-width: 100px;
+    cursor: pointer; border: 2px solid transparent; transition: all 0.12s;
+  }
+  .sum-pill:hover { border-color: var(--rmd-blue); }
+  .sum-pill.active { border-color: var(--rmd-blue); background: #e8f0fe; }
+  .sum-pill .val { font-size: 24px; font-weight: 700; color: var(--rmd-navy); }
+  .sum-pill .lbl { font-size: 11px; color: var(--rmd-muted); font-weight: 600; text-transform: uppercase; }
+  .sum-pill.warn .val { color: var(--rmd-warn); }
+
+  .tab-row {
+    display: flex; background: white; border-bottom: 2px solid #dce3ea;
+    margin-bottom: 14px; border-radius: 8px 8px 0 0; overflow-x: auto;
+  }
+  .tab-btn {
+    padding: 11px 16px; font-size: 13px; font-weight: 600; color: var(--rmd-muted);
+    border: none; background: none; cursor: pointer; font-family: var(--font);
+    border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap; flex-shrink: 0;
+  }
+  .tab-btn:hover { color: var(--rmd-blue); }
+  .tab-btn.active { color: var(--rmd-blue); border-bottom-color: var(--rmd-blue); }
+  .tab-btn.warn-tab { color: var(--rmd-warn); }
+  .tab-btn.warn-tab.active { color: var(--rmd-warn); border-bottom-color: var(--rmd-warn); }
+
+  .action-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .btn-action {
+    padding: 8px 16px; background: var(--rmd-blue); color: white;
+    border: none; border-radius: 6px; font-size: 13px; font-weight: 700;
+    font-family: var(--font); cursor: pointer;
+  }
+  .btn-action:hover { background: var(--rmd-navy); }
+  .btn-action.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
+  .btn-action.reminder { background: #856404; }
+  .btn-action.reminder:hover { background: #6b5300; }
+  .btn-action:disabled { background: #aab8c2; cursor: default; }
+  .filter-label { font-size: 13px; color: var(--rmd-muted); margin-left: 4px; }
+
+  .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 13px; }
+  .data-table th { background: var(--rmd-navy); color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .data-table td { padding: 10px 12px; border-bottom: 1px solid #f0f3f6; vertical-align: middle; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #f8f9fa; }
+
+  .section-heading { color: var(--rmd-navy); margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+  .section-block { margin-bottom: 24px; }
+
+  .badge-responded   { background: #e6f4ea; color: #1a6e31; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-outstanding { background: #fce8e6; color: var(--rmd-warn); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-stepping    { background: #fff3cd; color: #856404; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-reduced     { background: #ffe8cc; color: #8a4b00; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-uk          { background: #e8f0fe; color: #3d52a0; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-full        { background: #e6f4ea; color: #1a6e31; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+
+  .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
+  .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
+
+  .info-banner {
+    background: #e8f0fe; border-left: 4px solid var(--rmd-blue);
+    border-radius: 0 6px 6px 0; padding: 10px 14px;
+    font-size: 13px; color: var(--rmd-navy); margin-bottom: 16px;
+  }
+  .warn-banner {
+    background: #fce8e6; border-left: 4px solid var(--rmd-warn);
+    border-radius: 0 6px 6px 0; padding: 10px 14px;
+    font-size: 13px; color: var(--rmd-navy); margin-bottom: 16px;
+  }
+
+  /* Response cards (accordion) */
+  .response-card {
+    background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    margin-bottom: 10px; overflow: hidden;
+  }
+  .rc-header {
+    padding: 12px 14px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid #f0f3f6; cursor: pointer;
+  }
+  .rc-name  { font-size: 15px; font-weight: 700; color: var(--rmd-navy); flex: 1; }
+  .rc-time  { font-size: 11px; color: var(--rmd-muted); }
+  .rc-body  { padding: 12px 14px; display: none; }
+  .rc-body.open { display: block; }
+  .rc-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--rmd-muted); margin-top: 10px; }
+  .rc-label:first-child { margin-top: 0; }
+  .rc-value { font-size: 13.5px; color: var(--rmd-navy); margin-top: 3px; white-space: pre-wrap; line-height: 1.5; }
+
+  .reminder-log { margin-top: 14px; font-size: 13px; max-height: 220px; overflow-y: auto; background: white; border-radius: 8px; padding: 12px 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: none; }
+  .reminder-log div { padding: 2px 0; }
+
+  .badge-no-email { background: #f0f3f6; color: var(--rmd-muted); padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="member-menu.html" title="Back to members menu" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Senior Faculty Review Dashboard</div>
+  <span class="year-tag" id="yearTag"></span>
+  <button onclick="loadAll()" style="background:rgba(255,255,255,0.15);border:none;color:white;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">↻ Refresh</button>
+</div>
+
+<div class="content">
+
+  <div class="summary-strip">
+    <div class="sum-pill" id="pill-roster" onclick="switchTab('roster-status')">
+      <div class="val" id="sum-roster">–</div><div class="lbl">Roster</div>
+    </div>
+    <div class="sum-pill" id="pill-responded" onclick="switchTab('roster-status')">
+      <div class="val" id="sum-responded" style="color:#1a6e31;">–</div><div class="lbl">Responded</div>
+    </div>
+    <div class="sum-pill warn" id="pill-outstanding" onclick="switchTab('outstanding')">
+      <div class="val" id="sum-outstanding">–</div><div class="lbl">Outstanding</div>
+    </div>
+    <div class="sum-pill" id="pill-stepping" onclick="switchTab('all')">
+      <div class="val" id="sum-stepping" style="color:#856404;">–</div><div class="lbl">Stepping back</div>
+    </div>
+  </div>
+
+  <div class="info-banner">
+    Roster comes from the annual <a href="admin-faculty-roster.html">Faculty Roster bulk upload</a> (senior faculty group) — add, remove, or fill in missing emails there, not here.
+  </div>
+
+  <div class="tab-row">
+    <button class="tab-btn active" onclick="switchTab('roster-status')" id="tab-roster-status">Roster status</button>
+    <button class="tab-btn warn-tab" onclick="switchTab('outstanding')" id="tab-outstanding">⚠ Outstanding</button>
+    <button class="tab-btn" onclick="switchTab('all')" id="tab-all">All responses</button>
+  </div>
+
+  <div class="action-bar" id="actionBar">
+    <button class="btn-action secondary" onclick="copyFilteredEmails()">📋 Copy emails</button>
+    <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
+    <button class="btn-action reminder" id="reminderBtn" onclick="sendReminders()">✉ Send reminder emails</button>
+    <span class="filter-label" id="filterLabel"></span>
+  </div>
+
+  <div id="tabContent">
+    <div class="loading">Loading…</div>
+  </div>
+
+  <div class="reminder-log" id="reminderLog"></div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+var allResponses = [];  // senior_faculty_review docs for SFR_CYCLE_YEAR
+var roster       = [];  // faculty_roster docs where group == "senior" (see admin-faculty-roster.html)
+var reminders    = [];  // senior_faculty_review_reminders docs (for "last reminded" display)
+var currentTab   = "roster-status";
+var fns; // firebase.functions() — set after initFirebase()
+
+initFirebase();
+fns = firebase.functions();
+document.getElementById("yearTag").textContent = SFR_NEXT_ACADEMIC_YEAR;
+
+window.addEventListener("load", () => {
+  requireDirector("member-menu.html").then(() => {
+    loadAll();
+  });
+});
+
+async function loadAll() {
+  document.getElementById("tabContent").innerHTML = `<div class="loading">Loading…</div>`;
+  await Promise.all([loadRoster(), loadResponses(), loadReminders()]);
+  updateSummary();
+  renderTab(currentTab);
+}
+
+async function loadRoster() {
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).where("group", "==", "senior").get();
+    roster = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  } catch (err) {
+    roster = [];
+    document.getElementById("tabContent").innerHTML =
+      `<div class="empty-state">Could not load the senior faculty roster.<br><small>${err.message}</small></div>`;
+  }
+}
+
+async function loadResponses() {
+  try {
+    const snap = await db.collection(COLLECTIONS.sfrResponses)
+      .where("cycleYear", "==", SFR_CYCLE_YEAR).get();
+    allResponses = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const ta = a.submittedAt ? a.submittedAt.seconds : 0;
+        const tb = b.submittedAt ? b.submittedAt.seconds : 0;
+        return tb - ta;
+      });
+  } catch (err) {
+    allResponses = [];
+  }
+}
+
+async function loadReminders() {
+  try {
+    const snap = await db.collection(COLLECTIONS.sfrReminders)
+      .where("cycleYear", "==", SFR_CYCLE_YEAR).get();
+    reminders = snap.docs.map(d => d.data());
+  } catch (err) {
+    reminders = [];
+  }
+}
+
+function lastReminded(email) {
+  if (!email) return null;
+  const e = email.toLowerCase();
+  let latest = null;
+  reminders.forEach(r => {
+    if ((r.sentTo || []).map(x => x.toLowerCase()).includes(e)) {
+      const t = r.sentAt ? r.sentAt.seconds : 0;
+      if (!latest || t > latest) latest = t;
+    }
+  });
+  return latest;
+}
+
+function findResponse(email) {
+  if (!email) return null;
+  const e = email.toLowerCase();
+  return allResponses.find(r => (r.email || "").toLowerCase() === e) || null;
+}
+
+function rosterWithStatus() {
+  return roster.map(m => {
+    const r = findResponse(m.email);
+    return { ...m, response: r, status: r ? "responded" : "outstanding" };
+  });
+}
+
+function fullName(r) { return r.name || r.email || "–"; }
+function emailCell(m) {
+  return m.email ? m.email : `<span class="badge-no-email">⚠ no email on file</span>`;
+}
+function fmtDate(r) {
+  return r.submittedAt
+    ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
+    : "–";
+}
+function fmtReminded(seconds) {
+  if (!seconds) return "–";
+  const days = Math.floor((Date.now()/1000 - seconds) / 86400);
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days}d ago`;
+}
+
+const ROLE_LABELS = { "full-instructor": "Instructor Trainer", "assessor-faculty": "Assessor Faculty" };
+const PLAN_LABELS = {
+  "birmingham-senior": "Staying — RMD Birmingham senior faculty",
+  "uk-member": "RMD UK member (not Birmingham steering group)",
+  "not-continuing": "Not continuing with RMD",
+  "other": "Other"
+};
+function planBadge(plan) {
+  if (plan === "birmingham-senior") return `<span class="badge-full">Staying</span>`;
+  if (plan === "uk-member") return `<span class="badge-uk">UK member</span>`;
+  if (plan === "not-continuing") return `<span class="badge-stepping">Stepping back</span>`;
+  if (plan === "other") return `<span class="badge-reduced">Other</span>`;
+  return "";
+}
+
+function updateSummary() {
+  const withStatus = rosterWithStatus();
+  document.getElementById("sum-roster").textContent      = roster.length;
+  document.getElementById("sum-responded").textContent    = withStatus.filter(m => m.status === "responded").length;
+  document.getElementById("sum-outstanding").textContent  = withStatus.filter(m => m.status === "outstanding").length;
+  document.getElementById("sum-stepping").textContent     = allResponses.filter(r => r.plan === "not-continuing" || r.capacity === "no").length;
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  const tabEl = document.getElementById("tab-" + tab);
+  if (tabEl) tabEl.classList.add("active");
+  renderTab(tab);
+}
+
+function renderTab(tab) {
+  if      (tab === "roster-status")  renderRosterStatus();
+  else if (tab === "outstanding")    renderOutstanding();
+  else if (tab === "all")            renderAllResponses();
+}
+
+function getFiltered() {
+  const withStatus = rosterWithStatus();
+  switch (currentTab) {
+    case "outstanding":   return withStatus.filter(m => m.status === "outstanding");
+    case "roster-status": return withStatus;
+    case "all": return allResponses;
+    default: return [];
+  }
+}
+
+function copyFilteredEmails() {
+  const filtered = getFiltered();
+  if (!filtered.length) { alert("No people in this view."); return; }
+  const emails = filtered.map(r => r.email).filter(Boolean).join(", ");
+  navigator.clipboard.writeText(emails).then(() =>
+    alert(`${filtered.length} email(s) copied to clipboard.`));
+}
+
+function exportCSV() {
+  const withStatus = rosterWithStatus();
+  const headers = ["Name","Email","Roster Role","Status","Reflection","Capacity","Capacity detail","Plan","Plan other","Comments","Submitted At"];
+  const rows = withStatus.map(m => [
+    m.name, m.email, ROLE_LABELS[m.role] || m.role || "", m.status,
+    m.response ? m.response.reflection || "" : "",
+    m.response ? m.response.capacity || "" : "",
+    m.response ? m.response.capacityDetail || "" : "",
+    m.response ? (PLAN_LABELS[m.response.plan] || m.response.plan || "") : "",
+    m.response ? m.response.planOther || "" : "",
+    m.response ? m.response.comments || "" : "",
+    m.response && m.response.submittedAt ? new Date(m.response.submittedAt.seconds*1000).toISOString() : ""
+  ].map(v => `"${(v||"").toString().replace(/"/g,'""')}"`));
+  const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `rmd-senior-faculty-review-${SFR_CYCLE_YEAR}.csv`; a.click();
+}
+
+function renderRosterStatus() {
+  setFilterLabel(`${roster.length} on roster`);
+  const withStatus = rosterWithStatus();
+
+  if (!roster.length) {
+    document.getElementById("tabContent").innerHTML =
+      `<div class="info-banner">No senior faculty roster loaded yet. Use the <a href="admin-faculty-roster.html">Faculty Roster bulk upload</a> to add them.</div>`;
+    return;
+  }
+
+  const sorted = [...withStatus].sort((a, b) => fullName(a).localeCompare(fullName(b)));
+  const rows = sorted.map(m => {
+    const badge = m.status === "responded" ? `<span class="badge-responded">✓ Responded</span>` : `<span class="badge-outstanding">✗ Outstanding</span>`;
+    const reminded = m.status === "outstanding" ? fmtReminded(lastReminded(m.email)) : "–";
+    return `<tr>
+      <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">${emailCell(m)}</td>
+      <td>${m.role || "–"}</td>
+      <td>${badge}</td>
+      <td>${m.response ? fmtDate(m.response) : "–"}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">${reminded}</td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("tabContent").innerHTML = `
+    <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:14px;">Roster status for ${SFR_NEXT_ACADEMIC_YEAR} — ${roster.length} senior faculty member(s)</div>
+    <div class="section-block">
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Responded</th><th>Last reminded</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderOutstanding() {
+  const list = rosterWithStatus().filter(m => m.status === "outstanding");
+  setFilterLabel(`${list.length} outstanding`);
+
+  const noEmailCount = list.filter(m => !m.email).length;
+  const rows = list.length
+    ? list.map(m => `<tr>
+        <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+        <td style="color:var(--rmd-muted);font-size:12px;">${emailCell(m)}</td>
+        <td>${m.role || "–"}</td>
+        <td style="color:var(--rmd-muted);font-size:12px;">${m.email ? fmtReminded(lastReminded(m.email)) : "–"}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4" style="color:#aab8c2;text-align:center;padding:20px;">Everyone on the roster has responded</td></tr>`;
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="warn-banner">These senior faculty haven't submitted the ${SFR_NEXT_ACADEMIC_YEAR} review yet. Use "Send reminder emails" above to email them directly, or "Copy emails" to nudge them yourself.${noEmailCount ? ` ${noEmailCount} of them have no email on file — add it via the <a href="admin-faculty-roster.html">Faculty Roster bulk upload</a>, or follow up with them another way.` : ""}</div>
+    <div class="section-block">
+      <div class="section-heading" style="color:var(--rmd-warn);">Outstanding (${list.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last reminded</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderAllResponses() {
+  setFilterLabel(`${allResponses.length} response(s)`);
+
+  if (!allResponses.length) {
+    document.getElementById("tabContent").innerHTML =
+      `<div class="empty-state">No responses yet for ${SFR_NEXT_ACADEMIC_YEAR}.</div>`;
+    return;
+  }
+
+  const cards = allResponses.map((r, i) => `
+    <div class="response-card">
+      <div class="rc-header" onclick="toggleCard(${i})">
+        <div class="rc-name">${r.name || r.email}</div>
+        ${planBadge(r.plan)}
+        <div class="rc-time">${fmtDate(r)}</div>
+      </div>
+      <div class="rc-body" id="rc-body-${i}">
+        <div class="rc-label">Email</div><div class="rc-value">${r.email || "–"}</div>
+        <div class="rc-label">How they've fulfilled the role this year</div><div class="rc-value">${r.reflection || "–"}</div>
+        <div class="rc-label">Capacity next year</div><div class="rc-value">${r.capacity || "–"}${r.capacityDetail ? " — " + r.capacityDetail : ""}</div>
+        <div class="rc-label">What they'd like to do next year</div><div class="rc-value">${PLAN_LABELS[r.plan] || r.plan || "–"}${r.planOther ? " — " + r.planOther : ""}</div>
+        ${r.comments ? `<div class="rc-label">Other comments</div><div class="rc-value">${r.comments}</div>` : ""}
+        <div style="margin-top:12px;"><button onclick="deleteResponse('${r.id}','${(r.name||r.email||"").replace(/'/g,"")}')" style="padding:6px 12px;background:#fce8e6;color:var(--rmd-warn);border:1px solid #f5b8b0;border-radius:6px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button></div>
+      </div>
+    </div>`).join("");
+
+  document.getElementById("tabContent").innerHTML = `
+    <div class="section-block">
+      <div class="section-heading">All responses — ${SFR_NEXT_ACADEMIC_YEAR} (${allResponses.length})</div>
+      ${cards}
+    </div>`;
+}
+
+function toggleCard(i) {
+  document.getElementById(`rc-body-${i}`).classList.toggle("open");
+}
+
+async function deleteResponse(docId, name) {
+  if (!confirm(`Delete the senior faculty review submitted by ${name}?\n\nThis cannot be undone.`)) return;
+  try {
+    await db.collection(COLLECTIONS.sfrResponses).doc(docId).delete();
+    allResponses = allResponses.filter(r => r.id !== docId);
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Delete failed: " + err.message);
+  }
+}
+
+function setFilterLabel(text) { document.getElementById("filterLabel").textContent = text; }
+
+async function sendReminders() {
+  const outstanding = rosterWithStatus().filter(m => m.status === "outstanding");
+  const reachable   = outstanding.filter(m => m.email);
+  const noEmail     = outstanding.filter(m => !m.email);
+  if (!reachable.length) {
+    if (noEmail.length) alert(`${noEmail.length} outstanding senior faculty have no email on file, so there's no one to email. Add their emails via the Faculty Roster bulk upload first.`);
+    else alert("No one is outstanding — nothing to remind.");
+    return;
+  }
+
+  const noEmailNote = noEmail.length ? `\n\n(${noEmail.length} more are outstanding but have no email on file, so won't be emailed: ${noEmail.map(m => fullName(m)).join(", ")})` : "";
+  if (!confirm(`Send a real reminder email to ${reachable.length} senior faculty member(s) who haven't responded yet?\n\n${reachable.map(m => fullName(m)).join(", ")}${noEmailNote}`)) return;
+
+  const btn = document.getElementById("reminderBtn");
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  const logEl = document.getElementById("reminderLog");
+  logEl.style.display = "block";
+  logEl.innerHTML = "<div>Sending…</div>";
+
+  try {
+    const call = fns.httpsCallable("sendSeniorFacultyReminders");
+    const res = await call({});
+    const d = res.data || {};
+    logEl.innerHTML = `<div>✅ Sent: ${d.sent||0}</div>` +
+      (d.failed ? `<div style="color:var(--rmd-warn);">⚠ Failed: ${d.failed} — ${(d.failedEmails||[]).join(", ")}</div>` : "") +
+      (d.skippedNoEmail ? `<div style="color:var(--rmd-muted);">Skipped (no email on file): ${d.skippedNoEmail}</div>` : "") +
+      `<div style="color:var(--rmd-muted);">Skipped (already responded): ${d.skipped||0}</div>`;
+    await loadReminders();
+    renderTab(currentTab);
+  } catch (err) {
+    console.error("sendSeniorFacultyReminders failed:", err);
+    logEl.innerHTML = `<div style="color:var(--rmd-warn);">Reminder send failed: ${err.message || err.code || "unknown error"}</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = "✉ Send reminder emails";
+}
+
+</script>
+</body>
+</html>
