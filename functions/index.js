@@ -52,13 +52,6 @@ const db = admin.firestore();
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 const resendApiKey    = defineSecret("RESEND_API_KEY");
 
-// Mirrors DIRECTOR_EMAILS in js/firebase-config.js and firestore.rules —
-// keep these three in sync if the director list ever changes.
-const DIRECTOR_EMAILS = [
-  "console_brews.6f@icloud.com",
-  "j.hulme.1@bham.ac.uk"
-];
-
 // Mirrors the DIMENSIONS/SCALE_LABELS constants in itc-observations.html.
 const DIMENSIONS = [
   { key: "clarity",    label: "Clarity of instruction" },
@@ -69,9 +62,10 @@ const DIMENSIONS = [
 ];
 const SCALE_LABELS = ["Needs development", "Developing", "Meeting expectations", "Exceeding expectations"];
 
+// No hardcoded email list (removed 2026-07-29 — personal emails should not
+// live in a public repo). Mirrors isDirector() in firestore.rules.
 async function callerIsDirector(auth) {
   const email = (auth.token.email || "").toLowerCase();
-  if (DIRECTOR_EMAILS.includes(email)) return true;
   try {
     const cfg = await db.collection("config").doc("platform").get();
     const extra = cfg.exists ? (cfg.data().directors || []) : [];

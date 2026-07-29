@@ -17,20 +17,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Mirrors DIRECTOR_EMAILS in js/firebase-config.js — keep these in sync.
-    function directorEmails() {
-      return [
-        "console_brews.6f@icloud.com",
-        "j.hulme.1@bham.ac.uk"
-      ];
-    }
-
     // True if the signed-in user is a director, checked the same way
-    // resolveRole() does in firebase-config.js: people doc role, then the
-    // hardcoded email list, then config/platform's directors array.
+    // resolveRole() does in firebase-config.js: people doc role, then
+    // config/platform's directors array.
+    //
+    // No hardcoded email list here anymore (removed 2026-07-29 — personal
+    // emails should not live in a public repo). Director access now comes
+    // solely from people/{uid}.role == "director" or config/platform.directors.
+    // config/platform.directors already contains all current directors as of
+    // 2026-07-29 — confirmed before this change shipped.
     function isDirector() {
       return isSignedIn() && (
-        request.auth.token.email.lower() in directorEmails() ||
         (exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
           get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "director") ||
         (exists(/databases/$(database)/documents/config/platform) &&

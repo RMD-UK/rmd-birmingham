@@ -99,30 +99,27 @@ const INSTRUCTOR_STREAM_RECIPIENTS = ["director", "faculty", "full-instructor", 
 const ASSESSOR_STREAM_RECIPIENTS   = ["director", "assessor-faculty", "logistics"];
 
 // ── Director access ─────────────────────────────────────────────────────────
-// Canonical list of director emails. Any page that gates on director role
-// should use resolveRole() / requireDirector() from this file rather than
-// maintaining its own copy of this list.
-const DIRECTOR_EMAILS = [
-  "console_brews.6f@icloud.com",
-  "j.hulme.1@bham.ac.uk"
-];
+// No hardcoded emails (removed 2026-07-29 — personal emails should not live
+// in a public repo). Director status now comes solely from
+// config/platform.directors or people/{uid}.role. Any page that gates on
+// director role should use resolveRole() / requireDirector() from this file.
+// config/platform.directors already contains all current directors as of
+// 2026-07-29 — confirmed before this change shipped.
+//
+// DIRECTOR_EMAILS is kept as an empty array purely so pages that still
+// reference it directly (assessment-gateway.html, admin-faculty-responses.html,
+// admin-mou-dashboard.html, signin.html, admin-room-allocation.html) don't
+// throw ReferenceError. Those pages should be migrated to read
+// config/platform.directors directly, same as resolveRole() below, then this
+// can be deleted.
+const DIRECTOR_EMAILS = [];
 
 // resolveRole(uid, email) → role string or null
-// 1. Checks DIRECTOR_EMAILS (hardcoded directors)
-// 2. Falls back to config/platform directors array
-// 3. Falls back to people/{uid} in Firestore for role field
+// 1. Checks config/platform directors array
+// 2. Falls back to people/{uid} in Firestore for role field
 // db must be initialised before calling.
-//
-// Director checks run FIRST and win outright. This is deliberate: director
-// status granted via config/platform.directors (e.g. the "Make director"
-// button in admin-faculty-responses.html) must work even for someone who
-// already has a people/{uid} record with an unrelated role (faculty,
-// instructor, etc. — true for most bulk-imported staff). Checking people/{uid}
-// first, as this used to, silently masked director promotion for anyone
-// already in the people collection.
 async function resolveRole(uid, email) {
   const el = (email || "").toLowerCase();
-  if (DIRECTOR_EMAILS.map(x => x.toLowerCase()).includes(el)) return ROLES.DIRECTOR;
   try {
     const cfg = await db.collection("config").doc("platform").get();
     const extra = cfg.exists ? (cfg.data().directors || []) : [];
