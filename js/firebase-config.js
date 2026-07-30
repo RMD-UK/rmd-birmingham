@@ -196,12 +196,27 @@ function requireDirector(redirectTo) {
 // ── Firebase initialisation (loaded after firebase SDK scripts) ──────────────
 let db, auth, storage;
 
+// App Check — reCAPTCHA v3 site key (public value, safe to commit; the
+// matching secret key lives in the Google reCAPTCHA admin console, never here).
+// Registered 2026-07-30. Enforcement is left OFF in the Firebase console
+// initially (monitor mode) — flip Firestore/Functions to "Enforced" only after
+// confirming real traffic isn't being blocked.
+const APP_CHECK_SITE_KEY = "6LcPHG0tAAAAAANZP4xynIbIc3h8dtwKZrtGpc0G";
+
 function initFirebase() {
   if (typeof firebase === "undefined") {
     console.warn("Firebase SDK not loaded — running in offline/demo mode.");
     return false;
   }
   firebase.initializeApp(FIREBASE_CONFIG);
+  if (firebase.appCheck) {
+    firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
+  } else {
+    // Page didn't load firebase-app-check-compat.js — requests from it won't
+    // carry an App Check token. Fine while enforcement is off; must be fixed
+    // on every page before enforcement is turned on.
+    console.warn("Firebase App Check SDK not loaded on this page.");
+  }
   db      = firebase.firestore();
   auth    = firebase.auth();
   storage = firebase.storage ? firebase.storage() : null;
