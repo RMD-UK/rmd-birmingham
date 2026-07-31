@@ -395,7 +395,9 @@ const PROGRAMME = {
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "Standardisation, common issues from previous examinations, and fail-point criteria (approach, 999 call, chest compressions, rescue breaths, AED). Paused for the 16:45 Whole Course Photo (all groups) — continues after.",
-        resources: [],
+        resources: [
+          { title: "Grey Areas slides", path: "resources/assessor-grey-areas.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -423,7 +425,9 @@ const PROGRAMME = {
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "Continues after the Whole Course Photo.",
-        resources: [],
+        resources: [
+          { title: "Grey Areas slides", path: "resources/assessor-grey-areas.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
