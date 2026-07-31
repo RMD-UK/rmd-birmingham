@@ -35,7 +35,9 @@ const COLLECTIONS = {
   sfrResponses: "senior_faculty_review",           // annual senior faculty review & future-plans submissions
   sfrReminders: "senior_faculty_review_reminders", // log of reminder email batches sent by admin-senior-faculty-review.html
   facultyRoster:    "faculty_roster",    // director-only annual roster (name, email, group, team, role) — see below
-  facultyDirectory: "faculty_directory"  // public display copy of the same roster, no email — feeds faculty.html
+  facultyDirectory: "faculty_directory", // public display copy of the same roster, no email — feeds faculty.html
+  iwRegistrations:  "iw_registrations",  // director-managed Instructor Weekend attendee list — see admin-iw-registrations.html
+  iwAssessorRsvp:   "iw_assessor_rsvp"   // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
 };
 
 // ── Memorandum of Understanding ─────────────────────────────────────────────

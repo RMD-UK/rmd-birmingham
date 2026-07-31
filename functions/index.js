@@ -282,9 +282,14 @@ Jon`
  * and confirm lastSignInTime updates — don't assume this holds without
  * checking.
  *
- * Cadence: first reminder 3 days after creation, then every 7 days, capped at
- * 3 reminders total per person. Tracked in account_reminders/{uid}
- * (remindersSent, lastReminderAt) — written only by this function.
+ * Cadence: none — every never-signed-in account is eligible every time this
+ * is run, with no minimum gap since account creation, no minimum gap between
+ * reminders, and no cap on reminders per person (removed 2026-07-31 at Jon's
+ * request). account_reminders/{uid} (remindersSent, lastReminderAt) is still
+ * written after each send purely as a record of reminderNumber/last-sent-time
+ * for the admin-account-reminders.html display — it no longer gates sending.
+ * Running this repeatedly (e.g. daily) will re-email everyone who still
+ * hasn't signed in, every time.
  *
  * Call with { dryRun: true } to compute and return the eligible list without
  * sending or recording anything — this is what the "Load overdue list"
@@ -303,9 +308,6 @@ Jon`
  */
 
 const ACCOUNT_REMINDERS_COLLECTION = "account_reminders";
-const FIRST_REMINDER_DAYS  = 3;
-const REPEAT_REMINDER_DAYS = 7;
-const MAX_REMINDERS        = 3;
 
 const SIGNIN_URL = "https://rmd.uk.com/signin.html";
 
@@ -365,17 +367,9 @@ exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region:
     const createdMs = new Date(u.metadata.creationTime).getTime();
     const daysSinceCreation = (now - createdMs) / 86400000;
 
+    // No cadence gating: every never-signed-in account is eligible every
+    // time this runs (time/cap limits removed 2026-07-31 at Jon's request).
     const record = remindersByUid.get(u.uid) || { remindersSent: 0, lastReminderAt: null };
-    if (record.remindersSent >= MAX_REMINDERS) continue;
-
-    let due;
-    if (record.remindersSent === 0) {
-      due = daysSinceCreation >= FIRST_REMINDER_DAYS;
-    } else {
-      const lastMs = record.lastReminderAt ? record.lastReminderAt.toMillis() : 0;
-      due = (now - lastMs) / 86400000 >= REPEAT_REMINDER_DAYS;
-    }
-    if (!due) continue;
 
     eligible.push({
       uid: u.uid,

@@ -319,6 +319,28 @@ service cloud.firestore {
       allow read, write: if isDirector();
     }
 
+    // ── IW Assessor / Senior Instructor RSVP ────────────────────────────────
+    // Self-service Y/N attendance confirmation for Assessors/Senior
+    // Instructors, whose attendance at the Instructor Weekend is NOT
+    // mandatory (unlike Instructor Candidates, who must attend and so need
+    // no RSVP step). Added 2026-07-31 — see iw-rsvp.html.
+    // Document ID is the lowercased responder email — same no-login
+    // edit-by-email pattern as faculty_responses/summer_meeting_dietary.
+    // get:  public — caller must already know the exact email (= docId).
+    // list: director only — stops one unauthenticated request dumping every
+    //   assessor's RSVP status. The only reader of the full list is
+    //   admin-iw-registrations.html's "Import assessor RSVPs" panel, which
+    //   is itself director-gated.
+    // create/update: public — supports pre-login submit and resubmit-to-edit
+    //   (e.g. someone who said No then changes their mind).
+    // delete: authenticated only.
+    match /iw_assessor_rsvp/{docId} {
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
     // ── Summer meeting dietary requirements ─────────────────────────────────
     // Document ID is the lowercased submitter email (see summer-meeting-dietary.html)
     //   — same no-login edit-by-email pattern as faculty_responses.
