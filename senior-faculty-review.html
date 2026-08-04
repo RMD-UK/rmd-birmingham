@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RMD Senior Faculty — Review &amp; Future Plans</title>
+<link rel="stylesheet" href="css/rmd.css">
+<style>
+  * { box-sizing: border-box; }
+  body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+  .form-header { background: var(--rmd-navy); color: white; padding: 20px 20px 24px; text-align: center; }
+  .form-header img { height: 52px; margin-bottom: 10px; }
+  .form-header h1 { font-size: 20px; margin: 0 0 4px; }
+  .form-header p  { font-size: 13px; opacity: 0.75; margin: 0; }
+  .form-header .year-badge {
+    display: inline-block; margin-top: 10px; background: var(--rmd-warn); color: white;
+    font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+
+  .wrap { max-width: 680px; margin: 0 auto; padding: 16px; }
+
+  .intro-box {
+    background: white; border: 2px solid #dce3ea; border-radius: 8px;
+    padding: 18px 20px; margin-bottom: 20px;
+    font-size: 13.5px; line-height: 1.65; color: var(--rmd-text);
+  }
+  .intro-box p { margin: 0 0 12px; }
+  .intro-box p:last-child { margin-bottom: 0; }
+  .intro-box .signoff { color: var(--rmd-muted); font-size: 12.5px; margin-top: 14px; }
+
+  .not-eligible-box {
+    background: #fff3cd; border-left: 4px solid #856404; border-radius: 0 6px 6px 0;
+    padding: 14px 16px; font-size: 13.5px; color: #6b5300; margin-bottom: 20px; display: none;
+  }
+
+  .field { margin-bottom: 20px; }
+  .field label { display: block; font-size: 13px; font-weight: 700; color: var(--rmd-navy); margin-bottom: 5px; }
+  .field label .req { color: #b7410e; }
+  .field .field-sub { font-size: 12.5px; font-weight: 400; color: var(--rmd-muted); margin-top: -2px; margin-bottom: 8px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 11px 12px; border: 2px solid #ccd6dd; border-radius: 6px;
+    font-size: 15px; font-family: var(--font); color: var(--rmd-navy); background: white;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--rmd-blue); }
+  .field input[disabled] { background: #f0f3f6; color: var(--rmd-muted); }
+  .field textarea { min-height: 90px; resize: vertical; }
+  .hint-text { font-size: 12px; color: var(--rmd-muted); margin-top: 4px; }
+
+  .option-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .option-group.stacked { flex-direction: column; }
+  .option-btn {
+    padding: 12px 18px; border: 2px solid #ccd6dd; border-radius: 8px; background: white;
+    font-size: 14px; font-weight: 600; font-family: var(--font); color: var(--rmd-muted);
+    cursor: pointer; transition: all 0.12s; text-align: left;
+  }
+  .option-group.stacked .option-btn { width: 100%; }
+  .option-btn.selected { background: var(--rmd-navy); color: white; border-color: var(--rmd-navy); }
+
+  .other-box { display: none; margin-top: 10px; }
+
+  .btn-submit {
+    width: 100%; padding: 16px; background: var(--rmd-blue); color: white; border: none;
+    border-radius: 8px; font-size: 16px; font-weight: 700; font-family: var(--font); cursor: pointer; margin-top: 8px;
+  }
+  .btn-submit:hover { background: var(--rmd-navy); }
+  .btn-submit:disabled { background: #aab8c2; cursor: default; }
+
+  .success-page { display: none; text-align: center; padding: 60px 20px; }
+  .success-page .tick { font-size: 64px; margin-bottom: 16px; }
+  .success-page h2 { color: var(--rmd-navy); margin-bottom: 8px; }
+  .success-page p { color: var(--rmd-muted); font-size: 14px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<!-- ── Sign-in gate ── -->
+<div class="login-page" id="sfrSigninGate">
+  <div class="login-card">
+    <img src="assets/rmd-logo.png" alt="RMD logo" class="login-logo">
+    <h1 class="login-title">RMD Senior Faculty Review</h1>
+    <p class="login-subtitle">Sign in with your RMD account to continue</p>
+
+    <form class="login-form" id="sfrSigninForm" onsubmit="handleSfrSignin(event)">
+      <input class="form-input" type="email" id="signinEmail" placeholder="Email address" required autocomplete="email">
+      <input class="form-input" type="password" id="signinPassword" placeholder="Password" required autocomplete="current-password">
+      <button type="submit" class="btn-login" id="signinBtn">Sign in</button>
+    </form>
+    <p id="signinError" style="color:var(--rmd-warn);font-size:13px;margin-top:10px;display:none;"></p>
+
+    <p style="text-align:center;margin-top:10px;">
+      <a href="#" onclick="toggleSfrForgotPassword(event)" style="font-size:13px;color:var(--rmd-blue);text-decoration:underline;">Forgot password?</a>
+    </p>
+    <div id="sfrForgotPanel" style="display:none;margin-top:12px;">
+      <input class="form-input" type="email" id="sfrForgotEmail" placeholder="Email address" autocomplete="email">
+      <button type="button" class="btn-login" onclick="sendSfrForgotPasswordEmail()" style="margin-top:8px;">Send reset link</button>
+      <p id="sfrForgotStatus" style="font-size:13px;margin-top:8px;display:none;"></p>
+    </div>
+
+    <hr class="login-divider">
+    <p class="qr-hint">Don&rsquo;t have an account yet? Contact RMD Birmingham to be added.</p>
+  </div>
+</div>
+
+<div id="sfrAppRoot" style="display:none;">
+
+<div class="form-header">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <h1>Senior Faculty — Review &amp; Future Plans</h1>
+  <p>Resuscitation · Mentorship · Development — University of Birmingham</p>
+  <span class="year-badge" id="yearBadge"></span>
+  <p style="margin-top:10px;font-size:12px;opacity:0.7;">Signed in as <span id="signedInEmail"></span> &middot; <a href="member-menu.html" style="color:white;text-decoration:underline;">‹ Menu</a> &middot; <a href="#" onclick="handleSfrSignout(event)" style="color:white;text-decoration:underline;">Sign out</a></p>
+</div>
+
+<div class="wrap" id="formWrap">
+
+  <div class="intro-box">
+    <p>The RMD senior faculty role runs across the academic year (Oct&ndash;Oct) and carries real responsibilities &mdash; ones that take meaningful time to deliver well. I am genuinely grateful to be working alongside people who bring such expertise and commitment to this work.</p>
+    <p>We all know that life changes, and so does our capacity to give time and energy to commitments like this. That is entirely normal and nothing to feel awkward about.</p>
+    <p>As we start to look towards the next academic year and changes in our RMD student faculty, I would like us to take an honest look at senior faculty membership. I am asking everyone to reflect on two things: how you have fulfilled the role this year, and whether you are realistically in a position to give it what it needs in the year ahead.</p>
+    <p>This is not a formality. The role has genuine expectations, and for RMD to function well, we need a team of people who can meet them. If you have found it difficult to contribute at the level the role requires &mdash; whether through workload, changing priorities, or other pressures &mdash; this is the right moment to say so, and I will absolutely understand.</p>
+    <p>There are also options in between: working groups will evolve, and there may be a configuration that works better for you going forward. I am happy to talk through what that could look like.</p>
+    <p>Please let me know your honest reflections &mdash; a brief note is fine. I will then follow up individually to agree on a way forward for the coming year.</p>
+    <p class="signoff">&mdash; Professor Jon Hulme</p>
+  </div>
+
+  <div class="not-eligible-box" id="notEligibleBox">
+This review is for RMD Birmingham senior faculty. We don't have your email on the senior faculty roster &mdash; if that's wrong, contact RMD Birmingham. You're welcome to submit anyway if you believe this applies to you.
+  </div>
+
+  <form id="sfrForm">
+
+    <div class="field">
+      <label>How have you fulfilled the senior faculty role this year? <span class="req">*</span></label>
+      <div class="field-sub">A brief, honest note is fine &mdash; this isn't being graded.</div>
+      <textarea id="reflection" placeholder="e.g. attended most senior faculty meetings, ran the Monday evening sessions in semester 1, less involved since March due to..."></textarea>
+    </div>
+
+    <div class="field">
+      <label>Are you realistically able to give the role what it needs next academic year? <span class="req">*</span></label>
+      <div class="option-group stacked" id="capacityGroup">
+        <button type="button" class="option-btn" data-value="yes-full" onclick="selectCapacity(this)">Yes &mdash; I can continue as I am</button>
+        <button type="button" class="option-btn" data-value="yes-reduced" onclick="selectCapacity(this)">Yes, but only at reduced capacity, or in a different configuration</button>
+        <button type="button" class="option-btn" data-value="not-sure" onclick="selectCapacity(this)">Not sure &mdash; I'd like to talk it through</button>
+        <button type="button" class="option-btn" data-value="no" onclick="selectCapacity(this)">No &mdash; I don't think I can give it what it needs</button>
+      </div>
+      <div class="field other-box" id="capacityDetailBox">
+        <label>Say a bit more (optional)</label>
+        <textarea id="capacityDetail" placeholder="Whatever's useful for Jon to know before following up with you."></textarea>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>What would you like to do next academic year? <span class="req">*</span></label>
+      <div class="option-group stacked" id="planGroup">
+        <button type="button" class="option-btn" data-value="birmingham-senior" onclick="selectPlan(this)">RMD Birmingham senior faculty member (stay part of the group you are in at the moment)</button>
+        <button type="button" class="option-btn" data-value="uk-member" onclick="selectPlan(this)">RMD UK member (not part of the Birmingham steering group, but a member of the RMD community)</button>
+        <button type="button" class="option-btn" data-value="not-continuing" onclick="selectPlan(this)">I do not want to continue my involvement with RMD</button>
+        <button type="button" class="option-btn" data-value="other" onclick="selectPlan(this)">Other</button>
+      </div>
+      <div class="field other-box" id="planOtherBox">
+        <label>Please specify</label>
+        <input type="text" id="planOther" placeholder="Tell us what you'd like to do instead">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Anything else you'd like Jon to know? <span style="color:var(--rmd-muted);font-weight:400;">(optional)</span></label>
+      <textarea id="comments" placeholder="Optional"></textarea>
+    </div>
+
+    <button type="button" class="btn-submit" id="submitBtn" onclick="submitForm()">Submit →</button>
+
+  </form>
+
+</div>
+
+<!-- ── SUCCESS ── -->
+<div class="wrap success-page" id="successPage">
+  <div class="tick">✅</div>
+  <h2>Thank you</h2>
+  <p>Your reflections have been recorded. Jon will follow up individually to agree a way forward for <span id="successYear"></span>.</p>
+  <p style="margin-top:16px;"><strong>RMD Birmingham</strong><br>Resuscitation · Mentorship · Development</p>
+  <p style="margin-top:24px;"><a href="member-menu.html" class="btn-login" style="display:inline-block;text-decoration:none;">‹ Back to members menu</a></p>
+</div>
+
+</div><!-- /#sfrAppRoot -->
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+document.getElementById("yearBadge").textContent = "Planning for " + SFR_NEXT_ACADEMIC_YEAR;
+document.getElementById("successYear").textContent = SFR_NEXT_ACADEMIC_YEAR;
+
+var currentRole = null;
+
+// ── Sign-in gate ─────────────────────────────────────────────────────────
+auth.onAuthStateChanged(async function (user) {
+  if (user) {
+    document.getElementById("sfrSigninGate").style.display = "none";
+    document.getElementById("sfrAppRoot").style.display = "block";
+    document.getElementById("signedInEmail").textContent = user.email;
+
+    try {
+      currentRole = await resolveRole(user.uid, user.email || "");
+    } catch (e) { currentRole = null; }
+
+    // Eligibility is checked against faculty_roster (doc id = lowercased
+    // email, group == "senior"), not a people.role value — see
+    // js/firebase-config.js for why the role field isn't a reliable source
+    // for senior faculty membership. Firestore rules only let us fetch our
+    // own doc here (not query the whole collection), so we just check it
+    // exists and has group "senior" rather than filtering server-side.
+    let onRoster = false;
+    try {
+      const rosterDoc = await db.collection(COLLECTIONS.facultyRoster).doc((user.email || "").toLowerCase()).get();
+      onRoster = rosterDoc.exists && rosterDoc.data().group === "senior";
+    } catch (e) { onRoster = false; }
+    const eligible = currentRole === "director" || onRoster;
+    document.getElementById("notEligibleBox").style.display = eligible ? "none" : "block";
+
+    // Pre-fill from an existing submission for this cycle, if any (lets
+    // someone revisit and edit their answer before Jon follows up).
+    try {
+      const docId = SFR_CYCLE_YEAR + "_" + user.uid;
+      const snap = await db.collection(COLLECTIONS.sfrResponses).doc(docId).get();
+      if (snap.exists) {
+        const d = snap.data();
+        document.getElementById("reflection").value = d.reflection || "";
+        document.getElementById("comments").value = d.comments || "";
+        if (d.capacity) {
+          const btn = document.querySelector(`#capacityGroup .option-btn[data-value="${d.capacity}"]`);
+          if (btn) selectCapacity(btn);
+        }
+        document.getElementById("capacityDetail").value = d.capacityDetail || "";
+        if (d.plan) {
+          const btn = document.querySelector(`#planGroup .option-btn[data-value="${d.plan}"]`);
+          if (btn) selectPlan(btn);
+        }
+        document.getElementById("planOther").value = d.planOther || "";
+      }
+    } catch (e) { /* fine — just means no pre-fill */ }
+
+  } else {
+    document.getElementById("sfrSigninGate").style.display = "flex";
+    document.getElementById("sfrAppRoot").style.display = "none";
+  }
+});
+
+async function handleSfrSignin(e) {
+  e.preventDefault();
+  const email    = document.getElementById("signinEmail").value.trim().toLowerCase();
+  const password = document.getElementById("signinPassword").value;
+  const errEl    = document.getElementById("signinError");
+  const btn      = document.getElementById("signinBtn");
+
+  errEl.style.display = "none";
+  btn.textContent = "Signing in…";
+  btn.disabled    = true;
+
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+  } catch (err) {
+    btn.textContent = "Sign in";
+    btn.disabled    = false;
+    if (err.code === "auth/wrong-password" || err.code === "auth/user-not-found" || err.code === "auth/invalid-credential" || err.code === "auth/invalid-login-credentials") {
+      errEl.textContent = "Incorrect email or password.";
+    } else if (err.code === "auth/too-many-requests") {
+      errEl.textContent = "Too many attempts — try again in a few minutes.";
+    } else {
+      errEl.textContent = "Sign in failed. Check your connection and try again.";
+    }
+    errEl.style.display = "block";
+  }
+}
+
+function handleSfrSignout(e) {
+  e.preventDefault();
+  auth.signOut();
+}
+
+function toggleSfrForgotPassword(e) {
+  e.preventDefault();
+  const panel = document.getElementById("sfrForgotPanel");
+  const shown = panel.style.display === "block";
+  panel.style.display = shown ? "none" : "block";
+  if (!shown) {
+    document.getElementById("sfrForgotEmail").value = document.getElementById("signinEmail").value;
+    document.getElementById("sfrForgotStatus").style.display = "none";
+  }
+}
+
+async function sendSfrForgotPasswordEmail() {
+  const email    = document.getElementById("sfrForgotEmail").value.trim().toLowerCase();
+  const statusEl = document.getElementById("sfrForgotStatus");
+
+  if (!email || !email.includes("@")) {
+    statusEl.style.color   = "var(--rmd-warn)";
+    statusEl.textContent   = "Enter a valid email address first.";
+    statusEl.style.display = "block";
+    return;
+  }
+
+  statusEl.style.color   = "var(--rmd-muted)";
+  statusEl.textContent   = "Sending…";
+  statusEl.style.display = "block";
+
+  try {
+    await requestPasswordReset(email, window.location.origin + "/senior-faculty-review.html");
+    statusEl.style.color = "#1a6e31";
+    statusEl.textContent = "If that address has an RMD account, a reset link is on its way — check your inbox.";
+  } catch (err) {
+    statusEl.style.color = "var(--rmd-warn)";
+    statusEl.textContent = "Something went wrong — try again, or contact RMD directly.";
+  }
+}
+
+var capacity = null;
+var plan = null;
+
+function selectCapacity(btn) {
+  capacity = btn.dataset.value;
+  document.querySelectorAll("#capacityGroup .option-btn").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  document.getElementById("capacityDetailBox").style.display = (capacity === "yes-full") ? "none" : "block";
+}
+
+function selectPlan(btn) {
+  plan = btn.dataset.value;
+  document.querySelectorAll("#planGroup .option-btn").forEach(b => b.classList.remove("selected"));
+  btn.classList.add("selected");
+  document.getElementById("planOtherBox").style.display = (plan === "other") ? "block" : "none";
+}
+
+async function submitForm() {
+  const reflection = document.getElementById("reflection").value.trim();
+  const comments    = document.getElementById("comments").value.trim();
+  const capacityDetail = document.getElementById("capacityDetail").value.trim();
+  const planOther   = document.getElementById("planOther").value.trim();
+
+  if (!reflection) { alert("Please add a brief reflection on how you've fulfilled the role this year."); return; }
+  if (!capacity)   { alert("Please select whether you're able to give the role what it needs next year."); return; }
+  if (!plan)       { alert("Please select what you'd like to do next academic year."); return; }
+  if (plan === "other" && !planOther) { alert("Please specify what you'd like to do instead."); return; }
+
+  const user = auth.currentUser;
+  if (!user) { alert("You've been signed out — please sign in again."); return; }
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  let name = user.email, role = currentRole || "";
+  try {
+    const p = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+    if (p.exists) {
+      name = p.data().name || name;
+      role = p.data().role || role;
+    }
+  } catch (e) { /* fall back to defaults above */ }
+
+  const record = {
+    uid: user.uid,
+    name: name,
+    email: (user.email || "").toLowerCase(),
+    role: role,
+    cycleYear: SFR_CYCLE_YEAR,
+    nextAcademicYear: SFR_NEXT_ACADEMIC_YEAR,
+    reflection: reflection,
+    capacity: capacity,
+    capacityDetail: capacityDetail,
+    plan: plan,
+    planOther: plan === "other" ? planOther : "",
+    comments: comments,
+    submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    source: "senior-faculty-review"
+  };
+
+  try {
+    const docId = SFR_CYCLE_YEAR + "_" + user.uid;
+    await db.collection(COLLECTIONS.sfrResponses).doc(docId).set(record);
+    document.getElementById("formWrap").style.display = "none";
+    document.getElementById("successPage").style.display = "block";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "Submit →";
+    alert("Submission failed — please check your connection and try again.\n\n" + err.message);
+  }
+}
+
+</script>
+</body>
+</html>

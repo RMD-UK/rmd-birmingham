@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Admin Tools — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .top-bar img { height: 28px; }
+    .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+    .top-bar-sub   { font-size: 11px; opacity: 0.7; }
+
+    .wrap { max-width: 680px; margin: 0 auto; padding: 16px 14px 0; }
+
+    .director-note {
+      background: #fff3cd;
+      border: 1px solid #ffd700;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #856404;
+      margin-bottom: 16px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--rmd-muted);
+      margin: 18px 0 8px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    .action-card {
+      background: white;
+      border: 1px solid #e2e8ed;
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-decoration: none;
+      margin-bottom: 10px;
+      transition: box-shadow 0.15s, transform 0.15s;
+    }
+    .action-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); transform: translateY(-1px); }
+    .action-card-icon  { font-size: 26px; flex-shrink: 0; }
+    .action-card-text  { flex: 1; }
+    .action-card-title { font-size: 15px; font-weight: 800; color: var(--rmd-navy); }
+    .action-card-sub   { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
+    .action-card-arrow { font-size: 20px; color: var(--rmd-muted); }
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="member-menu.html" title="Back to Director Tools" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div>
+    <div class="top-bar-title">Global Admin Tools</div>
+    <div class="top-bar-sub">Year-round, not tied to one event — director only</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="director-note">
+    ⚠️ These tools apply across the whole platform, not just Instructor Weekend 2026 — MOU membership, account creation, and annual reviews all run independently of any single event's dates. For Instructor Weekend-specific tools (registrations, room allocation, assessments), go to the <a href="cd-dashboard.html">Course Director Dashboard</a> instead.
+  </div>
+
+  <div class="section-label">Membership &amp; accounts</div>
+
+  <a class="action-card" href="admin-mou-dashboard.html">
+    <div class="action-card-icon">📜</div>
+    <div class="action-card-text">
+      <div class="action-card-title">MOU Dashboard</div>
+      <div class="action-card-sub">Annual Memorandum of Understanding — roster status, submissions, reminders</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <a class="action-card" href="admin-bulk-users.html">
+    <div class="action-card-icon">👤</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Bulk User Setup</div>
+      <div class="action-card-sub">Create Firebase login accounts for faculty or MOU roster members</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <a class="action-card" href="admin-account-reminders.html">
+    <div class="action-card-icon">✉️</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Account Reminders</div>
+      <div class="action-card-sub">Nudge anyone with a login who's never signed in</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <div class="section-label">Annual faculty processes</div>
+
+  <a class="action-card" href="admin-senior-faculty-review.html">
+    <div class="action-card-icon">📊</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Senior Faculty Review Dashboard</div>
+      <div class="action-card-sub">Roster status, responses, and reminder emails</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+  <a class="action-card" href="admin-faculty-roster.html">
+    <div class="action-card-icon">📇</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Faculty Roster — Bulk Upload</div>
+      <div class="action-card-sub">Annual paste that populates the public faculty pages + senior review roster</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+requireDirector("member-menu.html");
+</script>
+</body>
+</html>

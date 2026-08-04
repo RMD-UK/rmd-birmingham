@@ -17,20 +17,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Mirrors DIRECTOR_EMAILS in js/firebase-config.js — keep these in sync.
-    function directorEmails() {
-      return [
-        "console_brews.6f@icloud.com",
-        "j.hulme.1@bham.ac.uk"
-      ];
-    }
-
     // True if the signed-in user is a director, checked the same way
-    // resolveRole() does in firebase-config.js: people doc role, then the
-    // hardcoded email list, then config/platform's directors array.
+    // resolveRole() does in firebase-config.js: people doc role, then
+    // config/platform's directors array.
+    //
+    // No hardcoded email list here anymore (removed 2026-07-29 — personal
+    // emails should not live in a public repo). Director access now comes
+    // solely from people/{uid}.role == "director" or config/platform.directors.
+    // config/platform.directors already contains all current directors as of
+    // 2026-07-29 — confirmed before this change shipped.
     function isDirector() {
       return isSignedIn() && (
-        request.auth.token.email.lower() in directorEmails() ||
         (exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
           get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "director") ||
         (exists(/databases/$(database)/documents/config/platform) &&
@@ -255,6 +252,58 @@ service cloud.firestore {
       allow read, write: if isDirector();
     }
 
+    // ── Senior faculty annual review ────────────────────────────────────────
+    // Create/update: authenticated — member submits/edits ONLY their own
+    //   review response. Doc id must be exactly {cycleYear}_{uid} and the
+    //   uid field must match the caller — prevents overwriting someone
+    //   else's submission even if their doc id were guessed.
+    //   (see senior-faculty-review.html)
+    // Read/delete: director only — admin-senior-faculty-review.html
+    match /senior_faculty_review/{docId} {
+      allow create, update: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && docId == request.resource.data.cycleYear + "_" + request.auth.uid;
+      allow read, delete: if isDirector();
+    }
+
+    // ── Annual faculty roster ───────────────────────────────────────────────
+    // Populated once a year via a single bulk paste on
+    // admin-faculty-roster.html — see js/firebase-config.js for the full
+    // picture. Two collections, split because one holds emails:
+    //
+    // faculty_roster (has email — director tooling + reminder function only):
+    //   get: also allowed for a signed-in user fetching ONLY their own doc
+    //     (docId == their lowercased email) — this is how
+    //     senior-faculty-review.html checks "am I on the roster" without
+    //     exposing the rest of the roster's emails to them.
+    //   list (querying the whole collection) and all writes: director only.
+    match /faculty_roster/{docId} {
+      allow get: if isDirector() || (isSignedIn() && docId == request.auth.token.email.lower());
+      allow list, write: if isDirector();
+    }
+
+    // faculty_directory (no email — public display copy for faculty.html):
+    //   read: public, same as the people collection above.
+    //   write: director only (written alongside faculty_roster by the bulk
+    //     upload tool — never add an email field here).
+    match /faculty_directory/{docId} {
+      allow read: if true;
+      allow write: if isDirector();
+    }
+
+    // ── Senior faculty review reminder log ──────────────────────────────────
+    // Written only by the sendSeniorFacultyReminders Cloud Function (admin
+    // SDK bypasses these rules) — no client should ever write here directly.
+    match /senior_faculty_review_reminders/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    match /account_reminders/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
     // ── Room groups ──────────────────────────────────────────────────────────
     // Read: authenticated — all staff need to see their room assignment
     //   (timetable.html room banner reads this for every signed-in user)
@@ -268,6 +317,28 @@ service cloud.firestore {
     // Director only — director-managed attendee list for Instructor Weekend
     match /iw_registrations/{docId} {
       allow read, write: if isDirector();
+    }
+
+    // ── IW Assessor / Senior Instructor RSVP ────────────────────────────────
+    // Self-service Y/N attendance confirmation for Assessors/Senior
+    // Instructors, whose attendance at the Instructor Weekend is NOT
+    // mandatory (unlike Instructor Candidates, who must attend and so need
+    // no RSVP step). Added 2026-07-31 — see iw-rsvp.html.
+    // Document ID is the lowercased responder email — same no-login
+    // edit-by-email pattern as faculty_responses/summer_meeting_dietary.
+    // get:  public — caller must already know the exact email (= docId).
+    // list: director only — stops one unauthenticated request dumping every
+    //   assessor's RSVP status. The only reader of the full list is
+    //   admin-iw-registrations.html's "Import assessor RSVPs" panel, which
+    //   is itself director-gated.
+    // create/update: public — supports pre-login submit and resubmit-to-edit
+    //   (e.g. someone who said No then changes their mind).
+    // delete: authenticated only.
+    match /iw_assessor_rsvp/{docId} {
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
+      allow delete: if isSignedIn();
     }
 
     // ── Summer meeting dietary requirements ─────────────────────────────────

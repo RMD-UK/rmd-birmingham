@@ -188,10 +188,11 @@
 
   <div class="top-bar">
     <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
-    <div>
+    <div style="flex:1;">
       <div class="top-bar-title">Bulk User Setup</div>
       <div class="top-bar-sub">RMD Instructor Weekend 2026 · Director only</div>
     </div>
+    <a href="admin-account-reminders.html" style="background:rgba(255,255,255,0.15);color:white;padding:6px 12px;border-radius:6px;font-size:13px;text-decoration:none;white-space:nowrap;">✉️ Account Reminders</a>
   </div>
 
   <!-- Input card -->
@@ -337,6 +338,7 @@ r.everitt@bham.ac.uk
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
@@ -373,6 +375,14 @@ function randomPassword(len = 24) {
 }
 
 async function sendPasswordResetEmail(email) {
+  // 2026-07-23 incident: continueUrl pointing at rmd.uk.com made every
+  // request fail with "UNAUTHORIZED_DOMAIN" because rmd.uk.com wasn't yet in
+  // Firebase Console → Authentication → Settings → Authorized domains —
+  // silently breaking every reset email sent from this page (both account
+  // creation and the "Reset Existing Accounts" card) since continueUrl was
+  // added. Jon added rmd.uk.com to Authorized domains same day; confirmed
+  // fixed via a live test call before restoring continueUrl here. See
+  // [[project_mou]] for the full diagnosis if this ever recurs.
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_CONFIG.apiKey}`,
     {

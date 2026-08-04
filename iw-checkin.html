@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Check-in — RMD Instructor Weekend 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--rmd-navy); font-family: var(--font); margin: 0;
+      display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden;
+    }
+
+    .kiosk-header {
+      padding: 18px 16px 10px; text-align: center; color: white; flex-shrink: 0;
+    }
+    .kiosk-header img { height: 44px; margin-bottom: 8px; }
+    .kiosk-header h1 { font-size: 18px; margin: 0 0 2px; }
+    .kiosk-header p  { font-size: 12px; opacity: 0.65; margin: 0; }
+
+    .kiosk-body {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 10px 16px 30px;
+    }
+
+    .scan-wrap {
+      width: 100%; max-width: 420px; background: white; border-radius: 16px;
+      padding: 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    }
+    #reader { width: 100%; border-radius: 10px; overflow: hidden; }
+    #reader video { border-radius: 10px; }
+
+    .status-box {
+      width: 100%; max-width: 420px; margin-top: 16px; border-radius: 14px;
+      padding: 22px; text-align: center; transition: background 0.2s;
+      background: rgba(255,255,255,0.08); color: white;
+    }
+    .status-box.idle   { background: rgba(255,255,255,0.08); }
+    .status-box.success { background: #1a6e31; }
+    .status-box.error   { background: #b7410e; }
+    .status-icon  { font-size: 40px; margin-bottom: 6px; }
+    .status-title { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+    .status-sub   { font-size: 13px; opacity: 0.85; }
+
+    .fallback-link {
+      margin-top: 18px; font-size: 13px; color: rgba(255,255,255,0.6);
+      text-decoration: underline; cursor: pointer; background: none; border: none; font-family: var(--font);
+    }
+
+    /* ── Manual search fallback ── */
+    .search-panel {
+      display: none; width: 100%; max-width: 420px; background: white; border-radius: 14px;
+      padding: 16px; margin-top: 14px;
+    }
+    .search-panel input {
+      width: 100%; padding: 11px 12px; border: 2px solid #dce3ea; border-radius: 8px;
+      font-size: 15px; font-family: var(--font); color: var(--rmd-navy); margin-bottom: 10px;
+    }
+    .search-result {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border-radius: 8px; background: #f0f3f6; margin-bottom: 6px;
+    }
+    .search-result .name { font-size: 14px; font-weight: 700; color: var(--rmd-navy); }
+    .search-result .role { font-size: 11px; color: var(--rmd-muted); }
+    .btn-checkin-small {
+      padding: 7px 14px; border-radius: 6px; border: none; background: var(--rmd-blue);
+      color: white; font-family: var(--font); font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+
+    .kiosk-footer { text-align: center; padding: 10px; }
+    .kiosk-footer a { color: rgba(255,255,255,0.4); font-size: 11px; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<div class="kiosk-header">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <h1>Instructor Weekend Check-in</h1>
+  <p>Scan your badge QR code to check in</p>
+</div>
+
+<div class="kiosk-body">
+  <div class="scan-wrap">
+    <div id="reader"></div>
+  </div>
+
+  <div class="status-box idle" id="statusBox">
+    <div class="status-icon" id="statusIcon">📷</div>
+    <div class="status-title" id="statusTitle">Ready to scan</div>
+    <div class="status-sub" id="statusSub">Hold your QR code up to the camera</div>
+  </div>
+
+  <button class="fallback-link" onclick="toggleSearch()">Can't scan? Find your name instead →</button>
+
+  <div class="search-panel" id="searchPanel">
+    <input type="text" id="searchInput" placeholder="Type your name…" autocomplete="off" oninput="runSearch(this.value)">
+    <div id="searchResults"></div>
+  </div>
+</div>
+
+<div class="kiosk-footer">
+  <a href="timetable.html">RMD Instructor Weekend 2026</a>
+</div>
+
+<!-- QR scanning -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+let lastId = null;
+let lastAt = 0;
+let processing = false;
+let allPeopleCache = null;
+
+// ── Scanner ───────────────────────────────────────────────────────────────
+const html5QrCode = new Html5Qrcode("reader");
+html5QrCode.start(
+  { facingMode: "environment" },
+  { fps: 10, qrbox: { width: 240, height: 240 } },
+  onScanSuccess,
+  () => {} // ignore per-frame "no QR found" errors
+).catch(err => {
+  setStatus("error", "📷", "Camera unavailable", "Allow camera access, or use \"Find your name\" below.");
+});
+
+async function onScanSuccess(decodedText) {
+  const id = decodedText.trim();
+  const now = Date.now();
+  if (processing) return;
+  if (id === lastId && now - lastAt < 4000) return; // debounce re-scans of the same badge
+  lastId = id;
+  lastAt = now;
+  await checkInPerson(id);
+}
+
+// ── Check-in ──────────────────────────────────────────────────────────────
+async function checkInPerson(personId) {
+  processing = true;
+  setStatus("idle", "⏳", "Checking…", "");
+
+  try {
+    const doc = await db.collection(COLLECTIONS.people).doc(personId).get();
+    if (!doc.exists) {
+      setStatus("error", "❓", "QR not recognised", "Please see a member of staff.");
+      processing = false;
+      resetAfter(3000);
+      return;
+    }
+    const person = doc.data();
+    await db.collection(COLLECTIONS.attendance).doc(personId).set({
+      arrived: firebase.firestore.FieldValue.serverTimestamp(),
+      checkedInBy: "self-service-kiosk"
+    }, { merge: true });
+
+    setStatus("success", "✅", `Welcome, ${person.name || "there"}!`, "You're checked in — have a great weekend.");
+  } catch (err) {
+    setStatus("error", "⚠️", "Check-in failed", "Please try again or see a member of staff.");
+  }
+  processing = false;
+  resetAfter(3000);
+}
+
+function resetAfter(ms) {
+  setTimeout(() => setStatus("idle", "📷", "Ready to scan", "Hold your QR code up to the camera"), ms);
+}
+
+function setStatus(kind, icon, title, sub) {
+  const box = document.getElementById("statusBox");
+  box.className = "status-box " + kind;
+  document.getElementById("statusIcon").textContent = icon;
+  document.getElementById("statusTitle").textContent = title;
+  document.getElementById("statusSub").textContent = sub;
+}
+
+// ── Manual search fallback ───────────────────────────────────────────────
+function toggleSearch() {
+  const panel = document.getElementById("searchPanel");
+  const shown = panel.style.display === "block";
+  panel.style.display = shown ? "none" : "block";
+  if (!shown) document.getElementById("searchInput").focus();
+}
+
+async function ensurePeopleCache() {
+  if (allPeopleCache) return allPeopleCache;
+  const snap = await db.collection(COLLECTIONS.people).get();
+  allPeopleCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return allPeopleCache;
+}
+
+const ROLE_LABELS = {
+  "instructor": "Instructor Candidate", "assessor": "Assessor / Senior Instructor",
+  "assessor-faculty": "Assessor Faculty", "faculty": "Faculty",
+  "full-instructor": "Instructor Trainer", "itc": "Instructor Trainer Candidate", "director": "Course Director"
+};
+
+async function runSearch(val) {
+  const q = val.trim().toLowerCase();
+  const resultsEl = document.getElementById("searchResults");
+  if (q.length < 2) { resultsEl.innerHTML = ""; return; }
+
+  const people = await ensurePeopleCache();
+  const matches = people.filter(p => (p.name || "").toLowerCase().includes(q)).slice(0, 8);
+
+  if (!matches.length) {
+    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--rmd-muted);padding:8px;">No matches.</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = matches.map(p => `
+    <div class="search-result">
+      <div>
+        <div class="name">${esc(p.name)}</div>
+        <div class="role">${esc(ROLE_LABELS[p.role] || p.role || "")}</div>
+      </div>
+      <button class="btn-checkin-small" onclick="manualCheckIn('${esc(p.id)}')">Check in</button>
+    </div>
+  `).join("");
+}
+
+async function manualCheckIn(id) {
+  toggleSearch();
+  await checkInPerson(id);
+}
+
+function esc(s) {
+  return (s || "").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+</script>
+</body>
+</html>

@@ -8,29 +8,57 @@
   <style>
     * { box-sizing: border-box; }
     body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+    /* ── Top bar ── */
     .top-bar {
       background: var(--rmd-navy);
       color: white;
-      padding: 12px 16px;
+      padding: 10px 14px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       position: sticky;
       top: 0;
       z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
     }
-    .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; }
+    .role-pill {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.18);
+      color: white;
+      letter-spacing: 0.02em;
+    }
+    .top-bar-signout,
     .back-btn {
-      color: rgba(255,255,255,0.85);
+      background: none;
+      border: 1px solid rgba(255,255,255,0.35);
+      color: white;
+      font-size: 12px;
+      font-family: var(--font);
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
       text-decoration: none;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
       white-space: nowrap;
     }
-    .back-btn:hover { color: white; }
+    .top-bar-signout:hover, .back-btn:hover { background: rgba(255,255,255,0.12); }
+
     .wrap { max-width: 680px; margin: 0 auto; padding: 16px 14px 0; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--rmd-muted);
+      margin: 20px 0 8px;
+    }
+    .section-label:first-child { margin-top: 4px; }
+
     .card {
       background: white;
       border-radius: 12px;
@@ -53,23 +81,169 @@
       padding: 4px 10px;
       margin-bottom: 12px;
     }
+
+    /* ── Resource link grid (mirrors site-info.html) ── */
+    .resource-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .resource-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #f5f7fa;
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--rmd-navy);
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid #e2e8ed;
+      transition: background 0.12s;
+    }
+    .resource-link:hover { background: var(--rmd-pale); }
+    .resource-link .icon { font-size: 18px; flex-shrink: 0; }
+
+    /* ── Resource tabs (Candidate / Instructor / Assessor) — mirrors
+       .day-tab-btn pattern used elsewhere in the platform (e.g.
+       cd-dashboard.html) for visual consistency ── */
+    .res-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+    .res-tab-btn {
+      padding: 6px 14px; border-radius: 5px; border: 2px solid #dce3ea;
+      background: white; font-family: var(--font); font-size: 12px; font-weight: 700;
+      color: var(--rmd-navy); cursor: pointer;
+    }
+    .res-tab-btn.active { background: var(--rmd-navy); color: white; border-color: var(--rmd-navy); }
+
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
+<!-- ── Top bar ── -->
 <div class="top-bar">
-  <a class="back-btn" href="member-menu.html">← Menu</a>
+  <a class="back-btn" href="member-menu.html">‹ Menu</a>
   <div class="top-bar-title">Provider Courses</div>
+  <span class="role-pill" id="rolePill">Loading…</span>
+  <button class="top-bar-signout" onclick="handleSignOut()">Sign out</button>
 </div>
 
 <div class="wrap">
+
   <div class="card">
     <span class="pending-badge">Content coming soon</span>
     <h1>Provider Course delivery — Semesters 1 &amp; 2</h1>
     <p>This page will cover how RMD Birmingham's ongoing BLS Provider Courses run across the academic year, separate from the annual Instructor Weekend — timetables, teaching rotas, room bookings, and delivery guidance for each semester.</p>
     <p>Content for this section hasn't been submitted yet. Check back soon, or contact the Course Director if you need semester course information in the meantime.</p>
   </div>
-</div>
 
+  <!-- ── Resources ── -->
+  <div class="section-label">Resources</div>
+
+  <!-- Tab bar hidden for candidates (role "instructor") — they only ever
+       see the Candidate panel, so a tab bar with one live option is just
+       clutter. Unhidden by applyRole() for STAFF_TAB_ROLES. -->
+  <div class="res-tabs hidden" id="resTabs">
+    <button class="res-tab-btn active" onclick="showResTab('Candidate', this)">Candidate</button>
+    <button class="res-tab-btn" onclick="showResTab('Instructor', this)">Instructor</button>
+    <button class="res-tab-btn" onclick="showResTab('Assessor', this)">Assessor</button>
+  </div>
+
+  <!-- ── Candidate resources — visible to everyone on this page ── -->
+  <div class="res-panel" id="resPanelCandidate">
+    <div class="card">
+      <span class="pending-badge">Content coming soon</span>
+      <p style="margin-top:0;">Candidate materials for the Provider Course haven't been added yet.</p>
+    </div>
+  </div>
+
+  <!-- ── Instructor resources — STAFF_TAB_ROLES only (see script below) ── -->
+  <div class="res-panel hidden" id="resPanelInstructor">
+    <div class="card">
+      <div class="resource-grid">
+        <a class="resource-link" href="resources/provider/bls-equipment-floorplan.png"><span class="icon">🗺️</span>BLS Equipment Floorplan</a>
+        <a class="resource-link" href="resources/provider/aed-settings.pdf"><span class="icon">📄</span>AED Settings</a>
+        <a class="resource-link" href="resources/provider/qcpr-how-to-guide.pdf"><span class="icon">📄</span>QCPR — How-to Guide</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Assessor resources — STAFF_TAB_ROLES only (see script below) ── -->
+  <div class="res-panel hidden" id="resPanelAssessor">
+    <div class="card">
+      <div class="resource-grid">
+        <a class="resource-link" href="resources/provider/aed-settings.pdf"><span class="icon">📄</span>AED Settings</a>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.wrap -->
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+  initFirebase();
+
+  // Mirrors ROLE_LABELS in timetable.html / site-info.html / member-menu.html.
+  const ROLE_LABELS = {
+    director:            "Course Director",
+    faculty:             "Faculty",
+    "full-instructor":   "Instructor Trainer",
+    instructor:          "Instructor Candidate",
+    assessor:            "Assessor / Senior Instructor",
+    "assessor-faculty":  "Assessor Faculty",
+    itc:                 "Instructor Trainer Candidate"
+  };
+
+  // ── Roles that see the Instructor + Assessor staff resource tabs.
+  // Same split as site-info.html (confirmed with Jon 2026-07-28): only the
+  // raw "instructor" DB role (Instructor Candidate, first time through)
+  // stays Candidate-tab-only. "assessor" ("Assessor / Senior Instructor")
+  // gets staff-tab access despite being the assessor track's candidate
+  // tier — those are already-qualified instructors training as assessors,
+  // not first-time candidates. Same set gates both tabs; the tabs differ
+  // by topic, not audience. ──
+  const STAFF_TAB_ROLES = new Set(["director", "faculty", "full-instructor", "itc", "assessor-faculty", "assessor"]);
+
+  auth.onAuthStateChanged(async function (user) {
+    if (!user) {
+      window.location.href = "signin.html";
+      return;
+    }
+
+    let role = "instructor";
+    try {
+      role = (await resolveRole(user.uid, user.email || "")) || role;
+    } catch (e) { /* fall back to default role */ }
+
+    applyRole(role);
+  });
+
+  function applyRole(role) {
+    document.getElementById("rolePill").textContent = ROLE_LABELS[role] || role;
+
+    if (STAFF_TAB_ROLES.has(role)) {
+      document.getElementById("resTabs").classList.remove("hidden");
+    }
+  }
+
+  // ── Resource tab switcher (Candidate / Instructor / Assessor) ──────────────
+  function showResTab(tab, btn) {
+    document.querySelectorAll(".res-panel").forEach(el => el.classList.add("hidden"));
+    document.getElementById("resPanel" + tab).classList.remove("hidden");
+    document.querySelectorAll(".res-tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  }
+
+  function handleSignOut() {
+    auth.signOut().then(() => { window.location.href = "index.html"; });
+  }
+</script>
 </body>
 </html>
