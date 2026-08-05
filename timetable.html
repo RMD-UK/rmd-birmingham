@@ -670,6 +670,29 @@
       }, err => console.warn("Message listener:", err.message));
   }
 
+  // ── Programme: receive side ────────────────────────────────────────────────
+  // PROGRAMME starts as the static data from programme-data.js. Once the
+  // sessions collection has been migrated (admin-migrate-programme.html) and
+  // the shift tool starts editing live times, this listener takes over and
+  // keeps PROGRAMME in sync in real time. A day is only overwritten once
+  // Firestore actually has documents for it, so an empty/not-yet-migrated
+  // collection leaves the static fallback in place instead of blanking the
+  // timetable.
+  function listenProgramme() {
+    if (!db) return;
+    db.collection(COLLECTIONS.sessions).onSnapshot(snap => {
+      const byDay = { friday: [], saturday: [], sunday: [] };
+      snap.forEach(doc => {
+        const s = { id: doc.id, ...doc.data() };
+        if (byDay[s.day]) byDay[s.day].push(s);
+      });
+      ["friday", "saturday", "sunday"].forEach(day => {
+        if (byDay[day].length) PROGRAMME[day].sessions = byDay[day];
+      });
+      renderAll();
+    }, err => console.warn("Programme listener:", err.message));
+  }
+
   // ── Sign out ───────────────────────────────────────────────────────────────
   function doSignOut() {
     auth.signOut().then(() => { window.location.href = "index.html"; });
@@ -821,6 +844,7 @@
       if (!user) { window.location.href = "index.html"; return; }
       currentUser = user;
       listenMessages();
+      listenProgramme();
 
       // Load role from people collection
       let role = null;
