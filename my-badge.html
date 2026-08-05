@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>My Badge — RMD Instructor Weekend 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--rmd-navy); font-family: var(--font); margin: 0;
+      display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden;
+    }
+
+    .page-body {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px 16px 30px;
+    }
+
+    .badge-card {
+      width: 100%; max-width: 340px; background: white; border-radius: 20px;
+      padding: 28px 24px 24px; text-align: center; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    }
+    .badge-logo { height: 40px; margin-bottom: 14px; }
+    .badge-firstname {
+      font-size: 40px; font-weight: 800; color: var(--rmd-navy); line-height: 1.1;
+      margin-bottom: 4px; word-break: break-word;
+    }
+    .badge-role {
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--rmd-muted); margin-bottom: 14px;
+    }
+    .badge-event {
+      display: inline-block; background: var(--rmd-light); color: var(--rmd-navy);
+      font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 20px; margin-bottom: 20px;
+    }
+    .badge-qr { display: flex; justify-content: center; margin-bottom: 6px; }
+    .badge-qr canvas, .badge-qr img { border-radius: 8px; }
+    .badge-id-hint { font-size: 11px; color: var(--rmd-muted); }
+
+    .instruction {
+      width: 100%; max-width: 340px; margin-top: 16px; text-align: center;
+      color: rgba(255,255,255,0.75); font-size: 13px; line-height: 1.5;
+    }
+
+    .state-box {
+      width: 100%; max-width: 340px; background: white; border-radius: 16px;
+      padding: 30px 22px; text-align: center;
+    }
+    .state-box .icon { font-size: 36px; margin-bottom: 10px; }
+    .state-box h2 { color: var(--rmd-navy); font-size: 17px; margin-bottom: 6px; }
+    .state-box p { color: var(--rmd-muted); font-size: 13px; line-height: 1.5; }
+
+    .page-footer { text-align: center; padding: 10px; }
+    .page-footer a { color: rgba(255,255,255,0.4); font-size: 11px; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<div class="page-body" id="pageBody">
+  <div class="state-box" id="loadingBox">
+    <div class="icon">⏳</div>
+    <h2>Loading your badge…</h2>
+  </div>
+</div>
+
+<div class="page-footer">
+  <a href="timetable.html">RMD Instructor Weekend 2026</a>
+</div>
+
+<!-- QR generation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+const ROLE_LABELS = {
+  "instructor": "Instructor Candidate", "assessor": "Assessor / Senior Instructor",
+  "assessor-faculty": "Assessor Faculty", "faculty": "Faculty",
+  "full-instructor": "Instructor Trainer", "itc": "Instructor Trainer Candidate", "director": "Course Director"
+};
+
+const params   = new URLSearchParams(window.location.search);
+const personId = params.get("id");
+
+loadBadge();
+
+async function loadBadge() {
+  const body = document.getElementById("pageBody");
+
+  if (!personId) {
+    body.innerHTML = stateHtml("❓", "No badge link", "This link is missing your ID. Use the personal link sent to you, or see a member of staff.");
+    return;
+  }
+
+  try {
+    const doc = await db.collection(COLLECTIONS.people).doc(personId).get();
+    if (!doc.exists) {
+      body.innerHTML = stateHtml("❓", "Badge not found", "This link doesn't match a registered attendee. Please see a member of staff.");
+      return;
+    }
+    const person = doc.data();
+    const firstName = (person.name || "").trim().split(/\s+/)[0] || "there";
+    const roleLabel = ROLE_LABELS[person.role] || person.role || "";
+
+    body.innerHTML = `
+      <div class="badge-card">
+        <img src="assets/rmd-logo.png" alt="RMD logo" class="badge-logo">
+        <div class="badge-firstname">${esc(firstName)}</div>
+        <div class="badge-role">${esc(roleLabel)}</div>
+        <div class="badge-event">RMD Instructor Weekend 2026</div>
+        <div class="badge-qr" id="qrHolder"></div>
+        <div class="badge-id-hint">Show this screen to check in</div>
+      </div>
+      <div class="instruction">Keep this page open and hold it up to the camera at the check-in desk.</div>
+    `;
+    new QRCode(document.getElementById("qrHolder"), {
+      text: personId,
+      width: 180,
+      height: 180,
+      colorDark: "#1a2b47",
+      colorLight: "#ffffff"
+    });
+  } catch (err) {
+    body.innerHTML = stateHtml("⚠️", "Couldn't load your badge", "Check your connection and reload, or see a member of staff.");
+  }
+}
+
+function stateHtml(icon, title, sub) {
+  return `<div class="state-box"><div class="icon">${icon}</div><h2>${esc(title)}</h2><p>${esc(sub)}</p></div>`;
+}
+
+function esc(s) {
+  return (s || "").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+</script>
+</body>
+</html>
