@@ -803,9 +803,7 @@ const PROGRAMME = {
         lead: "",
         roles: ["instructor", "faculty", "director"],
         notes: "",
-        resources: [
-          { title: "RMD Reasonable Adjustments Pathway", embedUrl: "https://www.youtube.com/embed/tXgnppcnPOM", icon: "🎬" }
-        ],
+        resources: [],
         tags: []
       },
       {
