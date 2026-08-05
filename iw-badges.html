@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IW Badges / QR — RMD 2026</title>
+  <title>IW Badges — RMD 2026</title>
   <link rel="stylesheet" href="css/rmd.css">
   <style>
     * { box-sizing: border-box; }
@@ -48,30 +48,20 @@
     }
 
     .badge-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap: 14px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 14px;
     }
     .badge-card {
       background: white; border: 2px solid #dce3ea; border-radius: 10px;
-      padding: 16px; text-align: center; page-break-inside: avoid;
+      padding: 20px 16px; text-align: center; page-break-inside: avoid;
     }
-    .badge-card-logo { height: 26px; margin-bottom: 8px; }
-    .badge-firstname { font-size: 22px; font-weight: 800; color: var(--rmd-navy); line-height: 1.1; margin-bottom: 2px; }
-    .badge-name { font-size: 12px; color: var(--rmd-muted); margin-bottom: 2px; }
-    .badge-role { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--rmd-muted); margin-bottom: 10px; }
+    .badge-card-logo { height: 30px; margin-bottom: 12px; }
+    .badge-firstname { font-size: 26px; font-weight: 800; color: var(--rmd-navy); line-height: 1.1; margin-bottom: 4px; word-break: break-word; }
+    .badge-name { font-size: 12px; color: var(--rmd-muted); margin-bottom: 4px; }
+    .badge-role { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--rmd-muted); margin-bottom: 12px; }
     .badge-event-pill {
       display: inline-block; background: var(--rmd-light); color: var(--rmd-navy);
-      font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px;
+      font-size: 10px; font-weight: 700; padding: 4px 12px; border-radius: 20px;
     }
-    .badge-qr { display: flex; justify-content: center; margin-bottom: 10px; }
-    .badge-qr canvas, .badge-qr img { border-radius: 6px; }
-    .badge-footer { margin-top: 4px; font-size: 10px; color: var(--rmd-muted); }
-    .badge-actions { display: flex; gap: 6px; margin-top: 10px; }
-    .badge-actions button {
-      flex: 1; padding: 6px 8px; border-radius: 6px; border: none; font-size: 11px;
-      font-weight: 700; font-family: var(--font); cursor: pointer;
-    }
-    .btn-open-badge { background: var(--rmd-blue); color: white; }
-    .btn-copy-link { background: #f0f3f6; color: var(--rmd-navy); border: 1px solid #dce3ea !important; }
 
     .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); }
     .loading { text-align: center; padding: 40px; color: var(--rmd-muted); }
@@ -86,7 +76,7 @@
     }
 
     @media print {
-      .top-bar, .action-bar, .filter-row, .info-box, .badge-actions { display: none !important; }
+      .top-bar, .action-bar, .filter-row, .info-box { display: none !important; }
       body { background: white; padding: 0; }
       .badge-card { break-inside: avoid; box-shadow: none; }
     }
@@ -105,27 +95,26 @@
   <a href="timetable.html" title="Back to programme" style="background:none;padding:0;">
     <img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;">
   </a>
-  <div class="top-bar-title">IW Badges — Personal Check-in Links</div>
+  <div class="top-bar-title">IW Badges — Printable Name Badges</div>
   <a href="admin-iw-registrations.html">👥 IW Registrations</a>
-  <a href="iw-checkin.html" target="_blank">🖥 Open Kiosk</a>
+  <a href="iw-checkin-poster.html" target="_blank">🖥 Check-in Poster</a>
   <button onclick="loadPeople()">↻ Refresh</button>
 </div>
 
 <div class="content" style="margin-top:14px;">
 
   <div class="info-box">
-    Each person now has a personal badge page (<code>my-badge.html?id=…</code>) showing their first name
-    and a QR code encoding their unique <code>people</code> record ID. Send them their link — they open it
-    on their own phone and hold it up to the camera at
+    Plain name badges for people to wear on the course — no QR code, nothing personal to scan.
+    Check-in is separate and self-service: attendees scan the poster QR on
+    <a href="iw-checkin-poster.html" target="_blank" style="color:var(--rmd-navy);font-weight:700;">iw-checkin-poster.html</a>
+    (one shared code, printed once and displayed at registration), which opens
     <a href="iw-checkin.html" target="_blank" style="color:var(--rmd-navy);font-weight:700;">iw-checkin.html</a>
-    to check in. No login needed on either end. Use "Open" or "Copy link" below to distribute. Only people
-    already synced via "Sync to People" on the IW Registrations page will appear here. Printing is still
-    available as a paper fallback for anyone without a smartphone.
+    where they search their own name and confirm attendance. Only people already synced via
+    "Sync to People" on the IW Registrations page will appear here.
   </div>
 
   <div class="action-bar">
-    <button class="btn-action" onclick="copyAllLinks()">🔗 Copy all links (name + URL)</button>
-    <button class="btn-action secondary" onclick="window.print()">🖨 Print as paper fallback</button>
+    <button class="btn-action" onclick="window.print()">🖨 Print badges</button>
     <button class="btn-action secondary" onclick="loadPeople()">↻ Refresh</button>
   </div>
 
@@ -139,9 +128,6 @@
   <div id="badgeContainer"><div class="loading">Loading…</div></div>
 
 </div>
-
-<!-- QR generation -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -212,7 +198,6 @@ function render() {
 
   filtered.forEach(p => {
     const firstName = (p.name || "—").trim().split(/\s+/)[0] || "—";
-    const link = badgeLink(p.id);
     const card = document.createElement("div");
     card.className = "badge-card";
     card.innerHTML = `
@@ -221,48 +206,9 @@ function render() {
       <div class="badge-name">${esc(p.name || "—")}</div>
       <div class="badge-role">${esc(ROLE_LABELS[p.role] || p.role || "—")}</div>
       <div class="badge-event-pill">RMD Instructor Weekend 2026</div>
-      <div class="badge-qr" id="qr-${esc(p.id)}"></div>
-      <div class="badge-actions">
-        <button class="btn-open-badge" onclick="window.open('${esc(link)}','_blank')">Open</button>
-        <button class="btn-copy-link" onclick="copyLink('${esc(link)}', this)">Copy link</button>
-      </div>
     `;
     grid.appendChild(card);
-    new QRCode(document.getElementById(`qr-${p.id}`), {
-      text: p.id,
-      width: 120,
-      height: 120,
-      colorDark: "#1a2b47",
-      colorLight: "#ffffff"
-    });
   });
-}
-
-function badgeLink(id) {
-  return `${window.location.origin}${window.location.pathname.replace(/iw-badges\.html$/, "")}my-badge.html?id=${encodeURIComponent(id)}`;
-}
-
-async function copyLink(link, btn) {
-  try {
-    await navigator.clipboard.writeText(link);
-    const original = btn.textContent;
-    btn.textContent = "Copied!";
-    setTimeout(() => { btn.textContent = original; }, 1500);
-  } catch (e) {
-    prompt("Copy this link:", link);
-  }
-}
-
-async function copyAllLinks() {
-  const filtered = getFiltered();
-  const lines = filtered.map(p => `${p.name || "—"}\t${badgeLink(p.id)}`);
-  const text = lines.join("\n");
-  try {
-    await navigator.clipboard.writeText(text);
-    alert(`Copied ${filtered.length} name + link pairs to clipboard (tab-separated — paste into a spreadsheet or mail merge).`);
-  } catch (e) {
-    prompt("Copy these name + link pairs:", text);
-  }
 }
 
 function esc(s) {
