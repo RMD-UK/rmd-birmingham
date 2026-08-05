@@ -129,7 +129,7 @@ const PAIR_MAP = {
 function buildSessionDocs() {
   const docs = [];
   ["friday", "saturday", "sunday"].forEach(day => {
-    PROGRAMME[day].sessions.forEach(s => {
+    PROGRAMME[day].sessions.forEach((s, index) => {
       const record = {
         day,
         start: s.start,
@@ -140,7 +140,15 @@ function buildSessionDocs() {
         roles: s.roles || [],
         notes: s.notes || "",
         resources: s.resources || [],
-        tags: s.tags || []
+        tags: s.tags || [],
+        // Original position within this day's array in programme-data.js.
+        // Several sessions share the same start time (e.g. the 8 Sunday
+        // Senior Instructor briefing placeholders, all "09:45") and rely on
+        // stable array order to render/cascade in the right sequence.
+        // Firestore doesn't guarantee query result order matches original
+        // insertion order, so this is the explicit tiebreaker both
+        // timetable.html and the shift Cloud Function sort on.
+        order: index
       };
       if (s.subtitle) record.subtitle = s.subtitle;
       if (PAIR_MAP[s.id]) record.pairWith = PAIR_MAP[s.id];

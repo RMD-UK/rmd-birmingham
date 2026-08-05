@@ -364,7 +364,12 @@
       );
     }
 
-    sessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+    // Tiebreak on `order` (original array position) for sessions sharing a
+    // start time — e.g. the 8 Sunday placeholders all at "09:45". Static
+    // fallback sessions from programme-data.js have no `order` field; ??0
+    // makes them all tie at 0, which preserves their original array order
+    // through a stable sort, so this is a no-op for the fallback path.
+    sessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start) || ((a.order ?? 0) - (b.order ?? 0)));
 
     if (sessions.length === 0) {
       const msg = (ROLES_WITH_BOTH_STREAMS.includes(currentRole) && currentStream === "assessor")
@@ -492,7 +497,7 @@
     document.getElementById("currentTime").textContent = `${h}:${m}`;
 
     const sessions = sessionsForRole(currentDay, currentRole)
-      .sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+      .sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start) || ((a.order ?? 0) - (b.order ?? 0)));
 
     const live = sessions.find(s => isSessionCurrent(s));
     const liveLabel = document.getElementById("liveSessionLabel");
