@@ -128,9 +128,37 @@ service cloud.firestore {
     }
 
     // ── Sessions ────────────────────────────────────────────────────────────
-    // Authenticated only — programme schedule if managed via Firestore
+    // Programme schedule, live since 2026-08-06 (previously a static file —
+    // see admin-migrate-programme.html and timetable.html's listenProgramme()).
+    // Read: authenticated — everyone needs to see the live programme.
+    // Write: director only, and only meant for the one-time/occasional
+    //   migration page (admin-migrate-programme.html) — this is a narrowing
+    //   from the previous "any signed-in user" rule, not a widening. Ongoing
+    //   time shifts during the course do NOT write here directly: they go
+    //   through the shiftProgrammeSession Cloud Function (functions/index.js),
+    //   which uses the Admin SDK (bypasses these rules entirely) and does its
+    //   own director/assessor-faculty + stream-scoping check server-side —
+    //   that's what timetable.html's shift panel actually calls. Assessor
+    //   Faculty therefore has no direct write access here at all, only via
+    //   that function, which is deliberate: it's the only path that keeps
+    //   pairWith twins in sync and writes an audit entry to
+    //   programme_shift_log, so it should be the only way times change once
+    //   the course is live.
     match /sessions/{docId} {
-      allow read, write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow write: if isDirector();
+    }
+
+    // ── Programme shift log ─────────────────────────────────────────────────
+    // Written only by the shiftProgrammeSession Cloud Function (Admin SDK
+    // bypasses these rules) — audit trail of every live time shift, so
+    // "write: false" here is belt-and-braces against any client writing
+    // directly, same pattern as itc_summaries/senior_faculty_review_reminders
+    // below.
+    // Read: director only.
+    match /programme_shift_log/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
     }
 
     // ── Messages ────────────────────────────────────────────────────────────

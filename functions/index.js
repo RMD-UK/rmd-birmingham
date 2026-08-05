@@ -18,6 +18,13 @@
  * who has never signed in. See admin-account-reminders.html. Full deploy note
  * above that function.
  *
+ * shiftProgrammeSession: on-demand (callable), director or assessor-faculty.
+ * Cascading same-day, same-stream time shift for the live programme
+ * (sessions collection — see admin-migrate-programme.html and timetable.html's
+ * shift control). Single choke point for sessions writes — firestore.rules
+ * does not allow clients to write sessions directly, only this function via
+ * the Admin SDK. Full detail above the function itself, below.
+ *
  * Deploy (from the RMD website repo root, Jon's own machine — this cannot
  * be run from a Cowork sandbox, no network route to *.googleapis.com):
  *   cd functions && npm install
@@ -77,6 +84,7 @@ async function callerIsDirector(auth) {
   } catch (e) { /* fall through */ }
   return false;
 }
+
 
 exports.generateItcSummary = onCall({ secrets: [anthropicApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
@@ -427,4 +435,164 @@ RMD Birmingham`
   }
 
   return { checked: authUsers.length, eligible, sent, failed: failedEmails.length, failedEmails };
+});
+
+/**
+ * shiftProgrammeSession — director or assessor-faculty only.
+ *
+ * Cascading same-day, same-stream time shift for the live programme
+ * (sessions collection — seeded once via admin-migrate-programme.html,
+ * read live by timetable.html). Given a session id and a delta in minutes,
+ * shifts that session and every later session the same day, within the
+ * same stream (instructor vs assessor, derived from the "assessor-stream"
+ * tag), by that many minutes. The two streams share Saturday morning
+ * through the 11:45 break (and the 16:45 Whole Course Photo) as the same
+ * real event duplicated across both stream tabs — those pairs are linked
+ * via a `pairWith` field set during migration, and a shifted session's
+ * paired twin is always shifted by the same delta too, even though it's
+ * nominally in the other stream, so both tabs stay truthful to the one
+ * real event. Everywhere else the two streams move independently, per
+ * Jon's 2026-08-06 confirmation.
+ *
+ * This is the only path that may write to `sessions` — firestore.rules
+ * denies direct client writes to that collection, so the shift control in
+ * timetable.html calls this function rather than writing Firestore itself.
+ * Every call is logged to programme_shift_log with the affected session
+ * ids and their before/after start times, so any live edit during the
+ * actual course weekend is traceable to who did it and when.
+ *
+ * No reset-to-original option (dropped 2026-08-06 at Jon's request) — a
+ * shift is a plain, permanent edit, undoable only by shifting back.
+ *
+ * Deploy: same as the functions above (no new secret needed):
+ *   firebase deploy --only functions
+ */
+
+const SESSIONS_COLLECTION  = "sessions";
+const SHIFT_LOG_COLLECTION = "programme_shift_log";
+const MAX_SHIFT_MINUTES    = 240; // 4 hours — sanity cap, not a real expected use case
+
+function timeToMins(t) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function shiftTimeString(start, deltaMinutes) {
+  const total = timeToMins(start) + deltaMinutes;
+  const hh = Math.floor(total / 60).toString().padStart(2, "0");
+  const mm = (total % 60).toString().padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function streamOf(session) {
+  return (session.tags || []).includes("assessor-stream") ? "assessor" : "instructor";
+}
+
+exports.shiftProgrammeSession = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const isDirector = await callerIsDirector(auth);
+  const isAssessorFaculty = !isDirector && await (async () => {
+    try {
+      const person = await db.collection("people").doc(auth.uid).get();
+      return person.exists && person.data().role === "assessor-faculty";
+    } catch (e) { return false; }
+  })();
+  if (!isDirector && !isAssessorFaculty) {
+    throw new HttpsError("permission-denied", "Course Directors and Assessor Faculty only.");
+  }
+
+  const sessionId = String(request.data?.sessionId || "").trim();
+  const deltaMinutes = Number(request.data?.deltaMinutes);
+  if (!sessionId) throw new HttpsError("invalid-argument", "sessionId is required.");
+  if (!Number.isInteger(deltaMinutes) || deltaMinutes === 0) {
+    throw new HttpsError("invalid-argument", "deltaMinutes must be a non-zero whole number of minutes.");
+  }
+  if (Math.abs(deltaMinutes) > MAX_SHIFT_MINUTES) {
+    throw new HttpsError("invalid-argument", `Shifts are limited to ${MAX_SHIFT_MINUTES} minutes at a time.`);
+  }
+
+  const anchorDoc = await db.collection(SESSIONS_COLLECTION).doc(sessionId).get();
+  if (!anchorDoc.exists) throw new HttpsError("not-found", `No session with id "${sessionId}".`);
+  const anchor = anchorDoc.data();
+  const day = anchor.day;
+  const anchorStream = streamOf(anchor);
+
+  // Assessor Faculty may only shift the assessor-stream programme — same
+  // scoping already applied to their noticeboard message target in
+  // firestore.rules (assessor-stream only, never "all"/"faculty"/
+  // "instructor-stream"). Directors can shift either stream.
+  if (!isDirector && anchorStream !== "assessor") {
+    throw new HttpsError("permission-denied", "Assessor Faculty can only shift the assessor-stream programme.");
+  }
+
+  const daySnap = await db.collection(SESSIONS_COLLECTION).where("day", "==", day).get();
+  const daySessions = daySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Same stream as the anchor, ordered exactly as timetable.html renders
+  // it: start time, then original array position for same-time ties (the
+  // Sunday placeholder stack).
+  const streamSessions = daySessions
+    .filter(s => streamOf(s) === anchorStream)
+    .sort((a, b) => timeToMins(a.start) - timeToMins(b.start) || ((a.order ?? 0) - (b.order ?? 0)));
+
+  const anchorIndex = streamSessions.findIndex(s => s.id === sessionId);
+  if (anchorIndex === -1) {
+    throw new HttpsError("internal", "Session not found in its own day/stream list — data inconsistency.");
+  }
+
+  // Cascade forward only: the anchor session and everything later that day,
+  // in this stream. Nothing earlier moves, nothing crosses into another day.
+  const toShift = streamSessions.slice(anchorIndex);
+
+  for (const s of toShift) {
+    const newStart = timeToMins(s.start) + deltaMinutes;
+    if (newStart < 0 || newStart >= 24 * 60) {
+      throw new HttpsError("failed-precondition",
+        `Shifting "${s.title}" (currently ${s.start}) by ${deltaMinutes} minutes would push it outside the same day.`);
+    }
+  }
+
+  // Full write set: the cascaded sessions, plus each one's pairWith twin
+  // (same real event, other stream's tab) shifted by the same delta.
+  const writes = new Map(); // id -> { ref, before, after }
+
+  for (const s of toShift) {
+    if (!writes.has(s.id)) {
+      writes.set(s.id, {
+        ref: db.collection(SESSIONS_COLLECTION).doc(s.id),
+        before: s.start,
+        after: shiftTimeString(s.start, deltaMinutes)
+      });
+    }
+    if (s.pairWith && !writes.has(s.pairWith)) {
+      const twin = daySessions.find(x => x.id === s.pairWith);
+      if (twin) {
+        writes.set(twin.id, {
+          ref: db.collection(SESSIONS_COLLECTION).doc(twin.id),
+          before: twin.start,
+          after: shiftTimeString(twin.start, deltaMinutes)
+        });
+      }
+    }
+  }
+
+  const batch = db.batch();
+  writes.forEach(w => batch.update(w.ref, { start: w.after }));
+  await batch.commit();
+
+  const affected = Array.from(writes.entries()).map(([id, w]) => ({ id, before: w.before, after: w.after }));
+
+  await db.collection(SHIFT_LOG_COLLECTION).add({
+    day,
+    stream: anchorStream,
+    anchorSessionId: sessionId,
+    deltaMinutes,
+    affected,
+    appliedAt: admin.firestore.FieldValue.serverTimestamp(),
+    appliedByUid: auth.uid,
+    appliedByEmail: (auth.token.email || "").toLowerCase()
+  });
+
+  return { day, stream: anchorStream, deltaMinutes, affected };
 });
