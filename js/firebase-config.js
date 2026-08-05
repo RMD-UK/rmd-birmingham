@@ -228,7 +228,15 @@ function initFirebase() {
     console.warn("Firebase App Check SDK not loaded on this page.");
   }
   db      = firebase.firestore();
-  auth    = firebase.auth();
+  // 2026-08-05: guarded the same way storage already was — pages like
+  // faculty.html intentionally don't load firebase-auth-compat.js (they're
+  // public, no sign-in needed), but this function used to call firebase.auth()
+  // unconditionally. That threw a synchronous, uncaught TypeError which
+  // aborted the rest of the calling page's script before it ever reached
+  // loadRoster() — the actual cause of the blank Birmingham faculty page,
+  // not the App Check throttle above (that was a red herring that happened
+  // to fire around the same time). See [[rmd-appcheck-recaptcha-stopgap]].
+  auth    = firebase.auth ? firebase.auth() : null;
   storage = firebase.storage ? firebase.storage() : null;
   console.log("Firebase initialised.");
   return true;
