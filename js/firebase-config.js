@@ -211,7 +211,15 @@ function initFirebase() {
     return false;
   }
   firebase.initializeApp(FIREBASE_CONFIG);
-  if (firebase.appCheck) {
+  // 2026-08-05: App Check activation disabled as a stopgap — the reCAPTCHA
+  // v3 site key's domain list doesn't include rmd.uk.com (or is owned by an
+  // account we couldn't locate), so the token-fetch call was 400ing and
+  // throttling, which cascaded into breaking unrelated Firestore reads on
+  // pages like faculty.html. Firestore enforcement was already left in
+  // "monitor mode" (off) in the Firebase console, so this shouldn't change
+  // what's actually enforced — re-enable once the domain/account issue is
+  // fixed and confirmed working. See [[rmd-appcheck-recaptcha-stopgap]].
+  if (false && firebase.appCheck) {
     firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
   } else {
     // Page didn't load firebase-app-check-compat.js — requests from it won't
