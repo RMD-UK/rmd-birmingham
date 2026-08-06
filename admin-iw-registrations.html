@@ -197,6 +197,7 @@
     <div class="sum-pill"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From roster</div></div>
     <div class="sum-pill"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">From faculty</div></div>
     <div class="sum-pill"><div class="val" id="sum-manual" style="color:#856404;">–</div><div class="lbl">Added manually</div></div>
+    <div class="sum-pill"><div class="val" id="sum-flagged" style="color:#b7410e;">–</div><div class="lbl">Needs attention</div></div>
   </div>
 
   <!-- Action bar -->
@@ -432,6 +433,7 @@ function updateSummary() {
   document.getElementById("sum-roster").textContent     = r.filter(x => x.source === "roster").length;
   document.getElementById("sum-faculty").textContent    = r.filter(x => x.source === "faculty").length;
   document.getElementById("sum-manual").textContent     = r.filter(x => x.source === "manual" || x.source === "paste").length;
+  document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role").length;
 }
 
 // ── Table ────────────────────────────────────────────────────────────────────
@@ -484,7 +486,12 @@ function renderTable() {
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${roleBadge(r.role)}</td>
       <td>${statusBadge(r.status)}</td>
-      <td style="color:var(--rmd-muted);font-size:12px;">${r.notes||""}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">
+        ${r.notes||""}
+        ${r.syncFlag?.status === "unresolved_role"
+          ? `<div style="color:#b7410e;font-weight:700;font-size:11px;margin-top:2px;">⚠ Role "${r.role||"–"}" not recognised — auto-sync skipped</div>`
+          : ""}
+      </td>
       <td style="white-space:nowrap;">
         <button class="btn-confirm${isConf?" active":""}"
           onclick="setStatus('${r.id}','confirmed')">✓</button>
