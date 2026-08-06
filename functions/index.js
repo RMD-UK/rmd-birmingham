@@ -25,6 +25,13 @@
  * does not allow clients to write sessions directly, only this function via
  * the Admin SDK. Full detail above the function itself, below.
  *
+ * syncIwRegistrationToPeople: Firestore trigger (not callable), fires on
+ * every write to iw_registrations/{docId}. Automates the "Sync to People"
+ * button in admin-iw-registrations.html — same dedupe-by-email, same role
+ * map, never overwrites an existing person doc. Unresolved roles are
+ * flagged back onto the registration doc instead of silently dropped. Full
+ * detail above the function itself, below.
+ *
  * Deploy (from the RMD website repo root, Jon's own machine — this cannot
  * be run from a Cowork sandbox, no network route to *.googleapis.com):
  *   cd functions && npm install
@@ -48,6 +55,7 @@
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
@@ -596,3 +604,96 @@ exports.shiftProgrammeSession = onCall({ region: "us-central1" }, async (request
 
   return { day, stream: anchorStream, deltaMinutes, affected };
 });
+
+/**
+ * syncIwRegistrationToPeople: Firestore trigger (v2, onDocumentWritten),
+ * iw_registrations/{docId}. Automates the "Sync to People" button in
+ * admin-iw-registrations.html — mirrors that file's IW_TO_PEOPLE_ROLE map
+ * and syncToPeople() function exactly. Runs automatically whenever a
+ * registration's status becomes "confirmed", so a director no longer has
+ * to remember to click Sync before course day.
+ *
+ * Mirrors the manual button's logic:
+ *   - dedupes by email (case-insensitive) against the existing `people`
+ *     collection — never updates or overwrites an existing person doc.
+ *   - role mapped via IW_TO_PEOPLE_ROLE (duplicated here — keep in sync
+ *     with admin-iw-registrations.html and js/firebase-config.js ROLES if
+ *     either changes).
+ *   - unresolved roles are skipped (not guessed at). Since no human
+ *     reviews a preview panel before this runs, the skip is written back
+ *     onto the registration doc as `syncFlag` so admin-iw-registrations.html
+ *     shows a "Needs attention" indicator instead of the gap only
+ *     surfacing at check-in.
+ *
+ * The manual Sync to People button is left in place as an on-demand
+ * backstop (e.g. to re-check after fixing a flagged role) — this trigger
+ * makes it redundant in the common case, not obsolete.
+ *
+ * First deploy note: v2 Firestore triggers provision via Eventarc — if
+ * this is the first Firestore trigger in the project, the initial deploy
+ * can take a few minutes longer while the Eventarc/Cloud Build APIs spin
+ * up. Normal, not a failure.
+ */
+const IW_TO_PEOPLE_ROLE = {
+  "Instructor Candidate":          "instructor",
+  "Assessor / Senior Instructor":  "assessor",
+  "Faculty":                       "faculty",
+  "Instructor Trainer Candidate":  "itc",
+  "Instructor Trainer":            "full-instructor",
+  "Assessor Faculty":              "assessor-faculty",
+  "Director":                      "director"
+};
+
+exports.syncIwRegistrationToPeople = onDocumentWritten(
+  { document: "iw_registrations/{docId}", region: "us-central1" },
+  async (event) => {
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!after || after.status !== "confirmed") return; // deleted, or not (yet) confirmed
+
+    // Skip re-running when nothing relevant changed since the last pass
+    // (e.g. an edit to notes on an already-confirmed, already-synced row).
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    const alreadyHandled = before
+      && before.status === "confirmed"
+      && before.email === after.email
+      && before.role === after.role;
+    if (alreadyHandled) return;
+
+    const regRef = event.data.after.ref;
+    const email = (after.email || "").toLowerCase().trim();
+    const mappedRole = IW_TO_PEOPLE_ROLE[after.role];
+
+    if (!email || !mappedRole) {
+      await regRef.update({
+        syncFlag: {
+          status: "unresolved_role",
+          role: after.role || null,
+          flaggedAt: admin.firestore.FieldValue.serverTimestamp()
+        }
+      });
+      return;
+    }
+
+    // Same full-collection scan the manual button does — fine at current
+    // scale (people collection is low hundreds of docs). If that grows
+    // enough to matter, switch to a stored lowercase-email field and query
+    // on it instead of scanning + filtering client-side.
+    const peopleSnap = await db.collection("people").get();
+    const exists = peopleSnap.docs.some(d => (d.data().email || "").toLowerCase() === email);
+
+    if (exists) {
+      if (after.syncFlag) await regRef.update({ syncFlag: admin.firestore.FieldValue.delete() });
+      return; // already synced (manually or by an earlier run) — never overwrite
+    }
+
+    await db.collection("people").add({
+      name: after.name || "",
+      email,
+      role: mappedRole,
+      syncedFrom: "iw_registrations",
+      syncedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+
+    if (after.syncFlag) await regRef.update({ syncFlag: admin.firestore.FieldValue.delete() });
+  }
+);
