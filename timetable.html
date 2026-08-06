@@ -202,6 +202,29 @@
   </div>
 </div>
 
+<!-- ── Director / Assessor faculty: shift programme times panel ── -->
+<div class="director-panel hidden" id="shiftProgrammePanel" style="margin-top:12px;">
+  <div class="panel-header">
+    ⏩ Shift Programme Times
+    <button class="btn btn-sm" onclick="togglePanel('shiftProgrammePanel')">Close</button>
+  </div>
+  <div class="panel-body">
+    <p class="text-sm text-muted" style="margin:0 0 10px;">
+      Shifts a session — and everything later that day in the programme tab you're currently viewing
+      (instructor or assessor) — by however many minutes it's running early or late. Sessions shared
+      between both tabs (Saturday morning through the 11:45 break, and the 16:45 photo) update on both
+      automatically. Assessor Faculty can only shift the assessor-stream programme.
+    </p>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <select id="shiftSessionSelect" style="flex:1;min-width:220px;padding:6px;border:1px solid #ccd6dd;border-radius:4px;font-family:var(--font);"></select>
+      <input id="shiftMinutesInput" type="number" step="5" placeholder="e.g. 15 or -10"
+             style="width:120px;padding:6px;border:1px solid #ccd6dd;border-radius:4px;font-family:var(--font);">
+      <button class="btn" id="shiftBtn" onclick="previewAndShift()">Shift →</button>
+    </div>
+    <div id="shiftResultLog" style="font-size:13px;"></div>
+  </div>
+</div>
+
 <!-- ── Director: Group Allocations panel ── -->
 <div class="director-panel hidden" id="directorGroupsPanel" style="margin-top:12px;">
   <div class="panel-header">
@@ -234,6 +257,7 @@
 ">
   <span style="color:white;font-size:13px;font-weight:700;">Director</span>
   <button class="btn btn-sm" onclick="togglePanel('directorMessagePanel')">📣 Message</button>
+  <button class="btn btn-sm" onclick="openShiftPanel()">⏩ Shift Times</button>
   <button class="btn btn-sm" onclick="window.location.href='attendance.html'">✅ Registration</button>
   <button class="btn btn-sm" onclick="window.location.href='room-screen.html?room=director'">🖥 Rooms</button>
   <button class="btn btn-sm" onclick="window.location.href='assessment-gateway.html'">🚦 Gateway</button>
@@ -245,17 +269,23 @@
   <button class="btn btn-sm" onclick="doSignOut()" style="margin-left:auto;background:rgba(255,255,255,0.15);">↩ Sign out</button>
 </div>
 
-<!-- ── Assessor faculty floating action (mirrors director toolbar's Message button, scoped to assessor-faculty role only) ── -->
+<!-- ── Assessor faculty floating actions (mirror director toolbar's Message/Shift buttons, scoped to assessor-faculty role only) ── -->
 <button id="assessorTimingBtn" class="hidden btn" onclick="togglePanel('assessorMessagePanel')" style="
   position:fixed; bottom:16px; right:16px; z-index:150;
   background:var(--rmd-navy); color:white; padding:10px 16px;
   border-radius:24px; box-shadow:0 2px 10px rgba(0,0,0,0.25); font-weight:700;
 ">⏱ Report Timing</button>
+<button id="assessorShiftBtn" class="hidden btn" onclick="openShiftPanel()" style="
+  position:fixed; bottom:16px; left:16px; z-index:150;
+  background:var(--rmd-navy); color:white; padding:10px 16px;
+  border-radius:24px; box-shadow:0 2px 10px rgba(0,0,0,0.25); font-weight:700;
+">⏩ Shift Times</button>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/programme-data.js"></script>
 <script>
@@ -265,6 +295,7 @@
   let currentDay  = "saturday";
   let messagesCache = [];         // latest messages from Firestore, re-filtered per role on each render
   let currentStream = localStorage.getItem("rmd-iw-stream") || "instructor"; // "instructor" | "assessor" — only relevant for roles that see both (director, faculty)
+  var fns; // firebase.functions() — set after initFirebase(), used to call shiftProgrammeSession
 
   // Roles that see both the instructor-candidate and assessor programmes and
   // therefore need the stream toggle to view them as separate pages instead
@@ -302,6 +333,7 @@
     // 📣 Message button, which now also offers the instructor-stream/
     // assessor-stream targets).
     document.getElementById("assessorTimingBtn").classList.toggle("hidden", role !== "assessor-faculty");
+    document.getElementById("assessorShiftBtn").classList.toggle("hidden", role !== "assessor-faculty");
 
     // Re-filter the noticeboard for the new role (message audience depends on it)
     renderNoticeboardForRole();
@@ -348,14 +380,17 @@
     updateGatewayAlert();
   }
 
-  function renderDay(day) {
-    const container = document.getElementById("day-" + day);
+  // Sessions for a day, filtered to the current role's visibility AND (for
+  // roles that see both programmes) the currently selected stream tab.
+  // Shared by renderDay and the shift-times panel's session picker, so both
+  // always agree on exactly what "the programme currently on screen" means.
+  // Tiebreak on `order` (original array position) for sessions sharing a
+  // start time — e.g. the 8 Sunday placeholders all at "09:45". Static
+  // fallback sessions from programme-data.js have no `order` field; ??0
+  // makes them all tie at 0, which preserves their original array order
+  // through a stable sort, so this is a no-op for the fallback path.
+  function sessionsForCurrentView(day) {
     let sessions = sessionsForRole(day, currentRole);
-
-    // Sessions tagged "assessor-stream" run in parallel with the main
-    // instructor-candidate programme (same day, overlapping times, different
-    // room). Roles that can see both (director, faculty) get a toggle to view
-    // them as two separate pages rather than one merged/interleaved list.
     if (ROLES_WITH_BOTH_STREAMS.includes(currentRole)) {
       sessions = sessions.filter(s =>
         currentStream === "assessor"
@@ -363,8 +398,12 @@
           : !s.tags.includes("assessor-stream")
       );
     }
+    return sessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start) || ((a.order ?? 0) - (b.order ?? 0)));
+  }
 
-    sessions.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+  function renderDay(day) {
+    const container = document.getElementById("day-" + day);
+    const sessions = sessionsForCurrentView(day);
 
     if (sessions.length === 0) {
       const msg = (ROLES_WITH_BOTH_STREAMS.includes(currentRole) && currentStream === "assessor")
@@ -402,7 +441,7 @@
     let tags = "";
     if (s.location) tags += `<span class="meta-tag tag-location">📍 ${s.location}</span>`;
     if (s.lead)     tags += `<span class="meta-tag tag-lead">👤 ${s.lead}</span>`;
-    if (isGateway && !isBreak) tags += `<span class="meta-tag tag-gateway">⏱ Gateway deadline: 11:45</span>`;
+    if (isGateway && !isBreak) tags += `<span class="meta-tag tag-gateway">⏱ Gateway deadline: 12:00</span>`;
     if (isITC)      tags += `<span class="meta-tag tag-itc">🔍 ITC observation</span>`;
     if (isPlaceholder) tags += `<span class="meta-tag" style="background:#fff3cd;color:#856404;">⚠ To be confirmed</span>`;
 
@@ -492,7 +531,7 @@
     document.getElementById("currentTime").textContent = `${h}:${m}`;
 
     const sessions = sessionsForRole(currentDay, currentRole)
-      .sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+      .sort((a,b) => timeToMinutes(a.start) - timeToMinutes(b.start) || ((a.order ?? 0) - (b.order ?? 0)));
 
     const live = sessions.find(s => isSessionCurrent(s));
     const liveLabel = document.getElementById("liveSessionLabel");
@@ -626,6 +665,98 @@
     }
   }
 
+  // ── Shift programme times (director + assessor-faculty) ───────────────────
+  // All the actual work happens server-side in the shiftProgrammeSession
+  // Cloud Function (functions/index.js) — firestore.rules doesn't allow
+  // clients to write the sessions collection directly. Everything here is
+  // just UI: populate the picker for whatever's currently on screen, build a
+  // client-side preview of what a shift would affect (so the confirm dialog
+  // can show real session names before anything is sent), then call the
+  // function and report the result. If this preview ever disagrees with what
+  // the function actually does, the function's result is what's real; this
+  // is display-only, not the source of truth.
+  function populateShiftSessionSelect() {
+    const sel = document.getElementById("shiftSessionSelect");
+    if (!sel) return;
+    const sessions = sessionsForCurrentView(currentDay);
+    sel.innerHTML = sessions.map(s =>
+      `<option value="${s.id}">${s.start} — ${s.title}${s.subtitle ? " (" + s.subtitle + ")" : ""}</option>`
+    ).join("");
+  }
+
+  function openShiftPanel() {
+    populateShiftSessionSelect();
+    document.getElementById("shiftResultLog").innerHTML = "";
+    document.getElementById("shiftProgrammePanel").classList.remove("hidden");
+  }
+
+  function computeCascadePreview(sessionId, deltaMinutes) {
+    const daySessions = PROGRAMME[currentDay].sessions;
+    const anchor = daySessions.find(s => s.id === sessionId);
+    if (!anchor) return [];
+    const streamOf = s => s.tags.includes("assessor-stream") ? "assessor" : "instructor";
+    const anchorStream = streamOf(anchor);
+
+    const streamSessions = daySessions
+      .filter(s => streamOf(s) === anchorStream)
+      .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start) || ((a.order ?? 0) - (b.order ?? 0)));
+
+    const anchorIndex = streamSessions.findIndex(s => s.id === sessionId);
+    if (anchorIndex === -1) return [];
+
+    const toShift = streamSessions.slice(anchorIndex);
+    const seen = new Set();
+    const affected = [];
+    toShift.forEach(s => {
+      if (!seen.has(s.id)) { seen.add(s.id); affected.push(s); }
+      if (s.pairWith && !seen.has(s.pairWith)) {
+        const twin = daySessions.find(x => x.id === s.pairWith);
+        if (twin) { seen.add(twin.id); affected.push(twin); }
+      }
+    });
+    return affected;
+  }
+
+  async function previewAndShift() {
+    const sessionId = document.getElementById("shiftSessionSelect").value;
+    const deltaMinutes = parseInt(document.getElementById("shiftMinutesInput").value, 10);
+    const logEl = document.getElementById("shiftResultLog");
+    logEl.innerHTML = "";
+
+    if (!sessionId) { alert("Pick a session."); return; }
+    if (!Number.isInteger(deltaMinutes) || deltaMinutes === 0) {
+      alert("Enter a non-zero number of minutes (e.g. 15 or -10)."); return;
+    }
+
+    const affected = computeCascadePreview(sessionId, deltaMinutes);
+    if (!affected.length) {
+      alert("Couldn't work out that session's schedule to preview — try reopening this panel."); return;
+    }
+
+    const direction = deltaMinutes > 0 ? "later" : "earlier";
+    const names = affected.map(s => `${s.start} — ${s.title}`).join("\n");
+    if (!confirm(`Shift ${affected.length} session(s) ${Math.abs(deltaMinutes)} minutes ${direction}?\n\n${names}`)) return;
+
+    const btn = document.getElementById("shiftBtn");
+    btn.disabled = true;
+    btn.textContent = "Shifting…";
+    logEl.innerHTML = "Shifting…";
+
+    try {
+      const call = fns.httpsCallable("shiftProgrammeSession");
+      const res = await call({ sessionId, deltaMinutes });
+      const d = res.data || {};
+      logEl.innerHTML = `<div style="color:#1a6e31;font-weight:700;">✅ Shifted ${(d.affected || []).length} session(s).</div>`;
+      document.getElementById("shiftMinutesInput").value = "";
+    } catch (err) {
+      console.error("shiftProgrammeSession failed:", err);
+      logEl.innerHTML = `<div style="color:#b7410e;font-weight:700;">Shift failed: ${err.message || err.code || "unknown error"}</div>`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = "Shift →";
+  }
+
   // ── Noticeboard: receive side ───────────────────────────────────────────────
   // Determines whether a message with a given `target` should be shown to a
   // given role. Candidates (instructor/assessor) never see stream-scoped
@@ -668,6 +799,29 @@
         messagesCache = snap.docs.map(d => d.data());
         renderNoticeboardForRole();
       }, err => console.warn("Message listener:", err.message));
+  }
+
+  // ── Programme: receive side ────────────────────────────────────────────────
+  // PROGRAMME starts as the static data from programme-data.js. Once the
+  // sessions collection has been migrated (admin-migrate-programme.html) and
+  // the shift tool starts editing live times, this listener takes over and
+  // keeps PROGRAMME in sync in real time. A day is only overwritten once
+  // Firestore actually has documents for it, so an empty/not-yet-migrated
+  // collection leaves the static fallback in place instead of blanking the
+  // timetable.
+  function listenProgramme() {
+    if (!db) return;
+    db.collection(COLLECTIONS.sessions).onSnapshot(snap => {
+      const byDay = { friday: [], saturday: [], sunday: [] };
+      snap.forEach(doc => {
+        const s = { id: doc.id, ...doc.data() };
+        if (byDay[s.day]) byDay[s.day].push(s);
+      });
+      ["friday", "saturday", "sunday"].forEach(day => {
+        if (byDay[day].length) PROGRAMME[day].sessions = byDay[day];
+      });
+      renderAll();
+    }, err => console.warn("Programme listener:", err.message));
   }
 
   // ── Sign out ───────────────────────────────────────────────────────────────
@@ -816,11 +970,13 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     initFirebase();
+    fns = firebase.functions();
 
     auth.onAuthStateChanged(async user => {
       if (!user) { window.location.href = "index.html"; return; }
       currentUser = user;
       listenMessages();
+      listenProgramme();
 
       // Load role from people collection
       let role = null;

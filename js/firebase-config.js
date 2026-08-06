@@ -211,7 +211,15 @@ function initFirebase() {
     return false;
   }
   firebase.initializeApp(FIREBASE_CONFIG);
-  if (firebase.appCheck) {
+  // 2026-08-05: App Check activation disabled as a stopgap — the reCAPTCHA
+  // v3 site key's domain list doesn't include rmd.uk.com (or is owned by an
+  // account we couldn't locate), so the token-fetch call was 400ing and
+  // throttling, which cascaded into breaking unrelated Firestore reads on
+  // pages like faculty.html. Firestore enforcement was already left in
+  // "monitor mode" (off) in the Firebase console, so this shouldn't change
+  // what's actually enforced — re-enable once the domain/account issue is
+  // fixed and confirmed working. See [[rmd-appcheck-recaptcha-stopgap]].
+  if (false && firebase.appCheck) {
     firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
   } else {
     // Page didn't load firebase-app-check-compat.js — requests from it won't
@@ -220,7 +228,15 @@ function initFirebase() {
     console.warn("Firebase App Check SDK not loaded on this page.");
   }
   db      = firebase.firestore();
-  auth    = firebase.auth();
+  // 2026-08-05: guarded the same way storage already was — pages like
+  // faculty.html intentionally don't load firebase-auth-compat.js (they're
+  // public, no sign-in needed), but this function used to call firebase.auth()
+  // unconditionally. That threw a synchronous, uncaught TypeError which
+  // aborted the rest of the calling page's script before it ever reached
+  // loadRoster() — the actual cause of the blank Birmingham faculty page,
+  // not the App Check throttle above (that was a red herring that happened
+  // to fire around the same time). See [[rmd-appcheck-recaptcha-stopgap]].
+  auth    = firebase.auth ? firebase.auth() : null;
   storage = firebase.storage ? firebase.storage() : null;
   console.log("Firebase initialised.");
   return true;

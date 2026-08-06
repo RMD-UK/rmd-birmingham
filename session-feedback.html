@@ -521,6 +521,12 @@ function setRating(candidateId, rating) {
 
   ratings[candidateId] = { ...r, rating: newRating };
 
+  // A flag is only valid alongside the colour it forces — manually picking a
+  // different colour drops the now-inconsistent flag (strong implies green,
+  // weak implies red).
+  if (newRating !== "green") ratings[candidateId].strong = false;
+  if (newRating !== "red")   ratings[candidateId].weak   = false;
+
   // Show/hide comment box for red
   const commentWrap = document.getElementById("comment-" + candidateId);
   if (commentWrap) {
@@ -554,22 +560,7 @@ function setRating(candidateId, rating) {
     }).join("");
   }
 
-  updateStatusBar();
-  scheduleAutoSave(candidateId);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Toggle flag
-// ─────────────────────────────────────────────────────────────────────────────
-function toggleFlag(candidateId, flag) {
-  const r = ratings[candidateId] || {};
-  ratings[candidateId] = { ...r, [flag]: !r[flag] };
-
-  // Update button
-  const card = document.getElementById("card-" + candidateId);
-  const btn  = card?.querySelector(`.flag-btn.active-${flag === "strong" ? "strong" : "weak"}`);
-
-  // Re-render flags
+  // Re-render flags too — a manual colour change may have just cleared one
   const flagsEl = card?.querySelector(".candidate-flags");
   if (flagsEl) {
     const isStrong = !!ratings[candidateId].strong;
@@ -581,6 +572,36 @@ function toggleFlag(candidateId, flag) {
               onclick="toggleFlag('${candidateId}','weak')">⚠ Notably weak</button>`;
   }
 
+  updateStatusBar();
+  scheduleAutoSave(candidateId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toggle flag
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleFlag(candidateId, flag) {
+  const r = ratings[candidateId] || {};
+  const turningOn = !r[flag];
+  const other = flag === "strong" ? "weak" : "strong";
+
+  const next = { ...r, [flag]: turningOn };
+
+  // Strong and weak are mutually exclusive — they force opposite colours.
+  if (turningOn) next[other] = false;
+
+  // Notably strong forces green; notably weak forces red. Overrides
+  // whatever colour was already selected.
+  if (turningOn) next.rating = flag === "strong" ? "green" : "red";
+
+  ratings[candidateId] = next;
+
+  // Re-render the whole card — rating buttons, flags, border colour, and
+  // the comment box (which must appear/hide based on the forced red rating).
+  const candidate = myCandidates.find(c => c.id === candidateId);
+  const card = document.getElementById("card-" + candidateId);
+  if (card && candidate) card.outerHTML = buildCard(candidate);
+
+  updateStatusBar();
   scheduleAutoSave(candidateId);
 }
 

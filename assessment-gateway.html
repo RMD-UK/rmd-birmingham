@@ -194,7 +194,7 @@
   <div class="clock-pill" id="clockEl">–:–</div>
 </div>
 
-<div id="deadlineBar">Assessing until 11:45 ·  loading…</div>
+<div id="deadlineBar">Assessing until 12:00 ·  loading…</div>
 
 <div class="view-tabs" id="viewTabs" style="display:none;">
   <button class="view-tab active" id="tabAssess"   onclick="switchView('assess')">Assess</button>
@@ -228,8 +228,10 @@ const isDirector = myRole === "director";
 // Re-declaring it here as a second top-level `const` throws a SyntaxError
 // (two <script> tags share one global scope) and silently kills this entire
 // script block — confirmed 2026-07-15. Do not redeclare it.
-const DEADLINE_HOUR   = 11;
-const DEADLINE_MIN    = 45;
+// Corrected 2026-08-06 (Jon confirmed the real gateway deadline is 12:00
+// noon — 11:45 is just when the coffee break starts, 15 min earlier).
+const DEADLINE_HOUR   = 12;
+const DEADLINE_MIN    = 0;
 
 // ── State ───────────────────────────────────────────────────────────────────
 var candidates    = {};   // id -> {name, stream}
@@ -644,19 +646,19 @@ function updateClock() {
   const dlMins  = (DEADLINE_HOUR * 60 + DEADLINE_MIN) - (h * 60 + m);
   const bar     = document.getElementById("deadlineBar");
   if (dlMins <= 0) {
-    bar.textContent = "Assessment window closed (11:45)";
+    bar.textContent = "Assessment window closed (12:00)";
     bar.className   = "red";
   } else if (dlMins <= 15) {
     bar.textContent = `⚠ ${dlMins} minute(s) remaining — submit results now`;
     bar.className   = "red";
   } else if (dlMins <= 30) {
-    bar.textContent = `⚠ ${dlMins} minutes remaining until 11:45 deadline`;
+    bar.textContent = `⚠ ${dlMins} minutes remaining until 12:00 deadline`;
     bar.className   = "amber";
   } else {
     const hrs = Math.floor(dlMins / 60);
     const min = dlMins % 60;
     const timeStr = hrs > 0 ? `${hrs}h ${min}m` : `${min}m`;
-    bar.textContent = `Assessing until 11:45 · ${timeStr} remaining`;
+    bar.textContent = `Assessing until 12:00 · ${timeStr} remaining`;
     bar.className   = "";
   }
 }
