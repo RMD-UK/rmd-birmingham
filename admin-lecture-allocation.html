@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lecture Allocation — RMD Instructor Weekend 2026</title>
+<link rel="stylesheet" href="css/rmd.css">
+<style>
+  body { background:#f0f2f7; margin:0; }
+
+  .ra-toolbar { background:var(--rmd-navy); color:#fff; padding:10px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:50; flex-wrap:wrap; }
+  .ra-back { color:rgba(255,255,255,.55); text-decoration:none; font-size:13px; }
+  .ra-back:hover { color:#fff; }
+  .ra-title { font-size:16px; font-weight:800; flex:1; margin:0; white-space:nowrap; }
+  .ra-btn { background:rgba(255,255,255,.14); color:#fff; border:none; padding:7px 13px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+  .ra-btn:hover { background:rgba(255,255,255,.24); }
+  .ra-btn.save { background:var(--rmd-red); }
+  .ra-btn.save:hover { background:#a93226; }
+  #saveStatus { font-size:12px; min-width:90px; }
+  #saveStatus.ok  { color:#4ade80; }
+  #saveStatus.err { color:#f87171; }
+
+  .wrap { max-width:900px; margin:0 auto; padding:16px; }
+
+  .migrate-warning {
+    background:#fff3cd; border:1.5px solid #c17a00; border-radius:8px;
+    padding:14px 16px; font-size:13px; color:#856404; line-height:1.5; margin-bottom:16px;
+  }
+  .migrate-warning a { color:#856404; font-weight:700; }
+
+  .stats-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-bottom:16px; }
+  .stat-card { background:white; border-radius:8px; padding:12px; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,.09); }
+  .stat-num { font-size:24px; font-weight:700; color:var(--rmd-navy); line-height:1; }
+  .stat-lbl { font-size:11px; color:#6b7696; margin-top:4px; }
+  .stat-card.green .stat-num { color:#1a6e31; }
+  .stat-card.amber .stat-num { color:#c17a00; }
+
+  .controls { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+  .controls input[type=search] { flex:1; min-width:180px; padding:8px 12px; border:1.5px solid #d0d5e0; border-radius:6px; font-family:var(--font); font-size:13px; }
+  .controls label { font-size:12.5px; color:#505878; display:flex; align-items:center; gap:6px; cursor:pointer; }
+
+  .day-heading { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--rmd-navy); margin:18px 0 8px; padding-bottom:5px; border-bottom:2px solid #dde2ed; }
+
+  .session-row { background:white; border:1.5px solid #e0e4ee; border-radius:8px; padding:10px 14px; margin-bottom:7px; display:flex; align-items:center; gap:14px; }
+  .s-time { font-family:monospace; font-weight:700; color:var(--rmd-navy); min-width:44px; font-size:13px; }
+  .s-main { flex:1; min-width:0; }
+  .s-title { font-size:13.5px; font-weight:700; color:var(--rmd-navy); }
+  .s-subtitle { font-size:11.5px; color:#6b7696; margin-top:1px; }
+  .s-lead-wrap { min-width:210px; }
+  .s-select { width:100%; padding:6px 9px; border:1.5px solid #d0d5e0; border-radius:6px; font-family:var(--font); font-size:12.5px; color:var(--rmd-navy); background:white; }
+  .s-select.unassigned { border-color:#c17a00; background:#fff9ec; }
+  .s-select.assigned { border-color:#1a6e31; background:#f0fdf4; }
+
+  .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+  #authMsg { font-size:15px; opacity:.7; }
+</style>
+</head>
+<body>
+
+<!-- Auth -->
+<div id="authOverlay" class="auth-overlay">
+  <div style="font-size:36px">🎤</div>
+  <div id="authMsgOverlay">Checking access…</div>
+</div>
+
+<div class="ra-toolbar">
+  <a href="cd-dashboard.html" class="ra-back">← Dashboard</a>
+  <h1 class="ra-title">Lecture Allocation — Instructor Weekend 2026</h1>
+  <span id="saveStatus"></span>
+  <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
+</div>
+
+<div class="wrap">
+
+  <div class="migrate-warning" id="migrateWarning" style="display:none;">
+    ⚠️ No sessions found in the <code>sessions</code> collection yet. This tool reads live programme data —
+    run <a href="admin-migrate-programme.html">Migrate Programme to Firestore</a> first, then reload this page.
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card green"><div class="stat-num" id="statAssigned">–</div><div class="stat-lbl">Assigned</div></div>
+    <div class="stat-card amber"><div class="stat-num" id="statUnassigned">–</div><div class="stat-lbl">Not yet assigned</div></div>
+    <div class="stat-card"><div class="stat-num" id="statTotal">–</div><div class="stat-lbl">Total sessions</div></div>
+  </div>
+
+  <div class="controls">
+    <input type="search" id="searchBox" placeholder="Search sessions…" oninput="renderAll()">
+    <label><input type="checkbox" id="unassignedOnly" onchange="renderAll()"> Show unassigned only</label>
+  </div>
+
+  <div id="dayContainer"></div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+// ── State ──────────────────────────────────────────────────────────────────
+let sessions = [];      // [{id, day, start, title, subtitle, lead, ...}]
+let allFaculty = [];     // [{name, email}] — Faculty / Instructor Trainer / Assessor Faculty
+let pendingChanges = {}; // {sessionId: newLeadValue}
+const DAY_ORDER = ["friday", "saturday", "sunday"];
+const DAY_LABELS = { friday: "Friday 9 Oct", saturday: "Saturday 10 Oct", sunday: "Sunday 11 Oct" };
+
+initFirebase();
+
+requireDirector("timetable.html").then(async () => {
+  document.getElementById("authOverlay").style.display = "none";
+  await loadData();
+});
+
+// ── Load ───────────────────────────────────────────────────────────────────
+async function loadData() {
+  // Sessions — from the live sessions collection (seeded via admin-migrate-programme.html).
+  // Falls back to nothing (with a warning) if that migration hasn't been run yet — this tool
+  // deliberately does NOT read js/programme-data.js directly, so a save here can never be
+  // silently overwritten by someone re-running the migration from stale source data without
+  // also seeing this same warning themselves.
+  try {
+    const snap = await db.collection(COLLECTIONS.sessions).orderBy("day").orderBy("order").get();
+    snap.forEach(doc => sessions.push({ id: doc.id, ...doc.data() }));
+  } catch(e) { console.warn("Sessions load failed:", e.message); }
+
+  if (!sessions.length) {
+    document.getElementById("migrateWarning").style.display = "block";
+  }
+
+  // Faculty — same source/shape as admin-room-allocation.html's loadData(), extended to
+  // include Assessor Faculty since assessor-stream sessions also need a lead assigned.
+  try {
+    const fSnap = await db.collection("faculty_responses").get();
+    const seen = new Set();
+    fSnap.forEach(doc => {
+      const d = doc.data();
+      const em = (d.email || "").toLowerCase();
+      if (!em || seen.has(em)) return;
+      if (d.role === "Faculty" || d.role === "Instructor Trainer" || d.role === "Assessor Faculty") {
+        const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || em;
+        allFaculty.push({ name, email: em });
+        seen.add(em);
+      }
+    });
+    allFaculty.sort((a,b) => a.name.localeCompare(b.name));
+  } catch(e) { console.warn("Faculty responses load failed:", e.message); }
+
+  renderAll();
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function currentLead(s) {
+  return pendingChanges[s.id] !== undefined ? pendingChanges[s.id] : (s.lead || "");
+}
+
+function renderAll() {
+  const q = (document.getElementById("searchBox").value || "").toLowerCase();
+  const unassignedOnly = document.getElementById("unassignedOnly").checked;
+  const container = document.getElementById("dayContainer");
+  container.innerHTML = "";
+
+  let assigned = 0, total = 0;
+
+  DAY_ORDER.forEach(day => {
+    const daySessions = sessions
+      .filter(s => s.day === day)
+      .filter(s => !q || s.title.toLowerCase().includes(q) || (s.subtitle||"").toLowerCase().includes(q))
+      .filter(s => !unassignedOnly || !currentLead(s));
+
+    // Count against the full (unfiltered) set for this day, not the filtered view
+    sessions.filter(s => s.day === day).forEach(s => { total++; if (currentLead(s)) assigned++; });
+
+    if (!daySessions.length) return;
+
+    const heading = document.createElement("div");
+    heading.className = "day-heading";
+    heading.textContent = DAY_LABELS[day] || day;
+    container.appendChild(heading);
+
+    daySessions.forEach(s => {
+      const lead = currentLead(s);
+      const row = document.createElement("div");
+      row.className = "session-row";
+
+      const timeEl = document.createElement("div");
+      timeEl.className = "s-time";
+      timeEl.textContent = s.start || "";
+
+      const mainEl = document.createElement("div");
+      mainEl.className = "s-main";
+      mainEl.innerHTML = `<div class="s-title">${s.title || "(untitled)"}</div>` +
+        (s.subtitle ? `<div class="s-subtitle">${s.subtitle}</div>` : "");
+
+      const wrap = document.createElement("div");
+      wrap.className = "s-lead-wrap";
+      const select = document.createElement("select");
+      select.className = "s-select " + (lead ? "assigned" : "unassigned");
+
+      const blankOpt = document.createElement("option");
+      blankOpt.value = "";
+      blankOpt.textContent = "— assign a lead —";
+      select.appendChild(blankOpt);
+
+      // If the current lead isn't in the faculty list (e.g. "Jon", "Logistics team" —
+      // free-text values already sitting in older programme data), keep it selectable
+      // rather than silently dropping it from the dropdown.
+      const names = allFaculty.map(f => f.name);
+      if (lead && !names.includes(lead)) names.unshift(lead);
+
+      names.forEach(name => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        if (name === lead) opt.selected = true;
+        select.appendChild(opt);
+      });
+
+      select.addEventListener("change", () => {
+        pendingChanges[s.id] = select.value;
+        renderAll();
+      });
+
+      wrap.appendChild(select);
+      row.appendChild(timeEl);
+      row.appendChild(mainEl);
+      row.appendChild(wrap);
+      container.appendChild(row);
+    });
+  });
+
+  document.getElementById("statAssigned").textContent = assigned;
+  document.getElementById("statUnassigned").textContent = total - assigned;
+  document.getElementById("statTotal").textContent = total;
+}
+
+// ── Save ───────────────────────────────────────────────────────────────────
+function showStatus(msg, cls) {
+  const el = document.getElementById("saveStatus");
+  el.textContent = msg;
+  el.className = cls || "";
+}
+
+async function saveAll() {
+  const ids = Object.keys(pendingChanges);
+  if (!ids.length) { showStatus("Nothing to save", ""); return; }
+  showStatus("Saving…", "");
+  try {
+    const batch = db.batch();
+    ids.forEach(id => {
+      batch.update(db.collection(COLLECTIONS.sessions).doc(id), { lead: pendingChanges[id] });
+      const s = sessions.find(x => x.id === id);
+      if (s) s.lead = pendingChanges[id];
+    });
+    await batch.commit();
+    pendingChanges = {};
+    showStatus(`Saved ${ids.length} change${ids.length===1?"":"s"}`, "ok");
+  } catch(e) {
+    showStatus("Save failed: " + e.message, "err");
+  }
+}
+</script>
+</body>
+</html>
