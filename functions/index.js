@@ -641,7 +641,8 @@ const IW_TO_PEOPLE_ROLE = {
   "Instructor Trainer Candidate":  "itc",
   "Instructor Trainer":            "full-instructor",
   "Assessor Faculty":              "assessor-faculty",
-  "Director":                      "director"
+  "Director":                      "director",
+  "RMD Student Faculty":           "faculty"
 };
 
 exports.syncIwRegistrationToPeople = onDocumentWritten(
