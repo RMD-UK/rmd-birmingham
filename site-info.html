@@ -536,6 +536,7 @@
   // ── Get role from URL, then verify with auth ──────────────────────────────
   const params  = new URLSearchParams(window.location.search);
   let   curRole = params.get("role") || "instructor";
+  let   curRoleLabel = null;
 
   auth.onAuthStateChanged(async function (user) {
     if (!user) {
@@ -549,18 +550,19 @@
       if (snap.exists) {
         const data = snap.data();
         if (data.role) curRole = data.role;
+        if (data.roleLabel) curRoleLabel = data.roleLabel;
         if (data.name) {
           document.getElementById("welcomeName").textContent = `Welcome, ${data.name.split(" ")[0]}`;
         }
       }
     } catch (e) { /* use URL param role */ }
 
-    applyRole(curRole);
+    applyRole(curRole, curRoleLabel);
   });
 
-  function applyRole(role) {
+  function applyRole(role, roleLabel) {
     // Role pill
-    document.getElementById("rolePill").textContent = ROLE_LABELS[role] || role;
+    document.getElementById("rolePill").textContent = roleLabel || ROLE_LABELS[role] || role;
 
     // Timetable link with role
     document.getElementById("iwLink").href = `timetable.html?role=${role}`;

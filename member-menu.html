@@ -264,18 +264,23 @@
       role = (await resolveRole(user.uid, user.email || "")) || role;
     } catch (e) { /* fall back to default role */ }
 
+    let roleLabel = null;
     try {
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
-      if (snap.exists && snap.data().name) {
-        document.getElementById("welcomeName").textContent = `Welcome, ${snap.data().name.split(" ")[0]}`;
+      if (snap.exists) {
+        const data = snap.data();
+        if (data.name) {
+          document.getElementById("welcomeName").textContent = `Welcome, ${data.name.split(" ")[0]}`;
+        }
+        if (data.roleLabel) roleLabel = data.roleLabel;
       }
     } catch (e) { /* keep generic welcome */ }
 
-    applyRole(role);
+    applyRole(role, roleLabel);
   });
 
-  function applyRole(role) {
-    document.getElementById("rolePill").textContent = ROLE_LABELS[role] || role;
+  function applyRole(role, roleLabel) {
+    document.getElementById("rolePill").textContent = roleLabel || ROLE_LABELS[role] || role;
 
     // Carry role through to pages that read it from the URL
     document.getElementById("iwLink").href = `site-info.html?role=${role}`;

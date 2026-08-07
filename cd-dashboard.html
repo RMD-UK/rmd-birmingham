@@ -626,6 +626,26 @@
         </div>
         <div class="card-body" id="facResponsesBody"><div class="loading">Loading…</div></div>
       </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="card-header">Faculty &amp; Organising Team (synced)
+          <div class="card-actions">
+            <input id="facPeopleSearch" type="text" placeholder="Search…"
+              style="padding:5px 8px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;font-family:var(--font);font-size:12px;background:rgba(255,255,255,0.1);color:white;width:120px;"
+              oninput="renderFacultyList(this.value)">
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table class="cand-table">
+            <thead><tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+            </tr></thead>
+            <tbody id="facPeopleTableBody"><tr><td colspan="3" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
       <div class="card" style="margin-top:12px;">
         <div class="card-header">Admin Tools</div>
         <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -696,6 +716,22 @@ const ITC_SESSIONS = [
   { key: "sun_teaching", label: "Sun — Teaching" },
   { key: "sun_assess",   label: "Sun — Continuous Assessment" }
 ];
+
+// Mirrors ROLE_LABELS in timetable.html / site-info.html / member-menu.html.
+// Was referenced at lines using ROLE_LABELS[c.role] without being defined
+// here — harmless while every candidate had a `stream` field (which short-
+// circuits before ROLE_LABELS is touched), but a live ReferenceError for
+// any person synced without one. Added 2026-08-07 alongside the roleLabel
+// field (see admin-iw-registrations.html syncToPeople).
+const ROLE_LABELS = {
+  director:            "Course Director",
+  faculty:             "Faculty",
+  "full-instructor":   "Instructor Trainer",
+  instructor:          "Instructor Candidate",
+  assessor:            "Assessor / Senior Instructor",
+  "assessor-faculty":  "Assessor Faculty",
+  itc:                 "Instructor Trainer Candidate"
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BOOT
@@ -913,7 +949,7 @@ function renderCandidates(filter) {
     const dec     = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
-      <td>${esc(c.stream || ROLE_LABELS[c.role] || c.role)}</td>
+      <td>${esc(c.roleLabel || c.stream || ROLE_LABELS[c.role] || c.role)}</td>
       <td>${esc(c.group || "–")}</td>
       <td><span class="tl-badge ${rating}">${rating === "none" ? "Not yet rated" : rating.charAt(0).toUpperCase() + rating.slice(1)}</span></td>
       <td>
@@ -930,6 +966,27 @@ function renderCandidates(filter) {
 }
 
 function filterCandidates(val) { renderCandidates(val); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FACULTY & ORGANISING TEAM (synced `people`, not raw faculty_responses —
+// see loadFacultyResponses() below for the pre-sync response list)
+// ─────────────────────────────────────────────────────────────────────────────
+function renderFacultyList(filter) {
+  const faculty = allPeople.filter(p => [ROLES.FACULTY, ROLES.FULL_INSTRUCTOR, ROLES.ITC, ROLES.ASSESSOR_FACULTY].includes(p.role));
+  const filtered = filter
+    ? faculty.filter(f => (f.name || "").toLowerCase().includes(filter.toLowerCase()))
+    : faculty;
+
+  const tbody = document.getElementById("facPeopleTableBody");
+  if (!tbody) return; // section not yet rendered on first load
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-msg">No faculty synced yet — use "Sync to People" on the IW Registrations page.</td></tr>`; return; }
+
+  tbody.innerHTML = filtered.map(f => `<tr>
+    <td><strong>${esc(f.name || "–")}</strong></td>
+    <td>${esc(f.email || "–")}</td>
+    <td>${esc(f.roleLabel || ROLE_LABELS[f.role] || f.role || "–")}</td>
+  </tr>`).join("");
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ITCs
@@ -1209,7 +1266,7 @@ function renderFeedback(day) {
       <div class="tl-row">
         <div class="tl-name">
           ${esc(c.name)}
-          <div class="tl-sub">${esc(c.stream || ROLE_LABELS[c.role] || "")}</div>
+          <div class="tl-sub">${esc(c.roleLabel || c.stream || ROLE_LABELS[c.role] || "")}</div>
         </div>
         <div class="tl-sessions">
           ${fb.length ? fb.map(f => `<span class="tl-badge ${f.rating}" title="${esc(f.sessionId)}">${f.rating.charAt(0).toUpperCase()}</span>`).join("") : `<span class="tl-badge none">–</span>`}
@@ -1439,7 +1496,7 @@ function switchSection(name) {
   if (name === "itcs")       renderITCs();
   if (name === "feedback")   renderFeedback(currentFeedbackDay);
   if (name === "programme")  renderProgramme(currentProgDay);
-  if (name === "faculty")    loadFacultyResponses();
+  if (name === "faculty")    { loadFacultyResponses(); renderFacultyList(); }
 
   window.scrollTo(0, 0);
 }

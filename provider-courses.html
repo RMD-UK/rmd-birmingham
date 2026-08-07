@@ -222,11 +222,17 @@
       role = (await resolveRole(user.uid, user.email || "")) || role;
     } catch (e) { /* fall back to default role */ }
 
-    applyRole(role);
+    let roleLabel = null;
+    try {
+      const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (snap.exists && snap.data().roleLabel) roleLabel = snap.data().roleLabel;
+    } catch (e) { /* fall back to generic label */ }
+
+    applyRole(role, roleLabel);
   });
 
-  function applyRole(role) {
-    document.getElementById("rolePill").textContent = ROLE_LABELS[role] || role;
+  function applyRole(role, roleLabel) {
+    document.getElementById("rolePill").textContent = roleLabel || ROLE_LABELS[role] || role;
 
     if (STAFF_TAB_ROLES.has(role)) {
       document.getElementById("resTabs").classList.remove("hidden");

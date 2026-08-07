@@ -314,9 +314,9 @@
   };
 
   // ── Role management ────────────────────────────────────────────────────────
-  function setRole(role) {
+  function setRole(role, roleLabel) {
     currentRole = role;
-    document.getElementById("roleBadge").textContent = ROLE_LABELS[role] || role;
+    document.getElementById("roleBadge").textContent = roleLabel || ROLE_LABELS[role] || role;
 
     // Director toolbar
     const tb = document.getElementById("directorToolbar");
@@ -980,9 +980,14 @@
 
       // Load role from people collection
       let role = null;
+      let roleLabel = null;
       try {
         const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
-        if (snap.exists) role = snap.data().role || null;
+        if (snap.exists) {
+          const data = snap.data();
+          role = data.role || null;
+          roleLabel = data.roleLabel || null;
+        }
       } catch (e) { console.warn("Could not load role:", e.message); }
 
       // Hide loading overlay
@@ -992,7 +997,7 @@
       const devRole = role || "director";
       document.getElementById("roleSelectorBar").style.display = "flex";
       document.getElementById("roleSelect").value = devRole;
-      setRole(devRole);
+      setRole(devRole, roleLabel);
       if (user.email) loadUserRoom(user.email, devRole);
       switchDay(getDefaultDay());
       updateLiveBar();
