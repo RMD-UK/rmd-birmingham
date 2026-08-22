@@ -203,7 +203,7 @@ let db, auth, storage;
 // Registered 2026-07-30. Enforcement is left OFF in the Firebase console
 // initially (monitor mode) — flip Firestore/Functions to "Enforced" only after
 // confirming real traffic isn't being blocked.
-const APP_CHECK_SITE_KEY = "6LcPHG0tAAAAAANZP4xynIbIc3h8dtwKZrtGpc0G";
+const APP_CHECK_SITE_KEY = "6LfRXZMtAAAAAMTeqM9Ol3K58If8sBAOpB8UbYas";
 
 function initFirebase() {
   if (typeof firebase === "undefined") {
@@ -219,7 +219,7 @@ function initFirebase() {
   // "monitor mode" (off) in the Firebase console, so this shouldn't change
   // what's actually enforced — re-enable once the domain/account issue is
   // fixed and confirmed working. See [[rmd-appcheck-recaptcha-stopgap]].
-  if (false && firebase.appCheck) {
+  if (firebase.appCheck) {
     firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
   } else {
     // Page didn't load firebase-app-check-compat.js — requests from it won't
