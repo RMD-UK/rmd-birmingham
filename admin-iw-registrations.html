@@ -232,13 +232,14 @@
 
   <!-- Action bar -->
   <div class="action-bar">
-    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" data-tooltip="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Instructor Candidates land already Confirmed — attendance is mandated, no sign-off needed. Assessor/Senior Instructors land Pending — use Send RSVP invites (or an email reply and the ✓/✗ buttons) to move them to Confirmed or Declined. The only route either group has onto this list.">⬇ Import course candidates</button>
+    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" data-tooltip="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Instructor Candidates land already Confirmed — attendance is mandated, no sign-off needed. Assessor/Senior Instructors land Pending and are emailed a confirm/decline link automatically as part of this import (or reply by email and use the ✓/✗ buttons) to move them to Confirmed or Declined. The only route either group has onto this list.">⬇ Import course candidates</button>
     <button class="btn-action secondary" onclick="togglePanel('missingPanel')" data-tooltip="Read-only check: everyone on this year's confirmed MOU roster as an Instructor Candidate or Assessor/Senior Instructor who is NOT yet on this list. Attendance is mandated for both groups. Doesn't add anyone — use Import course candidates for that.">🔍 Who's missing</button>
     <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" data-tooltip="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
     <button class="btn-action" onclick="togglePanel('addPanel')" data-tooltip="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" data-tooltip="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
     <button class="btn-action secondary" onclick="copyAssessorEmails()" data-tooltip="Copies every Assessor/Senior Instructor's email to your clipboard, comma-separated — everyone in that role regardless of Pending/Confirmed/Declined status.">📧 Copy Assessor/Sr Instr. emails</button>
-    <button class="btn-action secondary" onclick="sendAssessorRsvpInvites()" data-tooltip="Emails every Pending Assessor/Senior Instructor a link to confirm or decline attendance. A Yes/No click there sets their status here automatically — same as clicking ✓/✗ below yourself. Only Pending rows are emailed; already Confirmed/Declined people are skipped.">✉ Send RSVP invites</button>
+    <button class="btn-action secondary" onclick="copyFacultyEmails()" data-tooltip="Copies every Faculty member's email to your clipboard, comma-separated — everyone in that role regardless of Pending/Confirmed/Declined status.">📧 Copy Faculty emails</button>
+    <button class="btn-action secondary" onclick="sendAssessorRsvpInvites()" data-tooltip="Emails every Pending Assessor/Senior Instructor a link to confirm or decline attendance. Import course candidates now sends this automatically for anyone newly added — use this button only to retry a failed send or catch anyone still Pending. A Yes/No click there sets their status here automatically — same as clicking ✓/✗ below yourself. Only Pending rows are emailed; already Confirmed/Declined people are skipped.">↻ Resend attendance confirmation request (Assessors/Sr Instr.)</button>
     <button class="btn-action secondary" onclick="exportCSV()" data-tooltip="Downloads the full list — name, email, role, status, source, notes, added date — as a CSV.">⬇ Export CSV</button>
     <button class="btn-action quiet tip-right" style="margin-left:auto;" onclick="fixInstructorCandidateStatus()" data-tooltip="One-time cleanup: sets every Instructor Candidate row to Confirmed. Only needed for rows imported before roster import started auto-confirming this role (2026-08-27) — Assessor/Senior Instructor and every other role are left untouched. Safe to click any time: does nothing and tells you so if everything's already Confirmed.">🔧 Fix legacy Instr. Candidate status</button>
     <button class="btn-action quiet tip-right" onclick="togglePanel('syncPanel')" data-tooltip="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
@@ -284,7 +285,7 @@
     </div>
     <div class="panel-body">
       <div class="warn-box">
-        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list. Instructor Candidates land already <strong>Confirmed</strong> — attendance is mandated, no sign-off needed. Assessor / Senior Instructors land <strong>Pending</strong> — use <strong>Send RSVP invites</strong> above to email them a confirm/decline link, or handle it by email reply and the ✓/✗ buttons below as replies come in. Neither group has an RMD account, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
+        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list. Instructor Candidates land already <strong>Confirmed</strong> — attendance is mandated, no sign-off needed. Assessor / Senior Instructors land <strong>Pending</strong> — are emailed a confirm/decline link automatically as soon as they're imported, or handle it by email reply and the ✓/✗ buttons below as replies come in. Neither group has an RMD account, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
       </div>
       <div id="rosterPreview" class="loading">Loading roster…</div>
       <div id="rosterActions" style="display:none;margin-top:12px;">
@@ -889,6 +890,8 @@ async function importFromRoster() {
     // Assessor/Senior Instructors: now require an explicit reply to an attendance-confirmation
     // email (2026-08-27, Jon), so they land Pending and get marked Confirmed/Declined by hand
     // via the ✓/✗ buttons as replies come in — no automatic Confirmed on import for this role.
+    // The RSVP invite email itself is now fired automatically right after this import
+    // completes (2026-08-27) — see the sendIwRsvpInvites call below.
     toAdd.forEach(p => {
       const status = p.role === "Instructor Candidate" ? "confirmed" : "pending";
       const ref = db.collection(IW_COLL).doc();
@@ -904,6 +907,28 @@ async function importFromRoster() {
     fb.textContent = `✓ ${toAdd.length} candidates imported`;
     setTimeout(() => { fb.textContent = ""; }, 4000);
     document.getElementById("rosterPanel").style.display = "none";
+
+    // Auto-invite: any newly-imported Assessor/Senior Instructors land Pending (see
+    // note above) — email their confirm/decline link immediately instead of waiting
+    // for someone to click "Resend attendance confirmation request" by hand. This reuses
+    // the same callable that button calls; sendIwRsvpInvites recomputes the full
+    // outstanding Pending list server-side, so it's safe even if other Pending rows
+    // already existed from an earlier import.
+    const assessorsAdded = newDocs.filter(p => p.role === ASSESSOR_ROLE);
+    if (assessorsAdded.length) {
+      try {
+        const call = fns.httpsCallable("sendIwRsvpInvites");
+        const res = await call({});
+        const d = res.data || {};
+        let msg = `${toAdd.length} candidates imported.\n\n✉ RSVP invites — sent: ${d.sent || 0}`;
+        if (d.failed) msg += `, failed: ${d.failed} (${(d.failedEmails || []).join(", ")})`;
+        if (d.skippedNoEmail) msg += `, skipped (no email on file): ${d.skippedNoEmail}`;
+        alert(msg);
+      } catch (err) {
+        console.error("sendIwRsvpInvites failed after import:", err);
+        alert(`${toAdd.length} candidates imported, but the RSVP invite email failed to send: ${err.message || err.code || "unknown error"}\n\nUse "Resend attendance confirmation request" below to retry.`);
+      }
+    }
   } catch(err) {
     fb.textContent = "Error: " + err.message;
   }
@@ -1218,6 +1243,17 @@ function copyAssessorEmails() {
     ? ` (${group.length - withEmail.length} more have no email on file, not included)` : "";
   navigator.clipboard.writeText(emails).then(() =>
     alert(`${withEmail.length} Assessor/Senior Instructor email(s) copied to clipboard.${noEmailNote}`));
+}
+
+function copyFacultyEmails() {
+  const group = allRegistrations.filter(r => r.role === "Faculty");
+  const withEmail = group.filter(r => r.email);
+  if (!withEmail.length) { alert("No Faculty emails on file."); return; }
+  const emails = withEmail.map(r => r.email).join(", ");
+  const noEmailNote = group.length - withEmail.length
+    ? ` (${group.length - withEmail.length} more have no email on file, not included)` : "";
+  navigator.clipboard.writeText(emails).then(() =>
+    alert(`${withEmail.length} Faculty email(s) copied to clipboard.${noEmailNote}`));
 }
 
 // ── RSVP invites (Assessor / Senior Instructor, Pending only) ──────────────────
