@@ -93,11 +93,11 @@
       font-family: var(--font); cursor: pointer;
     }
     .btn-remove {
-      padding: 5px 8px; background: none; color: #ccd6dd;
+      padding: 5px 8px; background: none; color: #99a3ad;
       border: none; border-radius: 5px; font-size: 14px; line-height: 1;
       font-family: var(--font); cursor: pointer;
     }
-    .btn-remove:hover { color: #b7410e; }
+    .btn-remove:hover { color: white; background: #b7410e; }
 
     /* Add person / paste panels */
     .panel {
@@ -440,7 +440,7 @@ function renderTable() {
         <button class="btn-decline${isDecl?" active":""}"
           onclick="setStatus('${r.id}','declined')">✗</button>
         ${r.status ? `<button class="btn-reset" onclick="setStatus('${r.id}','pending')" title="Reset to pending">↺</button>` : ""}
-        <button class="btn-remove" onclick="removeEntry('${r.id}','${(r.name||"").replace(/'/g,"\\'")}')">×</button>
+        <button class="btn-remove" title="Delete permanently — cannot be undone" onclick="removeEntry('${r.id}','${(r.name||"").replace(/'/g,"\\'")}')">🗑</button>
       </td>
     </tr>`;
   }).join("");
@@ -488,7 +488,7 @@ async function setStatus(docId, status) {
 
 // ── Remove entry ──────────────────────────────────────────────────────────────
 async function removeEntry(docId, name) {
-  if (!confirm(`Remove ${name} from the IW registrations list?\n\nThis will NOT delete them from the main roster.`)) return;
+  if (!confirm(`Permanently delete ${name} from the IW registrations list?\n\nThis cannot be undone. It will NOT delete them from the main roster (People).`)) return;
   try {
     await db.collection(IW_COLL).doc(docId).delete();
     allRegistrations = allRegistrations.filter(r => r.id !== docId);
