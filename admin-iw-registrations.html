@@ -232,11 +232,13 @@
 
   <!-- Action bar -->
   <div class="action-bar">
-    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" data-tooltip="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Instructor Candidates land already Confirmed — attendance is mandated, no sign-off needed. Assessor/Senior Instructors land Pending — email them to confirm, then mark Confirmed or Declined with the ✓/✗ buttons as replies come in. The only route either group has onto this list.">⬇ Import course candidates</button>
+    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" data-tooltip="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Instructor Candidates land already Confirmed — attendance is mandated, no sign-off needed. Assessor/Senior Instructors land Pending — use Send RSVP invites (or an email reply and the ✓/✗ buttons) to move them to Confirmed or Declined. The only route either group has onto this list.">⬇ Import course candidates</button>
     <button class="btn-action secondary" onclick="togglePanel('missingPanel')" data-tooltip="Read-only check: everyone on this year's confirmed MOU roster as an Instructor Candidate or Assessor/Senior Instructor who is NOT yet on this list. Attendance is mandated for both groups. Doesn't add anyone — use Import course candidates for that.">🔍 Who's missing</button>
     <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" data-tooltip="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
     <button class="btn-action" onclick="togglePanel('addPanel')" data-tooltip="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" data-tooltip="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
+    <button class="btn-action secondary" onclick="copyAssessorEmails()" data-tooltip="Copies every Assessor/Senior Instructor's email to your clipboard, comma-separated — everyone in that role regardless of Pending/Confirmed/Declined status.">📧 Copy Assessor/Sr Instr. emails</button>
+    <button class="btn-action secondary" onclick="sendAssessorRsvpInvites()" data-tooltip="Emails every Pending Assessor/Senior Instructor a link to confirm or decline attendance. A Yes/No click there sets their status here automatically — same as clicking ✓/✗ below yourself. Only Pending rows are emailed; already Confirmed/Declined people are skipped.">✉ Send RSVP invites</button>
     <button class="btn-action secondary" onclick="exportCSV()" data-tooltip="Downloads the full list — name, email, role, status, source, notes, added date — as a CSV.">⬇ Export CSV</button>
     <button class="btn-action quiet tip-right" style="margin-left:auto;" onclick="fixInstructorCandidateStatus()" data-tooltip="One-time cleanup: sets every Instructor Candidate row to Confirmed. Only needed for rows imported before roster import started auto-confirming this role (2026-08-27) — Assessor/Senior Instructor and every other role are left untouched. Safe to click any time: does nothing and tells you so if everything's already Confirmed.">🔧 Fix legacy Instr. Candidate status</button>
     <button class="btn-action quiet tip-right" onclick="togglePanel('syncPanel')" data-tooltip="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
@@ -282,7 +284,7 @@
     </div>
     <div class="panel-body">
       <div class="warn-box">
-        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list. Instructor Candidates land already <strong>Confirmed</strong> — attendance is mandated, no sign-off needed. Assessor / Senior Instructors land <strong>Pending</strong> — email them to confirm attendance, then use the ✓/✗ buttons below as replies come in. Neither group has an RMD account or a self-service RSVP form, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
+        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list. Instructor Candidates land already <strong>Confirmed</strong> — attendance is mandated, no sign-off needed. Assessor / Senior Instructors land <strong>Pending</strong> — use <strong>Send RSVP invites</strong> above to email them a confirm/decline link, or handle it by email reply and the ✓/✗ buttons below as replies come in. Neither group has an RMD account, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
       </div>
       <div id="rosterPreview" class="loading">Loading roster…</div>
       <div id="rosterActions" style="display:none;margin-top:12px;">
@@ -358,10 +360,14 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
 const IW_COLL          = "iw_registrations";
+const ASSESSOR_ROLE    = "Assessor / Senior Instructor";
+
+let fns; // firebase.functions() — set after initFirebase()
 
 let allRegistrations   = [];   // [{id, name, email, role, status, source, notes, addedAt}]
 let rosterCandidates   = [];   // from mou_roster (for import panel)
@@ -372,6 +378,7 @@ let syncCandidates     = [];   // confirmed regs mapped for People sync
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 initFirebase();
+fns = firebase.functions();
 
 requireDirector("timetable.html").then(async () => {
   document.getElementById("authOverlay").style.display = "none";
@@ -1200,6 +1207,47 @@ function copyConfirmedEmails() {
   const emails = confirmed.map(r => r.email).filter(Boolean).join(", ");
   navigator.clipboard.writeText(emails).then(() =>
     alert(`${confirmed.length} confirmed email(s) copied to clipboard.`));
+}
+
+function copyAssessorEmails() {
+  const group = allRegistrations.filter(r => r.role === ASSESSOR_ROLE);
+  const withEmail = group.filter(r => r.email);
+  if (!withEmail.length) { alert("No Assessor/Senior Instructor emails on file."); return; }
+  const emails = withEmail.map(r => r.email).join(", ");
+  const noEmailNote = group.length - withEmail.length
+    ? ` (${group.length - withEmail.length} more have no email on file, not included)` : "";
+  navigator.clipboard.writeText(emails).then(() =>
+    alert(`${withEmail.length} Assessor/Senior Instructor email(s) copied to clipboard.${noEmailNote}`));
+}
+
+// ── RSVP invites (Assessor / Senior Instructor, Pending only) ──────────────────
+async function sendAssessorRsvpInvites() {
+  const pending = allRegistrations.filter(r => r.role === ASSESSOR_ROLE && (r.status || "pending") === "pending");
+  const reachable = pending.filter(r => r.email);
+  const noEmail   = pending.filter(r => !r.email);
+
+  if (!reachable.length) {
+    if (noEmail.length) alert(`${noEmail.length} Pending Assessor/Senior Instructor(s) have no email on file, so there's no one to invite. Add their email first.`);
+    else alert("No Pending Assessors/Senior Instructors — nothing to invite.");
+    return;
+  }
+
+  const noEmailNote = noEmail.length
+    ? `\n\n(${noEmail.length} more are Pending but have no email on file, so won't be invited: ${noEmail.map(r => r.name).join(", ")})` : "";
+  if (!confirm(`Send an RSVP invite email to ${reachable.length} Pending Assessor/Senior Instructor(s)?\n\n${reachable.map(r => r.name).join(", ")}${noEmailNote}\n\nEach gets a link to confirm or decline — their answer sets status here automatically.`)) return;
+
+  try {
+    const call = fns.httpsCallable("sendIwRsvpInvites");
+    const res = await call({});
+    const d = res.data || {};
+    let msg = `✅ Sent: ${d.sent || 0}`;
+    if (d.failed) msg += `\n⚠ Failed: ${d.failed} — ${(d.failedEmails || []).join(", ")}`;
+    if (d.skippedNoEmail) msg += `\nSkipped (no email on file): ${d.skippedNoEmail}`;
+    alert(msg);
+  } catch (err) {
+    console.error("sendIwRsvpInvites failed:", err);
+    alert("RSVP invite send failed: " + (err.message || err.code || "unknown error"));
+  }
 }
 
 function exportCSV() {

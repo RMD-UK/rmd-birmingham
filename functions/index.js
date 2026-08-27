@@ -32,6 +32,17 @@
  * flagged back onto the registration doc instead of silently dropped. Full
  * detail above the function itself, below.
  *
+ * sendIwRsvpInvites: on-demand (callable), director-only. Emails every
+ * Pending Assessor/Senior Instructor on iw_registrations a link to
+ * iw-rsvp-confirm.html to confirm or decline attendance. See
+ * admin-iw-registrations.html's "Send RSVP invites" button. Full deploy
+ * note above the function itself, below.
+ *
+ * iwRsvpRespond: on-demand (callable), public — no sign-in, since Assessors
+ * and Senior Instructors have no RMD account. Backs iw-rsvp-confirm.html:
+ * looks up a registration by its own doc ID and records a Yes/No answer.
+ * Full detail above the function itself, below.
+ *
  * Deploy (from the RMD website repo root, Jon's own machine — this cannot
  * be run from a Cowork sandbox, no network route to *.googleapis.com):
  *   cd functions && npm install
@@ -698,3 +709,174 @@ exports.syncIwRegistrationToPeople = onDocumentWritten(
     if (after.syncFlag) await regRef.update({ syncFlag: admin.firestore.FieldValue.delete() });
   }
 );
+
+/**
+ * sendIwRsvpInvites — director-only.
+ *
+ * Emails every Assessor/Senior Instructor on iw_registrations who is still
+ * Pending, each with a link to iw-rsvp-confirm.html carrying their own
+ * registration doc ID. That page shows their name and a Yes/No choice;
+ * answering there calls iwRsvpRespond (below) directly — no sign-in, since
+ * Assessors/Senior Instructors don't have RMD accounts. The doc ID (a
+ * random Firestore auto-ID) is the only "token" — same trust model as a
+ * mailing-list unsubscribe link, which is appropriate for a low-stakes
+ * attendance RSVP but worth knowing: anyone who gets hold of the link can
+ * answer as that person.
+ *
+ * Deliberately a landing-page link rather than a one-click action link:
+ * university/NHS mail systems commonly run link-prefetching security
+ * scanners that open every URL in an incoming email before the recipient
+ * does — a one-click link that instantly flips status risks being tripped
+ * by the scanner itself, not the person. Requiring an explicit Yes/No click
+ * on iw-rsvp-confirm.html avoids that.
+ *
+ * Recomputes the outstanding (Pending) list server-side rather than trusting
+ * the caller, same reasoning as sendSeniorFacultyReminders above — a stale
+ * admin tab can't re-invite someone who has since been confirmed/declined
+ * (by email-reply-and-manual-click, or by this RSVP flow) since the page
+ * was last loaded. Only Pending rows are queried — already Confirmed/
+ * Declined people are not re-emailed by this function; re-run it after a
+ * fresh roster import to catch anyone newly added.
+ *
+ * Requires the same rmd.uk.com-verified Resend setup as the other reminder
+ * functions above — no new secret needed.
+ *
+ * Deploy: same as sendSeniorFacultyReminders (RESEND_API_KEY secret is
+ * shared — no new secret needed for this function).
+ */
+
+const IW_COLL                     = "iw_registrations";
+const ASSESSOR_ROLE               = "Assessor / Senior Instructor";
+const IW_RSVP_URL                 = "https://rmd.uk.com/iw-rsvp-confirm.html";
+const IW_RSVP_INVITES_COLLECTION  = "iw_rsvp_invites";
+
+exports.sendIwRsvpInvites = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const snap = await db.collection(IW_COLL)
+    .where("role", "==", ASSESSOR_ROLE)
+    .where("status", "==", "pending")
+    .get();
+
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const outstanding = all.filter(p => p.email);
+  const skippedNoEmail = all.length - outstanding.length;
+
+  if (!outstanding.length) {
+    return { sent: 0, failed: 0, failedEmails: [], skippedNoEmail, total: all.length };
+  }
+
+  const resend = new Resend(resendApiKey.value());
+
+  let sent = 0;
+  const failedEmails = [];
+  const sentTo = [];
+
+  for (const person of outstanding) {
+    const firstName = (person.name || "").split(" ")[0] || "there";
+    const link = `${IW_RSVP_URL}?id=${person.id}`;
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
+        subject: "RMD Instructor Weekend — will you be attending?",
+        text:
+`Hi ${firstName},
+
+Attendance at the Instructor Weekend isn't mandatory for Assessors and Senior Instructors (unlike Instructor Candidates, who are required to attend). We'd like to know whether you're planning to join us so we can plan numbers accurately.
+
+Please let us know here:
+
+${link}
+
+Birmingham Medical School · 9–11 October 2026
+
+If you've already told us, or this has reached you by mistake, just reply and let us know.
+
+Thanks,
+Jon`
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+      sentTo.push(person.email);
+    } catch (err) {
+      console.error(`sendIwRsvpInvites: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  await db.collection(IW_RSVP_INVITES_COLLECTION).add({
+    sentTo,
+    failedEmails,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    sentByUid: auth.uid,
+    sentByEmail: (auth.token.email || "").toLowerCase()
+  });
+
+  return { sent, failed: failedEmails.length, failedEmails, skippedNoEmail, total: all.length };
+});
+
+/**
+ * iwRsvpRespond — public, no sign-in required (Assessors/Senior Instructors
+ * have no RMD account). Backs iw-rsvp-confirm.html.
+ *
+ * Called twice per visit:
+ *   1. { id } only, on page load — looks up the registration doc and
+ *      returns { name, status } so the page can greet them by name and,
+ *      if they've already responded (including via the admin ✓/✗ buttons),
+ *      show that answer instead of asking again.
+ *   2. { id, response: "yes" | "no" }, when they click a button — updates
+ *      status to confirmed/declined and returns the same shape.
+ *
+ * The registration doc's own ID is the only credential (see the trust-model
+ * note on sendIwRsvpInvites above). firestore.rules keeps iw_registrations
+ * director-only for direct client reads/writes; this function runs under
+ * the Admin SDK, which isn't subject to those rules, so it's the one public
+ * entry point into that collection.
+ *
+ * Deliberately does not gate on current status — if Jon already set
+ * something manually, or the person is re-visiting an old link to change
+ * their mind, their latest answer here wins. Writing status via the Admin
+ * SDK fires syncIwRegistrationToPeople exactly as a manual confirm would,
+ * so a "yes" here syncs to People the same way a click on ✓ does.
+ */
+exports.iwRsvpRespond = onCall({ region: "us-central1" }, async (request) => {
+  const id = request.data?.id;
+  if (!id || typeof id !== "string") {
+    throw new HttpsError("invalid-argument", "Missing registration id.");
+  }
+
+  const ref = db.collection(IW_COLL).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "This RSVP link is no longer valid — please contact Jon directly.");
+  }
+
+  const data = snap.data();
+  if (data.role !== ASSESSOR_ROLE) {
+    throw new HttpsError("failed-precondition", "This link isn't valid for an RSVP.");
+  }
+
+  const response = request.data?.response;
+  if (response === undefined || response === null) {
+    return { name: data.name || "", status: data.status || "pending" };
+  }
+
+  if (response !== "yes" && response !== "no") {
+    throw new HttpsError("invalid-argument", 'Response must be "yes" or "no".');
+  }
+
+  const status = response === "yes" ? "confirmed" : "declined";
+  await ref.update({
+    status,
+    statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    statusSource: "rsvp-link"
+  });
+
+  return { name: data.name || "", status };
+});
