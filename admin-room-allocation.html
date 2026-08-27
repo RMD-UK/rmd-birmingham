@@ -402,7 +402,15 @@ function renderPool() {
                         + selInst.filter(p => !assigned.has(p.email)).length;
 
   document.getElementById("poolCount").textContent  = totalUnassigned;
-  document.getElementById("poolLoading").style.display = "none";
+  // "Loading…" placeholder only exists in the pre-render static HTML — the innerHTML write below
+  // (and every prior call to it) replaces it. Referencing it unguarded threw "Cannot read
+  // properties of null" on every renderPool() after the very first one, which silently aborted
+  // the rest of the calling function (renderRooms()/updateStats() never ran) — nothing ever
+  // visually updated after page load: not drag/drop, not click-to-move, not randomize. The
+  // underlying data changes were fine; the screen just never repainted. Found 2026-08-27 while
+  // debugging "randomize doesn't move candidates into rooms". Optional-chain it so it's a no-op
+  // once the placeholder is gone, same as poolLoading's one-time purpose was always meant to be.
+  document.getElementById("poolLoading")?.style.setProperty("display", "none");
 
   let html = "";
   if (cands.length) {
