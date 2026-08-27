@@ -286,12 +286,17 @@ async function loadData() {
   //   role options 2026-07-11 (previously Instructor Trainers had to pick "Faculty" as the closest
   //   fit). Assessor Faculty are deliberately NOT added to this gate — this tool is instructor-track
   //   room allocation only, it has no assessor-day equivalent yet.
+  //   2026-08-27: skip anyone Jon has marked "Declined" (or who self-declined via the faculty-form
+  //   "can't attend" shortcut) on admin-faculty-responses.html — they were showing up here regardless
+  //   of that status. This is a filter, not a deletion: their response record is untouched, they just
+  //   don't appear as available for room placement while declined.
   try {
     const fSnap = await db.collection("faculty_responses").get();
     fSnap.forEach(doc => {
       const d   = doc.data();
       const em  = (d.email || "").toLowerCase();
       if (!em) return;
+      if (d.attendanceStatus === "declined" || d.cannotAttend === true) return;
       const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || em;
       const p   = { name, email: em };
       if (!allPeople.some(x => x.email === em)) allPeople.push(p);
