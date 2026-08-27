@@ -873,11 +873,11 @@
       document.getElementById("roomBanner").style.display = "block";
 
       if (_userRoomId) {
-        const g   = _allGroupData[_userRoomId] || {};
-        const fac = g.faculty;
+        const g    = _allGroupData[_userRoomId] || {};
+        const facs = g.facultyLeads || (g.faculty ? [g.faculty] : []);
         document.getElementById("roomBannerID").textContent = _userRoomId;
         document.getElementById("roomBannerFaculty").innerHTML =
-          fac ? `<span style="opacity:.65">Faculty lead</span><br><strong>${fac.name}</strong>` : "";
+          facs.length ? `<span style="opacity:.65">Faculty lead${facs.length>1?"s":""}</span><br><strong>${facs.map(f=>f.name).join(", ")}</strong>` : "";
         document.getElementById("roomFilter").value = _userRoomId;
         document.getElementById("yourRoomBlock").style.display = "flex";
         document.getElementById("noRoomBlock").style.display = "none";
@@ -939,7 +939,7 @@
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
         ${rooms.map(rid => {
           const g     = _allGroupData[rid] || {};
-          const fac   = g.faculty;
+          const facs  = g.facultyLeads || (g.faculty ? [g.faculty] : []);
           const insts = g.instructors || [];
           const cands = g.candidates  || [];
           const total = insts.length + cands.length;
@@ -948,10 +948,10 @@
               <strong style="font-size:15px;color:var(--rmd-navy);letter-spacing:.5px;">${rid}</strong>
               <span style="font-size:11px;color:#8893b0;">${total} assigned</span>
             </div>
-            ${fac ? `<div style="font-size:11px;color:#6b7a9a;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;">Faculty Lead</div><div style="margin-bottom:6px;">${chip(fac.name,'#d8e8f8','#1a3a5c')}</div>` : ""}
+            ${facs.length ? `<div style="font-size:11px;color:#6b7a9a;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;">Faculty Lead${facs.length>1?"s":""}</div><div style="margin-bottom:6px;">${facs.map(f=>chip(f.name,'#d8e8f8','#1a3a5c')).join("")}</div>` : ""}
             ${insts.length ? `<div style="font-size:11px;color:#6b7a9a;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;">Instructor Trainers</div><div style="margin-bottom:6px;">${insts.map(p=>chip(p.name,'#fef3c7','#78350f')).join("")}</div>` : ""}
             ${cands.length ? `<div style="font-size:11px;color:#6b7a9a;font-weight:700;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px;">Candidates</div><div>${cands.map(p=>chip(p.name,'#eef2ff','#3b3fb0')).join("")}</div>` : ""}
-            ${!fac && !insts.length && !cands.length ? `<span style="color:#c0c8d8;font-size:12px;">Not yet allocated</span>` : ""}
+            ${!facs.length && !insts.length && !cands.length ? `<span style="color:#c0c8d8;font-size:12px;">Not yet allocated</span>` : ""}
           </div>`;
         }).join("")}
       </div>`;
@@ -960,15 +960,16 @@
   function renderGroupPanel(roomId) {
     const el = document.getElementById("groupPanelContent");
     if (!roomId || !_allGroupData[roomId]) { el.innerHTML = ""; return; }
-    const g    = _allGroupData[roomId];
-    const chip = (name, bg) => `<span style="display:inline-block;background:${bg};border-radius:4px;padding:3px 9px;font-size:12px;margin:2px;">${name}</span>`;
-    const fac    = g.faculty    ? chip(g.faculty.name, "#d8e8f8") : "";
+    const g      = _allGroupData[roomId];
+    const chip   = (name, bg) => `<span style="display:inline-block;background:${bg};border-radius:4px;padding:3px 9px;font-size:12px;margin:2px;">${name}</span>`;
+    const facArr = g.facultyLeads || (g.faculty ? [g.faculty] : []);
+    const fac    = facArr.map(f => chip(f.name, "#d8e8f8")).join("");
     const insts  = (g.instructors||[]).map(p => chip(p.name, "#fef3c7")).join("");
     const cands  = (g.candidates||[]).map(p => chip(p.name, "#f0f4fa")).join("");
     const lbl    = t => `<div style="font-size:10px;font-weight:700;color:#6b7a9a;text-transform:uppercase;letter-spacing:.4px;margin:6px 0 3px">${t}</div>`;
     el.innerHTML =
       `<div style="font-weight:800;font-size:15px;color:var(--rmd-navy);margin-bottom:8px">Room ${roomId}</div>` +
-      (fac   ? lbl("Faculty Lead") + fac   : "") +
+      (fac   ? lbl("Faculty Lead" + (facArr.length>1?"s":"")) + fac   : "") +
       (insts ? lbl("Instructor Trainers") + insts : "") +
       (cands ? lbl("Candidates") + cands : "") +
       (!fac && !insts && !cands ? `<span style="color:#aaa;font-size:13px">No assignments yet</span>` : "");

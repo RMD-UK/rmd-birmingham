@@ -70,6 +70,10 @@
     .room-count { font-size:11px; opacity:.55; }
     .faculty-sel { width:100%; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.22); border-radius:5px; color:#fff; font-size:12px; padding:4px 6px; cursor:pointer; font-family:var(--font); box-sizing:border-box; }
     .faculty-sel option { background:#152c45; }
+    .fac-leads { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:5px; }
+    .fac-chip { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); border-radius:4px; padding:2px 5px 2px 8px; font-size:11px; color:#fff; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+    .fac-chip button { background:none; border:none; color:rgba(255,255,255,.6); cursor:pointer; padding:0; font-size:14px; line-height:1; font-family:var(--font); }
+    .fac-chip button:hover { color:#fff; }
     .room-body { flex:1; padding:5px; min-height:60px; }
     .room-sec-label { font-size:10px; font-weight:700; color:#aab0c8; text-transform:uppercase; padding:3px 3px 1px; letter-spacing:.5px; }
     .room-drop-hint { text-align:center; color:#c8cede; font-size:12px; padding:18px 8px; }
@@ -234,11 +238,12 @@ const ROOMS = INSTRUCTOR_ROOMS;
 
 let allCandidates  = [];   // role=instructor
 let allInstructors = [];   // role=full-instructor
-let allFaculty     = [];   // role=faculty
+let allFaculty     = [];   // role=faculty (Teaching Faculty tab pool: Faculty + Instructor Trainer)
+let allLeadCandidates = []; // faculty_responses role="Instructor Trainer" only -- room faculty-lead picker pool
 let allITC         = [];   // role=Instructor Trainer Candidate (confirmed, from faculty_responses)
 let allPeople      = [];   // everyone
 
-let groups = {};           // {CM01:{faculty,candidates:[],instructors:[]}, ...}
+let groups = {};           // {CM01:{facultyLeads:[],candidates:[],instructors:[]}, ...}
 let teachingFaculty = new Set();
 let itcSet          = new Set();
 let itcSchedule     = {};  // {email: {sat_group:"CM01", ...}}
@@ -247,7 +252,7 @@ let dragging     = null;   // {email, source}
 let draggingRole = null;   // "candidate" | "instructor"
 let selectedEmail = null;
 
-ROOMS.forEach(r => { groups[r] = { faculty: null, candidates: [], instructors: [] }; });
+ROOMS.forEach(r => { groups[r] = { facultyLeads: [], candidates: [], instructors: [] }; });
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 // resolveRole() is the shared one from js/firebase-config.js — do not
@@ -271,7 +276,12 @@ async function loadData() {
       const d  = doc.data();
       const em = (d.email || doc.id).toLowerCase();
       rosterRoleByEmail[em] = d.role;
-      if (d.role === ROLES.INSTRUCTOR) {
+      // mou_roster's own role field uses its own literal labels (Instructor,
+      // Senior Instructor, Assessor, RMD Student Faculty, RMD Senior Faculty
+      // -- see admin-mou-dashboard.html ROSTER_ROLE_ORDER), NOT the platform
+      // ROLES enum (ROLES.INSTRUCTOR = "instructor"). Comparing against
+      // ROLES.INSTRUCTOR here always failed, silently, giving 0 Candidates.
+      if (d.role === "Instructor") {
         const p = { name: d.name || doc.id, email: em };
         allCandidates.push(p);
         allPeople.push(p);
@@ -280,7 +290,8 @@ async function loadData() {
   } catch(e) { console.warn("Roster load failed:", e.message); }
 
   // ② Confirmed IW attendees from faculty_responses
-  //   Faculty or Instructor Trainer role → room-lead dropdown (allFaculty) + pool if full-instructor (allInstructors)
+  //   Faculty or Instructor Trainer role → Teaching Faculty tab pool (allFaculty); Instructor Trainer
+  //   role only → room faculty-lead picker pool (allLeadCandidates) + room-placement pool if full-instructor (allInstructors)
   //   ITC role → ITC picker only (via allPeople)
   //   Note: "Instructor Trainer" and "Assessor Faculty" were added as distinct faculty-form.html
   //   role options 2026-07-11 (previously Instructor Trainers had to pick "Faculty" as the closest
@@ -301,7 +312,8 @@ async function loadData() {
       const p   = { name, email: em };
       if (!allPeople.some(x => x.email === em)) allPeople.push(p);
       if (d.role === "Faculty" || d.role === "Instructor Trainer") {
-        allFaculty.push(p);  // all Faculty/Instructor Trainer respondents → room-lead dropdown
+        allFaculty.push(p);  // all Faculty/Instructor Trainer respondents → Teaching Faculty tab pool
+        if (d.role === "Instructor Trainer") allLeadCandidates.push(p);  // room faculty-lead picker: Instructor Trainer only, not plain Faculty
         if (rosterRoleByEmail[em] === "full-instructor" || d.role === "Instructor Trainer") {
           allInstructors.push(p);  // full instructors also go in the room pool
         }
@@ -313,7 +325,7 @@ async function loadData() {
     });
   } catch(e) { console.warn("Faculty responses load failed:", e.message); }
 
-  [allCandidates, allInstructors, allFaculty, allITC, allPeople].forEach(a => a.sort((x,y) => x.name.localeCompare(y.name)));
+  [allCandidates, allInstructors, allFaculty, allLeadCandidates, allITC, allPeople].forEach(a => a.sort((x,y) => x.name.localeCompare(y.name)));
 
   try {
     const snap = await db.collection(COLLECTIONS.groups).get();
@@ -321,9 +333,11 @@ async function loadData() {
       const rid = doc.id;
       if (groups[rid]) {
         const d = doc.data();
-        groups[rid].faculty     = d.faculty     || null;
-        groups[rid].candidates  = d.candidates  || [];
-        groups[rid].instructors = d.instructors || [];
+        // facultyLeads is the current field (array); fall back to the old
+        // singular `faculty` field for any room doc saved before multi-lead.
+        groups[rid].facultyLeads = d.facultyLeads || (d.faculty ? [d.faculty] : []);
+        groups[rid].candidates   = d.candidates   || [];
+        groups[rid].instructors  = d.instructors  || [];
       }
     });
   } catch(e) { console.warn("Groups load failed:", e.message); }
@@ -437,9 +451,10 @@ function renderRooms() {
                   <span class="room-id">${rid}</span>
                   <span class="room-count">${total} assigned</span>
                 </div>
-                <select class="faculty-sel" id="fac-${rid}" onchange="setFaculty('${rid}',this)" onclick="event.stopPropagation()">
-                  <option value="">— No faculty lead —</option>
-                  ${allFaculty.map(f => `<option value="${f.email}"${g.faculty&&g.faculty.email===f.email?" selected":""}>${f.name}</option>`).join("")}
+                ${g.facultyLeads.length ? `<div class="fac-leads">${g.facultyLeads.map(f => `<span class="fac-chip">${f.name}<button onclick="event.stopPropagation();removeFacultyLead('${rid}','${f.email}')" title="Remove">×</button></span>`).join("")}</div>` : ""}
+                <select class="faculty-sel" id="fac-${rid}" onchange="addFacultyLead('${rid}',this.value)" onclick="event.stopPropagation()">
+                  <option value="">${g.facultyLeads.length ? "+ Add another faculty lead" : "— No faculty lead —"}</option>
+                  ${allLeadCandidates.filter(f => !g.facultyLeads.some(x=>x.email===f.email)).map(f => `<option value="${f.email}">${f.name}</option>`).join("")}
                 </select>
               </div>
               <div class="room-body">
@@ -461,9 +476,16 @@ function updateStats() {
   document.getElementById("statUnassigned").textContent = total - a.size;
 }
 
-function setFaculty(rid, sel) {
-  const f = allFaculty.find(x => x.email === sel.value);
-  groups[rid].faculty = f || null;
+function addFacultyLead(rid, email) {
+  if (!email) return;
+  const f = allLeadCandidates.find(x => x.email === email);
+  if (!f) return;
+  if (!groups[rid].facultyLeads.some(x => x.email === email)) groups[rid].facultyLeads.push(f);
+  renderRooms();
+}
+function removeFacultyLead(rid, email) {
+  groups[rid].facultyLeads = groups[rid].facultyLeads.filter(x => x.email !== email);
+  renderRooms();
 }
 
 // ── Drag & drop ────────────────────────────────────────────────────────────
@@ -556,6 +578,7 @@ function removeFromRoom(rid, email, roleType, event) {
 
 // ── Randomize (Candidates only — Instructor Trainers are placed deliberately) ──
 function randomizeCandidates() {
+  if (!allCandidates.length) { showStatus("No candidates loaded — check mou_roster data","err"); return; }
   const assigned = assignedEmails();
   const pool = allCandidates.filter(p=>!assigned.has(p.email));
   if (!pool.length) { showStatus("All candidates already assigned","ok"); return; }
@@ -660,11 +683,11 @@ async function saveAll() {
     // Room groups
     ROOMS.forEach(rid => {
       batch.set(db.collection(COLLECTIONS.groups).doc(rid), {
-        faculty:    groups[rid].faculty    || null,
-        candidates: groups[rid].candidates || [],
-        instructors:groups[rid].instructors|| [],
-        year:       CURRENT_MOU_YEAR,
-        updatedAt:  ts, updatedBy: uid || null
+        facultyLeads: groups[rid].facultyLeads || [],
+        candidates:   groups[rid].candidates   || [],
+        instructors:  groups[rid].instructors  || [],
+        year:         CURRENT_MOU_YEAR,
+        updatedAt:    ts, updatedBy: uid || null
       });
     });
 
