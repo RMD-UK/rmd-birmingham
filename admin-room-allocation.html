@@ -130,7 +130,7 @@
   <h1 class="ra-title">Room Allocation — Instructor Weekend 2026</h1>
   <span id="saveStatus"></span>
   <button class="ra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
-  <button class="ra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly sort Candidates</button>
+  <button class="ra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly sort Instructor Candidates</button>
   <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
 </div>
 
@@ -144,7 +144,7 @@
 <!-- ══ TAB 1: ROOM GROUPS ══════════════════════════════════════════════════ -->
 <div id="tab-rooms" class="tab-content active">
   <div class="ra-stats">
-    <div>Candidates: <b id="statCand">—</b></div>
+    <div>Instructor Candidates: <b id="statCand">—</b></div>
     <div>Instructor Trainers (selected): <b id="statInst">—</b></div>
     <div>Assigned: <b id="statAssigned">0</b></div>
     <div>Unassigned: <b id="statUnassigned">—</b></div>
@@ -406,7 +406,7 @@ function renderPool() {
 
   let html = "";
   if (cands.length) {
-    html += `<div class="pool-type-label">Candidates (${allCandidates.filter(p=>!assigned.has(p.email)).length})</div>`;
+    html += `<div class="pool-type-label">Instructor Candidates (${allCandidates.filter(p=>!assigned.has(p.email)).length})</div>`;
     html += cands.map(p => makeCard(p, "pool", "candidate")).join("");
   }
   if (insts.length) {
@@ -459,7 +459,7 @@ function renderRooms() {
               </div>
               <div class="room-body">
                 ${g.instructors.length ? `<div class="room-sec-label">Instructor Trainers</div>${g.instructors.map(p=>makeCard(p,rid,"instructor")).join("")}` : ""}
-                ${g.candidates.length  ? `<div class="room-sec-label">Candidates</div>${g.candidates.map(p=>makeCard(p,rid,"candidate")).join("")}` : ""}
+                ${g.candidates.length  ? `<div class="room-sec-label">Instructor Candidates</div>${g.candidates.map(p=>makeCard(p,rid,"candidate")).join("")}` : ""}
                 ${total===0 ? `<div class="room-drop-hint">Drop here</div>` : ""}
               </div>
             </div>`;
@@ -576,7 +576,7 @@ function removeFromRoom(rid, email, roleType, event) {
   renderPool(); renderRooms(); updateStats();
 }
 
-// ── Randomize (Candidates only — Instructor Trainers are placed deliberately) ──
+// ── Randomize (Instructor Candidates only — Instructor Trainers are placed deliberately) ──
 function randomizeCandidates() {
   if (!allCandidates.length) { showStatus("No candidates loaded — check mou_roster data","err"); return; }
   const assigned = assignedEmails();
