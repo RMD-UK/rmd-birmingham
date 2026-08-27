@@ -155,6 +155,11 @@
     .preview-row:last-child { border-bottom: none; }
     .preview-name { flex: 1; font-weight: 600; color: var(--rmd-navy); }
     .preview-email { color: var(--rmd-muted); font-size: 12px; flex: 1; }
+    .preview-note-input {
+      flex: 1.3; padding: 4px 8px; border: 1.5px solid #ccd6dd; border-radius: 5px;
+      font-size: 12px; font-family: var(--font); color: var(--rmd-navy); background: white;
+    }
+    .preview-note-input:focus { outline: none; border-color: var(--rmd-blue); }
 
     /* Auth overlay */
     #authOverlay {
@@ -209,76 +214,41 @@
   <div class="action-bar">
     <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" title="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Adds them as Pending. The only route either group has onto this list.">⬇ Import course candidates</button>
     <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" title="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
-    <button class="btn-action" onclick="togglePanel('addPanel')" title="Add one person by hand — for anyone the imports above missed.">+ Add person</button>
-    <button class="btn-action secondary" onclick="togglePanel('pastePanel')" title="Bulk-add a pasted list of names/emails under one role — for anyone the imports above missed.">📋 Paste import</button>
+    <button class="btn-action" onclick="togglePanel('addPanel')" title="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" title="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
     <button class="btn-action secondary" onclick="exportCSV()" title="Downloads the full list — name, email, role, status, source, notes, added date — as a CSV.">⬇ Export CSV</button>
     <button class="btn-action quiet" style="margin-left:auto;" onclick="togglePanel('syncPanel')" title="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
   </div>
 
-  <!-- Add person panel -->
+  <!-- Add people panel — one name or a pasted list, same flow either way -->
   <div class="panel" id="addPanel" style="display:none;">
-    <div class="panel-header">Add a person manually
+    <div class="panel-header">Add people
       <button onclick="togglePanel('addPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
     </div>
     <div class="panel-body">
-      <div class="field-row">
-        <div class="field">
-          <label>Full name <span style="color:#b7410e;">*</span></label>
-          <input type="text" id="addName" placeholder="e.g. Jane Smith">
-        </div>
-        <div class="field">
-          <label>Email address <span style="color:#b7410e;">*</span></label>
-          <input type="email" id="addEmail" placeholder="jane@example.com">
-        </div>
-        <div class="field">
-          <label>Role</label>
-          <select id="addRole">
-            <option value="Instructor Candidate">Instructor Candidate</option>
-            <option value="Assessor / Senior Instructor">Assessor / Senior Instructor</option>
-            <option value="Faculty">Faculty</option>
-            <option value="Instructor Trainer Candidate">Instructor Trainer Candidate</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-      </div>
-      <div class="field" style="max-width:400px;">
-        <label>Notes (optional)</label>
-        <input type="text" id="addNotes" placeholder="e.g. arriving late Saturday">
-      </div>
-      <button class="btn-action" onclick="addPerson()">Add to list</button>
-      <span id="addFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
-    </div>
-  </div>
-
-  <!-- Paste import panel -->
-  <div class="panel" id="pastePanel" style="display:none;">
-    <div class="panel-header">Paste import — names and emails
-      <button onclick="togglePanel('pastePanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
-    </div>
-    <div class="panel-body">
       <div class="info-box">
-        Paste a list with one person per line. Accepted formats:<br>
+        One person per line — a single name works fine too. Accepted formats:<br>
         <code>Jane Smith, jane@email.com</code>&nbsp; or &nbsp;<code>Jane Smith &lt;jane@email.com&gt;</code>&nbsp; or &nbsp;<code>jane@email.com</code>
       </div>
       <div class="field">
-        <label>Role for all imported people</label>
-        <select id="pasteRole" style="max-width:300px;">
+        <label>Role for everyone added</label>
+        <select id="addRole" style="max-width:300px;">
           <option value="Instructor Candidate">Instructor Candidate</option>
           <option value="Assessor / Senior Instructor">Assessor / Senior Instructor</option>
           <option value="Faculty">Faculty</option>
+          <option value="Instructor Trainer Candidate">Instructor Trainer Candidate</option>
           <option value="Other">Other</option>
         </select>
       </div>
       <div class="field">
-        <label>Paste list here</label>
-        <textarea id="pasteInput" placeholder="Jane Smith, jane@example.com&#10;John Doe &lt;john@example.com&gt;&#10;mary@example.com"></textarea>
+        <label>Name(s) and email(s)</label>
+        <textarea id="addInput" placeholder="Jane Smith, jane@example.com&#10;John Doe &lt;john@example.com&gt;&#10;mary@example.com"></textarea>
       </div>
-      <button class="btn-action secondary" onclick="parsePaste()">Preview →</button>
-      <div id="pastePreview" class="import-preview" style="display:none;"></div>
-      <div id="pasteActions" style="display:none;margin-top:12px;">
-        <button class="btn-action" onclick="importPaste()">Import all</button>
-        <span id="pasteFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
+      <button class="btn-action secondary" onclick="parseAdd()">Preview →</button>
+      <div id="addPreview" class="import-preview" style="display:none;"></div>
+      <div id="addActions" style="display:none;margin-top:12px;">
+        <button class="btn-action" onclick="importAdd()">Add to list</button>
+        <span id="addFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
       </div>
     </div>
   </div>
@@ -373,7 +343,7 @@ let allRegistrations   = [];   // [{id, name, email, role, status, source, notes
 let rosterCandidates   = [];   // from mou_roster (for import panel)
 let facultyCandidates  = [];   // from faculty_responses, attendanceStatus === "confirmed" (for import panel)
 let currentFilter      = "all";
-let pasteData          = [];   // parsed paste rows
+let addData            = [];   // parsed rows from the Add people panel (one name or many)
 let syncCandidates     = [];   // confirmed regs mapped for People sync
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -459,7 +429,7 @@ function renderTable() {
   const filtered = getFiltered();
   if (!filtered.length) {
     document.getElementById("tableContainer").innerHTML =
-      `<div class="empty-state">No registrations in this view.<br>Use "Add person", "Paste import", or "Import MOU-confirmed people" above.</div>`;
+      `<div class="empty-state">No registrations in this view.<br>Use "Add people" or "Import MOU-confirmed people" above.</div>`;
     return;
   }
 
@@ -534,104 +504,77 @@ async function removeEntry(docId, name) {
   }
 }
 
-// ── Add person ────────────────────────────────────────────────────────────────
-async function addPerson() {
-  const name  = document.getElementById("addName").value.trim();
-  const email = document.getElementById("addEmail").value.trim().toLowerCase();
-  const role  = document.getElementById("addRole").value;
-  const notes = document.getElementById("addNotes").value.trim();
-
-  if (!name || !email) { alert("Name and email are required."); return; }
-  if (!email.includes("@")) { alert("Please enter a valid email address."); return; }
-  if (allRegistrations.some(r => r.email === email)) {
-    alert(`${email} is already on the list.`); return;
-  }
-
-  const fb = document.getElementById("addFeedback");
-  fb.textContent = "Saving…";
-
-  try {
-    const doc = await db.collection(IW_COLL).add({
-      name, email, role, notes,
-      source: "manual",
-      status: "pending",
-      addedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    allRegistrations.push({ id: doc.id, name, email, role, notes, source: "manual", status: "pending" });
-    allRegistrations.sort((a,b) => (a.name||"").localeCompare(b.name||""));
-    updateSummary();
-    renderTable();
-    document.getElementById("addName").value  = "";
-    document.getElementById("addEmail").value = "";
-    document.getElementById("addNotes").value = "";
-    fb.textContent = `✓ ${name} added`;
-    setTimeout(() => { fb.textContent = ""; }, 3000);
-  } catch(err) {
-    fb.textContent = "Error: " + err.message;
-  }
-}
-
-// ── Paste import ──────────────────────────────────────────────────────────────
-function parsePaste() {
-  const raw  = document.getElementById("pasteInput").value;
-  const role = document.getElementById("pasteRole").value;
+// ── Add people (one name or a pasted list — same flow, one shared role) ────────
+function parseAdd() {
+  const raw  = document.getElementById("addInput").value;
+  const role = document.getElementById("addRole").value;
   const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
 
-  pasteData = [];
+  addData = [];
   lines.forEach(line => {
     // "Name <email>" format
     const angleMatch = line.match(/^(.+?)\s*<([^>]+)>\s*$/);
     if (angleMatch) {
-      pasteData.push({ name: angleMatch[1].trim(), email: angleMatch[2].trim().toLowerCase(), role });
+      addData.push({ name: angleMatch[1].trim(), email: angleMatch[2].trim().toLowerCase(), role, notes: "" });
       return;
     }
     // "Name, email" or "Name\temail"
     const parts = line.split(/,|\t/).map(s => s.trim());
     if (parts.length >= 2 && parts[1].includes("@")) {
-      pasteData.push({ name: parts[0], email: parts[1].toLowerCase(), role });
+      addData.push({ name: parts[0], email: parts[1].toLowerCase(), role, notes: "" });
       return;
     }
     // Email only
     if (line.includes("@")) {
-      pasteData.push({ name: line.split("@")[0], email: line.toLowerCase(), role });
+      addData.push({ name: line.split("@")[0], email: line.toLowerCase(), role, notes: "" });
       return;
     }
-    // Name only (no email)
-    pasteData.push({ name: line, email: "", role });
+    // Name only (no email) — kept in the preview so the gap is visible, but it
+    // can't be added: email is required on every registration record.
+    addData.push({ name: line, email: "", role, notes: "" });
   });
 
-  const preview = document.getElementById("pastePreview");
+  renderAddPreview();
+}
+
+function renderAddPreview() {
+  const preview = document.getElementById("addPreview");
   preview.style.display = "block";
 
-  if (!pasteData.length) {
+  if (!addData.length) {
     preview.innerHTML = '<div class="empty-state">Could not parse any rows. Check format.</div>';
-    document.getElementById("pasteActions").style.display = "none";
+    document.getElementById("addActions").style.display = "none";
     return;
   }
 
   const existing = new Set(allRegistrations.map(r => r.email));
-  preview.innerHTML = pasteData.map(p => {
-    const dup = p.email && existing.has(p.email);
+  preview.innerHTML = addData.map((p, i) => {
+    const dup     = p.email && existing.has(p.email);
+    const noEmail = !p.email;
+    const status  = noEmail
+      ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fff3cd;color:#856404;">No email — won't be added</span>`
+      : dup
+        ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fce8e6;color:#b7410e;">Already on list</span>`
+        : `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#e6f4ea;color:#1a6e31;">Will add</span>`;
     return `<div class="preview-row">
       <span class="preview-name">${p.name||"–"}</span>
       <span class="preview-email">${p.email||"<em>no email</em>"}</span>
-      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;
-        ${dup ? "background:#fce8e6;color:#b7410e;" : "background:#e6f4ea;color:#1a6e31;"}">
-        ${dup ? "Already on list" : "Will add"}
-      </span>
+      <input type="text" class="preview-note-input" placeholder="note (optional)"
+        value="${(p.notes||"").replace(/"/g,"&quot;")}" oninput="addData[${i}].notes = this.value">
+      ${status}
     </div>`;
   }).join("");
 
-  document.getElementById("pasteActions").style.display = "block";
+  document.getElementById("addActions").style.display = "block";
 }
 
-async function importPaste() {
-  const role   = document.getElementById("pasteRole").value;
-  const toAdd  = pasteData.filter(p => p.email && !allRegistrations.some(r => r.email === p.email));
-  const fb     = document.getElementById("pasteFeedback");
+async function importAdd() {
+  const role   = document.getElementById("addRole").value;
+  const toAdd  = addData.filter(p => p.email && !allRegistrations.some(r => r.email === p.email));
+  const fb     = document.getElementById("addFeedback");
 
-  if (!toAdd.length) { fb.textContent = "Nothing new to import."; return; }
-  fb.textContent = `Importing ${toAdd.length} people…`;
+  if (!toAdd.length) { fb.textContent = "Nothing new to add."; return; }
+  fb.textContent = `Adding ${toAdd.length} ${toAdd.length===1?"person":"people"}…`;
 
   try {
     const batch = db.batch();
@@ -639,9 +582,10 @@ async function importPaste() {
     const newDocs = [];
 
     toAdd.forEach(p => {
-      const ref = db.collection(IW_COLL).doc();
-      batch.set(ref, { name: p.name, email: p.email, role: p.role || role, notes: "", source: "paste", status: "pending", addedAt: ts });
-      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role || role, notes: "", source: "paste", status: "pending" });
+      const ref   = db.collection(IW_COLL).doc();
+      const notes = p.notes || "";
+      batch.set(ref, { name: p.name, email: p.email, role: p.role || role, notes, source: "manual", status: "pending", addedAt: ts });
+      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role || role, notes, source: "manual", status: "pending" });
     });
     await batch.commit();
 
@@ -649,10 +593,10 @@ async function importPaste() {
     allRegistrations.sort((a,b) => (a.name||"").localeCompare(b.name||""));
     updateSummary();
     renderTable();
-    document.getElementById("pasteInput").value = "";
-    document.getElementById("pastePreview").style.display = "none";
-    document.getElementById("pasteActions").style.display = "none";
-    fb.textContent = `✓ ${toAdd.length} people imported`;
+    document.getElementById("addInput").value = "";
+    document.getElementById("addPreview").style.display = "none";
+    document.getElementById("addActions").style.display = "none";
+    fb.textContent = `✓ ${toAdd.length} ${toAdd.length===1?"person":"people"} added`;
     setTimeout(() => { fb.textContent = ""; }, 4000);
   } catch(err) {
     fb.textContent = "Error: " + err.message;
@@ -779,7 +723,7 @@ async function loadFacultyPreview() {
       const email = (d.email || "").toLowerCase();
       if (!email) return;
       const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || email;
-      facultyCandidates.push({ name, email, role: d.role || "Faculty", alreadyAdded: existing.has(email) });
+      facultyCandidates.push({ name, email, role: d.role || "Faculty", alreadyAdded: existing.has(email), notes: "" });
     });
 
     if (!facultyCandidates.length) {
@@ -800,6 +744,9 @@ async function loadFacultyPreview() {
         ${toAdd.map(p => `<div class="preview-row">
           <span class="preview-name">${p.name}</span>
           <span class="preview-email">${p.email}</span>
+          <input type="text" class="preview-note-input" placeholder="note (optional)"
+            value="${(p.notes||"").replace(/"/g,"&quot;")}"
+            oninput="setFacultyNote('${p.email.replace(/'/g,"\\'")}', this.value)">
           <span class="badge-candidate">${p.role}</span>
         </div>`).join("")}
         ${alreadyIn.map(p => `<div class="preview-row" style="opacity:0.45;">
@@ -813,6 +760,13 @@ async function loadFacultyPreview() {
   } catch(err) {
     preview.innerHTML = `<div class="empty-state">Failed to load faculty responses: ${err.message}</div>`;
   }
+}
+
+// Notes typed while reviewing the confirmed-faculty list, before import —
+// keyed by email since toAdd/facultyCandidates share the same row objects.
+function setFacultyNote(email, value) {
+  const c = facultyCandidates.find(x => x.email === email);
+  if (c) c.notes = value;
 }
 
 async function importFromFaculty() {
@@ -829,9 +783,10 @@ async function importFromFaculty() {
     const newDocs = [];
 
     toAdd.forEach(p => {
-      const ref = db.collection(IW_COLL).doc();
-      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes: "", source: "faculty", status: "confirmed", addedAt: ts });
-      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes: "", source: "faculty", status: "confirmed" });
+      const ref   = db.collection(IW_COLL).doc();
+      const notes = p.notes || "";
+      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes, source: "faculty", status: "confirmed", addedAt: ts });
+      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes, source: "faculty", status: "confirmed" });
     });
     await batch.commit();
 
@@ -852,7 +807,7 @@ function togglePanel(id) {
   const el      = document.getElementById(id);
   const visible = el.style.display !== "none";
   // Close all panels first
-  ["addPanel","pastePanel","rosterPanel","facultyPanel","syncPanel"].forEach(p => {
+  ["addPanel","rosterPanel","facultyPanel","syncPanel"].forEach(p => {
     document.getElementById(p).style.display = "none";
   });
   if (!visible) {
