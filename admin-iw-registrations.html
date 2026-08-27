@@ -206,7 +206,7 @@
 
   <!-- Action bar -->
   <div class="action-bar">
-    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" title="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Adds them as Pending. The only route either group has onto this list.">⬇ Import course candidates</button>
+    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" title="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Adds them already Confirmed — attendance is mandated for this group, so this page doesn't need a separate sign-off step. The only route either group has onto this list.">⬇ Import course candidates</button>
     <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" title="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
     <button class="btn-action" onclick="togglePanel('addPanel')" title="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" title="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
@@ -254,7 +254,7 @@
     </div>
     <div class="panel-body">
       <div class="warn-box">
-        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list (as Pending). Neither group has an RMD account or a self-service RSVP form, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
+        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list, already marked <strong>Confirmed</strong> — attendance is mandated for this group, so there's no separate sign-off step on this page (same as the Faculty import below). Neither group has an RMD account or a self-service RSVP form, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
       </div>
       <div id="rosterPreview" class="loading">Loading roster…</div>
       <div id="rosterActions" style="display:none;margin-top:12px;">
@@ -591,6 +591,9 @@ async function importAdd() {
 }
 
 // ── Import from roster ────────────────────────────────────────────────────────
+// Imports land already Confirmed, not Pending (changed 2026-08-27, Jon: attendance
+// is mandated for Instructor Candidates and Assessor/Senior Instructors, so this
+// page doesn't need a sign-off step for them — same reasoning as Faculty import below).
 async function loadRosterPreview() {
   const preview = document.getElementById("rosterPreview");
   const actions = document.getElementById("rosterActions");
@@ -665,8 +668,8 @@ async function importFromRoster() {
 
     toAdd.forEach(p => {
       const ref = db.collection(IW_COLL).doc();
-      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status: "pending", addedAt: ts });
-      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status: "pending" });
+      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status: "confirmed", addedAt: ts });
+      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status: "confirmed" });
     });
     await batch.commit();
 
