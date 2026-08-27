@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visitor Request Export — RMD</title>
+<link rel="stylesheet" href="css/rmd.css">
+<style>
+  * { box-sizing: border-box; }
+  body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+  .top-bar {
+    background: var(--rmd-navy); color: white;
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .top-bar img { height: 28px; }
+  .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+
+  .content { padding: 14px; max-width: 900px; margin: 0 auto; }
+
+  .warn-banner {
+    background: #fff3cd; border-left: 4px solid #c17a00;
+    border-radius: 0 6px 6px 0; padding: 14px 16px;
+    font-size: 13px; color: #6b4500; margin-bottom: 16px; line-height: 1.5;
+  }
+  .warn-banner strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+  .card {
+    background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    padding: 16px; margin-bottom: 14px;
+  }
+  .card-title { font-size: 15px; font-weight: 700; color: var(--rmd-navy); margin: 0 0 4px; }
+  .card-sub   { font-size: 12px; color: var(--rmd-muted); margin: 0 0 12px; line-height: 1.5; }
+  .card-counts { font-size: 13px; color: var(--rmd-navy); margin-bottom: 12px; }
+  .card-counts b { color: var(--rmd-blue); }
+
+  .btn-action {
+    padding: 9px 16px; background: var(--rmd-blue); color: white;
+    border: none; border-radius: 6px; font-size: 13px; font-weight: 700;
+    font-family: var(--font); cursor: pointer;
+  }
+  .btn-action:hover { background: var(--rmd-navy); }
+  .btn-action.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
+
+  .fixed-grid { display: grid; grid-template-columns: 200px 1fr; gap: 10px 14px; font-size: 13px; align-items: start; }
+  .fixed-grid label { font-weight: 700; color: var(--rmd-navy); padding-top: 8px; }
+  .fixed-grid input, .fixed-grid textarea {
+    width: 100%; border: 2px solid #ccd6dd; border-radius: 6px; padding: 7px 10px;
+    font-family: var(--font); font-size: 13px;
+  }
+  .fixed-grid textarea { min-height: 60px; resize: vertical; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--rmd-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 8px; border-bottom: 2px solid #e2e8ed; }
+  td { padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+  td input {
+    width: 100%; border: 1px solid #ccd6dd; border-radius: 4px; padding: 5px 7px;
+    font-family: var(--font); font-size: 13px;
+  }
+  td input.flagged { border-color: var(--rmd-warn); background: #fff8ec; }
+  .row-email { color: var(--rmd-muted); font-size: 12px; }
+
+  .loading { text-align: center; padding: 40px; color: var(--rmd-muted); }
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="admin-global-tools.html" title="Back to Global Tools" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Visitor Request Export</div>
+  <button onclick="loadAll()" style="background:rgba(255,255,255,0.15);border:none;color:white;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer;">↻ Refresh</button>
+</div>
+
+<div class="content" id="pageContent">
+  <div class="loading">Loading…</div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+/*
+ * ══════════════════════════════════════════════════════════════════════════
+ * VISITOR REQUEST EXPORT — built 2026-08-27
+ * ══════════════════════════════════════════════════════════════════════════
+ * Purpose: UoB requires a "Visiting Personnel Request" form (Microsoft
+ * Forms, https://forms.cloud.microsoft/...) submitted PER PERSON for anyone
+ * without a UoB ID who needs premises access. RMD Senior Faculty who are not
+ * otherwise UoB staff/students need this annually for the whole academic
+ * year (1 Oct – 30 Sep), separately from Instructor Weekend-only visitors
+ * (who are a different, smaller list Jon compiles by hand — not sourced
+ * from here).
+ *
+ * Source of truth: Jon specified "from MoU" explicitly (2026-08-27), so this
+ * reads mou_roster (role === "RMD Senior Faculty", same roleBucket() logic
+ * as admin-mou-dashboard.html — kept identical on purpose, don't diverge)
+ * joined to mou_responses for CURRENT_MOU_YEAR to pick up each person's
+ * self-declared nationality from their MOU submission.
+ *
+ * NOTE — there is a SEPARATE "faculty roster" (admin-faculty-roster.html)
+ * that feeds the public faculty pages and admin-senior-faculty-review.html.
+ * It is not guaranteed to have the same membership as mou_roster's "RMD
+ * Senior Faculty" tag (one is MOU self-declaration, the other is Jon's
+ * organisational role assignment). This tool deliberately uses mou_roster
+ * per Jon's instruction — if the two ever need reconciling, that's a
+ * separate conversation, not a bug in this file.
+ *
+ * Known gaps, by design, not oversights:
+ *   - Nationality is blank for anyone who hasn't submitted this year's MOU
+ *     yet (mou_responses has no doc for them). Flagged in the table (orange
+ *     border) and counted in the warning banner. Chase via the MOU
+ *     Dashboard's "Outstanding" tab before filing the visitor form for them.
+ *   - "Full Name (as per passport)" is pre-filled from mou_roster's `name`
+ *     field, which is whatever name they registered under — NOT verified
+ *     against an actual passport. Editable per-row so Jon (or whoever fills
+ *     the UoB form) can correct it before export.
+ *   - "Purpose of Visit" and the date range are fixed text shared by the
+ *     whole group, editable in the Fixed Details card so this doesn't need
+ *     a code change if wording or dates shift.
+ * ══════════════════════════════════════════════════════════════════════════
+ */
+
+initFirebase();
+
+let roster = [];         // mou_roster docs
+let submissions = [];    // mou_responses for CURRENT_MOU_YEAR
+let overrides = {};      // id -> { name, nationality } edits made on this page
+
+window.addEventListener("load", () => {
+  requireDirector("timetable.html").then(() => {
+    loadAll();
+  });
+});
+
+async function loadAll() {
+  document.getElementById("pageContent").innerHTML = `<div class="loading">Loading…</div>`;
+  const [rosterSnap, subSnap] = await Promise.all([
+    db.collection(COLLECTIONS.mouRoster).get(),
+    db.collection(COLLECTIONS.mouResponses).where("academicYear", "==", CURRENT_MOU_YEAR).get()
+  ]);
+  roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  submissions = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  overrides = {};
+  render();
+}
+
+// Identical to admin-mou-dashboard.html's roleBucket() — kept in sync on purpose.
+function roleBucket(role) {
+  const r = (role || "").trim().toLowerCase();
+  if (r === "rmd student faculty") return "student";
+  if (r === "rmd senior faculty") return "senior";
+  return "other";
+}
+
+function seniorFaculty() {
+  return roster.filter(m => roleBucket(m.role) === "senior");
+}
+
+function submissionFor(email) {
+  const e = (email || "").trim().toLowerCase();
+  return submissions.find(s => (s.email || "").trim().toLowerCase() === e) || null;
+}
+
+// Derive the visit-year window from CURRENT_MOU_YEAR ("2026/27" -> 1 Oct 2026
+// to 30 Sep 2027) so this doesn't need editing every year just for the dates.
+// Still shown as editable text in case the actual window ever needs to differ.
+function defaultDateRange() {
+  const m = CURRENT_MOU_YEAR.match(/^(\d{4})\/(\d{2})$/);
+  if (!m) return { from: "", to: "" };
+  const startYear = parseInt(m[1], 10);
+  const endYear = startYear + 1;
+  return { from: `1 October ${startYear}`, to: `30 September ${endYear}` };
+}
+
+let fixedDetails = null; // set on first render, then left alone across re-renders unless reset
+
+function defaultFixedDetails() {
+  const { from, to } = defaultDateRange();
+  return {
+    department: "Birmingham Medical School",
+    applicant: "Jonathan Hulme",
+    purpose: "Basic life support training: this person is an instructor for the UoB life support course.",
+    from, to
+  };
+}
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/"/g, "&quot;"); }
+
+function toCsv(headers, rows) {
+  const q = v => `"${(v == null ? "" : String(v)).replace(/"/g, '""')}"`;
+  return [headers.map(q).join(","), ...rows.map(r => r.map(q).join(","))].join("\n");
+}
+
+function downloadCsv(filename, csv) {
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+}
+
+function currentRows() {
+  return seniorFaculty().map(m => {
+    const sub = submissionFor(m.email);
+    const ov = overrides[m.id] || {};
+    return {
+      id: m.id,
+      email: m.email || "",
+      name: ov.name != null ? ov.name : (m.name || ""),
+      nationality: ov.nationality != null ? ov.nationality : (sub ? (sub.nationality || "") : ""),
+      hasSubmission: !!sub
+    };
+  });
+}
+
+function updateField(id, field, value) {
+  overrides[id] = overrides[id] || {};
+  overrides[id][field] = value;
+}
+
+function readFixedDetailsFromForm() {
+  fixedDetails = {
+    department: document.getElementById("fd-department").value,
+    applicant: document.getElementById("fd-applicant").value,
+    purpose: document.getElementById("fd-purpose").value,
+    from: document.getElementById("fd-from").value,
+    to: document.getElementById("fd-to").value
+  };
+}
+
+function copyFixedDetails() {
+  readFixedDetailsFromForm();
+  const text = [
+    `Which department will the visitor be based in? ${fixedDetails.department}`,
+    `Application made by: ${fixedDetails.applicant}`,
+    `Purpose of Visit: ${fixedDetails.purpose}`,
+    `Proposed Date of Visit from: ${fixedDetails.from}`,
+    `Proposed Date of visit to: ${fixedDetails.to}`
+  ].join("\n");
+  navigator.clipboard.writeText(text).then(() => alert("Fixed details copied."));
+}
+
+function exportCsv() {
+  readFixedDetailsFromForm();
+  const rows = currentRows();
+  if (!rows.length) { alert("No RMD Senior Faculty found on the current roster."); return; }
+  const headers = [
+    "Full Name of Visitor (as per passport)",
+    "Visitor's email address",
+    "Visitor's Nationality",
+    "Which department will the visitor be based in?",
+    "Application made by",
+    "Purpose of Visit",
+    "Proposed Date of Visit from",
+    "Proposed Date of visit to"
+  ];
+  const csvRows = rows.map(r => [
+    r.name, r.email, r.nationality,
+    fixedDetails.department, fixedDetails.applicant, fixedDetails.purpose, fixedDetails.from, fixedDetails.to
+  ]);
+  downloadCsv(`rmd-senior-faculty-visitor-request-${CURRENT_MOU_YEAR.replace("/", "-")}.csv`, toCsv(headers, csvRows));
+}
+
+async function copyCsvToClipboard() {
+  readFixedDetailsFromForm();
+  const rows = currentRows();
+  const headers = ["Full Name of Visitor (as per passport)", "Visitor's email address", "Visitor's Nationality"];
+  const csv = toCsv(headers, rows.map(r => [r.name, r.email, r.nationality]));
+  await navigator.clipboard.writeText(csv);
+  alert(`Copied ${rows.length} row(s) — name, email, nationality only. Fixed details (department, purpose, dates) are the same for every row, use the copy button on that card instead.`);
+}
+
+function render() {
+  const rows = currentRows();
+  const missingNationality = rows.filter(r => !r.nationality);
+  const fd = fixedDetails || defaultFixedDetails();
+
+  document.getElementById("pageContent").innerHTML = `
+    <div class="warn-banner">
+      <strong>RMD Senior Faculty only — from the MOU roster (${CURRENT_MOU_YEAR})</strong>
+      This covers the "all year" visitor group (people tagged "RMD Senior Faculty" on the MOU
+      roster). It does NOT cover Instructor Weekend-only visitors — that's a separate list Jon
+      compiles by hand. "Full Name" is pre-filled from the roster, not a verified passport name —
+      check/edit before submitting. Nationality only populates once someone has submitted this
+      year's MOU (via the MOU Dashboard) — rows with none are outlined orange below.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Fixed details — same for every submission this group needs</div>
+      <div class="card-sub">Pre-filled from what Jon specified 2026-08-27. Edit here if it changes; edits are used by both the copy and CSV export buttons below.</div>
+      <div class="fixed-grid">
+        <label>Department</label><input id="fd-department" value="${esc(fd.department)}">
+        <label>Application made by</label><input id="fd-applicant" value="${esc(fd.applicant)}">
+        <label>Purpose of Visit</label><textarea id="fd-purpose">${esc(fd.purpose)}</textarea>
+        <label>Proposed Date of Visit from</label><input id="fd-from" value="${esc(fd.from)}">
+        <label>Proposed Date of visit to</label><input id="fd-to" value="${esc(fd.to)}">
+      </div>
+      <div style="margin-top:12px;"><button class="btn-action secondary" onclick="copyFixedDetails()">📋 Copy fixed details</button></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">RMD Senior Faculty visitor details</div>
+      <div class="card-counts"><b>${rows.length}</b> senior faculty on roster${missingNationality.length ? ` · <b style="color:var(--rmd-warn);">${missingNationality.length}</b> missing nationality (MOU not yet submitted)` : ""}</div>
+      ${rows.length ? `
+      <table>
+        <thead><tr><th>Full Name (as per passport)</th><th>Email</th><th>Nationality</th></tr></thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr>
+              <td><input value="${esc(r.name)}" onchange="updateField('${r.id}','name',this.value)"></td>
+              <td class="row-email">${esc(r.email)}</td>
+              <td><input class="${r.nationality ? "" : "flagged"}" value="${esc(r.nationality)}" placeholder="${r.hasSubmission ? "" : "MOU not submitted"}" onchange="updateField('${r.id}','nationality',this.value)"></td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+      ` : `<div style="color:var(--rmd-muted);font-size:13px;">No one tagged "RMD Senior Faculty" found on the current mou_roster. Check the MOU Dashboard's "Manage roster" tab.</div>`}
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-action" onclick="exportCsv()">⬇ Download CSV (all 8 form fields)</button>
+        <button class="btn-action secondary" onclick="copyCsvToClipboard()">📋 Copy name/email/nationality only</button>
+      </div>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
