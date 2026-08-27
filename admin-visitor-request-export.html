@@ -147,7 +147,8 @@ let roster = [];         // mou_roster docs
 let submissions = [];    // mou_responses for CURRENT_MOU_YEAR
 let overrides = {};      // id -> { name, nationality } edits made on this page
 let facultyResponses = []; // faculty_responses docs (Instructor Weekend faculty submissions)
-let iwOverrides = {};      // id -> { name, nationality } edits for the IW external-instructor table
+let facultyRosterDocs = []; // faculty_roster docs (Birmingham student/senior faculty — name/group, mostly no email)
+let iwOverrides = {};      // id -> { name, nationality, include } edits for the IW review table
 
 window.addEventListener("load", () => {
   requireDirector("timetable.html").then(() => {
@@ -157,15 +158,17 @@ window.addEventListener("load", () => {
 
 async function loadAll() {
   document.getElementById("pageContent").innerHTML = `<div class="loading">Loading…</div>`;
-  const [rosterSnap, subSnap, facultySnap] = await Promise.all([
+  const [rosterSnap, subSnap, facultySnap, facRosterSnap] = await Promise.all([
     db.collection(COLLECTIONS.mouRoster).get(),
     db.collection(COLLECTIONS.mouResponses).where("academicYear", "==", CURRENT_MOU_YEAR).get(),
-    db.collection("faculty_responses").get()
+    db.collection("faculty_responses").get(),
+    db.collection(COLLECTIONS.facultyRoster).get()
   ]);
   roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   submissions = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   facultyResponses = facultySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  facultyRosterDocs = facRosterSnap.docs.map(d => d.data());
   overrides = {};
   iwOverrides = {};
   render();
@@ -245,41 +248,101 @@ function updateField(id, field, value) {
   overrides[id][field] = value;
 }
 
-// ── Instructor Weekend external-instructor group (added 2026-08-27) ───────
-// "External" = confirmed IW faculty whose email isn't anywhere in mou_roster,
-// i.e. not an expected RMD Birmingham member. See header addendum above.
+// ── Instructor Weekend visitor-request review list (added 2026-08-27, ─────
+// revised same day after Jon flagged the first cut as wrong) ──────────────
+// First version excluded anyone whose faculty-form email matched mou_roster.
+// Jon reported real senior faculty (Ben Stanley, Chesca Harper, Cameron
+// Parkes, Naveed Kordmahalleh, Amith Shibu, Nick Coffin, and others) were
+// showing up as "external" anyway. Checked live data: they ARE on mou_roster
+// and/or faculty_roster, just under a different email (personal Gmail/NHS
+// address on the faculty form vs whatever's on the roster) or a nickname
+// (Becca/Rebecca Everitt, Tom/Thomas Burton, Rosie/Rosanna Lilwall,
+// Chesca/Francesca Harper) that a name match alone won't reliably catch
+// either. Automatic exclusion isn't safe here — a false "not external" would
+// mean a genuinely external instructor never gets a visitor request filed,
+// which is the actual compliance risk.
+//
+// New approach: show EVERY confirmed IW faculty response, each with a
+// checkbox defaulting on ("needs visitor request") only when no match is
+// found at all — by email against mou_roster, or by exact name against
+// mou_roster or faculty_roster. A same-surname hit against either roster
+// that isn't already an exact match is shown as a soft "check — possible
+// nickname match" flag rather than used to auto-uncheck, since surname
+// alone isn't reliable enough to suppress a row outright (common surnames
+// would false-negative). Jon reviews and ticks/unticks before exporting —
+// same "over-include and let Jon check" philosophy already used by
+// admin-erc-export.html's people-linkage (see [[rmd-sync-to-people-automation]]).
 function mouRosterEmailSet() {
   return new Set(roster.map(m => (m.email || "").trim().toLowerCase()).filter(Boolean));
+}
+
+function normName(s) {
+  return (s || "").toLowerCase().trim().replace(/\s+/g, " ").replace(/[().]/g, "");
+}
+
+function surnameOf(name) {
+  const parts = normName(name).split(" ").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
 }
 
 function fullName(f) {
   return [f.firstName, f.middleName, f.lastName].filter(Boolean).join(" ");
 }
 
-function externalIwRows() {
-  const rosterEmails = mouRosterEmailSet();
+function iwMatchInfo(name, email) {
+  const n = normName(name);
+  const e = (email || "").trim().toLowerCase();
+  const mouEmails = mouRosterEmailSet();
+  const mouNames = new Set(roster.map(m => normName(m.name)));
+  const facNames = new Set(facultyRosterDocs.map(m => normName(m.name)));
+
+  if (e && mouEmails.has(e)) return { status: "match", label: "✓ email match (mou_roster)" };
+  if (n && mouNames.has(n)) return { status: "match", label: "✓ name match (mou_roster)" };
+  if (n && facNames.has(n)) return { status: "match", label: "✓ name match (faculty_roster)" };
+
+  const surname = surnameOf(name);
+  if (surname && surname.length > 2) {
+    const rosterSurnames = new Set([...roster, ...facultyRosterDocs].map(m => surnameOf(m.name)));
+    if (rosterSurnames.has(surname)) return { status: "check", label: "⚠ check — possible nickname match (same surname on a roster)" };
+  }
+  return { status: "none", label: "no match on either roster" };
+}
+
+function allConfirmedIwRows() {
   return facultyResponses
     .filter(f => f.attendanceStatus === "confirmed")
-    .filter(f => {
-      const email = (f.email || "").trim().toLowerCase();
-      return email && !rosterEmails.has(email);
-    })
     .map(f => {
       const ov = iwOverrides[f.id] || {};
+      const name = ov.name != null ? ov.name : fullName(f);
+      const match = iwMatchInfo(name, f.email);
+      const defaultInclude = match.status !== "match";
       return {
         id: f.id,
         email: f.email || "",
         role: f.role || "",
-        name: ov.name != null ? ov.name : fullName(f),
-        nationality: ov.nationality != null ? ov.nationality : (f.nationality || "")
+        name,
+        nationality: ov.nationality != null ? ov.nationality : (f.nationality || ""),
+        matchLabel: match.label,
+        matchStatus: match.status,
+        include: ov.include != null ? ov.include : defaultInclude
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      if (a.include !== b.include) return a.include ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
 }
 
 function updateIwField(id, field, value) {
   iwOverrides[id] = iwOverrides[id] || {};
   iwOverrides[id][field] = value;
+  render();
+}
+
+function toggleIwInclude(id, checked) {
+  iwOverrides[id] = iwOverrides[id] || {};
+  iwOverrides[id].include = checked;
+  render();
 }
 
 function defaultIwFixedDetails() {
@@ -316,8 +379,8 @@ function copyIwFixedDetails() {
 
 function exportIwCsv() {
   readIwFixedDetailsFromForm();
-  const rows = externalIwRows();
-  if (!rows.length) { alert("No confirmed Instructor Weekend faculty found outside the mou_roster."); return; }
+  const rows = allConfirmedIwRows().filter(r => r.include);
+  if (!rows.length) { alert("No rows are ticked for the visitor request — tick at least one row in the table below."); return; }
   const headers = [
     "Full Name of Visitor (as per passport)",
     "Visitor's email address",
@@ -336,7 +399,8 @@ function exportIwCsv() {
 }
 
 async function copyIwCsvToClipboard() {
-  const rows = externalIwRows();
+  const rows = allConfirmedIwRows().filter(r => r.include);
+  if (!rows.length) { alert("No rows are ticked for the visitor request — tick at least one row in the table below."); return; }
   const headers = ["Full Name of Visitor (as per passport)", "Visitor's email address", "Visitor's Nationality"];
   const csv = toCsv(headers, rows.map(r => [r.name, r.email, r.nationality]));
   await navigator.clipboard.writeText(csv);
@@ -400,9 +464,10 @@ function render() {
   const missingNationality = rows.filter(r => !r.nationality);
   const fd = fixedDetails || defaultFixedDetails();
 
-  const iwRows = externalIwRows();
-  const iwMissingNationality = iwRows.filter(r => !r.nationality);
-  const iwOtherNationality = iwRows.filter(r => r.nationality === "Other");
+  const iwAllRows = allConfirmedIwRows();
+  const iwSelected = iwAllRows.filter(r => r.include);
+  const iwMissingNationality = iwSelected.filter(r => !r.nationality);
+  const iwOtherNationality = iwSelected.filter(r => r.nationality === "Other");
   const iwfd = iwFixedDetails || defaultIwFixedDetails();
 
   document.getElementById("pageContent").innerHTML = `
@@ -452,14 +517,15 @@ function render() {
     </div>
 
     <div class="warn-banner">
-      <strong>Instructor Weekend external instructors — confirmed faculty_responses not on mou_roster</strong>
-      This covers people attending the Instructor Weekend only, who aren't expected RMD Birmingham
-      members (visiting instructors from other RMD sites, or genuinely external). Sourced from
-      confirmed faculty submissions matched against mou_roster by email — anyone whose email isn't
-      on mou_roster at all shows up here, so double-check before filing: someone with a typo'd or
-      changed email could be wrongly flagged even though they're a Birmingham member. Nationality
-      comes from the faculty form's UK Citizen / Other question, not a full country — rows marked
-      "Other" need Jon to confirm the actual nationality before submitting the UoB form.
+      <strong>Instructor Weekend visitor-request review — every confirmed faculty response</strong>
+      Every confirmed IW faculty submission is listed below, with "Needs visitor request" pre-ticked
+      only when no match was found against mou_roster or faculty_roster (by email or exact name).
+      Faculty-form emails are often personal (Gmail, NHS) rather than what's on a roster, and
+      nicknames (Becca/Rebecca, Tom/Thomas, Chesca/Francesca…) don't match exactly either — so this
+      is a starting point, not a verdict. Check the match column, untick anyone you recognise as
+      already a Birmingham member, tick anyone the matching missed, then export. Nationality comes
+      from the faculty form's UK Citizen / Other question, not a full country — rows marked "Other"
+      need the actual country confirmed before filing the UoB form.
     </div>
 
     <div class="card">
@@ -476,29 +542,31 @@ function render() {
     </div>
 
     <div class="card">
-      <div class="card-title">External instructor visitor details</div>
+      <div class="card-title">Confirmed IW faculty — review &amp; select for visitor request</div>
       <div class="card-counts">
-        <b>${iwRows.length}</b> confirmed IW faculty not on mou_roster
-        ${iwMissingNationality.length ? ` · <b style="color:var(--rmd-warn);">${iwMissingNationality.length}</b> missing nationality` : ""}
-        ${iwOtherNationality.length ? ` · <b style="color:var(--rmd-warn);">${iwOtherNationality.length}</b> marked "Other" — confirm actual country before filing` : ""}
+        <b>${iwSelected.length}</b> of <b>${iwAllRows.length}</b> confirmed faculty ticked for the visitor request
+        ${iwMissingNationality.length ? ` · <b style="color:var(--rmd-warn);">${iwMissingNationality.length}</b> ticked with no nationality` : ""}
+        ${iwOtherNationality.length ? ` · <b style="color:var(--rmd-warn);">${iwOtherNationality.length}</b> ticked "Other" — confirm actual country before filing` : ""}
       </div>
-      ${iwRows.length ? `
+      ${iwAllRows.length ? `
       <table>
-        <thead><tr><th>Full Name (as per passport)</th><th>Email</th><th>Role</th><th>Nationality</th></tr></thead>
+        <thead><tr><th></th><th>Full Name (as per passport)</th><th>Email</th><th>Role</th><th>Nationality</th><th>Roster match</th></tr></thead>
         <tbody>
-          ${iwRows.map(r => `
+          ${iwAllRows.map(r => `
             <tr>
-              <td><input value="${esc(r.name)}" onchange="updateIwField('${r.id}','name',this.value)"></td>
+              <td><input type="checkbox" ${r.include ? "checked" : ""} onchange="toggleIwInclude('${r.id}', this.checked)"></td>
+              <td><input value="${esc(r.name)}" onchange="updateIwField('${r.id}','name',this.value)" ${r.include ? "" : "disabled"}></td>
               <td class="row-email">${esc(r.email)}</td>
               <td class="row-email">${esc(r.role)}</td>
-              <td><input class="${r.nationality ? "" : "flagged"}" value="${esc(r.nationality)}" placeholder="not set" onchange="updateIwField('${r.id}','nationality',this.value)"></td>
+              <td><input class="${r.nationality ? "" : "flagged"}" value="${esc(r.nationality)}" placeholder="not set" onchange="updateIwField('${r.id}','nationality',this.value)" ${r.include ? "" : "disabled"}></td>
+              <td style="font-size:11px;color:${r.matchStatus === 'match' ? 'var(--rmd-muted)' : r.matchStatus === 'check' ? 'var(--rmd-warn)' : 'var(--rmd-navy)'};">${esc(r.matchLabel)}</td>
             </tr>`).join("")}
         </tbody>
       </table>
-      ` : `<div style="color:var(--rmd-muted);font-size:13px;">No confirmed Instructor Weekend faculty found outside mou_roster right now.</div>`}
+      ` : `<div style="color:var(--rmd-muted);font-size:13px;">No confirmed Instructor Weekend faculty responses yet.</div>`}
       <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-action" onclick="exportIwCsv()">⬇ Download CSV (all 8 form fields)</button>
-        <button class="btn-action secondary" onclick="copyIwCsvToClipboard()">📋 Copy name/email/nationality only</button>
+        <button class="btn-action" onclick="exportIwCsv()">⬇ Download CSV — ticked rows (all 8 form fields)</button>
+        <button class="btn-action secondary" onclick="copyIwCsvToClipboard()">📋 Copy ticked — name/email/nationality only</button>
       </div>
     </div>
   `;
