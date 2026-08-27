@@ -215,6 +215,7 @@ const SFR_REMINDERS_COLLECTION  = "senior_faculty_review_reminders";
 // automated reminders.
 const FROM_EMAIL  = "RMD Birmingham <reminders@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
 const REPLY_TO     = "rmdbirmingham@googlemail.com";
+const JON_BCC      = "j.hulme.1@bham.ac.uk"; // Jon wants a copy of every IW RSVP invite sent (2026-08-27) — see sendIwRsvpInvites
 const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 
 exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
@@ -783,6 +784,7 @@ exports.sendIwRsvpInvites = onCall({ secrets: [resendApiKey], region: "us-centra
       const { error } = await resend.emails.send({
         from: FROM_EMAIL,
         to: person.email,
+        bcc: JON_BCC,
         replyTo: REPLY_TO,
         subject: "RMD Instructor Weekend — will you be attending?",
         text:
