@@ -37,6 +37,10 @@
     .sum-pill.active { border-color: var(--rmd-blue); background: #eef4fb; }
     .sum-pill .val { font-size: 24px; font-weight: 700; color: var(--rmd-navy); }
     .sum-pill .lbl { font-size: 11px; color: var(--rmd-muted); font-weight: 600; text-transform: uppercase; }
+    .summary-strip.secondary { margin-top: -10px; }
+    .sum-pill.small { padding: 6px 12px; min-width: 74px; }
+    .sum-pill.small .val { font-size: 18px; }
+    .sum-pill.small .lbl { font-size: 10px; }
 
     /* Action bar */
     .action-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
@@ -215,15 +219,15 @@
   <!-- Summary pills -->
   <div class="summary-strip" id="summaryStrip">
     <div class="sum-pill active" onclick="setFilter('total',this)" title="Click to filter list"><div class="val" id="sum-total">–</div><div class="lbl">Total</div></div>
-    <div class="sum-pill" onclick="setFilter('confirmed',this)" title="Click to filter list"><div class="val" id="sum-confirmed" style="color:#1a6e31;">–</div><div class="lbl">Confirmed</div></div>
-    <div class="sum-pill" onclick="setFilter('pending',this)" title="Click to filter list"><div class="val" id="sum-pending" style="color:#856404;">–</div><div class="lbl">Pending</div></div>
-    <div class="sum-pill" onclick="setFilter('declined',this)" title="Click to filter list"><div class="val" id="sum-declined" style="color:#b7410e;">–</div><div class="lbl">Declined</div></div>
     <div class="sum-pill" onclick="setFilter('instructor',this)" title="Click to filter list"><div class="val" id="sum-candidates">–</div><div class="lbl">Instr. Candidates</div></div>
     <div class="sum-pill" onclick="setFilter('assessor',this)" title="Click to filter list"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor/Sr Instr.</div></div>
-    <div class="sum-pill" onclick="setFilter('roster',this)" title="Click to filter list"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From course roster</div></div>
-    <div class="sum-pill" onclick="setFilter('faculty',this)" title="Click to filter list"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">From faculty</div></div>
-    <div class="sum-pill" onclick="setFilter('manual',this)" title="Click to filter list"><div class="val" id="sum-manual" style="color:#856404;">–</div><div class="lbl">Added manually</div></div>
-    <div class="sum-pill" onclick="setFilter('flagged',this)" title="Click to filter list"><div class="val" id="sum-flagged" style="color:#b7410e;">–</div><div class="lbl">Needs attention</div></div>
+    <div class="sum-pill" onclick="setFilter('faculty',this)" title="Click to filter list"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">Faculty</div></div>
+  </div>
+  <div class="summary-strip secondary" id="summaryStripSecondary">
+    <div class="sum-pill small" onclick="setFilter('confirmed',this)" title="Click to filter list"><div class="val" id="sum-confirmed" style="color:#1a6e31;">–</div><div class="lbl">Confirmed</div></div>
+    <div class="sum-pill small" onclick="setFilter('pending',this)" title="Click to filter list"><div class="val" id="sum-pending" style="color:#856404;">–</div><div class="lbl">Pending</div></div>
+    <div class="sum-pill small" onclick="setFilter('flagged',this)" title="Click to filter list"><div class="val" id="sum-flagged" style="color:#b7410e;">–</div><div class="lbl">Needs attention</div></div>
+    <div class="sum-pill small" onclick="setFilter('declined',this)" title="Click to filter list"><div class="val" id="sum-declined" style="color:#b7410e;">–</div><div class="lbl">Declined</div></div>
   </div>
 
   <!-- Action bar -->
@@ -405,9 +409,7 @@ function updateSummary() {
   document.getElementById("sum-declined").textContent   = r.filter(x => x.status === "declined").length;
   document.getElementById("sum-candidates").textContent = r.filter(x => x.role === "Instructor Candidate").length;
   document.getElementById("sum-assessors").textContent  = r.filter(x => x.role === "Assessor / Senior Instructor").length;
-  document.getElementById("sum-roster").textContent     = r.filter(x => x.source === "roster").length;
   document.getElementById("sum-faculty").textContent    = r.filter(x => x.source === "faculty").length;
-  document.getElementById("sum-manual").textContent     = r.filter(x => x.source === "manual" || x.source === "paste").length;
   document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role").length;
 }
 
@@ -440,9 +442,7 @@ function getFiltered() {
     case "declined":    rows = allRegistrations.filter(r => r.status === "declined"); break;
     case "instructor":  rows = allRegistrations.filter(r => r.role === "Instructor Candidate"); break;
     case "assessor":    rows = allRegistrations.filter(r => r.role === "Assessor / Senior Instructor"); break;
-    case "roster":      rows = allRegistrations.filter(r => r.source === "roster"); break;
     case "faculty":     rows = allRegistrations.filter(r => r.source === "faculty"); break;
-    case "manual":      rows = allRegistrations.filter(r => r.source === "manual" || r.source === "paste"); break;
     case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role"); break;
     case "total":       rows = allRegistrations; break;
     default:            rows = allRegistrations;
