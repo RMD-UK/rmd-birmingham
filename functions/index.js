@@ -788,18 +788,19 @@ exports.sendIwRsvpInvites = onCall({ secrets: [resendApiKey], region: "us-centra
         text:
 `Hi ${firstName},
 
-Attendance at the Instructor Weekend isn't mandatory for Assessors and Senior Instructors (unlike Instructor Candidates, who are required to attend). We'd like to know whether you're planning to join us so we can plan numbers accurately.
+The annual instructor weekend is a core part of the RMD year. As you are one of the more senior members of the RMD Birmingham team, and have a key role in maintaining the standards of the course, we hope to see you there.
 
 Please let us know here:
 
 ${link}
 
-Birmingham Medical School · 9–11 October 2026
+Birmingham Medical School
+10 - 11 October 2026
 
-If you've already told us, or this has reached you by mistake, just reply and let us know.
+If you've already told us, or you think you received this by mistake, just reply and let us know.
 
-Thanks,
-Jon`
+Thanks
+Jon & Naveed`
       });
       if (error) throw new Error(error.message || JSON.stringify(error));
       sent++;
