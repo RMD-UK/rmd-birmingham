@@ -245,8 +245,14 @@
   <form id="mouForm">
 
     <div class="field">
-      <label>Full name <span class="req">*</span></label>
+      <label>Full name (as per passport) <span class="req">*</span></label>
       <input type="text" id="memberName" placeholder="e.g. Jane Smith" autocomplete="name">
+      <div class="hint-text">Enter your full legal name exactly as it appears on your passport.</div>
+    </div>
+
+    <div class="field">
+      <label>Nationality <span class="req">*</span></label>
+      <input type="text" id="memberNationality" placeholder="e.g. British" autocomplete="off">
     </div>
 
     <div class="field">
@@ -425,12 +431,14 @@ function selectAgree(value, btn) {
 
 async function submitForm() {
   const name  = document.getElementById("memberName").value.trim();
+  const nationality = document.getElementById("memberNationality").value.trim();
   const email = document.getElementById("memberEmail").value.trim().toLowerCase();
   const role  = document.getElementById("role").value;
   const read  = document.getElementById("readConfirm").checked;
   const comment = document.getElementById("disagreeComment").value.trim();
 
-  if (!name) { alert("Please enter your full name."); return; }
+  if (!name) { alert("Please enter your full name as it appears on your passport."); return; }
+  if (!nationality) { alert("Please enter your nationality."); return; }
   if (!email || !email.includes("@")) { alert("Please enter a valid email address."); return; }
   if (!role) { alert("Please select your RMD role."); return; }
   if (!read) { alert("Please confirm you have read and understood the Memorandum of Understanding."); return; }
@@ -443,6 +451,7 @@ async function submitForm() {
 
   const record = {
     name: name,
+    nationality: nationality,
     email: email,
     studentId: document.getElementById("studentId").value.trim(),
     role: role,
