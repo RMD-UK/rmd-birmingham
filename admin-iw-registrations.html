@@ -45,6 +45,11 @@
     .btn-action.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
     .btn-action.secondary:hover { background: #f0f3f6; }
     .btn-action.danger { background: #fce8e6; color: #b7410e; border: 1.5px solid #f5b8b0; }
+    .btn-action.quiet {
+      background: none; color: var(--rmd-muted); border: 1px dashed #ccd6dd;
+      font-weight: 600; font-size: 12px; padding: 6px 12px; opacity: 0.85;
+    }
+    .btn-action.quiet:hover { background: #f7f7f7; color: var(--rmd-navy); border-color: #adb8c0; opacity: 1; }
 
     /* Filter tabs */
     .filter-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -194,7 +199,7 @@
     <div class="sum-pill"><div class="val" id="sum-declined" style="color:#b7410e;">–</div><div class="lbl">Declined</div></div>
     <div class="sum-pill"><div class="val" id="sum-candidates">–</div><div class="lbl">Instr. Candidates</div></div>
     <div class="sum-pill"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor/Sr Instr.</div></div>
-    <div class="sum-pill"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From MOU roster</div></div>
+    <div class="sum-pill"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From course roster</div></div>
     <div class="sum-pill"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">From faculty</div></div>
     <div class="sum-pill"><div class="val" id="sum-manual" style="color:#856404;">–</div><div class="lbl">Added manually</div></div>
     <div class="sum-pill"><div class="val" id="sum-flagged" style="color:#b7410e;">–</div><div class="lbl">Needs attention</div></div>
@@ -202,15 +207,13 @@
 
   <!-- Action bar -->
   <div class="action-bar">
-    <button class="btn-action" onclick="togglePanel('addPanel')">+ Add person</button>
-    <button class="btn-action secondary" onclick="togglePanel('pastePanel')">📋 Paste import</button>
-    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')">⬇ Import MOU-confirmed people</button>
-    <button class="btn-action secondary" onclick="togglePanel('facultyPanel')">🎓 Import confirmed faculty</button>
-    <button class="btn-action secondary" onclick="togglePanel('assessorRsvpPanel')">🙋 Import assessor RSVPs</button>
-    <button class="btn-action secondary" onclick="copyRsvpLink()">🔗 Copy RSVP link</button>
-    <button class="btn-action secondary" onclick="copyConfirmedEmails()">📧 Copy confirmed emails</button>
-    <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
-    <button class="btn-action secondary" onclick="togglePanel('syncPanel')" title="This now runs automatically when you confirm someone. Use this only to backfill people confirmed before automation was added, retry after an error, or re-check after fixing a flagged role.">🔗 Sync to People (manual re-check)</button>
+    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" title="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Adds them as Pending. The only route either group has onto this list.">⬇ Import course candidates</button>
+    <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" title="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
+    <button class="btn-action" onclick="togglePanel('addPanel')" title="Add one person by hand — for anyone the imports above missed.">+ Add person</button>
+    <button class="btn-action secondary" onclick="togglePanel('pastePanel')" title="Bulk-add a pasted list of names/emails under one role — for anyone the imports above missed.">📋 Paste import</button>
+    <button class="btn-action secondary" onclick="copyConfirmedEmails()" title="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
+    <button class="btn-action secondary" onclick="exportCSV()" title="Downloads the full list — name, email, role, status, source, notes, added date — as a CSV.">⬇ Export CSV</button>
+    <button class="btn-action quiet" style="margin-left:auto;" onclick="togglePanel('syncPanel')" title="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
   </div>
 
   <!-- Add person panel -->
@@ -282,12 +285,12 @@
 
   <!-- Import from roster panel -->
   <div class="panel" id="rosterPanel" style="display:none;">
-    <div class="panel-header">Import MOU-confirmed people
+    <div class="panel-header">Import course candidates
       <button onclick="togglePanel('rosterPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
     </div>
     <div class="panel-body">
       <div class="warn-box">
-        This pulls from the <strong>confirmed MOU roster</strong> — the official membership list for this MOU year — not a general contact list. It will add all <strong>Instructor Candidates</strong> and <strong>Assessor / Senior Instructors</strong> on that roster to the IW registrations list (as Pending). People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
+        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list (as Pending). Neither group has an RMD account or a self-service RSVP form, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
       </div>
       <div id="rosterPreview" class="loading">Loading roster…</div>
       <div id="rosterActions" style="display:none;margin-top:12px;">
@@ -316,38 +319,18 @@
     </div>
   </div>
 
-  <!-- Import assessor RSVPs panel -->
-  <div class="panel" id="assessorRsvpPanel" style="display:none;">
-    <div class="panel-header">Import assessor / senior instructor RSVPs
-      <button onclick="togglePanel('assessorRsvpPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
-    </div>
-    <div class="panel-body">
-      <div class="warn-box">
-        Assessors and Senior Instructors self-confirm their attendance at
-        <code>iw-rsvp.html</code> (attendance is not mandatory for this group, unlike Instructor Candidates).
-        This will add everyone who responded <strong>Yes</strong> to the IW registrations list, already marked
-        <strong>Confirmed</strong>. People who responded <strong>No</strong> are shown below for visibility but not imported.
-        People already on the list will not be duplicated.
-      </div>
-      <div id="assessorRsvpPreview" class="loading">Loading RSVP responses…</div>
-      <div id="assessorRsvpActions" style="display:none;margin-top:12px;">
-        <button class="btn-action" onclick="importFromAssessorRsvp()">Import listed people</button>
-        <span id="assessorRsvpFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
-      </div>
-    </div>
-  </div>
-
   <!-- Sync to People panel -->
   <div class="panel" id="syncPanel" style="display:none;">
-    <div class="panel-header">Sync confirmed candidates → People (manual re-check)
+    <div class="panel-header">Sync confirmed candidates → People (backup only)
       <button onclick="togglePanel('syncPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
     </div>
     <div class="panel-body">
       <div class="warn-box">
-        <strong>This happens automatically now</strong> — confirming someone below triggers this same sync
-        within seconds, no button needed. Use this panel only to: backfill anyone confirmed
-        <em>before</em> the automatic sync was added, retry if the automatic sync ever errors (check the
-        "Needs attention" count above), or re-check right after fixing someone's role from a flagged "Other."<br><br>
+        <strong>Backup only — you shouldn't normally need this.</strong> Confirming someone below already
+        triggers this same sync automatically, within seconds, with no button needed. Use this panel only to:
+        backfill anyone confirmed <em>before</em> the automatic sync was added, retry if the automatic sync ever
+        errors (check the "Needs attention" count above), or re-check right after fixing someone's role from a
+        flagged "Other."<br><br>
         Writes every <strong>confirmed</strong> registration to the <code>people</code> collection, which
         <code>attendance.html</code> uses for check-in on course day. People already synced (matched by email)
         are skipped, never duplicated or overwritten.
@@ -385,12 +368,10 @@
 <script>
 
 const IW_COLL          = "iw_registrations";
-const IW_RSVP_COLL     = "iw_assessor_rsvp";
 
 let allRegistrations   = [];   // [{id, name, email, role, status, source, notes, addedAt}]
 let rosterCandidates   = [];   // from mou_roster (for import panel)
 let facultyCandidates  = [];   // from faculty_responses, attendanceStatus === "confirmed" (for import panel)
-let assessorRsvps      = [];   // from iw_assessor_rsvp, attending === true (for import panel)
 let currentFilter      = "all";
 let pasteData          = [];   // parsed paste rows
 let syncCandidates     = [];   // confirmed regs mapped for People sync
@@ -866,119 +847,18 @@ async function importFromFaculty() {
   }
 }
 
-// ── Import from Assessor / Senior Instructor RSVP ───────────────────────────
-// Assessors/Senior Instructors self-confirm Yes/No via iw-rsvp.html (their
-// attendance is not mandatory, unlike Instructor Candidates). Only "Yes"
-// responses are imported, already marked confirmed since the person
-// confirmed it themselves — no separate director confirm step needed.
-async function loadAssessorRsvpPreview() {
-  const preview = document.getElementById("assessorRsvpPreview");
-  const actions = document.getElementById("assessorRsvpActions");
-  preview.innerHTML = '<div class="loading">Loading RSVP responses…</div>';
-  actions.style.display = "none";
-
-  try {
-    const snap = await db.collection(IW_RSVP_COLL).get();
-    const existing = new Set(allRegistrations.map(r => r.email));
-    const all = snap.docs.map(d => d.data());
-    const yes = all.filter(d => d.attending === true);
-    const no  = all.filter(d => d.attending === false);
-
-    assessorRsvps = yes.map(d => ({
-      name: d.name, email: (d.email || "").toLowerCase(), role: "Assessor / Senior Instructor",
-      notes: d.notes || "", alreadyAdded: existing.has((d.email || "").toLowerCase())
-    }));
-
-    if (!all.length) {
-      preview.innerHTML = '<div class="empty-state">No RSVP responses yet. Share the RSVP link with assessors/senior instructors.</div>';
-      return;
-    }
-
-    const toAdd     = assessorRsvps.filter(r => !r.alreadyAdded);
-    const alreadyIn = assessorRsvps.filter(r => r.alreadyAdded);
-
-    preview.innerHTML = `
-      <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:8px;">
-        <strong style="color:#1a6e31;">${yes.length} said Yes</strong>
-        (<strong style="color:#1a6e31;">${toAdd.length} new</strong> to add,
-        <strong style="color:#637282;">${alreadyIn.length} already on list</strong>),
-        <strong style="color:#b7410e;">${no.length} said No</strong>
-      </div>
-      <div class="import-preview">
-        ${toAdd.map(p => `<div class="preview-row">
-          <span class="preview-name">${p.name||"–"}</span>
-          <span class="preview-email">${p.email||"–"}</span>
-          <span class="badge-candidate">Assessor / Sr. Instructor</span>
-        </div>`).join("")}
-        ${alreadyIn.map(p => `<div class="preview-row" style="opacity:0.45;">
-          <span class="preview-name">${p.name||"–"}</span>
-          <span class="preview-email">${p.email||"–"}</span>
-          <span style="font-size:11px;color:#637282;">Already on list</span>
-        </div>`).join("")}
-        ${no.map(p => `<div class="preview-row" style="opacity:0.6;">
-          <span class="preview-name">${p.name||"–"}</span>
-          <span class="preview-email">${p.email||"–"}</span>
-          <span style="font-size:11px;font-weight:700;color:#b7410e;">Declined</span>
-        </div>`).join("")}
-      </div>`;
-    actions.style.display = toAdd.length ? "block" : "none";
-    document.getElementById("assessorRsvpFeedback").textContent = "";
-  } catch(err) {
-    preview.innerHTML = `<div class="empty-state">Failed to load RSVP responses: ${err.message}</div>`;
-  }
-}
-
-async function importFromAssessorRsvp() {
-  const existing = new Set(allRegistrations.map(r => r.email));
-  const toAdd    = assessorRsvps.filter(r => !existing.has(r.email));
-  const fb       = document.getElementById("assessorRsvpFeedback");
-
-  if (!toAdd.length) { fb.textContent = "Nothing new to import."; return; }
-  fb.textContent = `Importing ${toAdd.length} people…`;
-
-  try {
-    const batch   = db.batch();
-    const ts      = firebase.firestore.FieldValue.serverTimestamp();
-    const newDocs = [];
-
-    toAdd.forEach(p => {
-      const ref = db.collection(IW_COLL).doc();
-      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes: p.notes, source: "assessor-rsvp", status: "confirmed", addedAt: ts });
-      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes: p.notes, source: "assessor-rsvp", status: "confirmed" });
-    });
-    await batch.commit();
-
-    allRegistrations.push(...newDocs);
-    allRegistrations.sort((a,b) => (a.name||"").localeCompare(b.name||""));
-    updateSummary();
-    renderTable();
-    fb.textContent = `✓ ${toAdd.length} people imported`;
-    setTimeout(() => { fb.textContent = ""; }, 4000);
-    document.getElementById("assessorRsvpPanel").style.display = "none";
-  } catch(err) {
-    fb.textContent = "Error: " + err.message;
-  }
-}
-
-function copyRsvpLink() {
-  const url = window.location.origin + "/iw-rsvp.html";
-  navigator.clipboard.writeText(url).then(() =>
-    alert(`RSVP link copied:\n${url}\n\nSend this to Assessors / Senior Instructors so they can confirm attendance themselves.`));
-}
-
 // ── Panel toggling ────────────────────────────────────────────────────────────
 function togglePanel(id) {
   const el      = document.getElementById(id);
   const visible = el.style.display !== "none";
   // Close all panels first
-  ["addPanel","pastePanel","rosterPanel","facultyPanel","assessorRsvpPanel","syncPanel"].forEach(p => {
+  ["addPanel","pastePanel","rosterPanel","facultyPanel","syncPanel"].forEach(p => {
     document.getElementById(p).style.display = "none";
   });
   if (!visible) {
     el.style.display = "block";
     if (id === "rosterPanel") loadRosterPreview();
     if (id === "facultyPanel") loadFacultyPreview();
-    if (id === "assessorRsvpPanel") loadAssessorRsvpPreview();
     if (id === "syncPanel") loadSyncPreview();
   }
 }
