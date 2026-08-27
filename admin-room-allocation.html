@@ -126,7 +126,7 @@
   <h1 class="ra-title">Room Allocation — Instructor Weekend 2026</h1>
   <span id="saveStatus"></span>
   <button class="ra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
-  <button class="ra-btn" id="autoBtn" onclick="autoDistribute()" style="display:none">⚡ Auto-distribute</button>
+  <button class="ra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly sort Candidates</button>
   <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
 </div>
 
@@ -141,7 +141,7 @@
 <div id="tab-rooms" class="tab-content active">
   <div class="ra-stats">
     <div>Candidates: <b id="statCand">—</b></div>
-    <div>Instructor Trainers: <b id="statInst">—</b></div>
+    <div>Instructor Trainers (selected): <b id="statInst">—</b></div>
     <div>Assigned: <b id="statAssigned">0</b></div>
     <div>Unassigned: <b id="statUnassigned">—</b></div>
     <div id="selHint" style="display:none;color:rgba(255,255,255,.8)">Click a room to assign selected person</div>
@@ -149,6 +149,7 @@
   <div class="rooms-layout">
     <div class="ra-pool">
       <div class="pool-head">Pool <span class="pool-badge" id="poolCount">0</span></div>
+      <div style="padding:6px 10px 0;font-size:11px;color:#8893b0;line-height:1.4">Assessors &amp; Senior Instructors are handled separately and never appear here. Instructor Trainers only appear once selected on the <b>Teaching Faculty</b> tab.</div>
       <div class="pool-search">
         <input type="search" id="poolSearch" placeholder="Search…" oninput="renderPool()">
       </div>
@@ -165,10 +166,10 @@
 <div id="tab-teaching" class="tab-content">
   <div class="tf-wrap">
     <div class="tf-intro">
-      Mark who is in the <b>active teaching faculty</b> for Instructor Weekend 2026 — those actively running sessions in rooms. Faculty in non-teaching roles (e.g. floating, observing, administrative) should be left unchecked.
+      Select which confirmed <b>Instructor Trainers</b> will actually be placed into rooms this weekend. Only checked names appear in the Room Groups pool for assignment — Instructor Trainers in non-teaching roles (e.g. floating, observing, administrative) should be left unchecked and simply won't show up as available to place.
     </div>
     <div class="tf-controls">
-      <span style="font-size:13px;color:#6b7696"><b id="tfCount">0</b> marked as teaching faculty</span>
+      <span style="font-size:13px;color:#6b7696"><b id="tfCount">0</b> selected to be placed in rooms</span>
       <div style="display:flex;gap:8px">
         <button class="ra-btn" onclick="tfSelectAll(true)">Select all</button>
         <button class="ra-btn" onclick="tfSelectAll(false)">Clear all</button>
@@ -184,11 +185,11 @@
 
     <div class="itc-section">
       <div class="itc-sec-head">
-        Step 1 — Select who the ITCs are this year
+        Step 1 — Select who's rotating this year
         <span style="font-size:11px;font-weight:600;opacity:.7"><b id="itcCount">0</b> selected</span>
       </div>
       <div class="itc-sec-body">
-        <p style="font-size:13px;color:#505878;margin:0 0 6px">ITCs (Instructor Trainer Candidates) rotate through rooms across 4 session blocks during the weekend.</p>
+        <p style="font-size:13px;color:#505878;margin:0 0 6px">List below is confirmed Instructor Trainer Candidates (ITCs) only. They rotate through rooms across 4 session blocks during the weekend — max one ITC per room per block. You can change an ITC's room at any point during the course, including mid-weekend.</p>
         <input type="search" id="itcSearch" placeholder="Search people…" oninput="renderITCPicker()"
                style="padding:6px 10px;border:1.5px solid #d0d5e0;border-radius:6px;font-size:13px;font-family:var(--font);width:100%;max-width:320px;box-sizing:border-box;outline:none;">
         <div class="itc-picker-grid" id="itcPickerGrid"></div>
@@ -234,6 +235,7 @@ const ROOMS = INSTRUCTOR_ROOMS;
 let allCandidates  = [];   // role=instructor
 let allInstructors = [];   // role=full-instructor
 let allFaculty     = [];   // role=faculty
+let allITC         = [];   // role=Instructor Trainer Candidate (confirmed, from faculty_responses)
 let allPeople      = [];   // everyone
 
 let groups = {};           // {CM01:{faculty,candidates:[],instructors:[]}, ...}
@@ -298,11 +300,15 @@ async function loadData() {
         if (rosterRoleByEmail[em] === "full-instructor" || d.role === "Instructor Trainer") {
           allInstructors.push(p);  // full instructors also go in the room pool
         }
+      } else if (d.role === "Instructor Trainer Candidate" || d.role === "ITC") {
+        // "ITC" is the legacy value some older faculty_responses docs still carry
+        // (faculty-form.html normalizes new submissions to the full label, never rewrites old ones).
+        allITC.push(p);
       }
     });
   } catch(e) { console.warn("Faculty responses load failed:", e.message); }
 
-  [allCandidates, allInstructors, allFaculty, allPeople].forEach(a => a.sort((x,y) => x.name.localeCompare(y.name)));
+  [allCandidates, allInstructors, allFaculty, allITC, allPeople].forEach(a => a.sort((x,y) => x.name.localeCompare(y.name)));
 
   try {
     const snap = await db.collection(COLLECTIONS.groups).get();
@@ -363,13 +369,18 @@ function assignedEmails() {
   return s;
 }
 
+function selectedInstructors() {
+  return allInstructors.filter(p => teachingFaculty.has(p.email));
+}
+
 function renderPool() {
   const assigned = assignedEmails();
   const q = (document.getElementById("poolSearch").value || "").toLowerCase();
+  const selInst = selectedInstructors();
   const cands = allCandidates.filter(p => !assigned.has(p.email) && (!q || p.name.toLowerCase().includes(q)));
-  const insts  = allInstructors.filter(p => !assigned.has(p.email) && (!q || p.name.toLowerCase().includes(q)));
+  const insts  = selInst.filter(p => !assigned.has(p.email) && (!q || p.name.toLowerCase().includes(q)));
   const totalUnassigned = allCandidates.filter(p => !assigned.has(p.email)).length
-                        + allInstructors.filter(p => !assigned.has(p.email)).length;
+                        + selInst.filter(p => !assigned.has(p.email)).length;
 
   document.getElementById("poolCount").textContent  = totalUnassigned;
   document.getElementById("poolLoading").style.display = "none";
@@ -380,7 +391,7 @@ function renderPool() {
     html += cands.map(p => makeCard(p, "pool", "candidate")).join("");
   }
   if (insts.length) {
-    html += `<div class="pool-type-label">Instructor Trainers (${allInstructors.filter(p=>!assigned.has(p.email)).length})</div>`;
+    html += `<div class="pool-type-label">Instructor Trainers (${selInst.filter(p=>!assigned.has(p.email)).length})</div>`;
     html += insts.map(p => makeCard(p, "pool", "instructor")).join("");
   }
   if (!html) {
@@ -437,9 +448,10 @@ function renderRooms() {
 
 function updateStats() {
   const a = assignedEmails();
-  const total = allCandidates.length + allInstructors.length;
+  const selInst = selectedInstructors();
+  const total = allCandidates.length + selInst.length;
   document.getElementById("statCand").textContent      = allCandidates.length;
-  document.getElementById("statInst").textContent      = allInstructors.length;
+  document.getElementById("statInst").textContent      = selInst.length;
   document.getElementById("statAssigned").textContent  = a.size;
   document.getElementById("statUnassigned").textContent = total - a.size;
 }
@@ -537,15 +549,14 @@ function removeFromRoom(rid, email, roleType, event) {
   renderPool(); renderRooms(); updateStats();
 }
 
-// ── Auto-distribute ────────────────────────────────────────────────────────
-function autoDistribute() {
+// ── Randomize (Candidates only — Instructor Trainers are placed deliberately) ──
+function randomizeCandidates() {
   const assigned = assignedEmails();
-  const pool = [...allCandidates,...allInstructors].filter(p=>!assigned.has(p.email));
-  if (!pool.length) { showStatus("All assigned already","ok"); return; }
+  const pool = allCandidates.filter(p=>!assigned.has(p.email));
+  if (!pool.length) { showStatus("All candidates already assigned","ok"); return; }
   pool.sort(()=>Math.random()-.5).forEach(person => {
-    const rt = allCandidates.some(p=>p.email===person.email) ? "candidate" : "instructor";
     const smallest = ROOMS.slice().sort((a,b)=>(groups[a].candidates.length+groups[a].instructors.length)-(groups[b].candidates.length+groups[b].instructors.length))[0];
-    (rt==="candidate" ? groups[smallest].candidates : groups[smallest].instructors).push(person);
+    groups[smallest].candidates.push(person);
   });
   renderPool(); renderRooms(); updateStats();
 }
@@ -583,7 +594,7 @@ function tfSelectAll(state) {
 // ── ITC ────────────────────────────────────────────────────────────────────
 function renderITCPicker() {
   const q = (document.getElementById("itcSearch").value || "").toLowerCase();
-  const people = allPeople.filter(p => !q || p.name.toLowerCase().includes(q));
+  const people = allITC.filter(p => !q || p.name.toLowerCase().includes(q));
   document.getElementById("itcCount").textContent = itcSet.size;
   document.getElementById("itcPickerGrid").innerHTML = people.map(p => {
     const sel = itcSet.has(p.email);
@@ -591,7 +602,7 @@ function renderITCPicker() {
               <input type="checkbox" ${sel?"checked":""} onchange="toggleITC('${p.email}',this.checked)">
               <span style="font-size:13px">${p.name}</span>
             </label>`;
-  }).join("") || '<p style="color:#b0b8cc;font-size:13px;">No results.</p>';
+  }).join("") || '<p style="color:#b0b8cc;font-size:13px;">No confirmed Instructor Trainer Candidates found.</p>';
 }
 function toggleITC(email, checked) {
   if (checked) { itcSet.add(email); if (!itcSchedule[email]) itcSchedule[email] = {}; }
@@ -606,7 +617,7 @@ function renderITCGrid() {
     wrap.innerHTML = '<p style="color:#b0b8cc;font-size:13px;">Select ITCs in Step 1 first.</p>';
     return;
   }
-  const itcs = allPeople.filter(p => itcSet.has(p.email));
+  const itcs = allITC.filter(p => itcSet.has(p.email));
   const roomOpts = `<option value="">—</option>` + ROOMS.map(r => `<option value="${r}">${r}</option>`).join("");
   const headerCols = ITC_SESSIONS.map(s => `<th>${s.label}</th>`).join("");
   const rows = itcs.map((itc, ri) => {
@@ -619,6 +630,16 @@ function renderITCGrid() {
   wrap.innerHTML = `<table class="itc-grid"><thead><tr><th>ITC Name</th>${headerCols}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 function setITCRoom(email, sessionKey, roomId) {
+  // Enforce max 1 ITC per room per session block.
+  if (roomId) {
+    const conflictEmail = Object.keys(itcSchedule).find(em => em !== email && itcSchedule[em][sessionKey] === roomId);
+    if (conflictEmail) {
+      const other = allITC.find(p => p.email === conflictEmail);
+      alert(`${roomId} is already assigned to ${other ? other.name : conflictEmail} for this session block. Each room can only hold one ITC per block — pick a different room.`);
+      renderITCGrid(); // reset the dropdown back to its saved value
+      return;
+    }
+  }
   if (!itcSchedule[email]) itcSchedule[email] = {};
   itcSchedule[email][sessionKey] = roomId;
 }
@@ -649,7 +670,7 @@ async function saveAll() {
     batch.set(db.collection("config").doc("teaching_faculty"), { members: tfList, year: CURRENT_MOU_YEAR, updatedAt: ts });
 
     // ITC schedule
-    const itcList = allPeople.filter(p => itcSet.has(p.email)).map(p => ({ name: p.name, email: p.email }));
+    const itcList = allITC.filter(p => itcSet.has(p.email)).map(p => ({ name: p.name, email: p.email }));
     batch.set(db.collection("config").doc("itc_schedule"), { itcs: itcList, assignments: itcSchedule, year: CURRENT_MOU_YEAR, updatedAt: ts });
 
     await batch.commit();
