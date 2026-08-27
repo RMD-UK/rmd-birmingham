@@ -742,9 +742,14 @@ function renderITC() {
 
 async function setAttendanceStatus(docId, status, cardIndex) {
   try {
-    await db.collection("faculty_responses").doc(docId).update({ attendanceStatus: status });
+    const updates = { attendanceStatus: status };
+    if (status === "confirmed") updates.provisional = false;
+    await db.collection("faculty_responses").doc(docId).update(updates);
     const r = allResponses.find(x => x.id === docId);
-    if (r) r.attendanceStatus = status === "pending" ? null : status;
+    if (r) {
+      r.attendanceStatus = status === "pending" ? null : status;
+      if (status === "confirmed") r.provisional = false;
+    }
     updateSummary();
     renderTab(currentTab);
   } catch(err) {
