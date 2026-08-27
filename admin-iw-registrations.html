@@ -55,6 +55,22 @@
     }
     .btn-action.quiet:hover { background: #f7f7f7; color: var(--rmd-navy); border-color: #adb8c0; opacity: 1; }
 
+    /* Custom tooltips (bigger, readable text — replaces native title attr) */
+    .btn-action[data-tooltip] { position: relative; }
+    .btn-action[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute; top: 100%; left: 0; margin-top: 8px;
+      background: #f5f6f8; color: #2c333a; border: 1px solid #d5dae0;
+      border-radius: 8px; padding: 12px 16px; width: 340px; max-width: 80vw;
+      font-size: 15px; font-weight: 400; line-height: 1.5; white-space: normal;
+      text-transform: none; letter-spacing: normal; text-align: left;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.18); opacity: 0; visibility: hidden;
+      transition: opacity 0.12s ease; z-index: 200; pointer-events: none;
+    }
+    .btn-action[data-tooltip].tip-right::after { left: auto; right: 0; }
+    .btn-action[data-tooltip]:hover::after,
+    .btn-action[data-tooltip]:focus-visible::after { opacity: 1; visibility: visible; }
+
     /* Attendee table */
     .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 13px; }
     .data-table th { background: var(--rmd-navy); color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -206,13 +222,13 @@
 
   <!-- Action bar -->
   <div class="action-bar">
-    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" title="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Adds them already Confirmed — attendance is mandated for this group, so this page doesn't need a separate sign-off step. The only route either group has onto this list.">⬇ Import course candidates</button>
-    <button class="btn-action secondary" onclick="togglePanel('missingPanel')" title="Read-only check: everyone on this year's confirmed MOU roster as an Instructor Candidate or Assessor/Senior Instructor who is NOT yet on this list. Attendance is mandated for both groups. Doesn't add anyone — use Import course candidates for that.">🔍 Who's missing</button>
-    <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" title="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
-    <button class="btn-action" onclick="togglePanel('addPanel')" title="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
-    <button class="btn-action secondary" onclick="copyConfirmedEmails()" title="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
-    <button class="btn-action secondary" onclick="exportCSV()" title="Downloads the full list — name, email, role, status, source, notes, added date — as a CSV.">⬇ Export CSV</button>
-    <button class="btn-action quiet" style="margin-left:auto;" onclick="togglePanel('syncPanel')" title="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
+    <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" data-tooltip="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Instructor Candidates land already Confirmed — attendance is mandated, no sign-off needed. Assessor/Senior Instructors land Pending — email them to confirm, then mark Confirmed or Declined with the ✓/✗ buttons as replies come in. The only route either group has onto this list.">⬇ Import course candidates</button>
+    <button class="btn-action secondary" onclick="togglePanel('missingPanel')" data-tooltip="Read-only check: everyone on this year's confirmed MOU roster as an Instructor Candidate or Assessor/Senior Instructor who is NOT yet on this list. Attendance is mandated for both groups. Doesn't add anyone — use Import course candidates for that.">🔍 Who's missing</button>
+    <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" data-tooltip="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
+    <button class="btn-action" onclick="togglePanel('addPanel')" data-tooltip="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
+    <button class="btn-action secondary" onclick="copyConfirmedEmails()" data-tooltip="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
+    <button class="btn-action secondary" onclick="exportCSV()" data-tooltip="Downloads the full list — name, email, role, status, source, notes, added date — as a CSV.">⬇ Export CSV</button>
+    <button class="btn-action quiet tip-right" style="margin-left:auto;" onclick="togglePanel('syncPanel')" data-tooltip="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
   </div>
 
   <!-- Add people panel — one name or a pasted list, same flow either way -->
@@ -255,7 +271,7 @@
     </div>
     <div class="panel-body">
       <div class="warn-box">
-        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list, already marked <strong>Confirmed</strong> — attendance is mandated for this group, so there's no separate sign-off step on this page (same as the Faculty import below). Neither group has an RMD account or a self-service RSVP form, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
+        Pulls from the <strong>confirmed MOU roster</strong> — this year's official membership list — not a general contact list. Adds every <strong>Instructor Candidate</strong> and <strong>Assessor / Senior Instructor</strong> on that roster to the IW registrations list. Instructor Candidates land already <strong>Confirmed</strong> — attendance is mandated, no sign-off needed. Assessor / Senior Instructors land <strong>Pending</strong> — email them to confirm attendance, then use the ✓/✗ buttons below as replies come in. Neither group has an RMD account or a self-service RSVP form, so this is the only way either reaches this list. People already on the list will not be duplicated. Note: this does not check whether each person has individually signed their MOU — see the MOU Dashboard for signed status.
       </div>
       <div id="rosterPreview" class="loading">Loading roster…</div>
       <div id="rosterActions" style="display:none;margin-top:12px;">
@@ -396,20 +412,35 @@ function setFilter(f, btn) {
   renderTable();
 }
 
+// Rows always group by status — Pending, then Declined, then Confirmed (2026-08-27,
+// Jon) — so whoever still needs a decision surfaces first, regardless of which
+// summary-pill filter is active. Name is the tiebreaker within each group.
+const STATUS_SORT_ORDER = { pending: 0, declined: 1, confirmed: 2 };
+function sortByStatusThenName(rows) {
+  return rows.slice().sort((a, b) => {
+    const sa = STATUS_SORT_ORDER[a.status || "pending"] ?? 0;
+    const sb = STATUS_SORT_ORDER[b.status || "pending"] ?? 0;
+    if (sa !== sb) return sa - sb;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+}
+
 function getFiltered() {
+  let rows;
   switch (currentFilter) {
-    case "confirmed":   return allRegistrations.filter(r => r.status === "confirmed");
-    case "pending":     return allRegistrations.filter(r => !r.status || r.status === "pending");
-    case "declined":    return allRegistrations.filter(r => r.status === "declined");
-    case "instructor":  return allRegistrations.filter(r => r.role === "Instructor Candidate");
-    case "assessor":    return allRegistrations.filter(r => r.role === "Assessor / Senior Instructor");
-    case "roster":      return allRegistrations.filter(r => r.source === "roster");
-    case "faculty":     return allRegistrations.filter(r => r.source === "faculty");
-    case "manual":      return allRegistrations.filter(r => r.source === "manual" || r.source === "paste");
-    case "flagged":     return allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role");
-    case "total":       return allRegistrations;
-    default:            return allRegistrations;
+    case "confirmed":   rows = allRegistrations.filter(r => r.status === "confirmed"); break;
+    case "pending":     rows = allRegistrations.filter(r => !r.status || r.status === "pending"); break;
+    case "declined":    rows = allRegistrations.filter(r => r.status === "declined"); break;
+    case "instructor":  rows = allRegistrations.filter(r => r.role === "Instructor Candidate"); break;
+    case "assessor":    rows = allRegistrations.filter(r => r.role === "Assessor / Senior Instructor"); break;
+    case "roster":      rows = allRegistrations.filter(r => r.source === "roster"); break;
+    case "faculty":     rows = allRegistrations.filter(r => r.source === "faculty"); break;
+    case "manual":      rows = allRegistrations.filter(r => r.source === "manual" || r.source === "paste"); break;
+    case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role"); break;
+    case "total":       rows = allRegistrations; break;
+    default:            rows = allRegistrations;
   }
+  return sortByStatusThenName(rows);
 }
 
 function roleBadge(role) {
@@ -613,9 +644,11 @@ async function importAdd() {
 }
 
 // ── Import from roster ────────────────────────────────────────────────────────
-// Imports land already Confirmed, not Pending (changed 2026-08-27, Jon: attendance
-// is mandated for Instructor Candidates and Assessor/Senior Instructors, so this
-// page doesn't need a sign-off step for them — same reasoning as Faculty import below).
+// Instructor Candidates land already Confirmed, not Pending (2026-08-27, Jon:
+// attendance is mandated, so no sign-off step needed — same reasoning as Faculty
+// import below). Assessor/Senior Instructors land Pending instead (also 2026-08-27,
+// same day, Jon: this role now gets an explicit attendance-confirmation email —
+// see importFromRoster below for the status split).
 async function loadRosterPreview() {
   const preview = document.getElementById("rosterPreview");
   const actions = document.getElementById("rosterActions");
@@ -688,10 +721,15 @@ async function importFromRoster() {
     const ts    = firebase.firestore.FieldValue.serverTimestamp();
     const newDocs = [];
 
+    // Instructor Candidates: attendance is mandated, land Confirmed with no sign-off step.
+    // Assessor/Senior Instructors: now require an explicit reply to an attendance-confirmation
+    // email (2026-08-27, Jon), so they land Pending and get marked Confirmed/Declined by hand
+    // via the ✓/✗ buttons as replies come in — no automatic Confirmed on import for this role.
     toAdd.forEach(p => {
+      const status = p.role === "Instructor Candidate" ? "confirmed" : "pending";
       const ref = db.collection(IW_COLL).doc();
-      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status: "confirmed", addedAt: ts });
-      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status: "confirmed" });
+      batch.set(ref, { name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status, addedAt: ts });
+      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role, notes: "", source: "roster", status });
     });
     await batch.commit();
 
