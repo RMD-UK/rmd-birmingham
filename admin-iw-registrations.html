@@ -108,6 +108,12 @@
       border: 1px solid #ccd6dd; border-radius: 5px; font-size: 11px;
       font-family: var(--font); cursor: pointer;
     }
+    .btn-withdraw {
+      padding: 5px 10px; background: #2b2b2b; color: white;
+      border: 1.5px solid #000; border-radius: 5px; font-size: 11px; font-weight: 700;
+      font-family: var(--font); cursor: pointer; margin-right: 4px; white-space: nowrap;
+    }
+    .btn-withdraw:hover { background: #000; }
     .btn-remove {
       padding: 5px 8px; background: none; color: #99a3ad;
       border: none; border-radius: 5px; font-size: 14px; line-height: 1;
@@ -228,7 +234,8 @@
     <button class="btn-action" onclick="togglePanel('addPanel')" data-tooltip="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" data-tooltip="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
     <button class="btn-action secondary" onclick="exportCSV()" data-tooltip="Downloads the full list — name, email, role, status, source, notes, added date — as a CSV.">⬇ Export CSV</button>
-    <button class="btn-action quiet tip-right" style="margin-left:auto;" onclick="togglePanel('syncPanel')" data-tooltip="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
+    <button class="btn-action quiet tip-right" style="margin-left:auto;" onclick="fixInstructorCandidateStatus()" data-tooltip="One-time cleanup: sets every Instructor Candidate row to Confirmed. Only needed for rows imported before roster import started auto-confirming this role (2026-08-27) — Assessor/Senior Instructor and every other role are left untouched. Safe to click any time: does nothing and tells you so if everything's already Confirmed.">🔧 Fix legacy Instr. Candidate status</button>
+    <button class="btn-action quiet tip-right" onclick="togglePanel('syncPanel')" data-tooltip="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
   </div>
 
   <!-- Add people panel — one name or a pasted list, same flow either way -->
@@ -485,7 +492,8 @@ function renderTable() {
         <button class="btn-decline${isDecl?" active":""}"
           onclick="setStatus('${r.id}','declined')">✗</button>
         ${r.status ? `<button class="btn-reset" onclick="setStatus('${r.id}','pending')" title="Reset to pending">↺</button>` : ""}
-        <button class="btn-remove" title="Delete permanently — cannot be undone" onclick="removeEntry('${r.id}','${(r.name||"").replace(/'/g,"\\'")}')">🗑</button>
+        <button class="btn-withdraw" onclick="withdrawEntry('${r.id}','${(r.name||"").replace(/'/g,"\\'")}','${(r.email||"").replace(/'/g,"\\'")}')" title="Can't attend after all — removes them from EVERY part of the platform (people record, attendance, badges, check-in, room/group assignments, assessment records), not just this list. Cannot be undone.">⛔ Withdraw</button>
+        <button class="btn-remove" title="Just take them off THIS list — leaves any people/attendance/assessment records untouched." onclick="removeEntry('${r.id}','${(r.name||"").replace(/'/g,"\\'")}')">🗑</button>
       </td>
     </tr>`;
   }).join("");
@@ -541,6 +549,155 @@ async function removeEntry(docId, name) {
     renderTable();
   } catch(err) {
     alert("Failed to remove: " + err.message);
+  }
+}
+
+// ── One-time fix: legacy Instructor Candidate rows stuck on Pending ────────────
+// Added 2026-08-27, Jon: some Instructor Candidate rows were imported before
+// roster import started auto-confirming this role, so they're sitting on
+// Pending (or no status) even though attendance for this role is mandated with
+// no sign-off step. Idempotent — re-running finds nothing to fix once applied,
+// so it's safe to leave the button in place rather than remove it after one use.
+// Deliberately scoped to role === "Instructor Candidate" only; Assessor/Senior
+// Instructor rows are meant to sit on Pending now, awaiting an email reply —
+// see importFromRoster above — so this must never touch that role.
+async function fixInstructorCandidateStatus() {
+  const toFix = allRegistrations.filter(r => r.role === "Instructor Candidate" && r.status !== "confirmed");
+  if (!toFix.length) {
+    alert("Nothing to fix — every Instructor Candidate row is already Confirmed.");
+    return;
+  }
+  if (!confirm(`Set ${toFix.length} Instructor Candidate row(s) to Confirmed?\n\nThis only touches rows with role "Instructor Candidate". No other role is affected.`)) return;
+
+  try {
+    const batch = db.batch();
+    const ts    = firebase.firestore.FieldValue.serverTimestamp();
+    toFix.forEach(r => {
+      batch.update(db.collection(IW_COLL).doc(r.id), { status: "confirmed", statusUpdatedAt: ts });
+    });
+    await batch.commit();
+    toFix.forEach(r => { r.status = "confirmed"; });
+    updateSummary();
+    renderTable();
+    alert(`Done — ${toFix.length} Instructor Candidate row(s) set to Confirmed.`);
+  } catch(err) {
+    alert("Failed to fix: " + err.message);
+  }
+}
+
+// ── Withdraw entry (cascade removal) ────────────────────────────────────────
+// For someone we thought was coming but now can't. Unlike removeEntry() above
+// (which only deletes the iw_registrations row), this pulls them out of every
+// other part of the platform a confirmed registration can feed into: their
+// people record, attendance/check-in, room+group assignments, and any
+// gateway/development assessment records. Matched by email against `people`,
+// using the same lower-cased client-side comparison the rest of this page
+// already uses (loadSyncPreview above) rather than a Firestore `where` query,
+// since stored email casing isn't guaranteed consistent.
+async function withdrawEntry(docId, name, email) {
+  const emailLc = (email || "").trim().toLowerCase();
+  if (!confirm(
+    `Withdraw ${name || "this person"} \u2014 they can\u2019t attend after all?\n\n` +
+    `This removes them from the IW registrations list AND from every other part of ` +
+    `the platform: their people record, attendance/check-in, badges, room/group ` +
+    `assignments, and any gateway/development assessment records.\n\n` +
+    `This cannot be undone. Continue?`
+  )) return;
+
+  const problems = [];
+
+  try {
+    let peopleId = null;
+    if (emailLc) {
+      try {
+        const pSnap = await db.collection(COLLECTIONS.people).get();
+        const match = pSnap.docs.find(d => (d.data().email || "").toLowerCase().trim() === emailLc);
+        if (match) peopleId = match.id;
+      } catch (err) {
+        problems.push("Could not check people record: " + err.message);
+      }
+    }
+
+    try {
+      const batch = db.batch();
+      batch.delete(db.collection(IW_COLL).doc(docId));
+      if (peopleId) {
+        batch.delete(db.collection(COLLECTIONS.people).doc(peopleId));
+        batch.delete(db.collection(COLLECTIONS.attendance).doc(peopleId));
+        batch.delete(db.collection("gateway_assessments").doc(peopleId));
+        batch.delete(db.collection("development_assessments").doc(peopleId));
+      }
+      await batch.commit();
+    } catch (err) {
+      problems.push("Core records: " + err.message);
+    }
+
+    if (name) {
+      try {
+        const roomsSnap = await db.collection(COLLECTIONS.groups).get();
+        const roomBatch = db.batch();
+        let roomChanges = false;
+        roomsSnap.forEach(doc => {
+          if (doc.id === "itc_schedule") return;
+          const data = doc.data() || {};
+          const update = {};
+          let changed = false;
+          if (Array.isArray(data.candidates) && data.candidates.includes(name)) {
+            update.candidates = data.candidates.filter(n => n !== name);
+            changed = true;
+          }
+          if (data.it === name) {
+            update.it = "";
+            changed = true;
+          }
+          if (changed) {
+            roomBatch.set(doc.ref, update, { merge: true });
+            roomChanges = true;
+          }
+        });
+        if (roomChanges) await roomBatch.commit();
+      } catch (err) {
+        problems.push("Room/group assignments: " + err.message);
+      }
+    }
+
+    if (emailLc) {
+      try {
+        const obsSnap = await db.collection(COLLECTIONS.itcObs).where("itcEmail", "==", emailLc).get();
+        if (!obsSnap.empty) {
+          const obsBatch = db.batch();
+          obsSnap.forEach(d => obsBatch.delete(d.ref));
+          await obsBatch.commit();
+        }
+      } catch (err) {
+        problems.push("ITC observations: " + err.message);
+      }
+
+      try {
+        const cfgRef = db.collection("config").doc("itc_schedule");
+        const cfgDoc = await cfgRef.get();
+        if (cfgDoc.exists) {
+          const data = cfgDoc.data() || {};
+          if (data.assignments && Object.prototype.hasOwnProperty.call(data.assignments, emailLc)) {
+            await cfgRef.update({ [`assignments.${emailLc}`]: firebase.firestore.FieldValue.delete() });
+          }
+        }
+      } catch (err) {
+        problems.push("ITC room schedule: " + err.message);
+      }
+    }
+
+    allRegistrations = allRegistrations.filter(r => r.id !== docId);
+    updateSummary();
+    renderTable();
+
+    if (problems.length) {
+      alert(`${name} withdrawn, but some cleanup steps failed \u2014 check these manually:\n\n` + problems.join("\n"));
+    } else {
+      alert(`${name} withdrawn and removed from all Instructor Weekend records.`);
+    }
+  } catch (err) {
+    alert("Withdraw failed: " + err.message);
   }
 }
 

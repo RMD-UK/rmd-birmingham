@@ -137,6 +137,7 @@
     .badge-itc        { background: #e8f0fe; color: #3d52a0; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-logistics  { background: #fff3cd; color: #856404; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-student    { background: #e0f7f5; color: #0f7a6e; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-senior     { background: #f3e8ff; color: #6d28d9; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     .badge-hardcoded  { background: #f0f3f6; color: #637282; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 
     .role-select {
@@ -216,6 +217,9 @@
     <div class="sum-pill" id="pill-provisional" onclick="switchTab('provisional')">
       <div class="val" id="sum-provisional" style="color:#856404;">–</div><div class="lbl">Provisional</div>
     </div>
+    <div class="sum-pill" id="pill-noreply" onclick="switchTab('noreply')" title="Student/Senior Faculty on the roster who haven't submitted the pre-course form">
+      <div class="val" id="sum-noreply" style="color:#b7410e;">–</div><div class="lbl">No reply</div>
+    </div>
   </div>
 
   <!-- Tabs -->
@@ -232,6 +236,7 @@
     <button class="tab-btn"             onclick="switchTab('confirmed')"  id="tab-confirmed">✓ Confirmed</button>
     <button class="tab-btn"             onclick="switchTab('declined')"   id="tab-declined">✗ Declined</button>
     <button class="tab-btn"             onclick="switchTab('provisional')" id="tab-provisional">⏳ Provisional</button>
+    <button class="tab-btn"             onclick="switchTab('noreply')"    id="tab-noreply">🔕 No reply</button>
     <button class="tab-btn"             onclick="switchTab('export')"     id="tab-export">Export</button>
   </div>
 
@@ -258,6 +263,7 @@
 
 var allResponses   = [];
 var directorEmails = [];
+var facultyRosterMembers = [];  // faculty_roster docs, group "student"/"senior" only — the master list "No reply" checks against
 var currentTab     = "all";
 
 // Hardcoded directors mirror the canonical DIRECTOR_EMAILS list in firebase-config.js
@@ -273,7 +279,7 @@ window.addEventListener("load", () => {
 
 async function loadAll() {
   document.getElementById("tabContent").innerHTML = `<div class="loading">Loading…</div>`;
-  await Promise.all([loadDirectors(), loadResponses()]);
+  await Promise.all([loadDirectors(), loadResponses(), loadFacultyRoster()]);
   updateSummary();
   renderTab(currentTab);
 }
@@ -285,6 +291,32 @@ async function loadDirectors() {
   } catch (e) {
     directorEmails = [];
   }
+}
+
+// Master list "No reply" checks against — same faculty_roster collection
+// admin-faculty-roster.html maintains (name, email, group, team, role). Only
+// "student" and "senior" group members are relevant here; MOU/instructor
+// candidates have their own separate roster and check on admin-iw-registrations.html.
+async function loadFacultyRoster() {
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).get();
+    facultyRosterMembers = snap.docs.map(d => d.data())
+      .filter(m => m.group === "student" || m.group === "senior");
+  } catch (e) {
+    facultyRosterMembers = [];
+  }
+}
+
+// Roster members (Student/Senior Faculty) with an email on file that doesn't
+// match any submitted faculty_responses email. Roster entries with no email
+// can't be checked at all — see getNoEmailRosterCount().
+function getNoReplyList() {
+  const responded = new Set(allResponses.map(r => (r.email || "").toLowerCase()).filter(Boolean));
+  return facultyRosterMembers.filter(m => m.email && !responded.has(m.email.toLowerCase()));
+}
+
+function getNoEmailRosterCount() {
+  return facultyRosterMembers.filter(m => !m.email).length;
 }
 
 function isDirector(email) {
@@ -364,6 +396,7 @@ function updateSummary() {
   document.getElementById("sum-confirmed").textContent  = r.filter(x => x.attendanceStatus === "confirmed").length;
   document.getElementById("sum-declined").textContent   = r.filter(x => x.attendanceStatus === "declined").length;
   document.getElementById("sum-provisional").textContent = r.filter(x => x.provisional === true).length;
+  document.getElementById("sum-noreply").textContent = getNoReplyList().length;
 }
 
 function switchTab(tab) {
@@ -401,6 +434,7 @@ function renderTab(tab) {
   else if (tab === "confirmed")  renderAttendanceFilter("confirmed", "Confirmed to attend");
   else if (tab === "declined")   renderAttendanceFilter("declined",  "Unable to attend / Declined");
   else if (tab === "provisional") renderProvisional();
+  else if (tab === "noreply")    renderNoReply();
   else if (tab === "export")     renderExport();
 }
 
@@ -422,6 +456,7 @@ function getFiltered() {
     case "confirmed":  return allResponses.filter(r => r.attendanceStatus === "confirmed");
     case "declined":   return allResponses.filter(r => r.attendanceStatus === "declined");
     case "provisional": return allResponses.filter(r => r.provisional === true);
+    case "noreply":     return getNoReplyList();
     default:           return allResponses;
   }
 }
@@ -861,6 +896,43 @@ async function clearProvisional(docId) {
   } catch (err) {
     alert("Failed to update: " + err.message);
   }
+}
+
+function renderNoReply() {
+  const missing = getNoReplyList();
+  const noEmailCount = getNoEmailRosterCount();
+  setFilterLabel(`${missing.length} not yet responded`);
+
+  const noEmailNote = noEmailCount
+    ? `<div class="info-banner" style="background:#fff8e6;border-left-color:#f0c14b;color:#7b5800;">
+         ${noEmailCount} ${noEmailCount === 1 ? "person" : "people"} on the Student/Senior Faculty roster
+         ${noEmailCount === 1 ? "has" : "have"} no email on file (set it on the
+         <a href="admin-faculty-roster.html" style="color:#7b5800;">Faculty Roster</a> page) — can't be checked against submitted responses.
+       </div>`
+    : "";
+
+  if (!missing.length) {
+    document.getElementById("tabContent").innerHTML = noEmailNote +
+      `<div class="empty-state">Everyone on the Student/Senior Faculty roster with an email on file has submitted a response.</div>`;
+    return;
+  }
+
+  const rows = missing.map(m => `
+    <tr>
+      <td style="font-weight:700;color:var(--rmd-navy);">${m.name || "–"}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">${m.email || "–"}</td>
+      <td>${m.group === "senior" ? '<span class="badge-senior">Senior Faculty</span>' : '<span class="badge-student">Student Faculty</span>'}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">${m.team || "–"}</td>
+    </tr>`).join("");
+
+  document.getElementById("tabContent").innerHTML = noEmailNote + `
+    <div class="section-block">
+      <div class="section-heading" style="color:#b7410e;">Not yet responded (${missing.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Group</th><th>Team</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 function renderExport() {
