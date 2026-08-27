@@ -445,10 +445,16 @@
     if (isITC)      tags += `<span class="meta-tag tag-itc">🔍 ITC observation</span>`;
     if (isPlaceholder) tags += `<span class="meta-tag" style="background:#fff3cd;color:#856404;">⚠ To be confirmed</span>`;
 
-    // Resources
+    // Resources — Instructor Candidates don't get video links or session
+    // guides (those are faculty/session-leader materials); they still see
+    // slide decks and other teaching resources for the session.
     let resources = "";
     if (s.resources && s.resources.length) {
-      resources = s.resources.map(r => {
+      const isInstructorCandidate = currentRole === "instructor";
+      const visibleResources = isInstructorCandidate
+        ? s.resources.filter(r => !r.embedUrl && r.title !== "Session guide")
+        : s.resources;
+      resources = visibleResources.map(r => {
         if (r.embedUrl) {
           return `<div class="video-embed"><iframe src="${r.embedUrl}" allow="autoplay" allowfullscreen></iframe></div>`;
         }
