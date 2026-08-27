@@ -207,6 +207,7 @@
   <!-- Action bar -->
   <div class="action-bar">
     <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" title="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Adds them already Confirmed — attendance is mandated for this group, so this page doesn't need a separate sign-off step. The only route either group has onto this list.">⬇ Import course candidates</button>
+    <button class="btn-action secondary" onclick="togglePanel('missingPanel')" title="Read-only check: everyone on this year's confirmed MOU roster as an Instructor Candidate or Assessor/Senior Instructor who is NOT yet on this list. Attendance is mandated for both groups. Doesn't add anyone — use Import course candidates for that.">🔍 Who's missing</button>
     <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" title="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
     <button class="btn-action" onclick="togglePanel('addPanel')" title="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" title="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
@@ -261,6 +262,19 @@
         <button class="btn-action" onclick="importFromRoster()">Import listed people</button>
         <span id="rosterFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
       </div>
+    </div>
+  </div>
+
+  <!-- Who's missing panel (read-only — roster members not yet on this list) -->
+  <div class="panel" id="missingPanel" style="display:none;">
+    <div class="panel-header">Not yet registered
+      <button onclick="togglePanel('missingPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="info-box">
+        Everyone on this year's <strong>confirmed MOU roster</strong> marked <strong>Instructor Candidate</strong>, <strong>Senior Instructor</strong>, or <strong>Assessor</strong> is expected at IW — attendance is mandated for all three (Senior Instructor and Assessor share one role on this list: <strong>Assessor / Senior Instructor</strong>). This is a read-only check, it does not add anyone — use "Import course candidates" above for that.
+      </div>
+      <div id="missingPreview" class="loading">Checking roster…</div>
     </div>
   </div>
 
@@ -693,6 +707,58 @@ async function importFromRoster() {
   }
 }
 
+// ── Who's missing (read-only roster gap check) ─────────────────────────────────
+// Reuses the same mou_roster role logic as loadRosterPreview (isInstructor /
+// isAssessor), but only ever shows the gap — no import action here. Senior
+// Instructor and Assessor stay merged into one "Assessor / Senior Instructor"
+// bucket, matching how the rest of this page treats them.
+async function loadMissingPreview() {
+  const preview = document.getElementById("missingPreview");
+  preview.innerHTML = '<div class="loading">Checking roster…</div>';
+
+  try {
+    const snap = await db.collection(COLLECTIONS.mouRoster).get();
+    const existing = new Set(allRegistrations.map(r => r.email));
+    const missing = [];
+
+    snap.forEach(doc => {
+      const d = doc.data();
+      const roleNorm = (d.role || "").trim().toLowerCase();
+      const isInstructor = roleNorm === "instructor";
+      const isAssessor   = roleNorm === "assessor" || roleNorm === "senior instructor";
+      if (!isInstructor && !isAssessor) return;
+      const email = (d.email || doc.id).toLowerCase();
+      if (existing.has(email)) return;
+      missing.push({ name: d.name || doc.id, email, role: isInstructor ? "Instructor Candidate" : "Assessor / Senior Instructor" });
+    });
+
+    if (!missing.length) {
+      preview.innerHTML = '<div class="empty-state">Everyone on the roster is already on this list.</div>';
+      return;
+    }
+
+    missing.sort((a,b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
+    const instrCount = missing.filter(m => m.role === "Instructor Candidate").length;
+    const asrCount   = missing.length - instrCount;
+
+    preview.innerHTML = `
+      <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:8px;">
+        <strong style="color:#b7410e;">${missing.length}</strong> on the roster ${missing.length===1?"is":"are"} not yet on this list —
+        <strong style="color:var(--rmd-navy);">${instrCount}</strong> Instructor Candidate${instrCount===1?"":"s"},
+        <strong style="color:var(--rmd-navy);">${asrCount}</strong> Assessor/Sr Instructor${asrCount===1?"":"s"}.
+      </div>
+      <div class="import-preview">
+        ${missing.map(p => `<div class="preview-row">
+          <span class="preview-name">${p.name}</span>
+          <span class="preview-email">${p.email}</span>
+          ${roleBadge(p.role)}
+        </div>`).join("")}
+      </div>`;
+  } catch(err) {
+    preview.innerHTML = `<div class="empty-state">Failed to check roster: ${err.message}</div>`;
+  }
+}
+
 // ── Import from Faculty Responses ───────────────────────────────────────────
 // Faculty submit their availability via faculty-form.html; those responses
 // land in faculty_responses (managed by admin-faculty-responses.html). Nothing
@@ -805,7 +871,7 @@ function togglePanel(id) {
   const el      = document.getElementById(id);
   const visible = el.style.display !== "none";
   // Close all panels first
-  ["addPanel","rosterPanel","facultyPanel","syncPanel"].forEach(p => {
+  ["addPanel","rosterPanel","facultyPanel","syncPanel","missingPanel"].forEach(p => {
     document.getElementById(p).style.display = "none";
   });
   if (!visible) {
@@ -813,6 +879,7 @@ function togglePanel(id) {
     if (id === "rosterPanel") loadRosterPreview();
     if (id === "facultyPanel") loadFacultyPreview();
     if (id === "syncPanel") loadSyncPreview();
+    if (id === "missingPanel") loadMissingPreview();
   }
 }
 
