@@ -30,7 +30,11 @@
     .sum-pill {
       background: white; border-radius: 8px; padding: 10px 16px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; min-width: 90px;
+      cursor: pointer; user-select: none; border: 2px solid transparent;
+      transition: box-shadow 0.12s, border-color 0.12s, background 0.12s;
     }
+    .sum-pill:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .sum-pill.active { border-color: var(--rmd-blue); background: #eef4fb; }
     .sum-pill .val { font-size: 24px; font-weight: 700; color: var(--rmd-navy); }
     .sum-pill .lbl { font-size: 11px; color: var(--rmd-muted); font-weight: 600; text-transform: uppercase; }
 
@@ -50,16 +54,6 @@
       font-weight: 600; font-size: 12px; padding: 6px 12px; opacity: 0.85;
     }
     .btn-action.quiet:hover { background: #f7f7f7; color: var(--rmd-navy); border-color: #adb8c0; opacity: 1; }
-
-    /* Filter tabs */
-    .filter-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
-    .filter-btn {
-      padding: 6px 14px; border: 2px solid #ccd6dd; border-radius: 20px;
-      background: white; font-size: 13px; font-weight: 600; font-family: var(--font);
-      cursor: pointer; color: var(--rmd-muted); transition: all 0.12s;
-    }
-    .filter-btn:hover { border-color: var(--rmd-blue); color: var(--rmd-blue); }
-    .filter-btn.active { background: var(--rmd-navy); border-color: var(--rmd-navy); color: white; }
 
     /* Attendee table */
     .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 13px; }
@@ -198,16 +192,16 @@
 
   <!-- Summary pills -->
   <div class="summary-strip" id="summaryStrip">
-    <div class="sum-pill"><div class="val" id="sum-total">–</div><div class="lbl">Total</div></div>
-    <div class="sum-pill"><div class="val" id="sum-confirmed" style="color:#1a6e31;">–</div><div class="lbl">Confirmed</div></div>
-    <div class="sum-pill"><div class="val" id="sum-pending" style="color:#856404;">–</div><div class="lbl">Pending</div></div>
-    <div class="sum-pill"><div class="val" id="sum-declined" style="color:#b7410e;">–</div><div class="lbl">Declined</div></div>
-    <div class="sum-pill"><div class="val" id="sum-candidates">–</div><div class="lbl">Instr. Candidates</div></div>
-    <div class="sum-pill"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor/Sr Instr.</div></div>
-    <div class="sum-pill"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From course roster</div></div>
-    <div class="sum-pill"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">From faculty</div></div>
-    <div class="sum-pill"><div class="val" id="sum-manual" style="color:#856404;">–</div><div class="lbl">Added manually</div></div>
-    <div class="sum-pill"><div class="val" id="sum-flagged" style="color:#b7410e;">–</div><div class="lbl">Needs attention</div></div>
+    <div class="sum-pill active" onclick="setFilter('total',this)" title="Click to filter list"><div class="val" id="sum-total">–</div><div class="lbl">Total</div></div>
+    <div class="sum-pill" onclick="setFilter('confirmed',this)" title="Click to filter list"><div class="val" id="sum-confirmed" style="color:#1a6e31;">–</div><div class="lbl">Confirmed</div></div>
+    <div class="sum-pill" onclick="setFilter('pending',this)" title="Click to filter list"><div class="val" id="sum-pending" style="color:#856404;">–</div><div class="lbl">Pending</div></div>
+    <div class="sum-pill" onclick="setFilter('declined',this)" title="Click to filter list"><div class="val" id="sum-declined" style="color:#b7410e;">–</div><div class="lbl">Declined</div></div>
+    <div class="sum-pill" onclick="setFilter('instructor',this)" title="Click to filter list"><div class="val" id="sum-candidates">–</div><div class="lbl">Instr. Candidates</div></div>
+    <div class="sum-pill" onclick="setFilter('assessor',this)" title="Click to filter list"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor/Sr Instr.</div></div>
+    <div class="sum-pill" onclick="setFilter('roster',this)" title="Click to filter list"><div class="val" id="sum-roster" style="color:var(--rmd-muted);">–</div><div class="lbl">From course roster</div></div>
+    <div class="sum-pill" onclick="setFilter('faculty',this)" title="Click to filter list"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">From faculty</div></div>
+    <div class="sum-pill" onclick="setFilter('manual',this)" title="Click to filter list"><div class="val" id="sum-manual" style="color:#856404;">–</div><div class="lbl">Added manually</div></div>
+    <div class="sum-pill" onclick="setFilter('flagged',this)" title="Click to filter list"><div class="val" id="sum-flagged" style="color:#b7410e;">–</div><div class="lbl">Needs attention</div></div>
   </div>
 
   <!-- Action bar -->
@@ -313,17 +307,6 @@
     </div>
   </div>
 
-  <!-- Filter tabs -->
-  <div class="filter-row">
-    <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
-    <button class="filter-btn" onclick="setFilter('confirmed',this)">✓ Confirmed</button>
-    <button class="filter-btn" onclick="setFilter('pending',this)">Pending</button>
-    <button class="filter-btn" onclick="setFilter('declined',this)">✗ Declined</button>
-    <button class="filter-btn" onclick="setFilter('instructor',this)">Instr. Candidates</button>
-    <button class="filter-btn" onclick="setFilter('assessor',this)">Assessor / Sr. Instructors</button>
-    <button class="filter-btn" onclick="setFilter('manual',this)">Manually added</button>
-  </div>
-
   <!-- Attendee table -->
   <div id="tableContainer"><div class="loading">Loading…</div></div>
 
@@ -394,7 +377,7 @@ function updateSummary() {
 // ── Table ────────────────────────────────────────────────────────────────────
 function setFilter(f, btn) {
   currentFilter = f;
-  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".sum-pill").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   renderTable();
 }
@@ -406,7 +389,11 @@ function getFiltered() {
     case "declined":    return allRegistrations.filter(r => r.status === "declined");
     case "instructor":  return allRegistrations.filter(r => r.role === "Instructor Candidate");
     case "assessor":    return allRegistrations.filter(r => r.role === "Assessor / Senior Instructor");
+    case "roster":      return allRegistrations.filter(r => r.source === "roster");
+    case "faculty":     return allRegistrations.filter(r => r.source === "faculty");
     case "manual":      return allRegistrations.filter(r => r.source === "manual" || r.source === "paste");
+    case "flagged":     return allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role");
+    case "total":       return allRegistrations;
     default:            return allRegistrations;
   }
 }

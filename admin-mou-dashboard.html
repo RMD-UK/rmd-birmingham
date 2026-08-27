@@ -47,6 +47,16 @@
   .tab-btn.warn-tab.active { color: var(--rmd-warn); border-bottom-color: var(--rmd-warn); }
 
   .action-bar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+
+  .role-filter-group { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+  .role-filter-btn {
+    padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--rmd-navy);
+    background: white; border: 2px solid #ccd6dd; border-radius: 20px;
+    cursor: pointer; font-family: var(--font);
+  }
+  .role-filter-btn:hover { border-color: var(--rmd-blue); }
+  .role-filter-btn.active { background: var(--rmd-blue); color: white; border-color: var(--rmd-blue); }
+  .role-filter-btn .rf-count { opacity: 0.75; font-weight: 700; }
   .btn-action {
     padding: 8px 16px; background: var(--rmd-blue); color: white;
     border: none; border-radius: 6px; font-size: 13px; font-weight: 700;
@@ -134,6 +144,12 @@
     <button class="btn-action secondary" onclick="copyFilteredEmails()">📋 Copy emails</button>
     <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
     <span class="filter-label" id="filterLabel"></span>
+    <div class="role-filter-group" id="roleFilterGroup">
+      <button class="role-filter-btn active" data-role="all" onclick="setRoleFilter('all')">All roles <span class="rf-count" id="rf-count-all">–</span></button>
+      <button class="role-filter-btn" data-role="student" onclick="setRoleFilter('student')">RMD Student Faculty <span class="rf-count" id="rf-count-student">–</span></button>
+      <button class="role-filter-btn" data-role="senior" onclick="setRoleFilter('senior')">RMD Senior Faculty <span class="rf-count" id="rf-count-senior">–</span></button>
+      <button class="role-filter-btn" data-role="other" onclick="setRoleFilter('other')">Others <span class="rf-count" id="rf-count-other">–</span></button>
+    </div>
   </div>
 
   <div id="tabContent">
@@ -157,6 +173,37 @@ var allSubmissions = [];  // mou_responses for CURRENT_MOU_YEAR
 var roster          = []; // mou_roster docs
 var directorEmails   = [];
 var currentTab       = "roster-status";
+var currentRoleFilter = "all"; // all | student | senior | other
+
+const ROLE_FILTER_LABELS = { student: "RMD Student Faculty", senior: "RMD Senior Faculty", other: "Others" };
+
+function roleBucket(role) {
+  const r = (role || "").trim().toLowerCase();
+  if (r === "rmd student faculty") return "student";
+  if (r === "rmd senior faculty") return "senior";
+  return "other"; // Instructor, Senior Instructor, Assessor, and unspecified/other roles
+}
+
+function submissionRoleBucket(sub) {
+  const rosterMatch = roster.find(m => (m.email||"").toLowerCase() === (sub.email||"").toLowerCase());
+  return roleBucket(rosterMatch ? rosterMatch.role : sub.role);
+}
+
+function setRoleFilter(bucket) {
+  currentRoleFilter = bucket;
+  document.querySelectorAll(".role-filter-btn").forEach(b => b.classList.toggle("active", b.dataset.role === bucket));
+  renderTab(currentTab);
+}
+
+function updateRoleFilterCounts() {
+  const counts = { student: 0, senior: 0, other: 0 };
+  roster.forEach(m => { counts[roleBucket(m.role)]++; });
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set("rf-count-all", roster.length);
+  set("rf-count-student", counts.student);
+  set("rf-count-senior", counts.senior);
+  set("rf-count-other", counts.other);
+}
 
 initFirebase();
 document.getElementById("yearTag").textContent = CURRENT_MOU_YEAR;
@@ -238,6 +285,7 @@ function updateSummary() {
   document.getElementById("sum-signed").textContent      = withStatus.filter(m => m.status === "signed").length;
   document.getElementById("sum-outstanding").textContent = withStatus.filter(m => m.status === "outstanding").length;
   document.getElementById("sum-disagreed").textContent   = withStatus.filter(m => m.status === "disagreed").length;
+  updateRoleFilterCounts();
 }
 
 function switchTab(tab) {
@@ -259,13 +307,18 @@ function renderTab(tab) {
 
 function getFiltered() {
   const withStatus = rosterWithStatus();
+  let base;
   switch (currentTab) {
-    case "outstanding": return withStatus.filter(m => m.status === "outstanding");
-    case "disagreed":   return withStatus.filter(m => m.status === "disagreed");
-    case "roster-status": return withStatus;
-    case "all": return allSubmissions;
-    default: return [];
+    case "outstanding": base = withStatus.filter(m => m.status === "outstanding"); break;
+    case "disagreed":   base = withStatus.filter(m => m.status === "disagreed"); break;
+    case "roster-status": base = withStatus; break;
+    case "all": base = allSubmissions; break;
+    default: base = [];
   }
+  if (currentRoleFilter === "all") return base;
+  return currentTab === "all"
+    ? base.filter(r => submissionRoleBucket(r) === currentRoleFilter)
+    : base.filter(m => roleBucket(m.role) === currentRoleFilter);
 }
 
 function copyFilteredEmails() {
@@ -277,7 +330,8 @@ function copyFilteredEmails() {
 }
 
 function exportCSV() {
-  const withStatus = rosterWithStatus();
+  let withStatus = rosterWithStatus();
+  if (currentRoleFilter !== "all") withStatus = withStatus.filter(m => roleBucket(m.role) === currentRoleFilter);
   const headers = ["Name","Email","Roster Role","Status","Submitted Role","Agreed","Comment","Submitted At"];
   const rows = withStatus.map(m => [
     m.name, m.email, m.role || "", m.status,
@@ -298,12 +352,20 @@ function setFilterLabel(text) { document.getElementById("filterLabel").textConte
 const ROSTER_ROLE_ORDER = ["Instructor", "Senior Instructor", "Assessor", "RMD Student Faculty", "RMD Senior Faculty"];
 
 function renderRosterStatus() {
-  setFilterLabel(`${roster.length} on roster`);
-  const withStatus = rosterWithStatus();
-
   if (!roster.length) {
+    setFilterLabel(`0 on roster`);
     document.getElementById("tabContent").innerHTML =
       `<div class="info-banner">No roster loaded yet. Go to <strong>Manage roster</strong> to paste in the expected member list.</div>`;
+    return;
+  }
+
+  let withStatus = rosterWithStatus();
+  if (currentRoleFilter !== "all") withStatus = withStatus.filter(m => roleBucket(m.role) === currentRoleFilter);
+  setFilterLabel(`${withStatus.length} on roster${currentRoleFilter !== "all" ? ` · ${ROLE_FILTER_LABELS[currentRoleFilter]}` : ""}`);
+
+  if (!withStatus.length) {
+    document.getElementById("tabContent").innerHTML =
+      `<div class="empty-state">No one on the roster matches this filter.</div>`;
     return;
   }
 
@@ -353,13 +415,14 @@ function renderRosterStatus() {
 
   const roleCount = orderedGroups.filter(([, m]) => m.length).length;
   document.getElementById("tabContent").innerHTML = `
-    <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:14px;">Roster status for ${CURRENT_MOU_YEAR} — ${roster.length} member(s) across ${roleCount} role group(s)</div>
+    <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:14px;">Roster status for ${CURRENT_MOU_YEAR} — ${withStatus.length} member(s) across ${roleCount} role group(s)</div>
     ${sections}`;
 }
 
 function renderOutstanding() {
-  const list = rosterWithStatus().filter(m => m.status === "outstanding");
-  setFilterLabel(`${list.length} outstanding`);
+  let list = rosterWithStatus().filter(m => m.status === "outstanding");
+  if (currentRoleFilter !== "all") list = list.filter(m => roleBucket(m.role) === currentRoleFilter);
+  setFilterLabel(`${list.length} outstanding${currentRoleFilter !== "all" ? ` · ${ROLE_FILTER_LABELS[currentRoleFilter]}` : ""}`);
 
   const rows = list.length
     ? list.map(m => `<tr>
@@ -381,8 +444,9 @@ function renderOutstanding() {
 }
 
 function renderDisagreed() {
-  const list = rosterWithStatus().filter(m => m.status === "disagreed");
-  setFilterLabel(`${list.length} disagreed`);
+  let list = rosterWithStatus().filter(m => m.status === "disagreed");
+  if (currentRoleFilter !== "all") list = list.filter(m => roleBucket(m.role) === currentRoleFilter);
+  setFilterLabel(`${list.length} disagreed${currentRoleFilter !== "all" ? ` · ${ROLE_FILTER_LABELS[currentRoleFilter]}` : ""}`);
 
   const rows = list.length
     ? list.map(m => `<tr>
@@ -406,10 +470,13 @@ function renderDisagreed() {
 }
 
 function renderAllSubmissions() {
-  setFilterLabel(`${allSubmissions.length} submission(s)`);
+  const list = currentRoleFilter === "all"
+    ? allSubmissions
+    : allSubmissions.filter(r => submissionRoleBucket(r) === currentRoleFilter);
+  setFilterLabel(`${list.length} submission(s)${currentRoleFilter !== "all" ? ` · ${ROLE_FILTER_LABELS[currentRoleFilter]}` : ""}`);
 
-  const rows = allSubmissions.length
-    ? allSubmissions.map(r => {
+  const rows = list.length
+    ? list.map(r => {
         const onRoster = roster.some(m => (m.email||"").toLowerCase() === (r.email||"").toLowerCase());
         const agreeBadge = r.agreed === false ? `<span class="badge-disagree">⚠ Disagreed</span>` : `<span class="badge-agree">✓ Agreed</span>`;
         return `<tr>
@@ -422,11 +489,11 @@ function renderAllSubmissions() {
           <td><button onclick="deleteSubmission('${r.id}','${(r.name||r.email||"").replace(/'/g,"")}')" style="padding:5px 10px;background:#fce8e6;color:var(--rmd-warn);border:1px solid #f5b8b0;border-radius:6px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button></td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="7" style="color:#aab8c2;text-align:center;padding:20px;">No submissions yet for ${CURRENT_MOU_YEAR}</td></tr>`;
+    : `<tr><td colspan="7" style="color:#aab8c2;text-align:center;padding:20px;">${allSubmissions.length ? "No submissions match this filter" : `No submissions yet for ${CURRENT_MOU_YEAR}`}</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
-      <div class="section-heading">All submissions — ${CURRENT_MOU_YEAR} (${allSubmissions.length})</div>
+      <div class="section-heading">All submissions — ${CURRENT_MOU_YEAR} (${list.length})</div>
       <table class="data-table">
         <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Agreement</th><th>Roster check</th><th>Submitted</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
