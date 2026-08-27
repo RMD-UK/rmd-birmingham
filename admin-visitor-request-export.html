@@ -121,6 +121,23 @@
  *   - "Purpose of Visit" and the date range are fixed text shared by the
  *     whole group, editable in the Fixed Details card so this doesn't need
  *     a code change if wording or dates shift.
+ *
+ * ── ADDENDUM 2026-08-27: Instructor Weekend external-instructor section ──
+ * Added a second, separate group below: confirmed faculty_responses
+ * (attendanceStatus === "confirmed") whose email does NOT appear anywhere
+ * in mou_roster — i.e. people attending the Instructor Weekend who are not
+ * expected RMD Birmingham members ("external instructors": faculty visiting
+ * from another RMD site, or genuinely outside RMD). This is the list Jon
+ * previously compiled by hand for the IW-only visitor group; it is now
+ * generated from faculty_responses + mou_roster instead. Nationality here
+ * comes from faculty-form.html's new Nationality field (added 2026-08-27,
+ * UK Citizen / Other only) — NOT a full country, so rows marked "Other"
+ * may need Jon to ask the person their actual nationality before filing the
+ * UoB form, same as the passport-name caveat above. Uses its own fixed
+ * details (IW weekend dates, IW-specific purpose text) and its own CSV
+ * export, kept separate from the senior-faculty group above rather than
+ * merged, since the two groups have different sourcing, different fixed
+ * details, and different renewal cadence (annual vs per-weekend).
  * ══════════════════════════════════════════════════════════════════════════
  */
 
@@ -129,6 +146,8 @@ initFirebase();
 let roster = [];         // mou_roster docs
 let submissions = [];    // mou_responses for CURRENT_MOU_YEAR
 let overrides = {};      // id -> { name, nationality } edits made on this page
+let facultyResponses = []; // faculty_responses docs (Instructor Weekend faculty submissions)
+let iwOverrides = {};      // id -> { name, nationality } edits for the IW external-instructor table
 
 window.addEventListener("load", () => {
   requireDirector("timetable.html").then(() => {
@@ -138,14 +157,17 @@ window.addEventListener("load", () => {
 
 async function loadAll() {
   document.getElementById("pageContent").innerHTML = `<div class="loading">Loading…</div>`;
-  const [rosterSnap, subSnap] = await Promise.all([
+  const [rosterSnap, subSnap, facultySnap] = await Promise.all([
     db.collection(COLLECTIONS.mouRoster).get(),
-    db.collection(COLLECTIONS.mouResponses).where("academicYear", "==", CURRENT_MOU_YEAR).get()
+    db.collection(COLLECTIONS.mouResponses).where("academicYear", "==", CURRENT_MOU_YEAR).get(),
+    db.collection("faculty_responses").get()
   ]);
   roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   submissions = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  facultyResponses = facultySnap.docs.map(d => ({ id: d.id, ...d.data() }));
   overrides = {};
+  iwOverrides = {};
   render();
 }
 
@@ -177,7 +199,8 @@ function defaultDateRange() {
   return { from: `1 October ${startYear}`, to: `30 September ${endYear}` };
 }
 
-let fixedDetails = null; // set on first render, then left alone across re-renders unless reset
+let fixedDetails = null;   // set on first render, then left alone across re-renders unless reset
+let iwFixedDetails = null; // same, for the IW external-instructor group below
 
 function defaultFixedDetails() {
   const { from, to } = defaultDateRange();
@@ -220,6 +243,104 @@ function currentRows() {
 function updateField(id, field, value) {
   overrides[id] = overrides[id] || {};
   overrides[id][field] = value;
+}
+
+// ── Instructor Weekend external-instructor group (added 2026-08-27) ───────
+// "External" = confirmed IW faculty whose email isn't anywhere in mou_roster,
+// i.e. not an expected RMD Birmingham member. See header addendum above.
+function mouRosterEmailSet() {
+  return new Set(roster.map(m => (m.email || "").trim().toLowerCase()).filter(Boolean));
+}
+
+function fullName(f) {
+  return [f.firstName, f.middleName, f.lastName].filter(Boolean).join(" ");
+}
+
+function externalIwRows() {
+  const rosterEmails = mouRosterEmailSet();
+  return facultyResponses
+    .filter(f => f.attendanceStatus === "confirmed")
+    .filter(f => {
+      const email = (f.email || "").trim().toLowerCase();
+      return email && !rosterEmails.has(email);
+    })
+    .map(f => {
+      const ov = iwOverrides[f.id] || {};
+      return {
+        id: f.id,
+        email: f.email || "",
+        role: f.role || "",
+        name: ov.name != null ? ov.name : fullName(f),
+        nationality: ov.nationality != null ? ov.nationality : (f.nationality || "")
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function updateIwField(id, field, value) {
+  iwOverrides[id] = iwOverrides[id] || {};
+  iwOverrides[id][field] = value;
+}
+
+function defaultIwFixedDetails() {
+  return {
+    department: "Birmingham Medical School",
+    applicant: "Jonathan Hulme",
+    purpose: "Basic life support training: this person is an external instructor attending the RMD Instructor Weekend.",
+    from: "9 October 2026",
+    to: "11 October 2026"
+  };
+}
+
+function readIwFixedDetailsFromForm() {
+  iwFixedDetails = {
+    department: document.getElementById("iwfd-department").value,
+    applicant: document.getElementById("iwfd-applicant").value,
+    purpose: document.getElementById("iwfd-purpose").value,
+    from: document.getElementById("iwfd-from").value,
+    to: document.getElementById("iwfd-to").value
+  };
+}
+
+function copyIwFixedDetails() {
+  readIwFixedDetailsFromForm();
+  const text = [
+    `Which department will the visitor be based in? ${iwFixedDetails.department}`,
+    `Application made by: ${iwFixedDetails.applicant}`,
+    `Purpose of Visit: ${iwFixedDetails.purpose}`,
+    `Proposed Date of Visit from: ${iwFixedDetails.from}`,
+    `Proposed Date of visit to: ${iwFixedDetails.to}`
+  ].join("\n");
+  navigator.clipboard.writeText(text).then(() => alert("Fixed details copied."));
+}
+
+function exportIwCsv() {
+  readIwFixedDetailsFromForm();
+  const rows = externalIwRows();
+  if (!rows.length) { alert("No confirmed Instructor Weekend faculty found outside the mou_roster."); return; }
+  const headers = [
+    "Full Name of Visitor (as per passport)",
+    "Visitor's email address",
+    "Visitor's Nationality",
+    "Which department will the visitor be based in?",
+    "Application made by",
+    "Purpose of Visit",
+    "Proposed Date of Visit from",
+    "Proposed Date of visit to"
+  ];
+  const csvRows = rows.map(r => [
+    r.name, r.email, r.nationality,
+    iwFixedDetails.department, iwFixedDetails.applicant, iwFixedDetails.purpose, iwFixedDetails.from, iwFixedDetails.to
+  ]);
+  downloadCsv(`rmd-iw-external-instructors-visitor-request-2026.csv`, toCsv(headers, csvRows));
+}
+
+async function copyIwCsvToClipboard() {
+  const rows = externalIwRows();
+  const headers = ["Full Name of Visitor (as per passport)", "Visitor's email address", "Visitor's Nationality"];
+  const csv = toCsv(headers, rows.map(r => [r.name, r.email, r.nationality]));
+  await navigator.clipboard.writeText(csv);
+  alert(`Copied ${rows.length} row(s) — name, email, nationality only. Fixed details (department, purpose, dates) are the same for every row, use the copy button on that card instead.`);
 }
 
 function readFixedDetailsFromForm() {
@@ -279,6 +400,11 @@ function render() {
   const missingNationality = rows.filter(r => !r.nationality);
   const fd = fixedDetails || defaultFixedDetails();
 
+  const iwRows = externalIwRows();
+  const iwMissingNationality = iwRows.filter(r => !r.nationality);
+  const iwOtherNationality = iwRows.filter(r => r.nationality === "Other");
+  const iwfd = iwFixedDetails || defaultIwFixedDetails();
+
   document.getElementById("pageContent").innerHTML = `
     <div class="warn-banner">
       <strong>RMD Senior Faculty only — from the MOU roster (${CURRENT_MOU_YEAR})</strong>
@@ -321,6 +447,57 @@ function render() {
       <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn-action" onclick="exportCsv()">⬇ Download CSV (all 8 form fields)</button>
         <button class="btn-action secondary" onclick="copyCsvToClipboard()">📋 Copy name/email/nationality only</button>
+      </div>
+    </div>
+
+    <div class="warn-banner">
+      <strong>Instructor Weekend external instructors — confirmed faculty_responses not on mou_roster</strong>
+      This covers people attending the Instructor Weekend only, who aren't expected RMD Birmingham
+      members (visiting instructors from other RMD sites, or genuinely external). Sourced from
+      confirmed faculty submissions matched against mou_roster by email — anyone whose email isn't
+      on mou_roster at all shows up here, so double-check before filing: someone with a typo'd or
+      changed email could be wrongly flagged even though they're a Birmingham member. Nationality
+      comes from the faculty form's UK Citizen / Other question, not a full country — rows marked
+      "Other" need Jon to confirm the actual nationality before submitting the UoB form.
+    </div>
+
+    <div class="card">
+      <div class="card-title">Fixed details — Instructor Weekend group</div>
+      <div class="card-sub">Separate from the senior-faculty fixed details above since the dates and purpose differ. Edit here if wording or dates shift.</div>
+      <div class="fixed-grid">
+        <label>Department</label><input id="iwfd-department" value="${esc(iwfd.department)}">
+        <label>Application made by</label><input id="iwfd-applicant" value="${esc(iwfd.applicant)}">
+        <label>Purpose of Visit</label><textarea id="iwfd-purpose">${esc(iwfd.purpose)}</textarea>
+        <label>Proposed Date of Visit from</label><input id="iwfd-from" value="${esc(iwfd.from)}">
+        <label>Proposed Date of visit to</label><input id="iwfd-to" value="${esc(iwfd.to)}">
+      </div>
+      <div style="margin-top:12px;"><button class="btn-action secondary" onclick="copyIwFixedDetails()">📋 Copy fixed details</button></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">External instructor visitor details</div>
+      <div class="card-counts">
+        <b>${iwRows.length}</b> confirmed IW faculty not on mou_roster
+        ${iwMissingNationality.length ? ` · <b style="color:var(--rmd-warn);">${iwMissingNationality.length}</b> missing nationality` : ""}
+        ${iwOtherNationality.length ? ` · <b style="color:var(--rmd-warn);">${iwOtherNationality.length}</b> marked "Other" — confirm actual country before filing` : ""}
+      </div>
+      ${iwRows.length ? `
+      <table>
+        <thead><tr><th>Full Name (as per passport)</th><th>Email</th><th>Role</th><th>Nationality</th></tr></thead>
+        <tbody>
+          ${iwRows.map(r => `
+            <tr>
+              <td><input value="${esc(r.name)}" onchange="updateIwField('${r.id}','name',this.value)"></td>
+              <td class="row-email">${esc(r.email)}</td>
+              <td class="row-email">${esc(r.role)}</td>
+              <td><input class="${r.nationality ? "" : "flagged"}" value="${esc(r.nationality)}" placeholder="not set" onchange="updateIwField('${r.id}','nationality',this.value)"></td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+      ` : `<div style="color:var(--rmd-muted);font-size:13px;">No confirmed Instructor Weekend faculty found outside mou_roster right now.</div>`}
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-action" onclick="exportIwCsv()">⬇ Download CSV (all 8 form fields)</button>
+        <button class="btn-action secondary" onclick="copyIwCsvToClipboard()">📋 Copy name/email/nationality only</button>
       </div>
     </div>
   `;
