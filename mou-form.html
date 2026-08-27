@@ -281,6 +281,18 @@
       </select>
     </div>
 
+    <div class="field" id="cwField" style="display:none;">
+      <label>UoB Contingent Worker status <span class="req">*</span></label>
+      <div class="hint-text" style="margin-bottom:8px;">RMD Senior Faculty must hold active University of Birmingham Contingent Worker status to retain IT access, in place for the full year without a break.</div>
+      <div class="option-group" id="cwGroup">
+        <button type="button" class="option-btn" onclick="selectCW(true,this)">✓ Yes, in place and active</button>
+        <button type="button" class="option-btn" onclick="selectCW(false,this)">✗ No / lapsed / not sure</button>
+      </div>
+      <div class="hint-text" id="cwApplyHint" style="display:none;margin-top:8px;">
+        Your MoU can't be submitted until this is sorted. <a href="https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=z8oksN7eQUKhXDyX1VPp8wBtHh5KrpBHoi12PKseGCdUNUE0VkU1VjVDRURFNkw2WjVKNUwwN1kzVi4u" target="_blank" rel="noopener">Apply or renew your Contingent Worker status here</a>, then come back and submit once it's underway. For any queries, email <a href="mailto:smsvisitingpersonnel@contacts.bham.ac.uk,j.durrant@bham.ac.uk">smsvisitingpersonnel@contacts.bham.ac.uk</a> and James Durrant (CMH Administration) at <a href="mailto:smsvisitingpersonnel@contacts.bham.ac.uk,j.durrant@bham.ac.uk">j.durrant@bham.ac.uk</a>.
+      </div>
+    </div>
+
     <div class="field">
       <label>Academic year</label>
       <input type="text" id="academicYear" disabled>
@@ -425,6 +437,27 @@ async function sendMouForgotPasswordEmail() {
 }
 
 let agreed = null;
+let cwConfirmed = null;
+
+document.getElementById("role").addEventListener("change", function () {
+  const isSeniorFaculty = this.value === "RMD Senior Faculty";
+  document.getElementById("cwField").style.display = isSeniorFaculty ? "block" : "none";
+  if (!isSeniorFaculty) {
+    cwConfirmed = null;
+    document.querySelectorAll("#cwGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no"));
+    document.getElementById("cwApplyHint").style.display = "none";
+  }
+});
+
+function selectCW(value, btn) {
+  cwConfirmed = value;
+  document.querySelectorAll("#cwGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no"));
+  btn.classList.add(value ? "selected-yes" : "selected-no");
+  document.getElementById("cwApplyHint").style.display = value ? "none" : "block";
+  if (value) {
+    alert("Reminder: submit your Contingent Worker renewal in good time (UoB recommend around a month before your current status expires) so your IT access runs without a break.");
+  }
+}
 
 function selectAgree(value, btn) {
   agreed = value;
@@ -445,6 +478,10 @@ async function submitForm() {
   if (!nationality) { alert("Please enter your nationality."); return; }
   if (!email || !email.includes("@")) { alert("Please enter a valid email address."); return; }
   if (!role) { alert("Please select your RMD role."); return; }
+  if (role === "RMD Senior Faculty") {
+    if (cwConfirmed === null) { alert("Please confirm your UoB Contingent Worker status."); return; }
+    if (cwConfirmed === false) { alert("Your MoU can't be submitted until your UoB Contingent Worker status is active and up to date.\n\nApply or renew here, then come back and submit once it's underway:\nhttps://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=z8oksN7eQUKhXDyX1VPp8wBtHh5KrpBHoi12PKseGCdUNUE0VkU1VjVDRURFNkw2WjVKNUwwN1kzVi4u\n\nQueries: smsvisitingpersonnel@contacts.bham.ac.uk and j.durrant@bham.ac.uk"); return; }
+  }
   if (!read) { alert("Please confirm you have read and understood the Memorandum of Understanding."); return; }
   if (agreed === null) { alert("Please confirm whether you agree to the Memorandum of Understanding."); return; }
   if (agreed === false && !comment) { alert("Please explain your concern in the comment box."); return; }
@@ -459,6 +496,7 @@ async function submitForm() {
     email: email,
     studentId: document.getElementById("studentId").value.trim(),
     role: role,
+    cwStatusConfirmed: role === "RMD Senior Faculty" ? cwConfirmed : null,
     academicYear: CURRENT_MOU_YEAR,
     readConfirmed: true,
     agreed: agreed,
