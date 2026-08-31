@@ -377,8 +377,8 @@ async function loadResponses() {
       .sort((a, b) => {
         // Alphabetical by first name (falls back to email if no name on file),
         // last name as tiebreaker. Was previously most-recent-submission-first.
-        const aFirst = (a.firstName || a.email || "").toLowerCase();
-        const bFirst = (b.firstName || b.email || "").toLowerCase();
+        const aFirst = (knownAsOrFirst(a) || a.email || "").toLowerCase();
+        const bFirst = (knownAsOrFirst(b) || b.email || "").toLowerCase();
         return aFirst.localeCompare(bFirst) ||
                (a.lastName || "").toLowerCase().localeCompare((b.lastName || "").toLowerCase());
       });
@@ -445,7 +445,15 @@ function renderTab(tab) {
   else if (tab === "export")     renderExport();
 }
 
-function fullName(r) { return [r.firstName, r.lastName].filter(Boolean).join(" "); }
+// 2026-08-31: lists/cards show the "known as" name (falls back to firstName if no
+// one entered one, e.g. all 40 existing responses predate this field). The full
+// passport name (firstName/middleName/lastName) stays available in the expanded
+// card and is what admin-visitor-request-export.html reads separately — never
+// swap that export to use this.
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function knownAsOrFirst(r) { return (r.knownAs && r.knownAs.trim()) || r.firstName || ""; }
+function fullName(r) { return [knownAsOrFirst(r), r.lastName].filter(Boolean).join(" "); }
+function passportName(r) { return [r.firstName, r.middleName, r.lastName].filter(Boolean).join(" "); }
 function fmtDate(r)  {
   return r.submittedAt
     ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
@@ -514,6 +522,8 @@ function renderAll() {
         <div class="rc-body" id="card-${i}">
           <div class="rc-grid">
             <div><div class="rc-label">Email</div><div class="rc-value">${r.email||"–"}</div></div>
+            <div><div class="rc-label">Known as</div><div class="rc-value">${esc(r.knownAs) || "<em>(none — showing first name)</em>"} <a href="#" onclick="event.preventDefault();editKnownAs('${r.id}',${i})" style="font-size:11px;">✎ edit</a></div></div>
+            <div><div class="rc-label">Legal name (passport)</div><div class="rc-value">${passportName(r) || "–"}</div></div>
             <div><div class="rc-label">Days</div><div class="rc-value"><div class="day-badges">${days}</div></div></div>
             <div><div class="rc-label">Meals <span style="font-weight:400;text-transform:none;letter-spacing:0;">(click to toggle)</span></div><div class="rc-value">
               <div class="meal-badges">
@@ -818,6 +828,22 @@ async function setAttendanceStatus(docId, status, cardIndex) {
   }
 }
 
+async function editKnownAs(docId, cardIndex) {
+  const r = allResponses.find(x => x.id === docId);
+  if (!r) return;
+  const next = prompt(`Known as (leave blank to fall back to first name "${r.firstName || ""}"):`, r.knownAs || "");
+  if (next === null) return; // cancelled
+  const trimmed = next.trim();
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ knownAs: trimmed });
+    r.knownAs = trimmed;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update known-as name: " + err.message);
+  }
+}
+
 async function setFieldValue(docId, field, day, value) {
   try {
     await db.collection("faculty_responses").doc(docId).update({ [`${field}.${day}`]: value });
@@ -992,13 +1018,13 @@ function renderExport() {
         <button class="btn-action secondary" onclick="copyAllEmails()">📋 Copy all emails</button>
       </div>
       <p style="font-size:12px;color:var(--rmd-muted);margin:16px 0 0;">
-        CSV includes: name, email, role, platform role, attendance status, provisional flag, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
+        CSV includes: first/last name, known as, email, role, platform role, attendance status, provisional flag, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
       </p>
     </div>`;
 }
 
 function exportCSV() {
-  const headers = ["First Name","Last Name","Email","Self-declared Role","Platform Role",
+  const headers = ["First Name","Last Name","Known As","Email","Self-declared Role","Platform Role",
     "Attendance Status","Provisional",
     "Days-Fri","Days-Sat","Days-Sun","Meal-Fri","Meal-Sat",
     "Accom-Fri","Accom-Sat","Diet","Diet Detail",
@@ -1006,7 +1032,7 @@ function exportCSV() {
     "Accessibility","Travel Notes","Other Notes","Submitted"];
 
   const rows = allResponses.map(r => [
-    r.firstName, r.lastName, r.email, r.role,
+    r.firstName, r.lastName, r.knownAs || "", r.email, r.role,
     isDirector(r.email) ? "Director" : "Faculty",
     r.attendanceStatus || "pending",
     r.provisional ? "Yes" : "No",
