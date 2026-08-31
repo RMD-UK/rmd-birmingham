@@ -229,14 +229,20 @@ function downloadCsv(filename, csv) {
   a.href = url; a.download = filename; a.click();
 }
 
+// 2026-08-31: prefer the self-submitted passport name from this year's mou_responses
+// (mou-form.html asks explicitly for "full name as per passport") over mou_roster's
+// hand-maintained name, since the roster entry is "whatever name they registered
+// under" and was never verified against a passport. Falls back to the roster name
+// for anyone who hasn't submitted this year's MOU yet.
 function currentRows() {
   return seniorFaculty().map(m => {
     const sub = submissionFor(m.email);
     const ov = overrides[m.id] || {};
+    const passportName = (sub && sub.name) ? sub.name : (m.name || "");
     return {
       id: m.id,
       email: m.email || "",
-      name: ov.name != null ? ov.name : (m.name || ""),
+      name: ov.name != null ? ov.name : passportName,
       nationality: ov.nationality != null ? ov.nationality : (sub ? (sub.nationality || "") : ""),
       hasSubmission: !!sub
     };
