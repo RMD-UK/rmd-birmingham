@@ -1,0 +1,28 @@
+name: Deploy to Firebase Hosting
+
+# Runs whenever main is pushed (e.g. via GitHub Desktop) and publishes the
+# site to Firebase Hosting — this replaces GitHub Pages' "push = live"
+# behaviour once rmd.uk.com's DNS points at Firebase instead of GitHub.
+#
+# Requires one repo secret, added under Settings > Secrets and variables >
+# Actions on GitHub.com (has to be done there, not from this workflow file):
+#   FIREBASE_SERVICE_ACCOUNT_RMD_INSTRUCTOR_WEEKEND
+#     — a Firebase service account key (JSON) for the rmd-instructor-weekend
+#       project, with the "Firebase Hosting Admin" role.
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_RMD_INSTRUCTOR_WEEKEND }}'
+          projectId: rmd-instructor-weekend
+          channelId: live
