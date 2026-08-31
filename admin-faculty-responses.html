@@ -425,16 +425,16 @@ function renderTab(tab) {
   else if (tab === "directors")  renderDirectors();
   else if (tab === "fri-dinner") renderNameEmailTable(
     allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.friday === "yes"),
-    "Friday 9 Oct — Evening meal", ["Name","Email","Role","Dietary"]);
+    "Friday 9 Oct — Evening meal", ["Name","Email","Role","Dietary"], "meals", "friday");
   else if (tab === "sat-dinner") renderNameEmailTable(
     allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.saturday === "yes"),
-    "Saturday 10 Oct — Postgraduate meal", ["Name","Email","Role","Dietary"]);
+    "Saturday 10 Oct — Postgraduate meal", ["Name","Email","Role","Dietary"], "meals", "saturday");
   else if (tab === "fri-accom")  renderNameEmailTable(
     allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.friday === "yes"),
-    "Friday night accommodation requests", ["Name","Email","Role"]);
+    "Friday night accommodation requests", ["Name","Email","Role"], "accommodation", "friday");
   else if (tab === "sat-accom")  renderNameEmailTable(
     allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.saturday === "yes"),
-    "Saturday night accommodation requests", ["Name","Email","Role"]);
+    "Saturday night accommodation requests", ["Name","Email","Role"], "accommodation", "saturday");
   else if (tab === "dietary")    renderDietary();
   else if (tab === "erc")        renderERC();
   else if (tab === "itc")        renderITC();
@@ -520,9 +520,11 @@ function renderAll() {
                 <span class="meal-badge badge-${r.meals&&r.meals.friday||'no'}" style="cursor:pointer;" onclick="toggleMeal('${r.id}','friday',${i})" title="Click to toggle Friday dinner">Fri: ${r.meals&&r.meals.friday||'no'}</span>
                 <span class="meal-badge badge-${r.meals&&r.meals.saturday||'no'}" style="cursor:pointer;" onclick="toggleMeal('${r.id}','saturday',${i})" title="Click to toggle Saturday dinner">Sat: ${r.meals&&r.meals.saturday||'no'}</span>
               </div></div></div>
-            <div><div class="rc-label">Accommodation</div><div class="rc-value">
-              Fri: ${r.accommodation&&r.accommodation.friday||'–'} · Sat: ${r.accommodation&&r.accommodation.saturday||'–'}
-            </div></div>
+            <div><div class="rc-label">Accommodation <span style="font-weight:400;text-transform:none;letter-spacing:0;">(click to toggle)</span></div><div class="rc-value">
+              <div class="meal-badges">
+                <span class="meal-badge badge-${r.accommodation&&r.accommodation.friday||'no'}" style="cursor:pointer;" onclick="toggleAccommodation('${r.id}','friday',${i})" title="Click to toggle Friday accommodation">Fri: ${r.accommodation&&r.accommodation.friday||'no'}</span>
+                <span class="meal-badge badge-${r.accommodation&&r.accommodation.saturday||'no'}" style="cursor:pointer;" onclick="toggleAccommodation('${r.id}','saturday',${i})" title="Click to toggle Saturday accommodation">Sat: ${r.accommodation&&r.accommodation.saturday||'no'}</span>
+              </div></div></div>
             <div><div class="rc-label">Diet</div><div class="rc-value">${r.diet||"–"}${r.dietDetail?" ("+r.dietDetail+")":""}</div></div>
             <div><div class="rc-label">ERC qualification</div><div class="rc-value">${r.ercQualification||"–"}</div></div>
             <div><div class="rc-label">ERC status</div><div class="rc-value">
@@ -673,10 +675,25 @@ async function changeRole(docId, newRole, name) {
   }
 }
 
-function renderNameEmailTable(filtered, title, cols) {
+function renderNameEmailTable(filtered, title, cols, field, day) {
   setFilterLabel(`${filtered.length} person(s)`);
   const showDiet = cols.includes("Dietary");
   const showRole = cols.includes("Role");
+  const editable = !!(field && day);
+
+  const eligible = editable
+    ? allResponses
+        .filter(r => isActiveResponse(r) && !(r[field] && r[field][day] === "yes"))
+        .sort((a, b) => (fullName(a)||a.email||"").localeCompare(fullName(b)||b.email||""))
+    : [];
+  const addControl = editable && eligible.length
+    ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+        <select id="addPersonSelect" style="flex:1;max-width:320px;padding:7px 10px;border:1px solid #d7dee6;border-radius:6px;font-family:var(--font);font-size:13px;">
+          ${eligible.map(r => `<option value="${r.id}">${fullName(r) || r.email}${r.role ? " — " + r.role : ""}</option>`).join("")}
+        </select>
+        <button class="btn-action" onclick="addToList('${field}','${day}')">+ Add to list</button>
+      </div>`
+    : "";
 
   const rows = filtered.length
     ? filtered.map(r => `
@@ -685,14 +702,16 @@ function renderNameEmailTable(filtered, title, cols) {
           <td>${r.email||"–"}</td>
           ${showRole ? `<td>${r.role||"–"}</td>` : ""}
           ${showDiet ? `<td>${r.diet||"None"}${r.dietDetail?" ("+r.dietDetail+")":""}</td>` : ""}
+          ${editable ? `<td><button class="btn-decline" onclick="setFieldValue('${r.id}','${field}','${day}','no')" title="Remove from this list">Remove</button></td>` : ""}
         </tr>`).join("")
-    : `<tr><td colspan="${cols.length}" style="color:#aab8c2;text-align:center;">No responses yet</td></tr>`;
+    : `<tr><td colspan="${cols.length + (editable?1:0)}" style="color:#aab8c2;text-align:center;">No responses yet</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
       <div class="section-heading">${title} — ${filtered.length} attending</div>
+      ${addControl}
       <table class="data-table">
-        <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
+        <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}${editable ? "<th>Action</th>" : ""}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -799,20 +818,41 @@ async function setAttendanceStatus(docId, status, cardIndex) {
   }
 }
 
+async function setFieldValue(docId, field, day, value) {
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ [`${field}.${day}`]: value });
+    const r = allResponses.find(x => x.id === docId);
+    if (r) {
+      if (!r[field]) r[field] = {};
+      r[field][day] = value;
+    }
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update: " + err.message);
+  }
+}
+
+function addToList(field, day) {
+  const sel = document.getElementById("addPersonSelect");
+  if (!sel || !sel.value) return;
+  setFieldValue(sel.value, field, day, "yes");
+}
+
 async function toggleMeal(docId, day, cardIndex) {
   const r = allResponses.find(x => x.id === docId);
   if (!r) return;
   const current = (r.meals && r.meals[day]) || "no";
   const next = current === "yes" ? "no" : "yes";
-  try {
-    await db.collection("faculty_responses").doc(docId).update({ [`meals.${day}`]: next });
-    if (!r.meals) r.meals = {};
-    r.meals[day] = next;
-    updateSummary();
-    renderTab(currentTab);
-  } catch (err) {
-    alert("Failed to update meal: " + err.message);
-  }
+  await setFieldValue(docId, "meals", day, next);
+}
+
+async function toggleAccommodation(docId, day, cardIndex) {
+  const r = allResponses.find(x => x.id === docId);
+  if (!r) return;
+  const current = (r.accommodation && r.accommodation[day]) || "no";
+  const next = current === "yes" ? "no" : "yes";
+  await setFieldValue(docId, "accommodation", day, next);
 }
 
 function renderAttendanceFilter(status, heading) {
