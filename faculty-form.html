@@ -260,9 +260,44 @@
     }
     .btn-sf-decline:hover { background: #a56600; }
     .btn-sf-decline:disabled { background: #d8c8a0; cursor: default; }
+
+    /* ── Link gate: only unlock the form for links carrying ?code=IWBHAM ── */
+    html[data-gate-blocked="true"] body > *:not(#linkGateMessage) { display: none !important; }
+    html[data-gate-blocked="true"] #linkGateMessage { display: block !important; }
+    #linkGateMessage {
+      display: none;
+      max-width: 480px;
+      margin: 70px auto;
+      padding: 28px 24px;
+      text-align: center;
+      font-family: var(--font);
+      color: var(--rmd-navy);
+    }
+    #linkGateMessage img { height: 48px; margin-bottom: 16px; }
+    #linkGateMessage h2 { font-size: 19px; margin: 0 0 10px; }
+    #linkGateMessage p { font-size: 14px; color: #555; line-height: 1.5; }
   </style>
 </head>
 <body>
+
+<script>
+  // Only show this form to people who followed the invitation link
+  // (?code=IWBHAM). Anyone else — bare URL, search engines, bots — sees
+  // the message below instead. Change REQUIRED_CODE here to rotate the code.
+  (function () {
+    var REQUIRED_CODE = "IWBHAM";
+    var params = new URLSearchParams(window.location.search);
+    if (params.get("code") !== REQUIRED_CODE) {
+      document.documentElement.setAttribute("data-gate-blocked", "true");
+    }
+  })();
+</script>
+
+<div id="linkGateMessage">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <h2>This form needs your invitation link</h2>
+  <p>Please use the link sent to you by email for RMD Instructor Weekend 2026. If you've lost it, contact your site's faculty admin and they can resend it.</p>
+</div>
 
 <!-- Header -->
 <div class="form-header">

@@ -73,6 +73,9 @@
     .rc-time  { font-size: 11px; color: var(--rmd-muted); }
     .rc-body  { padding: 12px 14px; display: none; }
     .rc-body.open { display: block; }
+    .name-link { color: var(--rmd-navy); font-weight: 700; text-decoration: none; border-bottom: 1px dotted var(--rmd-blue); cursor: pointer; }
+    .name-link:hover { color: var(--rmd-blue); }
+    .response-card.highlight { box-shadow: 0 0 0 3px #f0c14b, 0 1px 4px rgba(0,0,0,0.1); }
 
     .rc-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -459,6 +462,24 @@ function fmtDate(r)  {
     ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
     : "–";
 }
+function nameLink(r) {
+  const label = fullName(r) || r.email || "\u2013";
+  return `<a href="#" class="name-link" onclick="event.preventDefault();goToEntry('${r.id}')">${label}</a>`;
+}
+function goToEntry(docId) {
+  const i = allResponses.findIndex(r => r.id === docId);
+  if (i === -1) { alert("Could not find that entry in All responses."); return; }
+  switchTab('all');
+  const body = document.getElementById('card-' + i);
+  if (!body) return;
+  body.classList.add('open');
+  const card = body.closest('.response-card');
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('highlight');
+    setTimeout(() => card.classList.remove('highlight'), 2000);
+  }
+}
 function getFiltered() {
   switch (currentTab) {
     case "fri-dinner": return allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.friday === "yes");
@@ -634,7 +655,7 @@ function renderDirectors() {
     }
 
     return `<tr>
-      <td style="font-weight:700;color:var(--rmd-navy);">${name}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${nameLink(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${roleBadge}</td>
       <td>${roleSelectHtml(r, name)}</td>
@@ -708,7 +729,7 @@ function renderNameEmailTable(filtered, title, cols, field, day) {
   const rows = filtered.length
     ? filtered.map(r => `
         <tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           ${showRole ? `<td>${r.role||"–"}</td>` : ""}
           ${showDiet ? `<td>${r.diet||"None"}${r.dietDetail?" ("+r.dietDetail+")":""}</td>` : ""}
@@ -734,7 +755,7 @@ function renderDietary() {
   const rows = dietary.length
     ? dietary.map(r => `
         <tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           <td>${r.role||"–"}</td>
           <td>${r.diet||"–"}${r.dietDetail?" ("+r.dietDetail+")":""}</td>
@@ -762,7 +783,7 @@ function renderERC() {
   const rows = toFix.length
     ? toFix.map(r => `
         <tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           <td>${r.ercQualification||"–"}</td>
           <td>${r.ercLiaisonConfirmed ? "✓ Will contact ERC" : "–"}</td>
@@ -788,7 +809,7 @@ function renderITC() {
         const days = ["friday","saturday","sunday"].map(d =>
           `<span class="day-badge day-${r.days&&r.days[d]?'yes':'no'}">${d.slice(0,3)}</span>`).join(" ");
         return `<tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           <td>${r.ercQualification||"–"}</td>
           <td>${r.ercCorrectlyListed==="yes"
@@ -899,7 +920,7 @@ function renderAttendanceFilter(status, heading) {
       return r.days && r.days[key] ? `<span class="day-badge day-yes">${d}</span>` : "";
     }).join(" ");
     return `<tr>
-      <td style="font-weight:700;color:var(--rmd-navy);">${fullName(r)||"–"}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${nameLink(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${r.role||"–"}</td>
       <td><div class="day-badges">${days}</div></td>
@@ -938,7 +959,7 @@ function renderProvisional() {
 
   const rows = filtered.map(r => `
     <tr>
-      <td style="font-weight:700;color:var(--rmd-navy);">${fullName(r)||"–"}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${nameLink(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${r.role||"–"}</td>
       <td>${fmtDate(r)}</td>
