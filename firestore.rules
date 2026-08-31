@@ -82,8 +82,19 @@ service cloud.firestore {
     // Read: public — QR landing page looks up candidate name without login
     // Write: director only — this collection decides who counts as a director,
     //   so any signed-in user being able to write here is a privilege escalation
+    // Anyone signed in can read their OWN doc (resolveRole() in
+    // firebase-config.js needs this to determine role right after login).
+    // Full read/listing of OTHER people's docs is director-only — this
+    // collection holds every user's name, email and role, so a blanket
+    // "read: if true" let anyone anonymously harvest the entire faculty
+    // list, including exactly who has director access. Tightened 2026-08-31
+    // after confirming no legitimate flow reads another user's own doc by
+    // uid directly (admin-erc-export.html, the one page that lists the
+    // whole collection, is already director-only; Cloud Functions use the
+    // Admin SDK and bypass these rules entirely regardless).
     match /people/{docId} {
-      allow read: if true;
+      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector());
+      allow list: if isDirector();
       allow write: if isDirector();
     }
 
