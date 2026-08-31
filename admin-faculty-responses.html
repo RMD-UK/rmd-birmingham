@@ -324,6 +324,14 @@ function isDirector(email) {
   return HARDCODED_DIRECTORS.includes(e) || directorEmails.map(x => x.toLowerCase()).includes(e);
 }
 
+// 2026-08-31: meals/accommodation tabs and summary pills were still counting people marked
+// "Declined" on this same page (e.g. Ben Stanley) because those views only ever read the raw
+// meals.*/accommodation.* fields from the original RSVP, never attendanceStatus. Mirrors the
+// same fix already applied on admin-room-allocation.html (2026-08-27) for the same underlying issue.
+function isActiveResponse(x) {
+  return x.attendanceStatus !== "declined" && x.cannotAttend !== true;
+}
+
 function isHardcoded(email) {
   return HARDCODED_DIRECTORS.includes((email||"").toLowerCase());
 }
@@ -385,10 +393,10 @@ function updateSummary() {
   const directorCount = r.filter(x => isDirector(x.email)).length;
   document.getElementById("sum-total").textContent      = r.length;
   document.getElementById("sum-directors").textContent  = directorCount;
-  document.getElementById("sum-fri-dinner").textContent = r.filter(x => x.meals && x.meals.friday   === "yes").length;
-  document.getElementById("sum-sat-dinner").textContent = r.filter(x => x.meals && x.meals.saturday === "yes").length;
-  document.getElementById("sum-fri-accom").textContent  = r.filter(x => x.accommodation && x.accommodation.friday   === "yes").length;
-  document.getElementById("sum-sat-accom").textContent  = r.filter(x => x.accommodation && x.accommodation.saturday === "yes").length;
+  document.getElementById("sum-fri-dinner").textContent = r.filter(x => isActiveResponse(x) && x.meals && x.meals.friday   === "yes").length;
+  document.getElementById("sum-sat-dinner").textContent = r.filter(x => isActiveResponse(x) && x.meals && x.meals.saturday === "yes").length;
+  document.getElementById("sum-fri-accom").textContent  = r.filter(x => isActiveResponse(x) && x.accommodation && x.accommodation.friday   === "yes").length;
+  document.getElementById("sum-sat-accom").textContent  = r.filter(x => isActiveResponse(x) && x.accommodation && x.accommodation.saturday === "yes").length;
   document.getElementById("sum-dietary").textContent    = r.filter(x => x.diet && x.diet !== "None" && x.diet !== "").length;
   document.getElementById("sum-erc-fix").textContent    = r.filter(x => x.ercCorrectlyListed === "no").length;
   document.getElementById("sum-itc").textContent        = r.filter(x => x.role === "Instructor Trainer Candidate").length;
@@ -416,16 +424,16 @@ function renderTab(tab) {
   if      (tab === "all")        renderAll();
   else if (tab === "directors")  renderDirectors();
   else if (tab === "fri-dinner") renderNameEmailTable(
-    allResponses.filter(r => r.meals && r.meals.friday === "yes"),
+    allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.friday === "yes"),
     "Friday 9 Oct — Evening meal", ["Name","Email","Role","Dietary"]);
   else if (tab === "sat-dinner") renderNameEmailTable(
-    allResponses.filter(r => r.meals && r.meals.saturday === "yes"),
+    allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.saturday === "yes"),
     "Saturday 10 Oct — Postgraduate meal", ["Name","Email","Role","Dietary"]);
   else if (tab === "fri-accom")  renderNameEmailTable(
-    allResponses.filter(r => r.accommodation && r.accommodation.friday === "yes"),
+    allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.friday === "yes"),
     "Friday night accommodation requests", ["Name","Email","Role"]);
   else if (tab === "sat-accom")  renderNameEmailTable(
-    allResponses.filter(r => r.accommodation && r.accommodation.saturday === "yes"),
+    allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.saturday === "yes"),
     "Saturday night accommodation requests", ["Name","Email","Role"]);
   else if (tab === "dietary")    renderDietary();
   else if (tab === "erc")        renderERC();
@@ -445,10 +453,10 @@ function fmtDate(r)  {
 }
 function getFiltered() {
   switch (currentTab) {
-    case "fri-dinner": return allResponses.filter(r => r.meals && r.meals.friday === "yes");
-    case "sat-dinner": return allResponses.filter(r => r.meals && r.meals.saturday === "yes");
-    case "fri-accom":  return allResponses.filter(r => r.accommodation && r.accommodation.friday === "yes");
-    case "sat-accom":  return allResponses.filter(r => r.accommodation && r.accommodation.saturday === "yes");
+    case "fri-dinner": return allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.friday === "yes");
+    case "sat-dinner": return allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.saturday === "yes");
+    case "fri-accom":  return allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.friday === "yes");
+    case "sat-accom":  return allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.saturday === "yes");
     case "dietary":    return allResponses.filter(r => r.diet && r.diet !== "None" && r.diet !== "");
     case "erc":        return allResponses.filter(r => r.ercCorrectlyListed === "no");
     case "itc":        return allResponses.filter(r => r.role === "Instructor Trainer Candidate");
