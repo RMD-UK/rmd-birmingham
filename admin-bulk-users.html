@@ -249,11 +249,11 @@ j.smith@example.com
 
   <!-- MOU Roster provisioning card -->
   <div class="card">
-    <div class="card-header">Provision MOU Roster Accounts</div>
+    <div class="card-header">Set Up Logins for All Active RMD Birmingham Members</div>
     <div class="card-body">
 
       <div class="director-note">
-        ⚠️ Creates Firebase login accounts for everyone currently in the <code>mou_roster</code> collection (imported via the MOU dashboard's "Manage roster" tab), so they can sign in to <a href="mou-form.html">mou-form.html</a> and submit the MOU. Existing accounts are skipped automatically. This does <strong>not</strong> write to the <code>people</code> collection or touch any IW-specific data — it only creates the login.
+        ⚠️ Creates Firebase login accounts for everyone currently in the <code>mou_roster</code> collection (imported via the MOU dashboard's "Manage roster" tab), so they can sign in to <a href="mou-form.html">mou-form.html</a> and submit the MOU. <strong>Existing accounts are always left untouched</strong> — this only adds logins for people who don't have one yet, never resets or changes anyone already set up. This does <strong>not</strong> write to the <code>people</code> collection or touch any IW-specific data — it only creates the login.
       </div>
 
       <div class="hint" style="margin-bottom:12px;">
@@ -275,6 +275,7 @@ j.smith@example.com
           <div class="progress-bar" id="mouProgressBar"></div>
         </div>
 
+        <div class="hint" style="margin-top:10px;margin-bottom:8px;">Safe to run any time — only people not yet in Firebase get a new login. Everyone who already has an account is skipped and left exactly as they are.</div>
         <button class="btn-primary" id="mouCreateBtn" onclick="startMouRosterCreation()">Create accounts</button>
       </div>
 
@@ -537,7 +538,7 @@ async function loadMouRosterPreview() {
     return;
   }
 
-  summaryEl.textContent = `${mouRosterEntries.length} member(s) found on the current roster. Review below, then create accounts.`;
+  summaryEl.textContent = `${mouRosterEntries.length} member(s) found on the current roster. Only those without an existing login will get one — review below, then create accounts.`;
   bodyEl.innerHTML = mouRosterEntries.map(m =>
     `<tr><td>${m.name || "–"}</td><td style="font-family:monospace;">${m.email}</td><td>${m.role || "–"}</td></tr>`
   ).join("");
