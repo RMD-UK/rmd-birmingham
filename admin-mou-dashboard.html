@@ -80,6 +80,7 @@
   .badge-outstanding { background: #fce8e6; color: var(--rmd-warn); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
   .badge-disagree { background: #fff3cd; color: #856404; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
   .badge-agree    { background: #e6f4ea; color: #1a6e31; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-exempt   { background: #e3edfa; color: var(--rmd-blue); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 
   .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
   .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
@@ -279,6 +280,20 @@ function fmtDate(r) {
     : "–";
 }
 
+// Contingent Worker status only applies to RMD Senior Faculty submissions.
+// cwExempt = self-declared as directly employed by UoB on a formal contract (not CW).
+function cwStatusInfo(sub) {
+  if (!sub || sub.role !== "RMD Senior Faculty") return { label: "–", cls: "" };
+  if (sub.cwExempt === true) return { label: "Exempt (self-declared)", cls: "badge-exempt" };
+  if (sub.cwStatusConfirmed === true)  return { label: "✓ Yes", cls: "badge-agree" };
+  if (sub.cwStatusConfirmed === false) return { label: "✗ No", cls: "badge-outstanding" };
+  return { label: "–", cls: "" };
+}
+function cwStatusBadge(sub) {
+  const info = cwStatusInfo(sub);
+  return info.cls ? `<span class="${info.cls}">${info.label}</span>` : info.label;
+}
+
 function updateSummary() {
   const withStatus = rosterWithStatus();
   document.getElementById("sum-roster").textContent      = roster.length;
@@ -332,10 +347,11 @@ function copyFilteredEmails() {
 function exportCSV() {
   let withStatus = rosterWithStatus();
   if (currentRoleFilter !== "all") withStatus = withStatus.filter(m => roleBucket(m.role) === currentRoleFilter);
-  const headers = ["Name","Nationality","Email","Roster Role","Status","Submitted Role","Agreed","Comment","Submitted At"];
+  const headers = ["Name","Nationality","Email","Roster Role","Status","Submitted Role","Contingent Worker","Agreed","Comment","Submitted At"];
   const rows = withStatus.map(m => [
     m.name, m.submission ? m.submission.nationality || "" : "", m.email, m.role || "", m.status,
     m.submission ? m.submission.role : "",
+    m.submission ? cwStatusInfo(m.submission).label : "",
     m.submission ? (m.submission.agreed ? "Yes" : "No") : "",
     m.submission ? m.submission.comment || "" : "",
     m.submission && m.submission.submittedAt ? new Date(m.submission.submittedAt.seconds*1000).toISOString() : ""
@@ -397,6 +413,7 @@ function renderRosterStatus() {
           <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
           <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
           <td>${badge}</td>
+          <td>${cwStatusBadge(m.submission)}</td>
           <td>${m.submission ? fmtDate(m.submission) : "–"}</td>
         </tr>`;
       }).join("");
@@ -407,7 +424,7 @@ function renderRosterStatus() {
           <div style="font-size:12px;color:var(--rmd-muted);">${sorted.length} total · ${signed} signed · ${outstanding} outstanding${disagreed ? ` · ${disagreed} disagreed` : ""}</div>
         </div>
         <table class="data-table">
-          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Submitted</th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>CW Status</th><th>Submitted</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -484,18 +501,19 @@ function renderAllSubmissions() {
           <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
           <td>${r.role||"–"}</td>
           <td>${agreeBadge}</td>
+          <td>${cwStatusBadge(r)}</td>
           <td>${onRoster ? "" : `<span class="badge-outstanding">Not on roster</span>`}</td>
           <td>${fmtDate(r)}</td>
           <td><button onclick="deleteSubmission('${r.id}','${(r.name||r.email||"").replace(/'/g,"")}')" style="padding:5px 10px;background:#fce8e6;color:var(--rmd-warn);border:1px solid #f5b8b0;border-radius:6px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button></td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="7" style="color:#aab8c2;text-align:center;padding:20px;">${allSubmissions.length ? "No submissions match this filter" : `No submissions yet for ${CURRENT_MOU_YEAR}`}</td></tr>`;
+    : `<tr><td colspan="8" style="color:#aab8c2;text-align:center;padding:20px;">${allSubmissions.length ? "No submissions match this filter" : `No submissions yet for ${CURRENT_MOU_YEAR}`}</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
       <div class="section-heading">All submissions — ${CURRENT_MOU_YEAR} (${list.length})</div>
       <table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Agreement</th><th>Roster check</th><th>Submitted</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Agreement</th><th>CW Status</th><th>Roster check</th><th>Submitted</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
