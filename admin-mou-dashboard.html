@@ -144,6 +144,7 @@
   <div class="action-bar" id="actionBar">
     <button class="btn-action secondary" onclick="copyFilteredEmails()">📋 Copy emails</button>
     <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
+    <button class="btn-action secondary" id="facultyInviteBtn" onclick="sendFacultyFormInvites()" data-tooltip="Emails every RMD Senior/Student Faculty member on the current roster a personalised faculty-form.html link with their email address already filled in.">✉ Send Instructor Weekend invite</button>
     <span class="filter-label" id="filterLabel"></span>
     <div class="role-filter-group" id="roleFilterGroup">
       <button class="role-filter-btn active" data-role="all" onclick="setRoleFilter('all')">All roles <span class="rf-count" id="rf-count-all">–</span></button>
@@ -164,6 +165,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
@@ -173,6 +175,7 @@ const HARDCODED_DIRECTORS = DIRECTOR_EMAILS.map(x => x.toLowerCase());
 var allSubmissions = [];  // mou_responses for CURRENT_MOU_YEAR
 var roster          = []; // mou_roster docs
 var directorEmails   = [];
+var fns; // firebase.functions() — set after initFirebase()
 var currentTab       = "roster-status";
 var currentRoleFilter = "all"; // all | student | senior | other
 
@@ -207,6 +210,7 @@ function updateRoleFilterCounts() {
 }
 
 initFirebase();
+fns = firebase.functions();
 document.getElementById("yearTag").textContent = CURRENT_MOU_YEAR;
 
 window.addEventListener("load", () => {
@@ -364,6 +368,49 @@ function exportCSV() {
 }
 
 function setFilterLabel(text) { document.getElementById("filterLabel").textContent = text; }
+
+// ── Send Instructor Weekend invite ──────────────────────────────────────
+// Emails every RMD Senior/Student Faculty member currently on mou_roster a
+// personalised faculty-form.html link with their email pre-filled — see
+// sendFacultyFormInvites in functions/index.js. Always scoped to those two
+// roles regardless of the current role filter/tab, so it can never be fired
+// accidentally at Instructor/Assessor/Senior Instructor roster rows (they
+// have their own separate RSVP flow via admin-iw-registrations.html).
+async function sendFacultyFormInvites() {
+  const targets   = roster.filter(m => m.role === "RMD Senior Faculty" || m.role === "RMD Student Faculty");
+  const reachable = targets.filter(m => m.email);
+  const noEmail   = targets.filter(m => !m.email);
+
+  if (!reachable.length) {
+    alert("No RMD Senior/Student Faculty with an email on file — nothing to send.");
+    return;
+  }
+
+  const noEmailNote = noEmail.length
+    ? `\n\n(${noEmail.length} more have no email on file, so won't be emailed: ${noEmail.map(m => m.name).join(", ")})`
+    : "";
+  if (!confirm(`Send a personalised Instructor Weekend invite (email pre-filled) to ${reachable.length} RMD Senior/Student Faculty member(s)?\n\n${reachable.map(m => m.name).join(", ")}${noEmailNote}`)) return;
+
+  const btn = document.getElementById("facultyInviteBtn");
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  try {
+    const call = fns.httpsCallable("sendFacultyFormInvites");
+    const res  = await call({ roles: ["RMD Senior Faculty", "RMD Student Faculty"] });
+    const d = res.data || {};
+    alert(`✅ Sent: ${d.sent || 0}` +
+      (d.failed ? `\n⚠ Failed: ${d.failed} — ${(d.failedEmails || []).join(", ")}` : "") +
+      (d.skippedNoEmail ? `\nSkipped (no email on file): ${d.skippedNoEmail}` : ""));
+  } catch (err) {
+    console.error("sendFacultyFormInvites failed:", err);
+    alert("Invite send failed: " + (err.message || err.code || "unknown error"));
+  }
+
+  btn.disabled = false;
+  btn.textContent = originalText;
+}
 
 const ROSTER_ROLE_ORDER = ["Instructor", "Senior Instructor", "Assessor", "RMD Student Faculty", "RMD Senior Faculty"];
 

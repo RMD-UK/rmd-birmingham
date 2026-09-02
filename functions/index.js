@@ -883,3 +883,139 @@ exports.iwRsvpRespond = onCall({ region: "us-central1" }, async (request) => {
 
   return { name: data.name || "", status };
 });
+
+/**
+ * sendFacultyFormInvites — director-only.
+ *
+ * Emails RMD Senior Faculty and/or RMD Student Faculty on mou_roster a
+ * personalised link to faculty-form.html carrying their own email address
+ * as a URL param (?email=...), so the form arrives with the email field
+ * already filled in — most of these people are already known to us from a
+ * prior year's mou_roster or faculty_responses submission. For anyone who
+ * has submitted faculty-form.html before under that address, the page's
+ * existing checkExistingSubmission() logic then reloads their whole prior
+ * submission automatically, exactly as it would if they'd typed the email
+ * themselves — see the "Personalised invite prefill" block at the bottom of
+ * faculty-form.html.
+ *
+ * Deliberately scoped to mou_roster roles "RMD Senior Faculty" and
+ * "RMD Student Faculty" only (see FACULTY_FORM_INVITE_ROLES) — every other
+ * mou_roster role (Instructor, Assessor, Senior Instructor) is a course
+ * candidate/assessor tracked through iw_registrations instead, with its own
+ * separate invite flow (see importFromRoster in admin-iw-registrations.html
+ * and sendIwRsvpInvites above). Never point this at those roles — they'd
+ * end up with two different, conflicting invites for the same weekend.
+ *
+ * Trust model: same as every other RSVP-style link in this codebase (see
+ * sendIwRsvpInvites above) — the email address in the URL is the only
+ * "credential"; anyone who gets hold of the link could submit as that
+ * person. Low-stakes (an attendance/logistics form, not an account) and
+ * consistent with existing precedent; the email field stays editable on the
+ * page so a forwarded link can be corrected rather than silently misused.
+ *
+ * Deploy: same as the other reminder functions — RESEND_API_KEY secret is
+ * shared, no new secret needed.
+ *
+ * Call with { dryRun: true } (roles optional, same default) to compute and
+ * return exactly who this would email — name, email, role — without
+ * sending anything or writing to faculty_form_invites. Use this to verify
+ * a fresh deploy actually works before the button is used for real,
+ * especially useful the first time this runs a year after being built,
+ * and any time it might otherwise land on top of another invite already
+ * going out for the same weekend.
+ */
+
+const FACULTY_FORM_URL          = "https://rmd.uk.com/faculty-form.html";
+const FACULTY_FORM_INVITE_ROLES = ["RMD Senior Faculty", "RMD Student Faculty"];
+const FACULTY_FORM_INVITES_COLLECTION = "faculty_form_invites";
+
+exports.sendFacultyFormInvites = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const requestedRoles = Array.isArray(request.data?.roles) && request.data.roles.length
+    ? request.data.roles
+    : FACULTY_FORM_INVITE_ROLES;
+  const roles = requestedRoles.filter(r => FACULTY_FORM_INVITE_ROLES.includes(r));
+  if (!roles.length) {
+    throw new HttpsError("invalid-argument", "No valid roles requested — must be RMD Senior Faculty and/or RMD Student Faculty.");
+  }
+
+  const dryRun = !!request.data?.dryRun;
+
+  const snap = await db.collection("mou_roster").get();
+  const all = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => roles.includes(m.role));
+  const outstanding = all.filter(m => m.email);
+  const skippedNoEmail = all.length - outstanding.length;
+
+  if (dryRun) {
+    return {
+      dryRun: true,
+      roles,
+      total: all.length,
+      skippedNoEmail,
+      wouldSend: outstanding.map(p => ({ name: p.name || "", email: p.email, role: p.role }))
+    };
+  }
+
+  if (!outstanding.length) {
+    return { sent: 0, failed: 0, failedEmails: [], skippedNoEmail, total: all.length };
+  }
+
+  const resend = new Resend(resendApiKey.value());
+
+  let sent = 0;
+  const failedEmails = [];
+  const sentTo = [];
+
+  for (const person of outstanding) {
+    const firstName = (person.name || "").split(" ")[0] || "there";
+    // No ?code= needed — a personalised link (own email in the URL) is
+    // self-authorising against faculty-form.html's link gate. See the
+    // "hasEmailParam" note in that file's gate script.
+    const link = `${FACULTY_FORM_URL}?email=${encodeURIComponent(person.email)}`;
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        bcc: JON_BCC,
+        replyTo: REPLY_TO,
+        subject: "RMD Instructor Weekend — your details",
+        text:
+`Hi ${firstName},
+
+Please confirm your attendance and details for the RMD Instructor Weekend using the link below — it already has your email address filled in, so you shouldn't need to retype it:
+
+${link}
+
+You can confirm, submit as pending and update later (but we then know who to follow up if we haven't heard), or let us know that you won't be there. Whichever it is, please do submit a reply.
+
+If you've done so already, thank you.
+
+Best wishes
+
+Jon`
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+      sentTo.push(person.email);
+    } catch (err) {
+      console.error(`sendFacultyFormInvites: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  await db.collection(FACULTY_FORM_INVITES_COLLECTION).add({
+    roles,
+    sentTo,
+    failedEmails,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    sentByUid: auth.uid,
+    sentByEmail: (auth.token.email || "").toLowerCase()
+  });
+
+  return { sent, failed: failedEmails.length, failedEmails, skippedNoEmail, total: all.length };
+});

@@ -287,7 +287,16 @@
   (function () {
     var REQUIRED_CODE = "IWBHAM";
     var params = new URLSearchParams(window.location.search);
-    if (params.get("code") !== REQUIRED_CODE) {
+    var hasValidCode = params.get("code") === REQUIRED_CODE;
+    // A personalised invite link (?email=...) is self-authorising — it only
+    // ever reaches someone because we emailed it to that exact address — so
+    // it satisfies the gate on its own, independent of REQUIRED_CODE. This
+    // means rotating REQUIRED_CODE for the generic shared link can never
+    // silently break personalised links sent by sendFacultyFormInvites in
+    // functions/index.js (see the "Personalised invite prefill" block near
+    // the bottom of this file for where ?email= gets read).
+    var hasEmailParam = /\S+@\S+/.test(params.get("email") || "");
+    if (!hasValidCode && !hasEmailParam) {
       document.documentElement.setAttribute("data-gate-blocked", "true");
     }
   })();
@@ -1136,6 +1145,25 @@ async function submitStandaloneDecline() {
     alert("Submission failed — please check your connection and try again.\n\n" + err.message);
   }
 }
+
+// ── Personalised invite prefill ────────────────────────────────────────────
+// A link sent via admin-mou-dashboard.html's "Send Instructor Weekend
+// invite" action carries ?email=<addr> for RMD Senior/Student Faculty
+// already known to us from mou_roster. Pre-fills the email field so they
+// don't have to retype it — never locked, still fully editable in case the
+// wrong person opens a forwarded link. checkExistingSubmission() then runs
+// exactly as it would for a manually-typed email, loading their whole prior
+// submission if one exists under that address.
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var prefillEmail = (params.get("email") || "").trim();
+  if (!prefillEmail || !prefillEmail.includes("@")) return;
+  var emailField = document.getElementById("email");
+  if (!emailField) return;
+  emailField.value = prefillEmail;
+  existingDocChecked = true;
+  checkExistingSubmission(prefillEmail.toLowerCase());
+})();
 
 </script>
 </body>
