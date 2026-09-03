@@ -253,6 +253,9 @@
     <div class="loading">Loading responses…</div>
   </div>
 
+  <!-- Super-user only: who can grant/revoke director + super-user status -->
+  <div id="superUserPanel" style="display:none;"></div>
+
 </div>
 
 <!-- Firebase SDK -->
@@ -265,6 +268,8 @@
 
 var allResponses   = [];
 var directorEmails = [];
+var superUserEmails = [];   // config/platform.superUsers — only these can grant/revoke director or super-user status
+var iAmSuperUser    = false; // set once during boot, from the signed-in user's own email
 var facultyRosterMembers = [];  // faculty_roster docs, group "student"/"senior" only — the master list "No reply" checks against
 var currentTab     = "all";
 
@@ -274,24 +279,28 @@ const HARDCODED_DIRECTORS = DIRECTOR_EMAILS.map(x => x.toLowerCase());
 initFirebase();
 
 window.addEventListener("load", () => {
-  requireDirector("timetable.html").then(() => {
-    loadAll();
+  requireDirector("timetable.html").then((user) => {
+    loadAll(user);
   });
 });
 
-async function loadAll() {
+async function loadAll(user) {
   document.getElementById("tabContent").innerHTML = `<div class="loading">Loading…</div>`;
   await Promise.all([loadDirectors(), loadResponses(), loadFacultyRoster()]);
+  iAmSuperUser = await isSuperUser(user && user.email);
   updateSummary();
   renderTab(currentTab);
+  renderSuperUserPanel();
 }
 
 async function loadDirectors() {
   try {
     const snap = await db.collection("config").doc("platform").get();
-    directorEmails = snap.exists ? (snap.data().directors || []) : [];
+    directorEmails  = snap.exists ? (snap.data().directors  || []) : [];
+    superUserEmails = snap.exists ? (snap.data().superUsers || []) : [];
   } catch (e) {
-    directorEmails = [];
+    directorEmails  = [];
+    superUserEmails = [];
   }
 }
 
@@ -341,6 +350,7 @@ function isHardcoded(email) {
 
 async function makeDirector(email, name) {
   if (!email) return;
+  if (!iAmSuperUser) { alert("Only a super-user can grant director access. Ask Jon Hulme or another super-user."); return; }
   if (!confirm(`Designate ${name} as a course director?\n\nThey will be able to log in with director-level access.`)) return;
   try {
     const e = email.toLowerCase();
@@ -356,6 +366,7 @@ async function makeDirector(email, name) {
 
 async function removeDirector(email, name) {
   if (!email) return;
+  if (!iAmSuperUser) { alert("Only a super-user can remove director access. Ask Jon Hulme or another super-user."); return; }
   if (isHardcoded(email)) {
     alert("This director is hardcoded and cannot be removed here.");
     return;
@@ -370,6 +381,71 @@ async function removeDirector(email, name) {
     renderTab(currentTab);
   } catch (err) {
     alert("Failed to update directors: " + err.message);
+  }
+}
+
+// ── Super-user panel ─────────────────────────────────────────────────────
+// Only rendered/usable for the signed-in user's own super-user status
+// (iAmSuperUser, set in loadAll()) — Firestore rules are the real gate,
+// this is just so a non-super-user doesn't see controls that would fail.
+function renderSuperUserPanel() {
+  const el = document.getElementById("superUserPanel");
+  if (!iAmSuperUser) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "block";
+  const rows = superUserEmails.map(e => `
+    <tr>
+      <td>${e}</td>
+      <td><button class="btn-demote" onclick="removeSuperUser('${e}')">Remove</button></td>
+    </tr>`).join("") || `<tr><td colspan="2" style="color:#aab8c2;">No super-users on file</td></tr>`;
+  el.innerHTML = `
+    <div class="section-block" style="margin-top:20px;border:2px solid var(--rmd-navy);">
+      <div class="section-heading">Super-users (can grant/revoke director + super-user access)</div>
+      <div style="font-size:12px;color:var(--rmd-muted);margin-bottom:10px;">
+        Keep this list short. Anyone here can do anything a director can, plus add or remove
+        other directors and super-users. It cannot be used to change the site's code or hosting.
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Email</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <input id="newSuperUserEmail" type="email" placeholder="email@example.com" style="flex:1;padding:6px 8px;">
+        <button class="btn-promote" onclick="addSuperUser()">Add super-user</button>
+      </div>
+    </div>`;
+}
+
+async function addSuperUser() {
+  const input = document.getElementById("newSuperUserEmail");
+  const email = (input.value || "").trim().toLowerCase();
+  if (!email) return;
+  if (!confirm(`Make ${email} a super-user?\n\nThey will be able to do anything a director can, and will also be able to grant or remove director/super-user access for anyone, including you.`)) return;
+  try {
+    const updated = [...new Set([...superUserEmails, email])];
+    await db.collection("config").doc("platform").set({ superUsers: updated }, { merge: true });
+    superUserEmails = updated;
+    input.value = "";
+    renderSuperUserPanel();
+  } catch (err) {
+    alert("Failed to update super-users: " + err.message);
+  }
+}
+
+async function removeSuperUser(email) {
+  if (email.toLowerCase() === (auth.currentUser && auth.currentUser.email || "").toLowerCase()) {
+    if (!confirm("This is your own account. Remove your own super-user access? You will need another super-user to restore it.")) return;
+  } else if (!confirm(`Remove super-user access from ${email}?`)) {
+    return;
+  }
+  try {
+    const updated = superUserEmails.filter(x => x.toLowerCase() !== email.toLowerCase());
+    await db.collection("config").doc("platform").set({ superUsers: updated }, { merge: true });
+    superUserEmails = updated;
+    iAmSuperUser = await isSuperUser(auth.currentUser && auth.currentUser.email);
+    renderSuperUserPanel();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update super-users: " + err.message);
   }
 }
 
@@ -647,9 +723,13 @@ function renderDirectors() {
     if (dir) {
       actionBtn = hard
         ? `<span class="badge-hardcoded">Permanent director</span>`
-        : `<button class="btn-demote" onclick="removeDirector('${r.email}','${name}')">Remove director</button>`;
+        : iAmSuperUser
+          ? `<button class="btn-demote" onclick="removeDirector('${r.email}','${name}')">Remove director</button>`
+          : `<span style="font-size:12px;color:var(--rmd-muted);">Director — only a super-user can remove</span>`;
     } else if (seniorTier) {
-      actionBtn = `<button class="btn-promote" onclick="makeDirector('${r.email}','${name}')">Make director</button>`;
+      actionBtn = iAmSuperUser
+        ? `<button class="btn-promote" onclick="makeDirector('${r.email}','${name}')">Make director</button>`
+        : `<span style="font-size:12px;color:var(--rmd-muted);">Ask a super-user to grant director access</span>`;
     } else {
       actionBtn = `<span style="font-size:12px;color:var(--rmd-muted);">${r.role || "Non-faculty"} — not applicable</span>`;
     }
@@ -671,6 +751,7 @@ function renderDirectors() {
     <div class="info-banner">
       <strong>Course Directors</strong> get director-level access when they log in — they can see all data and manage the platform. Faculty members can only see their own timetable. Instructor Trainer Candidates cannot be made directors here.
       Use <strong>Reassign role</strong> to correct anyone who registered under the wrong option (e.g. said Faculty but should be Instructor Trainer Candidate).
+      ${iAmSuperUser ? "" : `<br><span style="color:var(--rmd-muted);">Granting/removing director access is restricted to super-users — see below if you are one.</span>`}
     </div>
     <div class="section-block">
       <div class="section-heading">Faculty who have responded (${allResponses.length})</div>

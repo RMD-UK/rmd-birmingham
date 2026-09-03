@@ -26,13 +26,32 @@ service cloud.firestore {
     // solely from people/{uid}.role == "director" or config/platform.directors.
     // config/platform.directors already contains all current directors as of
     // 2026-07-29 — confirmed before this change shipped.
+    // True if the signed-in user's email is in config/platform.superUsers.
+    // Added 2026-09-03 — super-users are the ONLY callers who may write to
+    // /config/*, which is the collection that decides who is a director (and
+    // now who is a super-user). Before this, any director could rewrite
+    // config/platform.directors, including removing another director or
+    // themselves — this closes that escalation path down to a short,
+    // deliberately-named list. Super-user status is intentionally NOT
+    // grantable via people/{uid}.role (unlike director) — it only ever comes
+    // from config/platform.superUsers, so the one place that can grant it is
+    // also the one place locked to existing super-users.
+    function isSuperUser() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/config/platform) &&
+        request.auth.token.email.lower() in get(/databases/$(database)/documents/config/platform).data.superUsers;
+    }
+
+    // A super-user can do everything a director can, plus manage config/*.
+    // Defined here (super-user implies director) rather than duplicating
+    // the super-user check on every director-gated rule in this file.
     function isDirector() {
-      return isSignedIn() && (
+      return isSuperUser() || (isSignedIn() && (
         (exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
           get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "director") ||
         (exists(/databases/$(database)/documents/config/platform) &&
           request.auth.token.email.lower() in get(/databases/$(database)/documents/config/platform).data.directors)
-      );
+      ));
     }
 
     // True if the signed-in user's people/{uid} doc has role == "faculty".
@@ -274,7 +293,10 @@ service cloud.firestore {
     //   granted from (config/platform.directors), same escalation risk as people
     match /config/{docId} {
       allow read: if isSignedIn();
-      allow write: if isDirector();
+      // Write: super-user only (tightened 2026-09-03 — was isDirector(),
+      // which let any director rewrite the directors/superUsers lists
+      // themselves; see isSuperUser() above for why).
+      allow write: if isSuperUser();
     }
 
     // ── MOU responses ───────────────────────────────────────────────────────

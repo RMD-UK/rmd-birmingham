@@ -282,7 +282,16 @@
 const params     = new URLSearchParams(window.location.search);
 const myRole     = (params.get("role") || "faculty").toLowerCase();
 const myRoom     = (params.get("room") || "").toUpperCase();
-const isDirector = myRole === "director";
+// isDirector used to be trusted straight from the URL's ?role= param, and
+// ANY signed-in user booted regardless of what it said — the actual data
+// writes were always protected server-side by firestore.rules' canAssess()
+// (faculty/director only), so this was a UI/UX gap, not a real data hole.
+// Fixed 2026-09-03: isDirector now comes from the signed-in user's REAL
+// resolved role, and a signed-in user whose real role is neither faculty
+// nor director is blocked from booting at all, instead of being shown a
+// marking screen whose writes would just silently fail. See the matching
+// fix in assessment-gateway.html for the sibling page.
+let isDirector = false;
 
 // ── Checkpoints ─────────────────────────────────────────────────────────────
 const CHECKPOINTS = [
@@ -325,7 +334,12 @@ if (!firebaseReady) {
     authResolved = true;
     clearTimeout(authTimeout);
     if (user) {
-      boot();
+      resolveRole(user.uid, user.email || "").then(role => {
+        if (role === ROLES.DIRECTOR) { isDirector = true; boot(); return; }
+        if (role === ROLES.FACULTY)  { isDirector = false; boot(); return; }
+        document.querySelector(".view-tabs").insertAdjacentHTML("beforebegin",
+          `<div style="padding:40px;text-align:center;">Faculty or director access required.</div>`);
+      });
     } else {
       // Demo mode with sign-in prompt
       document.querySelector(".view-tabs").insertAdjacentHTML("beforebegin",
