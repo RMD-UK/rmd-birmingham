@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Director &amp; Access Management — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; }
+
+    .top-bar {
+      background: var(--rmd-navy); color: white;
+      padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .top-bar img { height: 28px; }
+    .top-bar-title { font-size: 15px; font-weight: 700; flex: 1; }
+    .top-bar-sub   { font-size: 11px; opacity: 0.7; }
+
+    .content { padding: 14px; max-width: 960px; margin: 0 auto; }
+
+    .data-table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); font-size: 13px; }
+    .data-table th { background: var(--rmd-navy); color: white; padding: 10px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .data-table td { padding: 10px 12px; border-bottom: 1px solid #f0f3f6; vertical-align: middle; }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: #f8f9fa; }
+
+    .section-heading { color: var(--rmd-navy); margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+    .section-block { margin-bottom: 24px; }
+
+    .badge-director   { background: #7b2d00; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-superuser   { background: #b7410e; color: white; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-student    { background: #e0f7f5; color: #0f7a6e; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .badge-senior     { background: #f3e8ff; color: #6d28d9; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+
+    .btn-promote {
+      padding: 6px 14px; background: #7b2d00; color: white;
+      border: none; border-radius: 6px; font-size: 12px; font-weight: 700;
+      font-family: var(--font); cursor: pointer; white-space: nowrap;
+    }
+    .btn-promote:hover { background: #5a2000; }
+    .btn-demote {
+      padding: 6px 14px; background: white; color: #637282;
+      border: 1px solid #ccd6dd; border-radius: 6px; font-size: 12px; font-weight: 700;
+      font-family: var(--font); cursor: pointer; white-space: nowrap;
+    }
+    .btn-demote:hover { background: #fce8e6; color: #b7410e; border-color: #f5b8b0; }
+
+    .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
+    .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
+
+    .info-banner {
+      background: #e8f0fe; border-left: 4px solid var(--rmd-blue);
+      border-radius: 0 6px 6px 0; padding: 10px 14px;
+      font-size: 13px; color: var(--rmd-navy); margin-bottom: 16px;
+    }
+    .warn-banner {
+      background: #fff3cd; border-left: 4px solid #ffd700;
+      border-radius: 0 6px 6px 0; padding: 10px 14px;
+      font-size: 13px; color: #856404; margin-bottom: 16px;
+    }
+    .no-email { color: var(--rmd-muted); font-size: 12px; font-style: italic; }
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="admin-global-tools.html" title="Back to Global Admin Tools" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div>
+    <div class="top-bar-title">Director &amp; Access Management</div>
+    <div class="top-bar-sub">Year-round — who can log in with director-level access, across all of RMD Student and Senior Faculty</div>
+  </div>
+</div>
+
+<div class="content">
+
+  <div class="info-banner">
+    This is the canonical, year-round place to grant or remove <strong>director-level platform access</strong>
+    (see all data, manage the platform). It is separate from the <strong>Course Director</strong> tag used for
+    Instructor Weekend itself, someone can have one without the other. It is also separate from
+    <a href="admin-faculty-responses.html">Faculty Responses → Directors &amp; roles</a>, which only lists people
+    who submitted this year's weekend RSVP — the lists below are the full annual roster instead.
+  </div>
+
+  <div id="superUserPanel" style="display:none;"></div>
+
+  <div id="rosterEmailWarning"></div>
+
+  <div id="rosterContent">
+    <div class="loading">Loading roster…</div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+var directorEmails  = [];
+var superUserEmails = [];
+var iAmSuperUser     = false;
+var rosterMembers    = []; // faculty_roster docs, group "student"/"senior"
+
+initFirebase();
+
+window.addEventListener("load", () => {
+  requireDirector("member-menu.html").then((user) => {
+    loadAll(user);
+  });
+});
+
+async function loadAll(user) {
+  await Promise.all([loadConfig(), loadRoster()]);
+  iAmSuperUser = await isSuperUser(user && user.email);
+  renderSuperUserPanel();
+  renderRoster();
+}
+
+async function loadConfig() {
+  try {
+    const snap = await db.collection("config").doc("platform").get();
+    directorEmails  = snap.exists ? (snap.data().directors  || []) : [];
+    superUserEmails = snap.exists ? (snap.data().superUsers || []) : [];
+  } catch (e) {
+    directorEmails  = [];
+    superUserEmails = [];
+  }
+}
+
+async function loadRoster() {
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).get();
+    rosterMembers = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(m => m.group === "student" || m.group === "senior")
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+  } catch (e) {
+    rosterMembers = [];
+  }
+}
+
+function isDirectorEmail(email) {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return directorEmails.map(x => x.toLowerCase()).includes(e);
+}
+function isSuperUserEmail(email) {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return superUserEmails.map(x => x.toLowerCase()).includes(e);
+}
+
+async function makeDirector(email, name) {
+  if (!email) return;
+  if (!iAmSuperUser) { alert("Only a super-user can grant director access."); return; }
+  if (!confirm(`Designate ${name} as a director?\n\nThey will be able to log in with director-level access.`)) return;
+  try {
+    const e = email.toLowerCase();
+    const updated = [...new Set([...directorEmails, e])];
+    await db.collection("config").doc("platform").set({ directors: updated }, { merge: true });
+    directorEmails = updated;
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update directors: " + err.message);
+  }
+}
+
+async function removeDirector(email, name) {
+  if (!email) return;
+  if (!iAmSuperUser) { alert("Only a super-user can remove director access."); return; }
+  if (!confirm(`Remove director access from ${name}?\n\nThey will revert to faculty-level access on their next login.`)) return;
+  try {
+    const e = email.toLowerCase();
+    const updated = directorEmails.filter(x => x.toLowerCase() !== e);
+    await db.collection("config").doc("platform").set({ directors: updated }, { merge: true });
+    directorEmails = updated;
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update directors: " + err.message);
+  }
+}
+
+// ── Roster rendering ────────────────────────────────────────────────────────
+function makeRow(m) {
+  const name = m.name || "(no name)";
+  const email = (m.email || "").trim();
+  const dir = isDirectorEmail(email);
+  const su  = isSuperUserEmail(email);
+
+  let access;
+  if (!email) {
+    access = `<span class="no-email">No email on file — add one via Faculty Roster upload</span>`;
+  } else if (su) {
+    access = `<span class="badge-superuser">Super-user</span>`;
+  } else if (dir) {
+    access = iAmSuperUser
+      ? `<button class="btn-demote" onclick="removeDirector('${email}','${name}')">Remove director</button>`
+      : `<span class="badge-director">Director</span>`;
+  } else {
+    access = iAmSuperUser
+      ? `<button class="btn-promote" onclick="makeDirector('${email}','${name}')">Make director</button>`
+      : `<span class="no-email">Not a director</span>`;
+  }
+
+  return `<tr>
+    <td style="font-weight:700;color:var(--rmd-navy);">${name}</td>
+    <td style="color:var(--rmd-muted);font-size:12px;">${email || "–"}</td>
+    <td style="color:var(--rmd-muted);font-size:12px;">${m.team || ""}${m.role ? " · " + m.role : ""}</td>
+    <td>${access}</td>
+  </tr>`;
+}
+
+function renderRoster() {
+  const student = rosterMembers.filter(m => m.group === "student");
+  const senior   = rosterMembers.filter(m => m.group === "senior");
+  const noEmailCount = rosterMembers.filter(m => !(m.email || "").trim()).length;
+
+  document.getElementById("rosterEmailWarning").innerHTML = noEmailCount
+    ? `<div class="warn-banner">${noEmailCount} of ${rosterMembers.length} roster members have no email on file, so they can't be granted access from here yet. Add emails on the <a href="admin-faculty-roster.html">Faculty Roster — Bulk Upload</a> page, then come back.</div>`
+    : "";
+
+  const section = (title, badgeClass, members) => `
+    <div class="section-block">
+      <div class="section-heading"><span class="${badgeClass}">${title}</span> (${members.length})</div>
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Team / role</th><th>Platform access</th></tr></thead>
+        <tbody>${
+          members.length
+            ? members.map(makeRow).join("")
+            : `<tr><td colspan="4" style="color:#aab8c2;text-align:center;padding:20px;">No one on file</td></tr>`
+        }</tbody>
+      </table>
+    </div>`;
+
+  document.getElementById("rosterContent").innerHTML =
+    section("RMD Senior Faculty", "badge-senior", senior) +
+    section("RMD Student Faculty", "badge-student", student);
+}
+
+// ── Super-user panel ─────────────────────────────────────────────────────
+// Only rendered/usable for the signed-in user's own super-user status —
+// Firestore rules are the real gate, this is just so a non-super-user
+// doesn't see controls that would fail.
+function renderSuperUserPanel() {
+  const el = document.getElementById("superUserPanel");
+  if (!iAmSuperUser) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "block";
+  const rows = superUserEmails.map(e => `
+    <tr>
+      <td>${e}</td>
+      <td><button class="btn-demote" onclick="removeSuperUser('${e}')">Remove</button></td>
+    </tr>`).join("") || `<tr><td colspan="2" style="color:#aab8c2;">No super-users on file</td></tr>`;
+  el.innerHTML = `
+    <div class="section-block" style="border:2px solid var(--rmd-navy);border-radius:8px;padding:14px;background:white;">
+      <div class="section-heading">Super-users (can grant/revoke director + super-user access)</div>
+      <div style="font-size:12px;color:var(--rmd-muted);margin-bottom:10px;">
+        Keep this list short. Anyone here can do anything a director can, plus add or remove
+        other directors and super-users. It cannot be used to change the site's code or hosting.
+      </div>
+      <table class="data-table">
+        <thead><tr><th>Email</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <input id="newSuperUserEmail" type="email" placeholder="email@example.com" style="flex:1;padding:6px 8px;">
+        <button class="btn-promote" onclick="addSuperUser()">Add super-user</button>
+      </div>
+    </div>`;
+}
+
+async function addSuperUser() {
+  const input = document.getElementById("newSuperUserEmail");
+  const email = (input.value || "").trim().toLowerCase();
+  if (!email) return;
+  if (!confirm(`Make ${email} a super-user?\n\nThey will be able to do anything a director can, and will also be able to grant or remove director/super-user access for anyone, including you.`)) return;
+  try {
+    const updated = [...new Set([...superUserEmails, email])];
+    await db.collection("config").doc("platform").set({ superUsers: updated }, { merge: true });
+    superUserEmails = updated;
+    input.value = "";
+    renderSuperUserPanel();
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update super-users: " + err.message);
+  }
+}
+
+async function removeSuperUser(email) {
+  const selfEmail = (auth.currentUser && auth.currentUser.email || "").toLowerCase();
+  if (email.toLowerCase() === selfEmail) {
+    if (!confirm("This is your own account. Remove your own super-user access? You will need another super-user to restore it.")) return;
+  } else if (!confirm(`Remove super-user access from ${email}?`)) {
+    return;
+  }
+  try {
+    const updated = superUserEmails.filter(x => x.toLowerCase() !== email.toLowerCase());
+    await db.collection("config").doc("platform").set({ superUsers: updated }, { merge: true });
+    superUserEmails = updated;
+    iAmSuperUser = await isSuperUser(auth.currentUser && auth.currentUser.email);
+    renderSuperUserPanel();
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update super-users: " + err.message);
+  }
+}
+</script>
+</body>
+</html>

@@ -243,6 +243,7 @@ j.smith@example.com
     <div class="card-header">Results</div>
     <div class="card-body">
       <div class="summary-bar" id="summaryBar"></div>
+      <div id="dupeWarning"></div>
       <div id="logList"></div>
     </div>
   </div>
@@ -520,6 +521,52 @@ async function startCreation() {
 
   btn.disabled    = false;
   btn.textContent = "Create accounts";
+
+  checkForDuplicatesAfterImport();
+}
+
+// Runs the same email-or-name grouping Duplicate People Cleanup uses, but
+// read-only — it only ever reports a count and links to that page, it
+// never deletes anything itself. Catches cases the email-exists check
+// above can't, e.g. someone already in `people` under a different email
+// (a personal address vs. a university one) whose name matches instead.
+async function checkForDuplicatesAfterImport() {
+  const box = document.getElementById("dupeWarning");
+  box.innerHTML = "";
+  try {
+    const snap = await db.collection(COLLECTIONS.people).get();
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const normName  = n => (n||"").trim().toLowerCase().replace(/\s+/g," ");
+    const normEmail = e => (e||"").trim().toLowerCase();
+
+    const parent = {};
+    docs.forEach(p => parent[p.id] = p.id);
+    const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const union = (a,b) => { const ra=find(a), rb=find(b); if (ra!==rb) parent[ra]=rb; };
+
+    const byEmail = {}, byName = {};
+    docs.forEach(p => {
+      const e = normEmail(p.email), n = normName(p.name);
+      if (e) (byEmail[e]=byEmail[e]||[]).push(p.id);
+      if (n) (byName[n]=byName[n]||[]).push(p.id);
+    });
+    [byEmail, byName].forEach(map => Object.values(map).forEach(ids => { for (let i=1;i<ids.length;i++) union(ids[0], ids[i]); }));
+
+    const byRoot = {};
+    docs.forEach(p => { const r = find(p.id); (byRoot[r]=byRoot[r]||[]).push(p); });
+    const groups = Object.values(byRoot).filter(g => g.length > 1);
+
+    if (groups.length) {
+      const removable = groups.reduce((n,g) => n + g.length - 1, 0);
+      box.innerHTML = `<div class="director-note" style="margin-top:12px;">
+        ⚠️ ${groups.length} duplicate people record(s) found (${removable} spare record(s) across the whole collection, not just this run) —
+        <a href="admin-dedupe-people.html">run Duplicate People Cleanup</a> to review and remove them.
+      </div>`;
+    }
+  } catch (e) {
+    // Non-fatal — don't block the results view over a failed check.
+  }
 }
 
 // ── MOU roster provisioning ────────────────────────────────────────────────
