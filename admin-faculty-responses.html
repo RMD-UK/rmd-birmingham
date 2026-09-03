@@ -73,6 +73,9 @@
     .rc-time  { font-size: 11px; color: var(--rmd-muted); }
     .rc-body  { padding: 12px 14px; display: none; }
     .rc-body.open { display: block; }
+    .name-link { color: var(--rmd-navy); font-weight: 700; text-decoration: none; border-bottom: 1px dotted var(--rmd-blue); cursor: pointer; }
+    .name-link:hover { color: var(--rmd-blue); }
+    .response-card.highlight { box-shadow: 0 0 0 3px #f0c14b, 0 1px 4px rgba(0,0,0,0.1); }
 
     .rc-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -324,6 +327,14 @@ function isDirector(email) {
   return HARDCODED_DIRECTORS.includes(e) || directorEmails.map(x => x.toLowerCase()).includes(e);
 }
 
+// 2026-08-31: meals/accommodation tabs and summary pills were still counting people marked
+// "Declined" on this same page (e.g. Ben Stanley) because those views only ever read the raw
+// meals.*/accommodation.* fields from the original RSVP, never attendanceStatus. Mirrors the
+// same fix already applied on admin-room-allocation.html (2026-08-27) for the same underlying issue.
+function isActiveResponse(x) {
+  return x.attendanceStatus !== "declined" && x.cannotAttend !== true;
+}
+
 function isHardcoded(email) {
   return HARDCODED_DIRECTORS.includes((email||"").toLowerCase());
 }
@@ -369,8 +380,8 @@ async function loadResponses() {
       .sort((a, b) => {
         // Alphabetical by first name (falls back to email if no name on file),
         // last name as tiebreaker. Was previously most-recent-submission-first.
-        const aFirst = (a.firstName || a.email || "").toLowerCase();
-        const bFirst = (b.firstName || b.email || "").toLowerCase();
+        const aFirst = (knownAsOrFirst(a) || a.email || "").toLowerCase();
+        const bFirst = (knownAsOrFirst(b) || b.email || "").toLowerCase();
         return aFirst.localeCompare(bFirst) ||
                (a.lastName || "").toLowerCase().localeCompare((b.lastName || "").toLowerCase());
       });
@@ -385,10 +396,10 @@ function updateSummary() {
   const directorCount = r.filter(x => isDirector(x.email)).length;
   document.getElementById("sum-total").textContent      = r.length;
   document.getElementById("sum-directors").textContent  = directorCount;
-  document.getElementById("sum-fri-dinner").textContent = r.filter(x => x.meals && x.meals.friday   === "yes").length;
-  document.getElementById("sum-sat-dinner").textContent = r.filter(x => x.meals && x.meals.saturday === "yes").length;
-  document.getElementById("sum-fri-accom").textContent  = r.filter(x => x.accommodation && x.accommodation.friday   === "yes").length;
-  document.getElementById("sum-sat-accom").textContent  = r.filter(x => x.accommodation && x.accommodation.saturday === "yes").length;
+  document.getElementById("sum-fri-dinner").textContent = r.filter(x => isActiveResponse(x) && x.meals && x.meals.friday   === "yes").length;
+  document.getElementById("sum-sat-dinner").textContent = r.filter(x => isActiveResponse(x) && x.meals && x.meals.saturday === "yes").length;
+  document.getElementById("sum-fri-accom").textContent  = r.filter(x => isActiveResponse(x) && x.accommodation && x.accommodation.friday   === "yes").length;
+  document.getElementById("sum-sat-accom").textContent  = r.filter(x => isActiveResponse(x) && x.accommodation && x.accommodation.saturday === "yes").length;
   document.getElementById("sum-dietary").textContent    = r.filter(x => x.diet && x.diet !== "None" && x.diet !== "").length;
   document.getElementById("sum-erc-fix").textContent    = r.filter(x => x.ercCorrectlyListed === "no").length;
   document.getElementById("sum-itc").textContent        = r.filter(x => x.role === "Instructor Trainer Candidate").length;
@@ -416,17 +427,17 @@ function renderTab(tab) {
   if      (tab === "all")        renderAll();
   else if (tab === "directors")  renderDirectors();
   else if (tab === "fri-dinner") renderNameEmailTable(
-    allResponses.filter(r => r.meals && r.meals.friday === "yes"),
-    "Friday 9 Oct — Evening meal", ["Name","Email","Role","Dietary"]);
+    allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.friday === "yes"),
+    "Friday 9 Oct — Evening meal", ["Name","Email","Role","Dietary"], "meals", "friday");
   else if (tab === "sat-dinner") renderNameEmailTable(
-    allResponses.filter(r => r.meals && r.meals.saturday === "yes"),
-    "Saturday 10 Oct — Postgraduate meal", ["Name","Email","Role","Dietary"]);
+    allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.saturday === "yes"),
+    "Saturday 10 Oct — Postgraduate meal", ["Name","Email","Role","Dietary"], "meals", "saturday");
   else if (tab === "fri-accom")  renderNameEmailTable(
-    allResponses.filter(r => r.accommodation && r.accommodation.friday === "yes"),
-    "Friday night accommodation requests", ["Name","Email","Role"]);
+    allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.friday === "yes"),
+    "Friday night accommodation requests", ["Name","Email","Role"], "accommodation", "friday");
   else if (tab === "sat-accom")  renderNameEmailTable(
-    allResponses.filter(r => r.accommodation && r.accommodation.saturday === "yes"),
-    "Saturday night accommodation requests", ["Name","Email","Role"]);
+    allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.saturday === "yes"),
+    "Saturday night accommodation requests", ["Name","Email","Role"], "accommodation", "saturday");
   else if (tab === "dietary")    renderDietary();
   else if (tab === "erc")        renderERC();
   else if (tab === "itc")        renderITC();
@@ -437,18 +448,44 @@ function renderTab(tab) {
   else if (tab === "export")     renderExport();
 }
 
-function fullName(r) { return [r.firstName, r.lastName].filter(Boolean).join(" "); }
+// 2026-08-31: lists/cards show the "known as" name (falls back to firstName if no
+// one entered one, e.g. all 40 existing responses predate this field). The full
+// passport name (firstName/middleName/lastName) stays available in the expanded
+// card and is what admin-visitor-request-export.html reads separately — never
+// swap that export to use this.
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function knownAsOrFirst(r) { return (r.knownAs && r.knownAs.trim()) || r.firstName || ""; }
+function fullName(r) { return [knownAsOrFirst(r), r.lastName].filter(Boolean).join(" "); }
+function passportName(r) { return [r.firstName, r.middleName, r.lastName].filter(Boolean).join(" "); }
 function fmtDate(r)  {
   return r.submittedAt
     ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
     : "–";
 }
+function nameLink(r) {
+  const label = fullName(r) || r.email || "\u2013";
+  return `<a href="#" class="name-link" onclick="event.preventDefault();goToEntry('${r.id}')">${label}</a>`;
+}
+function goToEntry(docId) {
+  const i = allResponses.findIndex(r => r.id === docId);
+  if (i === -1) { alert("Could not find that entry in All responses."); return; }
+  switchTab('all');
+  const body = document.getElementById('card-' + i);
+  if (!body) return;
+  body.classList.add('open');
+  const card = body.closest('.response-card');
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('highlight');
+    setTimeout(() => card.classList.remove('highlight'), 2000);
+  }
+}
 function getFiltered() {
   switch (currentTab) {
-    case "fri-dinner": return allResponses.filter(r => r.meals && r.meals.friday === "yes");
-    case "sat-dinner": return allResponses.filter(r => r.meals && r.meals.saturday === "yes");
-    case "fri-accom":  return allResponses.filter(r => r.accommodation && r.accommodation.friday === "yes");
-    case "sat-accom":  return allResponses.filter(r => r.accommodation && r.accommodation.saturday === "yes");
+    case "fri-dinner": return allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.friday === "yes");
+    case "sat-dinner": return allResponses.filter(r => isActiveResponse(r) && r.meals && r.meals.saturday === "yes");
+    case "fri-accom":  return allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.friday === "yes");
+    case "sat-accom":  return allResponses.filter(r => isActiveResponse(r) && r.accommodation && r.accommodation.saturday === "yes");
     case "dietary":    return allResponses.filter(r => r.diet && r.diet !== "None" && r.diet !== "");
     case "erc":        return allResponses.filter(r => r.ercCorrectlyListed === "no");
     case "itc":        return allResponses.filter(r => r.role === "Instructor Trainer Candidate");
@@ -506,15 +543,19 @@ function renderAll() {
         <div class="rc-body" id="card-${i}">
           <div class="rc-grid">
             <div><div class="rc-label">Email</div><div class="rc-value">${r.email||"–"}</div></div>
+            <div><div class="rc-label">Known as</div><div class="rc-value">${esc(r.knownAs) || "<em>(none — showing first name)</em>"} <a href="#" onclick="event.preventDefault();editKnownAs('${r.id}',${i})" style="font-size:11px;">✎ edit</a></div></div>
+            <div><div class="rc-label">Legal name (passport)</div><div class="rc-value">${passportName(r) || "–"}</div></div>
             <div><div class="rc-label">Days</div><div class="rc-value"><div class="day-badges">${days}</div></div></div>
             <div><div class="rc-label">Meals <span style="font-weight:400;text-transform:none;letter-spacing:0;">(click to toggle)</span></div><div class="rc-value">
               <div class="meal-badges">
                 <span class="meal-badge badge-${r.meals&&r.meals.friday||'no'}" style="cursor:pointer;" onclick="toggleMeal('${r.id}','friday',${i})" title="Click to toggle Friday dinner">Fri: ${r.meals&&r.meals.friday||'no'}</span>
                 <span class="meal-badge badge-${r.meals&&r.meals.saturday||'no'}" style="cursor:pointer;" onclick="toggleMeal('${r.id}','saturday',${i})" title="Click to toggle Saturday dinner">Sat: ${r.meals&&r.meals.saturday||'no'}</span>
               </div></div></div>
-            <div><div class="rc-label">Accommodation</div><div class="rc-value">
-              Fri: ${r.accommodation&&r.accommodation.friday||'–'} · Sat: ${r.accommodation&&r.accommodation.saturday||'–'}
-            </div></div>
+            <div><div class="rc-label">Accommodation <span style="font-weight:400;text-transform:none;letter-spacing:0;">(click to toggle)</span></div><div class="rc-value">
+              <div class="meal-badges">
+                <span class="meal-badge badge-${r.accommodation&&r.accommodation.friday||'no'}" style="cursor:pointer;" onclick="toggleAccommodation('${r.id}','friday',${i})" title="Click to toggle Friday accommodation">Fri: ${r.accommodation&&r.accommodation.friday||'no'}</span>
+                <span class="meal-badge badge-${r.accommodation&&r.accommodation.saturday||'no'}" style="cursor:pointer;" onclick="toggleAccommodation('${r.id}','saturday',${i})" title="Click to toggle Saturday accommodation">Sat: ${r.accommodation&&r.accommodation.saturday||'no'}</span>
+              </div></div></div>
             <div><div class="rc-label">Diet</div><div class="rc-value">${r.diet||"–"}${r.dietDetail?" ("+r.dietDetail+")":""}</div></div>
             <div><div class="rc-label">ERC qualification</div><div class="rc-value">${r.ercQualification||"–"}</div></div>
             <div><div class="rc-label">ERC status</div><div class="rc-value">
@@ -614,7 +655,7 @@ function renderDirectors() {
     }
 
     return `<tr>
-      <td style="font-weight:700;color:var(--rmd-navy);">${name}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${nameLink(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${roleBadge}</td>
       <td>${roleSelectHtml(r, name)}</td>
@@ -665,26 +706,43 @@ async function changeRole(docId, newRole, name) {
   }
 }
 
-function renderNameEmailTable(filtered, title, cols) {
+function renderNameEmailTable(filtered, title, cols, field, day) {
   setFilterLabel(`${filtered.length} person(s)`);
   const showDiet = cols.includes("Dietary");
   const showRole = cols.includes("Role");
+  const editable = !!(field && day);
+
+  const eligible = editable
+    ? allResponses
+        .filter(r => isActiveResponse(r) && !(r[field] && r[field][day] === "yes"))
+        .sort((a, b) => (fullName(a)||a.email||"").localeCompare(fullName(b)||b.email||""))
+    : [];
+  const addControl = editable && eligible.length
+    ? `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+        <select id="addPersonSelect" style="flex:1;max-width:320px;padding:7px 10px;border:1px solid #d7dee6;border-radius:6px;font-family:var(--font);font-size:13px;">
+          ${eligible.map(r => `<option value="${r.id}">${fullName(r) || r.email}${r.role ? " — " + r.role : ""}</option>`).join("")}
+        </select>
+        <button class="btn-action" onclick="addToList('${field}','${day}')">+ Add to list</button>
+      </div>`
+    : "";
 
   const rows = filtered.length
     ? filtered.map(r => `
         <tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           ${showRole ? `<td>${r.role||"–"}</td>` : ""}
           ${showDiet ? `<td>${r.diet||"None"}${r.dietDetail?" ("+r.dietDetail+")":""}</td>` : ""}
+          ${editable ? `<td><button class="btn-decline" onclick="setFieldValue('${r.id}','${field}','${day}','no')" title="Remove from this list">Remove</button></td>` : ""}
         </tr>`).join("")
-    : `<tr><td colspan="${cols.length}" style="color:#aab8c2;text-align:center;">No responses yet</td></tr>`;
+    : `<tr><td colspan="${cols.length + (editable?1:0)}" style="color:#aab8c2;text-align:center;">No responses yet</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
       <div class="section-heading">${title} — ${filtered.length} attending</div>
+      ${addControl}
       <table class="data-table">
-        <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}</tr></thead>
+        <thead><tr>${cols.map(c=>`<th>${c}</th>`).join("")}${editable ? "<th>Action</th>" : ""}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -697,7 +755,7 @@ function renderDietary() {
   const rows = dietary.length
     ? dietary.map(r => `
         <tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           <td>${r.role||"–"}</td>
           <td>${r.diet||"–"}${r.dietDetail?" ("+r.dietDetail+")":""}</td>
@@ -725,7 +783,7 @@ function renderERC() {
   const rows = toFix.length
     ? toFix.map(r => `
         <tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           <td>${r.ercQualification||"–"}</td>
           <td>${r.ercLiaisonConfirmed ? "✓ Will contact ERC" : "–"}</td>
@@ -751,7 +809,7 @@ function renderITC() {
         const days = ["friday","saturday","sunday"].map(d =>
           `<span class="day-badge day-${r.days&&r.days[d]?'yes':'no'}">${d.slice(0,3)}</span>`).join(" ");
         return `<tr>
-          <td>${fullName(r)||"–"}</td>
+          <td>${nameLink(r)}</td>
           <td>${r.email||"–"}</td>
           <td>${r.ercQualification||"–"}</td>
           <td>${r.ercCorrectlyListed==="yes"
@@ -791,20 +849,57 @@ async function setAttendanceStatus(docId, status, cardIndex) {
   }
 }
 
+async function editKnownAs(docId, cardIndex) {
+  const r = allResponses.find(x => x.id === docId);
+  if (!r) return;
+  const next = prompt(`Known as (leave blank to fall back to first name "${r.firstName || ""}"):`, r.knownAs || "");
+  if (next === null) return; // cancelled
+  const trimmed = next.trim();
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ knownAs: trimmed });
+    r.knownAs = trimmed;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update known-as name: " + err.message);
+  }
+}
+
+async function setFieldValue(docId, field, day, value) {
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ [`${field}.${day}`]: value });
+    const r = allResponses.find(x => x.id === docId);
+    if (r) {
+      if (!r[field]) r[field] = {};
+      r[field][day] = value;
+    }
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update: " + err.message);
+  }
+}
+
+function addToList(field, day) {
+  const sel = document.getElementById("addPersonSelect");
+  if (!sel || !sel.value) return;
+  setFieldValue(sel.value, field, day, "yes");
+}
+
 async function toggleMeal(docId, day, cardIndex) {
   const r = allResponses.find(x => x.id === docId);
   if (!r) return;
   const current = (r.meals && r.meals[day]) || "no";
   const next = current === "yes" ? "no" : "yes";
-  try {
-    await db.collection("faculty_responses").doc(docId).update({ [`meals.${day}`]: next });
-    if (!r.meals) r.meals = {};
-    r.meals[day] = next;
-    updateSummary();
-    renderTab(currentTab);
-  } catch (err) {
-    alert("Failed to update meal: " + err.message);
-  }
+  await setFieldValue(docId, "meals", day, next);
+}
+
+async function toggleAccommodation(docId, day, cardIndex) {
+  const r = allResponses.find(x => x.id === docId);
+  if (!r) return;
+  const current = (r.accommodation && r.accommodation[day]) || "no";
+  const next = current === "yes" ? "no" : "yes";
+  await setFieldValue(docId, "accommodation", day, next);
 }
 
 function renderAttendanceFilter(status, heading) {
@@ -825,7 +920,7 @@ function renderAttendanceFilter(status, heading) {
       return r.days && r.days[key] ? `<span class="day-badge day-yes">${d}</span>` : "";
     }).join(" ");
     return `<tr>
-      <td style="font-weight:700;color:var(--rmd-navy);">${fullName(r)||"–"}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${nameLink(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${r.role||"–"}</td>
       <td><div class="day-badges">${days}</div></td>
@@ -864,7 +959,7 @@ function renderProvisional() {
 
   const rows = filtered.map(r => `
     <tr>
-      <td style="font-weight:700;color:var(--rmd-navy);">${fullName(r)||"–"}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${nameLink(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${r.role||"–"}</td>
       <td>${fmtDate(r)}</td>
@@ -944,13 +1039,13 @@ function renderExport() {
         <button class="btn-action secondary" onclick="copyAllEmails()">📋 Copy all emails</button>
       </div>
       <p style="font-size:12px;color:var(--rmd-muted);margin:16px 0 0;">
-        CSV includes: name, email, role, platform role, attendance status, provisional flag, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
+        CSV includes: first/last name, known as, email, role, platform role, attendance status, provisional flag, days, meals, accommodation, dietary, ERC status, accessibility, travel notes.
       </p>
     </div>`;
 }
 
 function exportCSV() {
-  const headers = ["First Name","Last Name","Email","Self-declared Role","Platform Role",
+  const headers = ["First Name","Last Name","Known As","Email","Self-declared Role","Platform Role",
     "Attendance Status","Provisional",
     "Days-Fri","Days-Sat","Days-Sun","Meal-Fri","Meal-Sat",
     "Accom-Fri","Accom-Sat","Diet","Diet Detail",
@@ -958,7 +1053,7 @@ function exportCSV() {
     "Accessibility","Travel Notes","Other Notes","Submitted"];
 
   const rows = allResponses.map(r => [
-    r.firstName, r.lastName, r.email, r.role,
+    r.firstName, r.lastName, r.knownAs || "", r.email, r.role,
     isDirector(r.email) ? "Director" : "Faculty",
     r.attendanceStatus || "pending",
     r.provisional ? "Yes" : "No",

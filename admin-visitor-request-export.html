@@ -229,14 +229,20 @@ function downloadCsv(filename, csv) {
   a.href = url; a.download = filename; a.click();
 }
 
+// 2026-08-31: prefer the self-submitted passport name from this year's mou_responses
+// (mou-form.html asks explicitly for "full name as per passport") over mou_roster's
+// hand-maintained name, since the roster entry is "whatever name they registered
+// under" and was never verified against a passport. Falls back to the roster name
+// for anyone who hasn't submitted this year's MOU yet.
 function currentRows() {
   return seniorFaculty().map(m => {
     const sub = submissionFor(m.email);
     const ov = overrides[m.id] || {};
+    const passportName = (sub && sub.name) ? sub.name : (m.name || "");
     return {
       id: m.id,
       email: m.email || "",
-      name: ov.name != null ? ov.name : (m.name || ""),
+      name: ov.name != null ? ov.name : passportName,
       nationality: ov.nationality != null ? ov.nationality : (sub ? (sub.nationality || "") : ""),
       hasSubmission: !!sub
     };
@@ -476,9 +482,11 @@ function render() {
       This covers the "all year" visitor group (people tagged "RMD Senior Faculty" on the MOU
       roster). It does NOT cover Instructor Weekend-only visitors — see the separate "External
       instructors" group further down this page, generated automatically from confirmed faculty
-      submissions. "Full Name" is pre-filled from the roster, not a verified passport name —
-      check/edit before submitting. Nationality only populates once someone has submitted this
-      year's MOU (via the MOU Dashboard) — rows with none are outlined orange below.
+      submissions. "Full Name" comes from this year's MOU submission (self-declared passport
+      name) where one exists; for anyone who hasn't submitted yet it falls back to the roster
+      name, which is not a verified passport name — check/edit those rows before submitting.
+      Nationality only populates once someone has submitted this year's MOU (via the MOU
+      Dashboard) — rows with none are outlined orange below.
     </div>
 
     <div class="card">

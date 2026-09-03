@@ -64,6 +64,7 @@
   }
   .option-btn.selected-yes { background: #1a6e31; border-color: #145727; color: white; }
   .option-btn.selected-no  { background: var(--rmd-warn); border-color: #8e2419; color: white; }
+  .option-btn.selected-exempt { background: var(--rmd-blue); border-color: var(--rmd-navy); color: white; }
 
   .disagree-box { display: none; margin-top: 14px; }
 
@@ -251,6 +252,12 @@
     </div>
 
     <div class="field">
+      <label>Known as <span style="color:var(--rmd-muted);font-weight:400;">(optional)</span></label>
+      <input type="text" id="memberKnownAs" placeholder="e.g. Becca" autocomplete="nickname">
+      <div class="hint-text">How you're usually referred to — used in programmes, lists and badges instead of your passport name. Leave blank to use your first name.</div>
+    </div>
+
+    <div class="field">
       <label>Nationality <span class="req">*</span></label>
       <select id="memberNationality">
         <option value="" disabled selected>Select…</option>
@@ -287,9 +294,13 @@
       <div class="option-group" id="cwGroup">
         <button type="button" class="option-btn" onclick="selectCW(true,this)">✓ Yes, in place and active</button>
         <button type="button" class="option-btn" onclick="selectCW(false,this)">✗ No / lapsed / not sure</button>
+        <button type="button" class="option-btn" onclick="selectCW('exempt',this)">N/A &mdash; directly employed by UoB (formal contract)</button>
       </div>
       <div class="hint-text" id="cwApplyHint" style="display:none;margin-top:8px;">
         Your MoU can't be submitted until this is sorted. <a href="https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=z8oksN7eQUKhXDyX1VPp8wBtHh5KrpBHoi12PKseGCdUNUE0VkU1VjVDRURFNkw2WjVKNUwwN1kzVi4u" target="_blank" rel="noopener">Apply or renew your Contingent Worker status here</a>, then come back and submit once it's underway. For any queries, email <a href="mailto:smsvisitingpersonnel@contacts.bham.ac.uk,j.durrant@bham.ac.uk">smsvisitingpersonnel@contacts.bham.ac.uk</a> and James Durrant (CMH Administration) at <a href="mailto:smsvisitingpersonnel@contacts.bham.ac.uk,j.durrant@bham.ac.uk">j.durrant@bham.ac.uk</a>.
+      </div>
+      <div class="hint-text" id="cwExemptHint" style="display:none;margin-top:8px;">
+        Select this only if you hold a formal UoB employment contract rather than Contingent Worker status. This applies to very few people &mdash; if you're not sure which applies to you, check with <a href="mailto:smsvisitingpersonnel@contacts.bham.ac.uk,j.durrant@bham.ac.uk">James Durrant (CMH Administration)</a> before submitting.
       </div>
     </div>
 
@@ -444,17 +455,19 @@ document.getElementById("role").addEventListener("change", function () {
   document.getElementById("cwField").style.display = isSeniorFaculty ? "block" : "none";
   if (!isSeniorFaculty) {
     cwConfirmed = null;
-    document.querySelectorAll("#cwGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no"));
+    document.querySelectorAll("#cwGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no","selected-exempt"));
     document.getElementById("cwApplyHint").style.display = "none";
+    document.getElementById("cwExemptHint").style.display = "none";
   }
 });
 
 function selectCW(value, btn) {
   cwConfirmed = value;
-  document.querySelectorAll("#cwGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no"));
-  btn.classList.add(value ? "selected-yes" : "selected-no");
-  document.getElementById("cwApplyHint").style.display = value ? "none" : "block";
-  if (value) {
+  document.querySelectorAll("#cwGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no","selected-exempt"));
+  btn.classList.add(value === true ? "selected-yes" : (value === false ? "selected-no" : "selected-exempt"));
+  document.getElementById("cwApplyHint").style.display = (value === false) ? "block" : "none";
+  document.getElementById("cwExemptHint").style.display = (value === "exempt") ? "block" : "none";
+  if (value === true) {
     alert("Reminder: submit your Contingent Worker renewal in good time (UoB recommend around a month before your current status expires) so your IT access runs without a break.");
   }
 }
@@ -468,6 +481,7 @@ function selectAgree(value, btn) {
 
 async function submitForm() {
   const name  = document.getElementById("memberName").value.trim();
+  const knownAs = document.getElementById("memberKnownAs").value.trim();
   const nationality = document.getElementById("memberNationality").value;
   const email = document.getElementById("memberEmail").value.trim().toLowerCase();
   const role  = document.getElementById("role").value;
@@ -492,11 +506,13 @@ async function submitForm() {
 
   const record = {
     name: name,
+    knownAs: knownAs,
     nationality: nationality,
     email: email,
     studentId: document.getElementById("studentId").value.trim(),
     role: role,
-    cwStatusConfirmed: role === "RMD Senior Faculty" ? cwConfirmed : null,
+    cwStatusConfirmed: role === "RMD Senior Faculty" ? (cwConfirmed === "exempt" ? null : cwConfirmed) : null,
+    cwExempt: role === "RMD Senior Faculty" ? (cwConfirmed === "exempt") : false,
     academicYear: CURRENT_MOU_YEAR,
     readConfirmed: true,
     agreed: agreed,

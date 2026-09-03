@@ -223,6 +223,7 @@
     <div class="sum-pill" onclick="setFilter('instructor',this)" title="Click to filter list"><div class="val" id="sum-candidates">–</div><div class="lbl">Instr. Candidates</div></div>
     <div class="sum-pill" onclick="setFilter('assessor',this)" title="Click to filter list"><div class="val" id="sum-assessors">–</div><div class="lbl">Assessor/Sr Instr.</div></div>
     <div class="sum-pill" onclick="setFilter('faculty',this)" title="Click to filter list"><div class="val" id="sum-faculty" style="color:var(--rmd-muted);">–</div><div class="lbl">Faculty</div></div>
+    <div class="sum-pill" onclick="setFilter('assessorFaculty',this)" title="Click to filter list"><div class="val" id="sum-assessorFaculty" style="color:#6d28d9;">–</div><div class="lbl">Assessor Faculty</div></div>
   </div>
   <div class="summary-strip secondary" id="summaryStripSecondary">
     <div class="sum-pill small" onclick="setFilter('confirmed',this)" title="Click to filter list"><div class="val" id="sum-confirmed" style="color:#1a6e31;">–</div><div class="lbl">Confirmed</div></div>
@@ -419,6 +420,7 @@ function updateSummary() {
   document.getElementById("sum-candidates").textContent = r.filter(x => x.role === "Instructor Candidate").length;
   document.getElementById("sum-assessors").textContent  = r.filter(x => x.role === "Assessor / Senior Instructor").length;
   document.getElementById("sum-faculty").textContent    = r.filter(x => x.source === "faculty").length;
+  document.getElementById("sum-assessorFaculty").textContent = r.filter(x => x.role === "Assessor Faculty").length;
   document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role").length;
 }
 
@@ -452,6 +454,7 @@ function getFiltered() {
     case "instructor":  rows = allRegistrations.filter(r => r.role === "Instructor Candidate"); break;
     case "assessor":    rows = allRegistrations.filter(r => r.role === "Assessor / Senior Instructor"); break;
     case "faculty":     rows = allRegistrations.filter(r => r.source === "faculty"); break;
+    case "assessorFaculty": rows = allRegistrations.filter(r => r.role === "Assessor Faculty"); break;
     case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role"); break;
     case "total":       rows = allRegistrations; break;
     default:            rows = allRegistrations;
@@ -464,6 +467,7 @@ function roleBadge(role) {
   if (role === "Assessor / Senior Instructor") return `<span class="badge-assessor">Assessor/Sr Instr.</span>`;
   if (role === "Faculty")              return `<span class="badge-faculty">Faculty</span>`;
   if (role === "Instructor Trainer Candidate") return `<span class="badge-faculty" style="background:#e8f0fe;color:#3d52a0;">ITC</span>`;
+  if (role === "Assessor Faculty") return `<span class="badge-faculty" style="background:#f3e8ff;color:#6d28d9;">Assessor Faculty</span>`;
   return `<span class="badge-manual">${role||"Other"}</span>`;
 }
 

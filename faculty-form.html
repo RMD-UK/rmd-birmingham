@@ -260,9 +260,53 @@
     }
     .btn-sf-decline:hover { background: #a56600; }
     .btn-sf-decline:disabled { background: #d8c8a0; cursor: default; }
+
+    /* ── Link gate: only unlock the form for links carrying ?code=IWBHAM ── */
+    html[data-gate-blocked="true"] body > *:not(#linkGateMessage) { display: none !important; }
+    html[data-gate-blocked="true"] #linkGateMessage { display: block !important; }
+    #linkGateMessage {
+      display: none;
+      max-width: 480px;
+      margin: 70px auto;
+      padding: 28px 24px;
+      text-align: center;
+      font-family: var(--font);
+      color: var(--rmd-navy);
+    }
+    #linkGateMessage img { height: 48px; margin-bottom: 16px; }
+    #linkGateMessage h2 { font-size: 19px; margin: 0 0 10px; }
+    #linkGateMessage p { font-size: 14px; color: #555; line-height: 1.5; }
   </style>
 </head>
 <body>
+
+<script>
+  // Only show this form to people who followed the invitation link
+  // (?code=IWBHAM). Anyone else — bare URL, search engines, bots — sees
+  // the message below instead. Change REQUIRED_CODE here to rotate the code.
+  (function () {
+    var REQUIRED_CODE = "IWBHAM";
+    var params = new URLSearchParams(window.location.search);
+    var hasValidCode = params.get("code") === REQUIRED_CODE;
+    // A personalised invite link (?email=...) is self-authorising — it only
+    // ever reaches someone because we emailed it to that exact address — so
+    // it satisfies the gate on its own, independent of REQUIRED_CODE. This
+    // means rotating REQUIRED_CODE for the generic shared link can never
+    // silently break personalised links sent by sendFacultyFormInvites in
+    // functions/index.js (see the "Personalised invite prefill" block near
+    // the bottom of this file for where ?email= gets read).
+    var hasEmailParam = /\S+@\S+/.test(params.get("email") || "");
+    if (!hasValidCode && !hasEmailParam) {
+      document.documentElement.setAttribute("data-gate-blocked", "true");
+    }
+  })();
+</script>
+
+<div id="linkGateMessage">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <h2>This form needs your invitation link</h2>
+  <p>Please use the link sent to you by email for RMD Instructor Weekend 2026. If you've lost it, contact your site's faculty admin and they can resend it.</p>
+</div>
 
 <!-- Header -->
 <div class="form-header">
@@ -322,9 +366,11 @@
   <p class="section-title">Personal details</p>
   <p class="section-sub">Used for ERC course administration.</p>
 
+  <p class="section-sub" style="margin-top:-4px;">Enter your name exactly as it appears on your passport — needed for campus visitor registration.</p>
+
   <div class="field-row">
     <div class="field">
-      <label>First name <span class="req">*</span></label>
+      <label>First name (as on passport) <span class="req">*</span></label>
       <input type="text" id="firstName" placeholder="e.g. Jane" autocomplete="given-name">
     </div>
     <div class="field">
@@ -334,8 +380,14 @@
   </div>
 
   <div class="field">
-    <label>Last name <span class="req">*</span></label>
+    <label>Last name (as on passport) <span class="req">*</span></label>
     <input type="text" id="lastName" placeholder="e.g. Smith" autocomplete="family-name">
+  </div>
+
+  <div class="field">
+    <label>Known as <span style="color:var(--rmd-muted);font-weight:400;">(optional)</span></label>
+    <input type="text" id="knownAs" placeholder="e.g. Becca" autocomplete="nickname">
+    <div class="hint-text">How you're usually referred to — this is what's shown in programmes, lists and badges. Leave blank to use your first name.</div>
   </div>
 
   <div class="field">
@@ -719,6 +771,7 @@ function prefillForm(data) {
   document.getElementById("firstName").value  = data.firstName  || "";
   document.getElementById("middleName").value = data.middleName || "";
   document.getElementById("lastName").value   = data.lastName   || "";
+  document.getElementById("knownAs").value    = data.knownAs    || "";
   document.getElementById("nationality").value = data.nationality || "";
 
   // Role
@@ -921,6 +974,7 @@ async function submitForm() {
     firstName:     document.getElementById("firstName").value.trim(),
     middleName:    document.getElementById("middleName").value.trim(),
     lastName:      document.getElementById("lastName").value.trim(),
+    knownAs:       document.getElementById("knownAs").value.trim(),
     nationality:   document.getElementById("nationality").value,
     email:         document.getElementById("email").value.trim().toLowerCase(),
     // Attendance
@@ -1091,6 +1145,25 @@ async function submitStandaloneDecline() {
     alert("Submission failed — please check your connection and try again.\n\n" + err.message);
   }
 }
+
+// ── Personalised invite prefill ────────────────────────────────────────────
+// A link sent via admin-mou-dashboard.html's "Send Instructor Weekend
+// invite" action carries ?email=<addr> for RMD Senior/Student Faculty
+// already known to us from mou_roster. Pre-fills the email field so they
+// don't have to retype it — never locked, still fully editable in case the
+// wrong person opens a forwarded link. checkExistingSubmission() then runs
+// exactly as it would for a manually-typed email, loading their whole prior
+// submission if one exists under that address.
+(function () {
+  var params = new URLSearchParams(window.location.search);
+  var prefillEmail = (params.get("email") || "").trim();
+  if (!prefillEmail || !prefillEmail.includes("@")) return;
+  var emailField = document.getElementById("email");
+  if (!emailField) return;
+  emailField.value = prefillEmail;
+  existingDocChecked = true;
+  checkExistingSubmission(prefillEmail.toLowerCase());
+})();
 
 </script>
 </body>

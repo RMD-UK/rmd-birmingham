@@ -80,6 +80,7 @@
   .badge-outstanding { background: #fce8e6; color: var(--rmd-warn); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
   .badge-disagree { background: #fff3cd; color: #856404; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
   .badge-agree    { background: #e6f4ea; color: #1a6e31; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .badge-exempt   { background: #e3edfa; color: var(--rmd-blue); padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
 
   .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
   .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
@@ -143,6 +144,7 @@
   <div class="action-bar" id="actionBar">
     <button class="btn-action secondary" onclick="copyFilteredEmails()">📋 Copy emails</button>
     <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
+    <button class="btn-action secondary" id="facultyInviteBtn" onclick="sendFacultyFormInvites()" data-tooltip="Emails every RMD Senior/Student Faculty member on the current roster a personalised faculty-form.html link with their email address already filled in.">✉ Send Instructor Weekend invite</button>
     <span class="filter-label" id="filterLabel"></span>
     <div class="role-filter-group" id="roleFilterGroup">
       <button class="role-filter-btn active" data-role="all" onclick="setRoleFilter('all')">All roles <span class="rf-count" id="rf-count-all">–</span></button>
@@ -163,6 +165,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
@@ -172,6 +175,7 @@ const HARDCODED_DIRECTORS = DIRECTOR_EMAILS.map(x => x.toLowerCase());
 var allSubmissions = [];  // mou_responses for CURRENT_MOU_YEAR
 var roster          = []; // mou_roster docs
 var directorEmails   = [];
+var fns; // firebase.functions() — set after initFirebase()
 var currentTab       = "roster-status";
 var currentRoleFilter = "all"; // all | student | senior | other
 
@@ -206,6 +210,7 @@ function updateRoleFilterCounts() {
 }
 
 initFirebase();
+fns = firebase.functions();
 document.getElementById("yearTag").textContent = CURRENT_MOU_YEAR;
 
 window.addEventListener("load", () => {
@@ -279,6 +284,20 @@ function fmtDate(r) {
     : "–";
 }
 
+// Contingent Worker status only applies to RMD Senior Faculty submissions.
+// cwExempt = self-declared as directly employed by UoB on a formal contract (not CW).
+function cwStatusInfo(sub) {
+  if (!sub || sub.role !== "RMD Senior Faculty") return { label: "–", cls: "" };
+  if (sub.cwExempt === true) return { label: "Exempt (self-declared)", cls: "badge-exempt" };
+  if (sub.cwStatusConfirmed === true)  return { label: "✓ Yes", cls: "badge-agree" };
+  if (sub.cwStatusConfirmed === false) return { label: "✗ No", cls: "badge-outstanding" };
+  return { label: "–", cls: "" };
+}
+function cwStatusBadge(sub) {
+  const info = cwStatusInfo(sub);
+  return info.cls ? `<span class="${info.cls}">${info.label}</span>` : info.label;
+}
+
 function updateSummary() {
   const withStatus = rosterWithStatus();
   document.getElementById("sum-roster").textContent      = roster.length;
@@ -332,10 +351,11 @@ function copyFilteredEmails() {
 function exportCSV() {
   let withStatus = rosterWithStatus();
   if (currentRoleFilter !== "all") withStatus = withStatus.filter(m => roleBucket(m.role) === currentRoleFilter);
-  const headers = ["Name","Nationality","Email","Roster Role","Status","Submitted Role","Agreed","Comment","Submitted At"];
+  const headers = ["Name","Nationality","Email","Roster Role","Status","Submitted Role","Contingent Worker","Agreed","Comment","Submitted At"];
   const rows = withStatus.map(m => [
     m.name, m.submission ? m.submission.nationality || "" : "", m.email, m.role || "", m.status,
     m.submission ? m.submission.role : "",
+    m.submission ? cwStatusInfo(m.submission).label : "",
     m.submission ? (m.submission.agreed ? "Yes" : "No") : "",
     m.submission ? m.submission.comment || "" : "",
     m.submission && m.submission.submittedAt ? new Date(m.submission.submittedAt.seconds*1000).toISOString() : ""
@@ -348,6 +368,49 @@ function exportCSV() {
 }
 
 function setFilterLabel(text) { document.getElementById("filterLabel").textContent = text; }
+
+// ── Send Instructor Weekend invite ──────────────────────────────────────
+// Emails every RMD Senior/Student Faculty member currently on mou_roster a
+// personalised faculty-form.html link with their email pre-filled — see
+// sendFacultyFormInvites in functions/index.js. Always scoped to those two
+// roles regardless of the current role filter/tab, so it can never be fired
+// accidentally at Instructor/Assessor/Senior Instructor roster rows (they
+// have their own separate RSVP flow via admin-iw-registrations.html).
+async function sendFacultyFormInvites() {
+  const targets   = roster.filter(m => m.role === "RMD Senior Faculty" || m.role === "RMD Student Faculty");
+  const reachable = targets.filter(m => m.email);
+  const noEmail   = targets.filter(m => !m.email);
+
+  if (!reachable.length) {
+    alert("No RMD Senior/Student Faculty with an email on file — nothing to send.");
+    return;
+  }
+
+  const noEmailNote = noEmail.length
+    ? `\n\n(${noEmail.length} more have no email on file, so won't be emailed: ${noEmail.map(m => m.name).join(", ")})`
+    : "";
+  if (!confirm(`Send a personalised Instructor Weekend invite (email pre-filled) to ${reachable.length} RMD Senior/Student Faculty member(s)?\n\n${reachable.map(m => m.name).join(", ")}${noEmailNote}`)) return;
+
+  const btn = document.getElementById("facultyInviteBtn");
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  try {
+    const call = fns.httpsCallable("sendFacultyFormInvites");
+    const res  = await call({ roles: ["RMD Senior Faculty", "RMD Student Faculty"] });
+    const d = res.data || {};
+    alert(`✅ Sent: ${d.sent || 0}` +
+      (d.failed ? `\n⚠ Failed: ${d.failed} — ${(d.failedEmails || []).join(", ")}` : "") +
+      (d.skippedNoEmail ? `\nSkipped (no email on file): ${d.skippedNoEmail}` : ""));
+  } catch (err) {
+    console.error("sendFacultyFormInvites failed:", err);
+    alert("Invite send failed: " + (err.message || err.code || "unknown error"));
+  }
+
+  btn.disabled = false;
+  btn.textContent = originalText;
+}
 
 const ROSTER_ROLE_ORDER = ["Instructor", "Senior Instructor", "Assessor", "RMD Student Faculty", "RMD Senior Faculty"];
 
@@ -397,6 +460,7 @@ function renderRosterStatus() {
           <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
           <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
           <td>${badge}</td>
+          <td>${cwStatusBadge(m.submission)}</td>
           <td>${m.submission ? fmtDate(m.submission) : "–"}</td>
         </tr>`;
       }).join("");
@@ -407,7 +471,7 @@ function renderRosterStatus() {
           <div style="font-size:12px;color:var(--rmd-muted);">${sorted.length} total · ${signed} signed · ${outstanding} outstanding${disagreed ? ` · ${disagreed} disagreed` : ""}</div>
         </div>
         <table class="data-table">
-          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Submitted</th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>CW Status</th><th>Submitted</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
@@ -484,18 +548,19 @@ function renderAllSubmissions() {
           <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
           <td>${r.role||"–"}</td>
           <td>${agreeBadge}</td>
+          <td>${cwStatusBadge(r)}</td>
           <td>${onRoster ? "" : `<span class="badge-outstanding">Not on roster</span>`}</td>
           <td>${fmtDate(r)}</td>
           <td><button onclick="deleteSubmission('${r.id}','${(r.name||r.email||"").replace(/'/g,"")}')" style="padding:5px 10px;background:#fce8e6;color:var(--rmd-warn);border:1px solid #f5b8b0;border-radius:6px;font-size:11px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button></td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="7" style="color:#aab8c2;text-align:center;padding:20px;">${allSubmissions.length ? "No submissions match this filter" : `No submissions yet for ${CURRENT_MOU_YEAR}`}</td></tr>`;
+    : `<tr><td colspan="8" style="color:#aab8c2;text-align:center;padding:20px;">${allSubmissions.length ? "No submissions match this filter" : `No submissions yet for ${CURRENT_MOU_YEAR}`}</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
       <div class="section-heading">All submissions — ${CURRENT_MOU_YEAR} (${list.length})</div>
       <table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Agreement</th><th>Roster check</th><th>Submitted</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Agreement</th><th>CW Status</th><th>Roster check</th><th>Submitted</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;

@@ -73,6 +73,85 @@
     .resource-card-title { font-size: 15px; font-weight: 800; color: var(--rmd-navy); }
     .resource-card-sub   { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
     .resource-card-arrow { font-size: 20px; color: var(--rmd-muted); }
+
+    /* ── Role-tabbed resources (ported from provider-courses.html) ── */
+    .card {
+      background: white;
+      border-radius: 10px;
+      border: 1px solid #e2e8ed;
+      padding: 16px;
+      margin-bottom: 10px;
+    }
+    .pending-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: #8a5a00;
+      background: #fff3d6;
+      border: 1px solid #f0c96a;
+      border-radius: 999px;
+      padding: 4px 10px;
+      margin-bottom: 12px;
+    }
+    .resource-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .resource-link {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: #f5f7fa;
+      border-radius: 8px;
+      text-decoration: none;
+      color: var(--rmd-navy);
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid #e2e8ed;
+      transition: background 0.12s;
+    }
+    .resource-link:hover { background: var(--rmd-pale); }
+    .resource-link .icon { font-size: 18px; flex-shrink: 0; }
+    .res-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+    .res-tab-btn {
+      padding: 6px 14px; border-radius: 5px; border: 2px solid #dce3ea;
+      background: white; font-family: var(--font); font-size: 12px; font-weight: 700;
+      color: var(--rmd-navy); cursor: pointer;
+    }
+    .res-tab-btn.active { background: var(--rmd-navy); color: white; border-color: var(--rmd-navy); }
+
+    /* ── Search ── */
+    .search-wrap { position: relative; margin: 2px 0 4px; }
+    .search-input {
+      width: 100%;
+      font-family: var(--font);
+      font-size: 15px;
+      padding: 12px 14px;
+      border: 1px solid #dce3ea;
+      border-radius: 10px;
+      background: white;
+      box-sizing: border-box;
+    }
+    .search-input:focus { outline: 2px solid var(--rmd-blue); outline-offset: -1px; }
+    .search-results { margin-top: 8px; }
+    .search-result {
+      display: block;
+      background: white;
+      border: 1px solid #e2e8ed;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      text-decoration: none;
+    }
+    .search-result:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .search-result-title { font-size: 14px; font-weight: 700; color: var(--rmd-navy); }
+    .search-result-section { font-size: 11px; color: var(--rmd-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
+    .search-empty { font-size: 13px; color: var(--rmd-muted); padding: 4px 2px 12px; }
   </style>
 </head>
 <body>
@@ -94,6 +173,51 @@
 </div>
 
 <div class="wrap">
+
+  <div class="search-wrap">
+    <input type="text" class="search-input" id="resourceSearch" placeholder="Search — e.g. &#8220;forgot to sign in&#8221;, &#8220;development fund&#8221;..." autocomplete="off" oninput="runResourceSearch(this.value)">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+  <div id="browseSections">
+
+  <div class="section-label">Provider Course resources</div>
+
+  <!-- Tab bar hidden for candidates (DB role "instructor") — they only ever
+       see the Candidate panel. Unhidden by applyRole() for STAFF_TAB_ROLES.
+       Ported from provider-courses.html, which used to host this section
+       separately — merged here 2026-08-27 so there's one Resources page. -->
+  <div class="res-tabs hidden" id="resTabs">
+    <button class="res-tab-btn active" onclick="showResTab('Candidate', this)">Candidate</button>
+    <button class="res-tab-btn" onclick="showResTab('Instructor', this)">Instructor</button>
+    <button class="res-tab-btn" onclick="showResTab('Assessor', this)">Assessor</button>
+  </div>
+
+  <!-- ── Candidate resources — visible to everyone ── -->
+  <div class="res-panel card" id="resPanelCandidate">
+    <div class="resource-grid">
+      <a class="resource-link" href="resources/provider/bls-algorithm.pdf"><span class="icon">📄</span>BLS Algorithm</a>
+      <a class="resource-link" href="resources/provider/automated-external-defibrillation.pdf"><span class="icon">📄</span>Automated External Defibrillation</a>
+    </div>
+  </div>
+
+  <!-- ── Instructor resources — STAFF_TAB_ROLES only ── -->
+  <div class="res-panel card hidden" id="resPanelInstructor">
+    <div class="resource-grid">
+      <a class="resource-link" href="resources/provider/bls-equipment-floorplan.png"><span class="icon">🗺️</span>BLS Equipment Floorplan</a>
+      <a class="resource-link" href="resources/provider/aed-settings.pdf"><span class="icon">📄</span>AED Settings</a>
+      <a class="resource-link" href="resources/provider/qcpr-how-to-guide.pdf"><span class="icon">📄</span>QCPR — How-to Guide</a>
+      <a class="resource-link" href="resources/provider/bls-algorithm.pdf"><span class="icon">📄</span>BLS Algorithm</a>
+      <a class="resource-link" href="resources/provider/automated-external-defibrillation.pdf"><span class="icon">📄</span>Automated External Defibrillation</a>
+    </div>
+  </div>
+
+  <!-- ── Assessor resources — STAFF_TAB_ROLES only ── -->
+  <div class="res-panel card hidden" id="resPanelAssessor">
+    <div class="resource-grid">
+      <a class="resource-link" href="resources/provider/aed-settings.pdf"><span class="icon">📄</span>AED Settings</a>
+    </div>
+  </div>
 
   <div class="section-label">Skills reference</div>
 
@@ -218,6 +342,8 @@
     <div class="resource-card-arrow">→</div>
   </a>
 
+  </div><!-- /#browseSections -->
+
 </div><!-- /.wrap -->
 
 <!-- Firebase SDK -->
@@ -229,14 +355,145 @@
 <script>
   initFirebase();
 
-  // Universal resources page — accessible to any authenticated role, no
-  // role-specific gating (see member-menu.html for the role-gated cards).
-  auth.onAuthStateChanged(function (user) {
+  // Page itself has no role gating — everyone signed in can see it. The
+  // Provider Course resources section (top) does gate its Instructor/
+  // Assessor tabs, mirroring the STAFF_TAB_ROLES split used in
+  // site-info.html / timetable.html / member-menu.html.
+  const STAFF_TAB_ROLES = new Set(["director", "faculty", "full-instructor", "itc", "assessor-faculty", "assessor"]);
+
+  auth.onAuthStateChanged(async function (user) {
     if (!user) {
       window.location.href = "signin.html";
       return;
     }
+
+    let role = "instructor";
+    try {
+      role = (await resolveRole(user.uid, user.email || "")) || role;
+    } catch (e) { /* fall back to default role */ }
+
+    if (STAFF_TAB_ROLES.has(role)) {
+      document.getElementById("resTabs").classList.remove("hidden");
+    }
   });
+
+  // ── Resource tab switcher (Candidate / Instructor / Assessor) ──────────────
+  function showResTab(tab, btn) {
+    document.querySelectorAll(".res-panel").forEach(el => el.classList.add("hidden"));
+    document.getElementById("resPanel" + tab).classList.remove("hidden");
+    document.querySelectorAll(".res-tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+  }
+
+  // ── Search — covers this page's own cards plus every section of the
+  // Instructor Guide (Admin Guide / Support & Development / FAQs), so a
+  // typed question can link straight to the right anchor rather than
+  // making people browse for it. Index is hand-maintained: add an entry
+  // here whenever a new resource-card or guide section is added. ──
+  const SEARCH_INDEX = [
+    // Skills reference
+    { title: "QCPR App", section: "Skills reference", url: "https://laerdal.com/gb/products/simulation-training/resuscitation-training/qcpr-app/", keywords: "laerdal cpr quality feedback" },
+    { title: "ERC 2025 Guidelines — BLS & AED", section: "Skills reference", url: "https://www.erc.edu/media/p5ymaeej/gl2025_layperson_book_ipdf-v11-e.pdf", keywords: "layperson book pdf european resuscitation council" },
+    { title: "ERC App", section: "Skills reference", url: "https://app.erc.edu/", keywords: "european resuscitation council" },
+    { title: "RCUK 2025 Resuscitation Guidelines", section: "Skills reference", url: "https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines", keywords: "resus.org.uk guidelines library" },
+    { title: "RCUK Lifesaver", section: "Skills reference", url: "https://www.resus.org.uk/public-resource/how-we-save-lives/lifesaver-learning", keywords: "interactive cpr aed awareness training" },
+    // Videos
+    { title: "RMD Birmingham — YouTube", section: "Videos", url: "https://www.youtube.com/@rmdbirmingham", keywords: "teaching videos briefings channel" },
+    { title: "RMD Reasonable Adjustments Pathway", section: "Videos", url: "https://www.youtube.com/embed/tXgnppcnPOM", keywords: "rap video" },
+    // Instructor Guide index
+    { title: "Timeline & Teaching Structure", section: "Instructor Guide", url: "resources/instructor-guide/1-timeline-teaching-structure.html", keywords: "course dates week 1 week 2 cpr modifications" },
+    { title: "Assessment Evening Roles", section: "Instructor Guide", url: "resources/instructor-guide/2-assessment-evening-roles.html", keywords: "welcomer pre-exam teaching runner actor resit instructor exam night" },
+    { title: "Admin Guide", section: "Instructor Guide", url: "resources/instructor-guide/3-admin-guide.html", keywords: "" },
+    { title: "Support & Development", section: "Instructor Guide", url: "resources/instructor-guide/4-support-and-development.html", keywords: "" },
+    { title: "FAQs", section: "Instructor Guide", url: "resources/instructor-guide/5-faqs.html", keywords: "" },
+    { title: "Student Faculty & Founder's Message", section: "Instructor Guide", url: "resources/instructor-guide/6-student-faculty-and-founder.html", keywords: "who's who founder message jon hulme" },
+    // Provider Course resources (files)
+    { title: "BLS Algorithm", section: "Provider Course resources", url: "resources/provider/bls-algorithm.pdf", keywords: "cpr algorithm chart approach safely check response shout help call 999 chest compressions rescue breaths" },
+    { title: "Automated External Defibrillation", section: "Provider Course resources", url: "resources/provider/automated-external-defibrillation.pdf", keywords: "aed defib defibrillator pads shock" },
+    { title: "AED Settings", section: "Provider Course resources", url: "resources/provider/aed-settings.pdf", keywords: "aed defibrillator settings" },
+    { title: "QCPR — How-to Guide", section: "Provider Course resources", url: "resources/provider/qcpr-how-to-guide.pdf", keywords: "qcpr app how to guide" },
+    { title: "BLS Equipment Floorplan", section: "Provider Course resources", url: "resources/provider/bls-equipment-floorplan.png", keywords: "map room layout floorplan" },
+    // Admin Guide sections
+    { title: "Feedback forms (student form + STAF)", section: "Admin Guide", url: "resources/instructor-guide/3-admin-guide.html#feedback-forms", keywords: "student feedback form staf aptitude form week 2 qr code" },
+    { title: "Worklink / HR / pay", section: "Admin Guide", url: "resources/instructor-guide/3-admin-guide.html#worklink", keywords: "pay payment right to work tax hmrc timecard time card worklink hr not paid" },
+    { title: "Equipment", section: "Admin Guide", url: "resources/instructor-guide/3-admin-guide.html#equipment", keywords: "manikin cupboard ef10e fault broken malfunction" },
+    { title: "Borrowing equipment for outreach", section: "Admin Guide", url: "resources/instructor-guide/3-admin-guide.html#equipment-loan", keywords: "loan borrow kit outreach" },
+    { title: "Registering", section: "Admin Guide", url: "resources/instructor-guide/3-admin-guide.html#registering", keywords: "sign in register forgot signed" },
+    { title: "Student absence notifications", section: "Admin Guide", url: "resources/instructor-guide/3-admin-guide.html#student-absence", keywords: "student telling me they'll miss a session absent notify" },
+    { title: "Absences (yours)", section: "Admin Guide", url: "resources/instructor-guide/3-admin-guide.html#absences", keywords: "i'm absent my absence form ill unwell can't attend" },
+    // Support & Development sections
+    { title: "References", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#references", keywords: "job reference employer" },
+    { title: "Mentors", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#mentors", keywords: "" },
+    { title: "Managing concerns", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#managing-concerns", keywords: "concern about a student instructor professionalism wellbeing behaviour escalate" },
+    { title: "Students struggling to meet the required standard", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#struggling-students", keywords: "struggling student skills 1:1 support" },
+    { title: "RAPs (Reasonable Adjustment Plans)", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#raps", keywords: "rap reasonable adjustment injury compressions" },
+    { title: "Student late to a session", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#student-late", keywords: "late partial absence transport" },
+    { title: "Rescue breaths — student refusal", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#rescue-breaths", keywords: "doesn't want to do rescue breaths refuse infection" },
+    { title: "Development Fund", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#development-fund", keywords: "cpd funding apply development fund" },
+    { title: "Refreshments", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#refreshments", keywords: "snacks drinks biscuits break" },
+    { title: "Applying for future roles", section: "Support & Development", url: "resources/instructor-guide/4-support-and-development.html#future-roles", keywords: "senior instructor assessor apply next year continue involvement" },
+    // FAQs
+    { title: "How is information communicated with instructors?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#how-communicated", keywords: "email whatsapp updates" },
+    { title: "What is the fail policy?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#fail-policy", keywords: "student fails exam retake resit" },
+    { title: "Should I use the manikin clicker?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#manikin-clicker", keywords: "clicker depth" },
+    { title: "How do I escalate concerns about a student?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#escalate-concerns", keywords: "" },
+    { title: "Do we have any socials this year?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#socials", keywords: "social events" },
+    { title: "Is there a Canvas page for BLS?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#canvas-page", keywords: "canvas demo videos revise" },
+    { title: "I'm having trouble setting up my Worklink - what do I do?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#worklink-trouble", keywords: "" },
+    { title: "I'm unable to attend a teaching session due to absence - what do I do?", section: "FAQ", url: "resources/instructor-guide/5-faqs.html#absence", keywords: "" },
+  ];
+
+  const STOPWORDS = new Set(["a","an","the","to","in","is","do","i","im","my","me","be","it","of","on","at","for","how","what","when","where","who","does","did","can","should","need","want","if","and","or","with","about","up"]);
+
+  function tokenize(str) {
+    return str.toLowerCase().split(/[^a-z0-9']+/).filter(w => w.length > 2 && !STOPWORDS.has(w));
+  }
+
+  function runResourceSearch(query) {
+    const resultsEl = document.getElementById("searchResults");
+    const browseEl = document.getElementById("browseSections");
+    const words = tokenize(query);
+
+    if (!query.trim()) {
+      resultsEl.innerHTML = "";
+      browseEl.classList.remove("hidden");
+      return;
+    }
+    browseEl.classList.add("hidden");
+
+    if (words.length === 0) {
+      resultsEl.innerHTML = '<div class="search-empty">Keep typing — that\'s too short or common a word to search on.</div>';
+      return;
+    }
+
+    const scored = SEARCH_INDEX.map(entry => {
+      const titleWords = tokenize(entry.title);
+      const keywordWords = tokenize(entry.section + " " + entry.keywords);
+      let score = 0;
+      for (const w of words) {
+        if (titleWords.some(tw => tw.includes(w) || w.includes(tw))) score += 3;
+        else if (keywordWords.some(kw => kw.includes(w) || w.includes(kw))) score += 1;
+      }
+      return { entry, score };
+    }).filter(r => r.score > 0);
+
+    scored.sort((a, b) => b.score - a.score || a.entry.title.length - b.entry.title.length);
+
+    if (scored.length === 0) {
+      resultsEl.innerHTML = '<div class="search-empty">No matches — try a different word, or browse the sections below.</div>';
+      browseEl.classList.remove("hidden");
+      return;
+    }
+
+    resultsEl.innerHTML = scored.slice(0, 6).map(r => {
+      const external = /^https?:\/\//.test(r.entry.url);
+      const attrs = external ? ' target="_blank" rel="noopener"' : "";
+      return '<a class="search-result" href="' + r.entry.url + '"' + attrs + '>'
+        + '<div class="search-result-title">' + r.entry.title + '</div>'
+        + '<div class="search-result-section">' + r.entry.section + '</div>'
+        + '</a>';
+    }).join("");
+  }
 </script>
 </body>
 </html>
