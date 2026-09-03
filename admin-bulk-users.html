@@ -420,6 +420,23 @@ async function startCreation() {
   document.getElementById("logList").innerHTML = "";
   document.getElementById("summaryBar").innerHTML = "";
 
+  // Check for an existing People record by email BEFORE creating anything.
+  // Without this, someone who already has a people/ doc (e.g. synced in
+  // from iw_registrations) gets a second, duplicate doc the moment a login
+  // is created for them here — see Duplicate People Cleanup for the fix to
+  // records that already exist from before this check was added.
+  let existingPeopleByEmail = new Map();
+  try {
+    const peopleSnap = await db.collection(COLLECTIONS.people).get();
+    peopleSnap.forEach(doc => {
+      const e = (doc.data().email || "").toLowerCase();
+      if (e) existingPeopleByEmail.set(e, { id: doc.id, ...doc.data() });
+    });
+  } catch (e) {
+    // Non-fatal — fall back to the old behaviour rather than blocking
+    // account creation over a failed read.
+  }
+
   let ok = 0, err = 0, skip = 0;
 
   for (let i = 0; i < entries.length; i++) {
@@ -452,18 +469,24 @@ async function startCreation() {
       } else {
         // Also write to Firestore people collection
         const uid = data.localId;
+        const existing = existingPeopleByEmail.get(email.toLowerCase());
         if (uid) {
           await db.collection(COLLECTIONS.people).doc(uid).set({
-            name:   name || email.split("@")[0],
+            name:   name || (existing && existing.name) || email.split("@")[0],
             email,
-            role,
+            role:   (existing && existing.role) || role,
             stream: role === "faculty" ? "faculty" : role,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
         }
         try {
           await sendPasswordResetEmail(email);
-          icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
+          if (existing) {
+            icon = "⚠️"; statusClass = "skip";
+            statusText = `Created — reset email sent, but a People record already existed (${existing.id}). Run Duplicate People Cleanup to remove the old one.`;
+          } else {
+            icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
+          }
         } catch (resetErr) {
           icon = "⚠️"; statusClass = "skip";
           statusText = "Created, but reset email failed to send: " + resetErr.message;
