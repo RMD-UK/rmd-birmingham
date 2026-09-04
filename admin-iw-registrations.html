@@ -1143,42 +1143,40 @@ async function loadSyncPreview() {
     return;
   }
 
-  let existingEmails = new Set();
+  // 2026-09-04: moved server-side (syncIwRegistrationsToPeople) so it can
+  // resolve each person's real Auth UID via admin.auth().getUserByEmail()
+  // and key their people doc correctly (people/{uid}) — the client SDK has
+  // no equivalent, which is how this button used to write invisible
+  // auto-ID orphan docs. See rmd_website_iw_account_role_sync_bug memory.
+  let data;
   try {
-    const snap = await db.collection(COLLECTIONS.people).get();
-    snap.forEach(doc => {
-      const e = (doc.data().email || "").toLowerCase();
-      if (e) existingEmails.add(e);
-    });
+    const call = fns.httpsCallable("syncIwRegistrationsToPeople");
+    const res  = await call({ dryRun: true });
+    data = res.data || {};
   } catch (err) {
     preview.innerHTML = `<div class="empty-state">Could not check existing People records: ${err.message}</div>`;
     return;
   }
 
-  syncCandidates = confirmed.map(r => {
-    const mappedRole = IW_TO_PEOPLE_ROLE[r.role];
-    let state;
-    if (!mappedRole) state = "unresolved";
-    else if (r.email && existingEmails.has(r.email.toLowerCase())) state = "already";
-    else state = "new";
-    return { ...r, mappedRole, state };
-  });
+  syncCandidates = data; // stash the dry-run result for syncToPeople() to act on
 
-  const toSync     = syncCandidates.filter(c => c.state === "new");
-  const already    = syncCandidates.filter(c => c.state === "already");
-  const unresolved = syncCandidates.filter(c => c.state === "unresolved");
+  const toSync     = data.synced || [];
+  const already    = data.alreadySynced || [];
+  const unresolved = data.unresolvedRole || [];
+  const noAccount  = data.noAuthAccount || [];
 
   preview.innerHTML = `
     <div style="font-size:13px;color:var(--rmd-muted);margin-bottom:8px;">
       <strong style="color:#1a6e31;">${toSync.length} new</strong> to sync,
       <strong style="color:#637282;">${already.length} already synced</strong>${unresolved.length ? `,
-      <strong style="color:#b7410e;">${unresolved.length} skipped — role not recognised</strong>` : ""}
+      <strong style="color:#b7410e;">${unresolved.length} skipped — role not recognised</strong>` : ""}${noAccount.length ? `,
+      <strong style="color:#b7410e;">${noAccount.length} skipped — no login yet</strong>` : ""}
     </div>
     <div class="import-preview">
       ${toSync.map(p => `<div class="preview-row">
         <span class="preview-name">${p.name||"–"}</span>
         <span class="preview-email">${p.email||"–"}</span>
-        <span class="badge-candidate">${p.mappedRole}</span>
+        <span class="badge-candidate">${p.role}</span>
       </div>`).join("")}
       ${already.map(p => `<div class="preview-row" style="opacity:0.45;">
         <span class="preview-name">${p.name||"–"}</span>
@@ -1190,36 +1188,28 @@ async function loadSyncPreview() {
         <span class="preview-email">${p.email||"–"}</span>
         <span style="font-size:11px;font-weight:700;color:#b7410e;">Role "${p.role||"–"}" not recognised — add manually</span>
       </div>`).join("")}
+      ${noAccount.map(p => `<div class="preview-row" style="opacity:0.75;">
+        <span class="preview-name">${p.name||"–"}</span>
+        <span class="preview-email">${p.email||"–"}</span>
+        <span style="font-size:11px;font-weight:700;color:#b7410e;">No Firebase login yet — create their account first</span>
+      </div>`).join("")}
     </div>`;
   actions.style.display = toSync.length ? "block" : "none";
   document.getElementById("syncFeedback").textContent = "";
 }
 
 async function syncToPeople() {
-  const toAdd = syncCandidates.filter(c => c.state === "new");
+  const toAdd = (syncCandidates && syncCandidates.synced) || [];
   const fb    = document.getElementById("syncFeedback");
   if (!toAdd.length) { fb.textContent = "Nothing new to sync."; return; }
   fb.textContent = `Syncing ${toAdd.length} people…`;
 
   try {
-    const batch = db.batch();
-    const ts    = firebase.firestore.FieldValue.serverTimestamp();
-    toAdd.forEach(p => {
-      const ref = db.collection(COLLECTIONS.people).doc();
-      batch.set(ref, {
-        name: p.name,
-        email: p.email,
-        role: p.mappedRole,
-        roleLabel: p.role, // original IW label (e.g. "RMD Student Faculty") — role is the
-                            // canonical access-control value, roleLabel is what's shown to
-                            // people so distinct labels that map to the same role don't
-                            // become indistinguishable once synced.
-        syncedFrom: "iw_registrations",
-        syncedAt: ts
-      });
-    });
-    await batch.commit();
-    fb.textContent = `✓ ${toAdd.length} people synced to attendance list`;
+    const call = fns.httpsCallable("syncIwRegistrationsToPeople");
+    const res  = await call({ dryRun: false });
+    const data = res.data || {};
+    const synced = (data.synced || []).length;
+    fb.textContent = `✓ ${synced} people synced to attendance list`;
     setTimeout(() => {
       fb.textContent = "";
       document.getElementById("syncPanel").style.display = "none";

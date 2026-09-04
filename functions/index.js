@@ -687,10 +687,38 @@ exports.syncIwRegistrationToPeople = onDocumentWritten(
       return;
     }
 
-    // Same full-collection scan the manual button does — fine at current
-    // scale (people collection is low hundreds of docs). If that grows
-    // enough to matter, switch to a stored lowercase-email field and query
-    // on it instead of scanning + filtering client-side.
+    // Resolve the person's real Auth UID so the doc is keyed the way
+    // resolveRole() looks it up (people/{uid}) — an auto-ID doc is
+    // invisible to a live sign-in's role resolution even though the data
+    // looks correct on inspection. (Root cause fixed 2026-09-04 — see
+    // rmd_website_iw_account_role_sync_bug project memory note.)
+    let uid = null;
+    try {
+      uid = (await admin.auth().getUserByEmail(email)).uid;
+    } catch (err) {
+      if (err.code !== "auth/user-not-found") throw err;
+    }
+
+    if (uid) {
+      const existingDoc = await db.collection("people").doc(uid).get();
+      if (existingDoc.exists) {
+        if (after.syncFlag) await regRef.update({ syncFlag: admin.firestore.FieldValue.delete() });
+        return; // already has a correctly UID-keyed doc — never overwrite
+      }
+      await db.collection("people").doc(uid).set({
+        name: after.name || "",
+        email,
+        role: mappedRole,
+        syncedFrom: "iw_registrations",
+        syncedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      if (after.syncFlag) await regRef.update({ syncFlag: admin.firestore.FieldValue.delete() });
+      return;
+    }
+
+    // No Auth account yet — nothing to key by. Same fallback as before
+    // (an orphan auto-ID doc); whoever creates their account later will
+    // need to re-run this sync (or the manual button) to pick up the fix.
     const peopleSnap = await db.collection("people").get();
     const exists = peopleSnap.docs.some(d => (d.data().email || "").toLowerCase() === email);
 
@@ -1018,4 +1046,78 @@ Jon`
   });
 
   return { sent, failed: failedEmails.length, failedEmails, skippedNoEmail, total: all.length };
+});
+
+
+/**
+ * syncIwRegistrationsToPeople — director-only.
+ *
+ * Backs the "Sync to People" button on admin-iw-registrations.html
+ * (backup-only manual re-run of what syncIwRegistrationToPeople normally
+ * does automatically on confirm). Moved server-side specifically so it can
+ * resolve each person's real Auth UID via admin.auth().getUserByEmail() —
+ * the client SDK has no equivalent, so the old client-side version could
+ * only ever db.collection("people").add() an auto-ID doc, which is
+ * invisible to resolveRole()'s people/{uid} lookup. Same root-cause fix as
+ * syncIwRegistrationToPeople above (2026-09-04) — keep both in sync if this
+ * logic changes again.
+ *
+ * Call with { dryRun: true } to preview without writing (mirrors the
+ * pattern used by sendFacultyFormInvites/sendAccountCreationReminders).
+ */
+exports.syncIwRegistrationsToPeople = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const dryRun = !!request.data?.dryRun;
+
+  const regSnap = await db.collection(IW_COLL).where("status", "==", "confirmed").get();
+  const confirmed = regSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const results = { synced: [], alreadySynced: [], unresolvedRole: [], noAuthAccount: [] };
+
+  for (const person of confirmed) {
+    const email = (person.email || "").toLowerCase().trim();
+    const mappedRole = IW_TO_PEOPLE_ROLE[person.role];
+
+    if (!email || !mappedRole) {
+      results.unresolvedRole.push({ name: person.name, email: person.email, role: person.role });
+      continue;
+    }
+
+    let uid = null;
+    try {
+      uid = (await admin.auth().getUserByEmail(email)).uid;
+    } catch (err) {
+      if (err.code !== "auth/user-not-found") throw err;
+    }
+
+    if (!uid) {
+      results.noAuthAccount.push({ name: person.name, email });
+      continue;
+    }
+
+    const existingDoc = await db.collection("people").doc(uid).get();
+    if (existingDoc.exists) {
+      results.alreadySynced.push({ name: person.name, email });
+      continue;
+    }
+
+    if (!dryRun) {
+      await db.collection("people").doc(uid).set({
+        name: person.name || "",
+        email,
+        role: mappedRole,
+        roleLabel: person.role,
+        syncedFrom: "iw_registrations",
+        syncedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+    results.synced.push({ name: person.name, email, role: mappedRole });
+  }
+
+  return { dryRun, ...results };
 });
