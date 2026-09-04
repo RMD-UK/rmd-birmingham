@@ -181,6 +181,18 @@
       position: sticky; top: 0;
     }
     .preview-table td { padding: 6px 10px; border-bottom: 1px solid #f0f3f6; }
+
+    .section-header {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--rmd-navy);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 24px 0 10px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid var(--rmd-blue);
+    }
+    .section-header:first-of-type { margin-top: 0; }
   </style>
 </head>
 <body>
@@ -190,11 +202,12 @@
     <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
     <div style="flex:1;">
       <div class="top-bar-title">Bulk User Setup</div>
-      <div class="top-bar-sub">RMD Instructor Weekend 2026 · Director only</div>
+      <div class="top-bar-sub">Instructor Weekend + whole-year logins · Director only</div>
     </div>
     <a href="admin-account-reminders.html" style="background:rgba(255,255,255,0.15);color:white;padding:6px 12px;border-radius:6px;font-size:13px;text-decoration:none;white-space:nowrap;">✉️ Account Reminders</a>
   </div>
 
+  <div class="section-header">Instructor Weekend 2026</div>
   <!-- Input card -->
   <div class="card">
     <div class="card-header">Add Faculty Accounts</div>
@@ -243,51 +256,8 @@ j.smith@example.com
     <div class="card-header">Results</div>
     <div class="card-body">
       <div class="summary-bar" id="summaryBar"></div>
+      <div id="dupeWarning"></div>
       <div id="logList"></div>
-    </div>
-  </div>
-
-  <!-- MOU Roster provisioning card -->
-  <div class="card">
-    <div class="card-header">Set Up Logins for All Active RMD Birmingham Members</div>
-    <div class="card-body">
-
-      <div class="director-note">
-        ⚠️ Creates Firebase login accounts for everyone currently in the <code>mou_roster</code> collection (imported via the MOU dashboard's "Manage roster" tab), so they can sign in to <a href="mou-form.html">mou-form.html</a> and submit the MOU. <strong>Existing accounts are always left untouched</strong> — this only adds logins for people who don't have one yet, never resets or changes anyone already set up. This does <strong>not</strong> write to the <code>people</code> collection or touch any IW-specific data — it only creates the login.
-      </div>
-
-      <div class="hint" style="margin-bottom:12px;">
-        Same as above: each account gets a random one-time password nobody sees, and an immediate "set your password" email.
-      </div>
-
-      <button class="btn-secondary" id="loadRosterBtn" onclick="loadMouRosterPreview()">Full list of this year's RMD members</button>
-
-      <div id="mouPreviewSection" style="display:none;margin-top:14px;">
-        <div class="hint" id="mouPreviewSummary"></div>
-        <div class="preview-wrap">
-          <table class="preview-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
-            <tbody id="mouPreviewBody"></tbody>
-          </table>
-        </div>
-
-        <div class="progress-bar-wrap" id="mouProgressWrap" style="display:none;">
-          <div class="progress-bar" id="mouProgressBar"></div>
-        </div>
-
-        <div class="hint" style="margin-top:10px;margin-bottom:8px;">Safe to run any time — only people not yet in Firebase get a new login. Everyone who already has an account is skipped and left exactly as they are.</div>
-        <button class="btn-primary" id="mouCreateBtn" onclick="startMouRosterCreation()">Create accounts</button>
-      </div>
-
-    </div>
-  </div>
-
-  <!-- MOU results card -->
-  <div class="card" id="mouResultsCard" style="display:none;">
-    <div class="card-header">Login Setup Results</div>
-    <div class="card-body">
-      <div class="summary-bar" id="mouSummaryBar"></div>
-      <div id="mouLogList"></div>
     </div>
   </div>
 
@@ -330,6 +300,51 @@ r.everitt@bham.ac.uk
     <div class="card-body">
       <div class="summary-bar" id="resetSummaryBar"></div>
       <div id="resetLogList"></div>
+    </div>
+  </div>
+
+  <div class="section-header">Whole Year &mdash; RMD Birmingham</div>
+  <!-- MOU Roster provisioning card -->
+  <div class="card">
+    <div class="card-header">Set Up Logins for All Active RMD Birmingham Members</div>
+    <div class="card-body">
+
+      <div class="director-note">
+        ⚠️ Creates Firebase login accounts for everyone currently in the <code>mou_roster</code> collection (imported via the MOU dashboard's "Manage roster" tab), so they can sign in to <a href="mou-form.html">mou-form.html</a> and submit the MOU. <strong>Existing accounts are always left untouched</strong> — this only adds logins for people who don't have one yet, never resets or changes anyone already set up. This does <strong>not</strong> write to the <code>people</code> collection or touch any IW-specific data — it only creates the login.
+      </div>
+
+      <div class="hint" style="margin-bottom:12px;">
+        Same as above: each account gets a random one-time password nobody sees, and an immediate "set your password" email.
+      </div>
+
+      <button class="btn-secondary" id="loadRosterBtn" onclick="loadMouRosterPreview()">Full list of this year's RMD members</button>
+
+      <div id="mouPreviewSection" style="display:none;margin-top:14px;">
+        <div class="hint" id="mouPreviewSummary"></div>
+        <div class="preview-wrap">
+          <table class="preview-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th></tr></thead>
+            <tbody id="mouPreviewBody"></tbody>
+          </table>
+        </div>
+
+        <div class="progress-bar-wrap" id="mouProgressWrap" style="display:none;">
+          <div class="progress-bar" id="mouProgressBar"></div>
+        </div>
+
+        <div class="hint" style="margin-top:10px;margin-bottom:8px;">Safe to run any time — only people not yet in Firebase get a new login. Everyone who already has an account is skipped and left exactly as they are.</div>
+        <button class="btn-primary" id="mouCreateBtn" onclick="startMouRosterCreation()">Create accounts</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MOU results card -->
+  <div class="card" id="mouResultsCard" style="display:none;">
+    <div class="card-header">Login Setup Results</div>
+    <div class="card-body">
+      <div class="summary-bar" id="mouSummaryBar"></div>
+      <div id="mouLogList"></div>
     </div>
   </div>
 
@@ -420,6 +435,23 @@ async function startCreation() {
   document.getElementById("logList").innerHTML = "";
   document.getElementById("summaryBar").innerHTML = "";
 
+  // Check for an existing People record by email BEFORE creating anything.
+  // Without this, someone who already has a people/ doc (e.g. synced in
+  // from iw_registrations) gets a second, duplicate doc the moment a login
+  // is created for them here — see Duplicate People Cleanup for the fix to
+  // records that already exist from before this check was added.
+  let existingPeopleByEmail = new Map();
+  try {
+    const peopleSnap = await db.collection(COLLECTIONS.people).get();
+    peopleSnap.forEach(doc => {
+      const e = (doc.data().email || "").toLowerCase();
+      if (e) existingPeopleByEmail.set(e, { id: doc.id, ...doc.data() });
+    });
+  } catch (e) {
+    // Non-fatal — fall back to the old behaviour rather than blocking
+    // account creation over a failed read.
+  }
+
   let ok = 0, err = 0, skip = 0;
 
   for (let i = 0; i < entries.length; i++) {
@@ -452,18 +484,24 @@ async function startCreation() {
       } else {
         // Also write to Firestore people collection
         const uid = data.localId;
+        const existing = existingPeopleByEmail.get(email.toLowerCase());
         if (uid) {
           await db.collection(COLLECTIONS.people).doc(uid).set({
-            name:   name || email.split("@")[0],
+            name:   name || (existing && existing.name) || email.split("@")[0],
             email,
-            role,
+            role:   (existing && existing.role) || role,
             stream: role === "faculty" ? "faculty" : role,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
           }, { merge: true });
         }
         try {
           await sendPasswordResetEmail(email);
-          icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
+          if (existing) {
+            icon = "⚠️"; statusClass = "skip";
+            statusText = `Created — reset email sent, but a People record already existed (${existing.id}). Run Duplicate People Cleanup to remove the old one.`;
+          } else {
+            icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
+          }
         } catch (resetErr) {
           icon = "⚠️"; statusClass = "skip";
           statusText = "Created, but reset email failed to send: " + resetErr.message;
@@ -497,6 +535,52 @@ async function startCreation() {
 
   btn.disabled    = false;
   btn.textContent = "Create accounts";
+
+  checkForDuplicatesAfterImport();
+}
+
+// Runs the same email-or-name grouping Duplicate People Cleanup uses, but
+// read-only — it only ever reports a count and links to that page, it
+// never deletes anything itself. Catches cases the email-exists check
+// above can't, e.g. someone already in `people` under a different email
+// (a personal address vs. a university one) whose name matches instead.
+async function checkForDuplicatesAfterImport() {
+  const box = document.getElementById("dupeWarning");
+  box.innerHTML = "";
+  try {
+    const snap = await db.collection(COLLECTIONS.people).get();
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const normName  = n => (n||"").trim().toLowerCase().replace(/\s+/g," ");
+    const normEmail = e => (e||"").trim().toLowerCase();
+
+    const parent = {};
+    docs.forEach(p => parent[p.id] = p.id);
+    const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    const union = (a,b) => { const ra=find(a), rb=find(b); if (ra!==rb) parent[ra]=rb; };
+
+    const byEmail = {}, byName = {};
+    docs.forEach(p => {
+      const e = normEmail(p.email), n = normName(p.name);
+      if (e) (byEmail[e]=byEmail[e]||[]).push(p.id);
+      if (n) (byName[n]=byName[n]||[]).push(p.id);
+    });
+    [byEmail, byName].forEach(map => Object.values(map).forEach(ids => { for (let i=1;i<ids.length;i++) union(ids[0], ids[i]); }));
+
+    const byRoot = {};
+    docs.forEach(p => { const r = find(p.id); (byRoot[r]=byRoot[r]||[]).push(p); });
+    const groups = Object.values(byRoot).filter(g => g.length > 1);
+
+    if (groups.length) {
+      const removable = groups.reduce((n,g) => n + g.length - 1, 0);
+      box.innerHTML = `<div class="director-note" style="margin-top:12px;">
+        ⚠️ ${groups.length} duplicate people record(s) found (${removable} spare record(s) across the whole collection, not just this run) —
+        <a href="admin-dedupe-people.html">run Duplicate People Cleanup</a> to review and remove them.
+      </div>`;
+    }
+  } catch (e) {
+    // Non-fatal — don't block the results view over a failed check.
+  }
 }
 
 // ── MOU roster provisioning ────────────────────────────────────────────────

@@ -259,7 +259,6 @@
   <button class="btn btn-sm" onclick="togglePanel('directorMessagePanel')">📣 Message</button>
   <button class="btn btn-sm" onclick="openShiftPanel()">⏩ Shift Times</button>
   <button class="btn btn-sm" onclick="window.location.href='attendance.html'">✅ Registration</button>
-  <button class="btn btn-sm" onclick="window.location.href='room-screen.html?room=director'">🖥 Rooms</button>
   <button class="btn btn-sm" onclick="window.location.href='assessment-gateway.html'">🚦 Gateway</button>
   <button class="btn btn-sm" onclick="window.location.href='assessment-development.html'">📝 Dev</button>
   <button class="btn btn-sm" onclick="window.location.href='assessment-dashboard.html'">📊 Dashboard</button>
@@ -1000,9 +999,14 @@
       // Hide loading overlay
       document.getElementById("authLoading").style.display = "none";
 
-      // Always show role selector; use Firestore role as default if found, else director
-      const devRole = role || "director";
-      document.getElementById("roleSelectorBar").style.display = "flex";
+      // Role selector is a director-only override tool now that real accounts
+      // exist. Showing it to everyone let any signed-in user self-elevate to
+      // Course Director view just by picking it from the dropdown. Only show
+      // it once Firestore confirms this user really is the director; anyone
+      // else gets their real role (or the least-privileged default if no
+      // people doc has synced for them yet, rather than defaulting to director).
+      const devRole = role || "instructor";
+      document.getElementById("roleSelectorBar").style.display = (devRole === "director") ? "flex" : "none";
       document.getElementById("roleSelect").value = devRole;
       setRole(devRole, roleLabel);
       if (user.email) loadUserRoom(user.email, devRole);

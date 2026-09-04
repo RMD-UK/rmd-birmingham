@@ -222,7 +222,16 @@
 const params  = new URLSearchParams(window.location.search);
 const myRole  = (params.get("role")  || "faculty").toLowerCase();
 const myRoom  = (params.get("room")  || "").toUpperCase();
-const isDirector = myRole === "director";
+// isDirector used to be trusted straight from the URL's ?role= param, which
+// only gated the extra director-only UI (room switcher/overview) but meant
+// anyone could open this page at all regardless of their real role — the
+// actual data writes were always protected server-side by firestore.rules'
+// canAssess() (faculty/director only), so this was a UI/UX gap, not a real
+// data hole. Fixed 2026-09-03: isDirector is now set from the signed-in
+// user's REAL resolved role, and a signed-in user whose real role is
+// neither faculty nor director is blocked from booting at all, instead of
+// being shown a marking screen whose writes would just silently fail.
+let isDirector = false;
 
 // DIRECTOR_EMAILS is declared once in js/firebase-config.js, loaded above.
 // Re-declaring it here as a second top-level `const` throws a SyntaxError
@@ -267,14 +276,11 @@ if (!firebaseReady) {
     authResolved = true;
     clearTimeout(authTimeout);
     if (user) {
-      // Director override: verify email
-      if (isDirector && !DIRECTOR_EMAILS.includes(user.email.toLowerCase())) {
-        checkFirestoreDirector(user.email).then(ok => {
-          if (ok) boot(); else showError("Director access required.");
-        });
-      } else {
-        boot();
-      }
+      resolveRole(user.uid, user.email || "").then(role => {
+        if (role === ROLES.DIRECTOR) { isDirector = true; boot(); return; }
+        if (role === ROLES.FACULTY)  { isDirector = false; boot(); return; }
+        showError("Faculty or director access required.");
+      });
     } else {
       // Not signed in — show demo data with sign-in prompt
       document.getElementById("deadlineBar").insertAdjacentHTML("afterend",

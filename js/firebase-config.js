@@ -124,8 +124,13 @@ async function resolveRole(uid, email) {
   const el = (email || "").toLowerCase();
   try {
     const cfg = await db.collection("config").doc("platform").get();
-    const extra = cfg.exists ? (cfg.data().directors || []) : [];
-    if (extra.map(x => x.toLowerCase()).includes(el)) return ROLES.DIRECTOR;
+    const data = cfg.exists ? cfg.data() : {};
+    const dirs   = data.directors   || [];
+    const supers = data.superUsers  || [];
+    // Super-user implies director everywhere resolveRole() is used — mirrors
+    // isDirector() in firestore.rules, which is the actual enforcement.
+    if (dirs.map(x => x.toLowerCase()).includes(el) ||
+        supers.map(x => x.toLowerCase()).includes(el)) return ROLES.DIRECTOR;
   } catch(e) {}
   try {
     const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
@@ -187,6 +192,41 @@ function requireDirector(redirectTo) {
       if (role !== ROLES.DIRECTOR) {
         var msg = document.getElementById("authMsg");
         if (msg) msg.textContent = "Course Directors only.";
+        setTimeout(function() { window.location.href = redirectTo; }, 1500);
+        return;
+      }
+      resolve(user);
+    });
+  });
+}
+
+// isSuperUser(email) → true/false
+// Mirrors isSuperUser() in firestore.rules: checks config/platform.superUsers
+// only (never people/{uid}.role — super-user is deliberately not grantable
+// via the weekend role field). db must be initialised before calling.
+async function isSuperUser(email) {
+  const el = (email || "").toLowerCase();
+  if (!el) return false;
+  try {
+    const cfg = await db.collection("config").doc("platform").get();
+    const supers = cfg.exists ? (cfg.data().superUsers || []) : [];
+    return supers.map(x => x.toLowerCase()).includes(el);
+  } catch (e) { return false; }
+}
+
+// requireSuperUser() — same pattern as requireDirector(), for pages/actions
+// restricted to the small super-user list (e.g. managing who is a director
+// or super-user). Everything else on the platform should keep using
+// requireDirector() — this is deliberately for the short list only.
+function requireSuperUser(redirectTo) {
+  redirectTo = redirectTo || "timetable.html";
+  return new Promise(function(resolve) {
+    auth.onAuthStateChanged(async function(user) {
+      if (!user) { window.location.href = "signin.html"; return; }
+      const ok = await isSuperUser(user.email || "");
+      if (!ok) {
+        var msg = document.getElementById("authMsg");
+        if (msg) msg.textContent = "Super-users only.";
         setTimeout(function() { window.location.href = redirectTo; }, 1500);
         return;
       }
