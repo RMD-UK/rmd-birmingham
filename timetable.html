@@ -984,15 +984,21 @@
       listenMessages();
       listenProgramme();
 
-      // Load role from people collection
+      // Load role the same way every other director-gated page does —
+      // resolveRole() (js/firebase-config.js) checks config/platform.directors
+      // and superUsers FIRST, then falls back to people/{uid}.role. This page
+      // used to query people/{uid}.role directly, which missed directors who
+      // are only listed in config/platform.directors (no matching people doc,
+      // or a people doc with a stale/missing role) — they'd silently fall
+      // back to "instructor" and never see the "View as" role selector, even
+      // though every other page correctly resolved them as director.
       let role = null;
       let roleLabel = null;
       try {
+        role = await resolveRole(user.uid, user.email || "");
         const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
         if (snap.exists) {
-          const data = snap.data();
-          role = data.role || null;
-          roleLabel = data.roleLabel || null;
+          roleLabel = snap.data().roleLabel || null;
         }
       } catch (e) { console.warn("Could not load role:", e.message); }
 
