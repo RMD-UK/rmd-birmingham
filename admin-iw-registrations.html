@@ -960,8 +960,9 @@ async function loadMissingPreview() {
       const isAssessor   = roleNorm === "assessor" || roleNorm === "senior instructor";
       if (!isInstructor && !isAssessor) return;
       const email = (d.email || doc.id).toLowerCase();
-      if (existing.has(email)) return;
-      missing.push({ name: d.name || doc.id, email, role: isInstructor ? "Instructor Candidate" : "Assessor / Senior Instructor" });
+      const aliases = (d.aliasEmails || []).map(e => e.toLowerCase());
+      if (existing.has(email) || aliases.some(a => existing.has(a))) return;
+      missing.push({ id: doc.id, name: d.name || doc.id, email, role: isInstructor ? "Instructor Candidate" : "Assessor / Senior Instructor" });
     });
 
     if (!missing.length) {
@@ -984,10 +985,31 @@ async function loadMissingPreview() {
           <span class="preview-name">${p.name}</span>
           <span class="preview-email">${p.email}</span>
           ${roleBadge(p.role)}
+          <button class="btn-action secondary" style="padding:4px 10px;font-size:11px;" onclick="addMouRosterAlias('${p.id}','${(p.name||"").replace(/'/g,"\\'")}')">+ Add known email</button>
         </div>`).join("")}
       </div>`;
   } catch(err) {
     preview.innerHTML = `<div class="empty-state">Failed to check roster: ${err.message}</div>`;
+  }
+}
+
+// Same pattern as addRosterAlias() on admin-faculty-responses.html, but writes onto
+// the mou_roster doc instead — that's a separate collection, so an alias added on
+// one roster page doesn't automatically cover the other.
+async function addMouRosterAlias(docId, name) {
+  const alias = prompt(`Add a known alternate email for ${name} (the address they actually used, if different from their MOU roster email):`);
+  if (alias === null) return;
+  const trimmed = alias.trim().toLowerCase();
+  if (!trimmed) return;
+  try {
+    const docSnap = await db.collection(COLLECTIONS.mouRoster).doc(docId).get();
+    const existing = (docSnap.exists && Array.isArray(docSnap.data().aliasEmails)) ? docSnap.data().aliasEmails : [];
+    if (existing.map(e => e.toLowerCase()).includes(trimmed)) { alert("Already on file."); return; }
+    const updated = [...existing, trimmed];
+    await db.collection(COLLECTIONS.mouRoster).doc(docId).update({ aliasEmails: updated });
+    loadMissingPreview();
+  } catch (err) {
+    alert("Failed to add alias: " + err.message);
   }
 }
 
