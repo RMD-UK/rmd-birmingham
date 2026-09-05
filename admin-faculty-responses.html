@@ -311,7 +311,7 @@ async function loadDirectors() {
 async function loadFacultyRoster() {
   try {
     const snap = await db.collection(COLLECTIONS.facultyRoster).get();
-    facultyRosterMembers = snap.docs.map(d => d.data())
+    facultyRosterMembers = snap.docs.map(d => ({ id: d.id, ...d.data() }))
       .filter(m => m.group === "student" || m.group === "senior");
   } catch (e) {
     facultyRosterMembers = [];
@@ -323,7 +323,35 @@ async function loadFacultyRoster() {
 // can't be checked at all — see getNoEmailRosterCount().
 function getNoReplyList() {
   const responded = new Set(allResponses.map(r => (r.email || "").toLowerCase()).filter(Boolean));
-  return facultyRosterMembers.filter(m => m.email && !responded.has(m.email.toLowerCase()));
+  return facultyRosterMembers.filter(m => {
+    if (!m.email) return false;
+    const emails = [m.email, ...(m.aliasEmails || [])].map(e => e.toLowerCase());
+    return !emails.some(e => responded.has(e));
+  });
+}
+
+// Records a known alternate email for a roster member (e.g. a personal address
+// they used on the pre-course form instead of their roster email), so getNoReplyList()
+// recognises them under either address from now on. Never overwrites the primary
+// email — just adds to it. Written onto the faculty_roster doc.
+async function addRosterAlias(docId, name) {
+  const alias = prompt(`Add a known alternate email for ${name} (the address they actually used, if different from their roster email):`);
+  if (alias === null) return;
+  const trimmed = alias.trim().toLowerCase();
+  if (!trimmed) return;
+  const m = facultyRosterMembers.find(x => x.id === docId);
+  if (!m) return;
+  const existing = Array.isArray(m.aliasEmails) ? m.aliasEmails : [];
+  if (existing.map(e => e.toLowerCase()).includes(trimmed)) { alert("Already on file."); return; }
+  try {
+    const updated = [...existing, trimmed];
+    await db.collection(COLLECTIONS.facultyRoster).doc(docId).update({ aliasEmails: updated });
+    m.aliasEmails = updated;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to add alias: " + err.message);
+  }
 }
 
 function getNoEmailRosterCount() {
@@ -1095,16 +1123,20 @@ function renderNoReply() {
   const rows = missing.map(m => `
     <tr>
       <td style="font-weight:700;color:var(--rmd-navy);">${m.name || "–"}</td>
-      <td style="color:var(--rmd-muted);font-size:12px;">${m.email || "–"}</td>
+      <td style="color:var(--rmd-muted);font-size:12px;">
+        ${m.email || "–"}
+        ${m.aliasEmails && m.aliasEmails.length ? `<div style="font-size:11px;color:var(--rmd-muted);">also: ${m.aliasEmails.join(", ")}</div>` : ""}
+      </td>
       <td>${m.group === "senior" ? '<span class="badge-senior">Senior Faculty</span>' : '<span class="badge-student">Student Faculty</span>'}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${m.team || "–"}</td>
+      <td><button class="btn-action secondary" onclick="addRosterAlias('${m.id}','${(m.name||"").replace(/'/g,"\\'")}')">+ Add known email</button></td>
     </tr>`).join("");
 
   document.getElementById("tabContent").innerHTML = noEmailNote + `
     <div class="section-block">
       <div class="section-heading" style="color:#b7410e;">Not yet responded (${missing.length})</div>
       <table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Group</th><th>Team</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Group</th><th>Team</th><th>Action</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
