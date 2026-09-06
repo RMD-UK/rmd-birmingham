@@ -569,13 +569,17 @@ function passportName(r) { return [r.firstName, r.middleName, r.lastName].filter
 // corrupt the output. Only use this in contexts that render straight into the DOM.
 function renderNameCell(r) {
   const displayName = fullName(r) || r.email || "–";
-  if (!r.canonical || !r.canonical.name) return displayName;
+  if (!r.canonical || !r.canonical.displayName) return displayName;
   const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
-  if (norm(r.canonical.name) === norm(displayName)) return displayName;
   // A <span> with stopPropagation, not an <a> — renderNameCell() is also used inside
   // nameLink()'s own <a onclick="goToEntry(...)">, and a nested <a> would break that
-  // outer link's click handling in every browser.
-  return `${displayName} <span style="color:#b7410e;font-size:11px;" title="This record shows &quot;${displayName}&quot;, their account record says &quot;${r.canonical.name}&quot; — worth checking which is current.">⚠ differs from account: ${esc(r.canonical.name)}</span> <span onclick="event.preventDefault();event.stopPropagation();syncNameToAccount('${r.id}')" style="font-size:11px;color:var(--rmd-navy);text-decoration:underline;cursor:pointer;" title="Overwrite this response's name with the account record's name.">⟳ sync</span>`;
+  // outer link's click handling in every browser. editPreferredName() below follows
+  // the same span pattern for the same reason.
+  const editLink = r.canonical.uid
+    ? ` <span onclick="event.preventDefault();event.stopPropagation();editPreferredName('${r.canonical.uid}')" style="font-size:11px;color:var(--rmd-navy);text-decoration:underline;cursor:pointer;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</span>`
+    : "";
+  if (norm(r.canonical.displayName) === norm(displayName)) return displayName + editLink;
+  return `${displayName} <span style="color:#b7410e;font-size:11px;" title="This record shows &quot;${displayName}&quot;, their account record says &quot;${r.canonical.displayName}&quot; — worth checking which is current.">⚠ differs from account: ${esc(r.canonical.displayName)}</span> <span onclick="event.preventDefault();event.stopPropagation();syncNameToAccount('${r.id}')" style="font-size:11px;color:var(--rmd-navy);text-decoration:underline;cursor:pointer;" title="Overwrite this response's name with the account record's name.">⟳ sync</span>${editLink}`;
 }
 
 // Section 0.1: director-driven fix, not automatic — only ever copies the
@@ -587,8 +591,8 @@ function renderNameCell(r) {
 // confirm or correct it, same prompt()-based pattern as editKnownAs() above.
 async function syncNameToAccount(docId) {
   const r = allResponses.find(x => x.id === docId);
-  if (!r || !r.canonical || !r.canonical.name) return;
-  const canonical = r.canonical.name.trim();
+  if (!r || !r.canonical || !r.canonical.displayName) return;
+  const canonical = r.canonical.displayName.trim();
   const parts = canonical.split(/\s+/);
   const suggestedLast = parts.length > 1 ? parts[parts.length - 1] : "";
   const suggestedFirst = parts.length > 1 ? parts.slice(0, -1).join(" ") : canonical;
@@ -606,6 +610,29 @@ async function syncNameToAccount(docId) {
     renderTab(currentTab);
   } catch (err) {
     alert("Failed to update name: " + err.message);
+  }
+}
+
+// Section 0.1 follow-up (2026-09-06): same pattern as
+// admin-director-access.html's editPreferredName() — lets a director set
+// people/{uid}.preferredName from this page too, so syncNameToAccount()
+// above starts suggesting the right first/knownAs split (e.g. "Becca" /
+// "Everitt" instead of "Rebecca" / "Everitt") without having to correct it
+// by hand in the prompt every time.
+async function editPreferredName(uid) {
+  if (!uid) return;
+  const current = allResponses.find(x => x.canonical && x.canonical.uid === uid);
+  const value = prompt("What should this person be called (preferred/display name)?\n\nLeave blank to clear and fall back to their account's registered name.", (current && current.canonical.preferredName) || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(uid, value);
+    await Promise.all(allResponses.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
   }
 }
 function fmtDate(r)  {
