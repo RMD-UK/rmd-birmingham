@@ -567,58 +567,39 @@ function passportName(r) { return [r.firstName, r.middleName, r.lastName].filter
 // which stays plain text because it also feeds onclick handler arguments (removeDirector,
 // makeDirector, deleteResponse, roleSelectHtml) and the CSV export, where HTML would
 // corrupt the output. Only use this in contexts that render straight into the DOM.
+//
+// Locked down 2026-09-06 (Jon): firstName/lastName here are the self-declared
+// "as on passport" legal name (faculty-form.html) and feed
+// admin-visitor-request-export.html's UoB visitor registration export
+// directly via fullName(r) there — they must stay exactly what the person
+// entered. The drift check below compares that legal name against the
+// account's actual legal name (canonical.name), never against
+// preferredName/displayName or knownAs — a legitimate nickname differing
+// from someone's legal name is expected, not drift — and there is no sync
+// action for it any more: a genuine mismatch means asking them to resubmit,
+// not a director's click. knownAs already has its own dedicated editor
+// (editKnownAs() above) if that's what actually needs changing.
 function renderNameCell(r) {
   const displayName = fullName(r) || r.email || "–";
-  if (!r.canonical || !r.canonical.displayName) return displayName;
-  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
-  // A <span> with stopPropagation, not an <a> — renderNameCell() is also used inside
-  // nameLink()'s own <a onclick="goToEntry(...)">, and a nested <a> would break that
-  // outer link's click handling in every browser. editPreferredName() below follows
-  // the same span pattern for the same reason.
-  const editLink = r.canonical.uid
+  const editLink = r.canonical && r.canonical.uid
     ? ` <span onclick="event.preventDefault();event.stopPropagation();editPreferredName('${r.canonical.uid}')" style="font-size:11px;color:var(--rmd-navy);text-decoration:underline;cursor:pointer;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</span>`
     : "";
-  if (norm(r.canonical.displayName) === norm(displayName)) return displayName + editLink;
-  return `${displayName} <span style="color:#b7410e;font-size:11px;" title="This record shows &quot;${displayName}&quot;, their account record says &quot;${r.canonical.displayName}&quot; — worth checking which is current.">⚠ differs from account: ${esc(r.canonical.displayName)}</span> <span onclick="event.preventDefault();event.stopPropagation();syncNameToAccount('${r.id}')" style="font-size:11px;color:var(--rmd-navy);text-decoration:underline;cursor:pointer;" title="Overwrite this response's name with the account record's name.">⟳ sync</span>${editLink}`;
-}
-
-// Section 0.1: director-driven fix, not automatic — only ever copies the
-// account's name onto this response, never the reverse. faculty_responses
-// splits name into firstName/lastName/knownAs (unlike the other collections'
-// single name field), so a straight overwrite isn't safe: a canonical name
-// like "Anna-Maria De Souza" can't be reliably auto-split into first/last.
-// Pre-fill a sensible guess (last word = surname) but let the director
-// confirm or correct it, same prompt()-based pattern as editKnownAs() above.
-async function syncNameToAccount(docId) {
-  const r = allResponses.find(x => x.id === docId);
-  if (!r || !r.canonical || !r.canonical.displayName) return;
-  const canonical = r.canonical.displayName.trim();
-  const parts = canonical.split(/\s+/);
-  const suggestedLast = parts.length > 1 ? parts[parts.length - 1] : "";
-  const suggestedFirst = parts.length > 1 ? parts.slice(0, -1).join(" ") : canonical;
-  const first = prompt(`Their account record says "${canonical}".\n\nFirst / known-as name to use here:`, suggestedFirst);
-  if (first === null) return;
-  const last = prompt(`Last name to use here:`, suggestedLast);
-  if (last === null) return;
-  const firstTrimmed = first.trim(), lastTrimmed = last.trim();
-  try {
-    await db.collection("faculty_responses").doc(docId).update({
-      firstName: firstTrimmed, knownAs: firstTrimmed, lastName: lastTrimmed
-    });
-    r.firstName = firstTrimmed; r.knownAs = firstTrimmed; r.lastName = lastTrimmed;
-    updateSummary();
-    renderTab(currentTab);
-  } catch (err) {
-    alert("Failed to update name: " + err.message);
-  }
+  if (!r.canonical || !r.canonical.name) return displayName + editLink;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const legalName = [r.firstName, r.lastName].filter(Boolean).join(" ");
+  if (norm(r.canonical.name) === norm(legalName)) return displayName + editLink;
+  // A <span>, not an <a> — renderNameCell() is also used inside nameLink()'s own
+  // <a onclick="goToEntry(...)">, and a nested <a> would break that outer link's
+  // click handling in every browser.
+  return `${displayName} <span style="color:#b7410e;font-size:11px;" title="This is their self-declared passport name, used on the actual UoB visitor registration export. Their account record says &quot;${esc(r.canonical.name)}&quot; — worth checking with them directly, this can't be auto-corrected.">⚠ differs from account: ${esc(r.canonical.name)}</span>${editLink}`;
 }
 
 // Section 0.1 follow-up (2026-09-06): same pattern as
 // admin-director-access.html's editPreferredName() — lets a director set
-// people/{uid}.preferredName from this page too, so syncNameToAccount()
-// above starts suggesting the right first/knownAs split (e.g. "Becca" /
-// "Everitt" instead of "Rebecca" / "Everitt") without having to correct it
-// by hand in the prompt every time.
+// people/{uid}.preferredName from this page. Independent of the passport
+// name fields locked down in renderNameCell() above: this only ever writes
+// to the canonical people/{uid} record, never to this response's own
+// firstName/lastName/knownAs.
 async function editPreferredName(uid) {
   if (!uid) return;
   const current = allResponses.find(x => x.canonical && x.canonical.uid === uid);

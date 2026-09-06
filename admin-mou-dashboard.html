@@ -261,11 +261,32 @@ async function loadRoster() {
 function renderNameCell(m, kind) {
   kind = kind || "roster";
   const rosterName = fullName(m);
-  if (!m.canonical || !m.canonical.displayName) return rosterName;
   const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
-  const editLink = m.canonical.uid
+  const editLink = m.canonical && m.canonical.uid
     ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${m.canonical.uid}','${(m.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</a>`
     : "";
+  if (!m.canonical) return rosterName;
+
+  if (kind === "submission") {
+    // mou_responses.name is the self-declared "Full name (as per passport)"
+    // from mou-form.html, and feeds admin-visitor-request-export.html's UoB
+    // visitor registration export directly — it must stay exactly what the
+    // person entered. Compare against the account's actual legal name
+    // (canonical.name), never preferredName/displayName: a legitimate
+    // nickname differing from someone's legal name is expected, not drift.
+    // No sync action here, ever (Jon, 2026-09-06) — a genuine mismatch can
+    // only be resolved by asking them to resubmit, not by a director's click.
+    if (!m.canonical.name) return rosterName + editLink;
+    if (norm(m.canonical.name) === norm(rosterName)) return rosterName + editLink;
+    return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="This is their self-declared passport name, used on the actual UoB visitor registration export. Their account record says \"${m.canonical.name}\" — worth checking with them directly, this can't be auto-corrected.">⚠ differs from account: ${m.canonical.name}</span>${editLink}`;
+  }
+
+  // mou_roster.name (kind === "roster") is Jon's own working list — explicitly
+  // documented in admin-visitor-request-export.html as never verified against
+  // an actual passport, used only as a prefill/fallback and editable before
+  // it's ever submitted anywhere. Safe to compare/sync against the account's
+  // preferred display name like the purely-cosmetic collections.
+  if (!m.canonical.displayName) return rosterName;
   if (norm(m.canonical.displayName) === norm(rosterName)) return rosterName + editLink;
   const safeCanonical = m.canonical.displayName.replace(/'/g, "\\'");
   return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="Roster says \"${rosterName}\", their account record says \"${m.canonical.displayName}\" — worth checking which is current.">⚠ differs from account: ${m.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${m.id}','${safeCanonical}','${kind}')" style="font-size:11px;" title="Overwrite this record's name with the account record's name.">⟳ sync</a>${editLink}`;
@@ -297,18 +318,22 @@ async function editPreferredName(uid, currentPreferred) {
 }
 
 // Section 0.1: director-driven fix, not automatic — only ever copies the
-// account's name onto the roster/submission record, never the reverse.
-// Handles mou_roster and mou_responses, the two collections renderNameCell()
-// is used for on this page, via the kind flag set at each call site.
+// account's name onto the mou_roster record, never the reverse, and never
+// onto mou_responses (see renderNameCell() above — locked, 2026-09-06:
+// that field is self-declared passport data feeding the UoB visitor export,
+// no render path offers a sync link for it any more). The kind==="submission"
+// branch below is defence-in-depth only, in case something still calls this
+// with it.
 async function syncNameToAccount(docId, canonicalName, kind) {
-  const isSubmission = kind === "submission";
-  const list = isSubmission ? allSubmissions : roster;
-  const obj = list.find(x => x.id === docId);
+  if (kind === "submission") {
+    alert("This is their self-declared passport name (used on the UoB visitor registration export) and can't be overwritten this way — ask them to resubmit the MOU form if it's wrong.");
+    return;
+  }
+  const obj = roster.find(x => x.id === docId);
   if (!obj) return;
-  if (!confirm(`Update this ${isSubmission ? "submission" : "roster"} entry's name from "${fullName(obj)}" to "${canonicalName}" (their account record)?`)) return;
+  if (!confirm(`Update this roster entry's name from "${fullName(obj)}" to "${canonicalName}" (their account record)?`)) return;
   try {
-    const coll = isSubmission ? COLLECTIONS.mouResponses : COLLECTIONS.mouRoster;
-    await db.collection(coll).doc(docId).update({ name: canonicalName });
+    await db.collection(COLLECTIONS.mouRoster).doc(docId).update({ name: canonicalName });
     obj.name = canonicalName;
     renderTab(currentTab);
   } catch (err) {
