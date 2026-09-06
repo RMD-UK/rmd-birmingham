@@ -299,6 +299,22 @@ service cloud.firestore {
       allow write: if isSuperUser();
     }
 
+    // ── Candidate resource access code (Section 3.5 follow-up, 2026-09-06) ──
+    // A single shared "pass" Stage 1 candidates use on candidate-resources.html
+    // — confirmed by Jon as a deliberate first (RMD has never had a no-login
+    // generic-code gate before): not a personal login, just enough of a
+    // barrier that the resources aren't wide open with no gate at all. Handed
+    // out at the intro session, not tied to any individual's record.
+    // Public/unauthenticated read is intentional and safe here: this single
+    // document holds nothing but the code itself, and Firestore evaluates
+    // matching rules as OR'd — this only widens access to this ONE document,
+    // every other config/* document still requires isSignedIn() via the
+    // wildcard rule above. Write stays super-user only, same as config/platform.
+    match /config/candidate_access {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+
     // ── MOU responses ───────────────────────────────────────────────────────
     // Create: authenticated — member submits their own MOU form response
     // Read/update/delete: director only — only directors review submissions

@@ -420,11 +420,33 @@ async function loadAll() {
 
 function renderNameCell(r) {
   const regName = r.name || "–";
-  if (!r.canonical || !r.canonical.name) return regName;
+  if (!r.canonical || !r.canonical.displayName) return regName;
   const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
-  if (norm(r.canonical.name) === norm(regName)) return regName;
-  const safeCanonical = r.canonical.name.replace(/'/g, "\\'");
-  return `${regName} <span style="color:#b7410e;font-size:11px;" title="Registration says \"${regName}\", their account record says \"${r.canonical.name}\" — worth checking which is current.">⚠ differs from account: ${r.canonical.name}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${r.id}','${safeCanonical}')" style="font-size:11px;" title="Overwrite this registration's name with the account record's name.">⟳ sync</a>`;
+  const editLink = r.canonical.uid
+    ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${r.canonical.uid}','${(r.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</a>`
+    : "";
+  if (norm(r.canonical.displayName) === norm(regName)) return regName + editLink;
+  const safeCanonical = r.canonical.displayName.replace(/'/g, "\\'");
+  return `${regName} <span style="color:#b7410e;font-size:11px;" title="Registration says \"${regName}\", their account record says \"${r.canonical.displayName}\" — worth checking which is current.">⚠ differs from account: ${r.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${r.id}','${safeCanonical}')" style="font-size:11px;" title="Overwrite this registration's name with the account record's name.">⟳ sync</a>${editLink}`;
+}
+
+// Section 0.1 follow-up (2026-09-06): same pattern as
+// admin-director-access.html's editPreferredName() — lets a director set
+// people/{uid}.preferredName from a registration row, so sync stops
+// defaulting to the account's legal/registered name.
+async function editPreferredName(uid, currentPreferred) {
+  if (!uid) return;
+  const value = prompt("What should this person be called (preferred/display name)?\n\nLeave blank to clear and fall back to their account's registered name.", currentPreferred || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(uid, value);
+    await Promise.all(allRegistrations.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    renderTable();
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
+  }
 }
 
 // Section 0.1: director-driven fix, not automatic — only ever copies the

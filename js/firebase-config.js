@@ -254,10 +254,31 @@ async function resolveCanonicalName(email) {
     const snap = await db.collection(COLLECTIONS.people).where("email", "==", e).limit(1).get();
     if (snap.empty) return null;
     const doc = snap.docs[0];
-    return { uid: doc.id, name: doc.data().name || null };
+    const data = doc.data();
+    const name = data.name || null;
+    const preferredName = data.preferredName || null;
+    // displayName is what every drift-flag/sync call site should show and
+    // sync to — see setPreferredName() below for why.
+    return { uid: doc.id, name, preferredName, displayName: preferredName || name };
   } catch (err) {
     return null;
   }
+}
+
+// setPreferredName(uid, preferredName) → writes people/{uid}.preferredName.
+// Added 2026-09-06 alongside displayName above: people.name is whatever was
+// typed at account-provisioning time (admin-bulk-users.html) — often
+// someone's legal/registered name, not what they actually go by (e.g.
+// "Rebecca" vs "Becca"). Section 0.1's drift-flag/sync pattern compared and
+// synced against .name directly, which meant "sync" could overwrite a
+// correct nickname with the wrong legal name. preferredName is optional and
+// additive: when unset, displayName just falls back to name and behaviour
+// for anyone without one is unchanged. Pass an empty string to clear it.
+async function setPreferredName(uid, preferredName) {
+  const trimmed = (preferredName || "").trim();
+  await db.collection(COLLECTIONS.people).doc(uid).set({
+    preferredName: trimmed ? trimmed : firebase.firestore.FieldValue.delete()
+  }, { merge: true });
 }
 
 // ── Role history (Section 0.3 of the platform workplan) ──────────────────────

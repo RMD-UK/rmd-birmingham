@@ -311,10 +311,13 @@ async function parsePreview() {
       groupRow = `<tr class="group-row"><td colspan="6">${r.group === "senior" ? "Senior" : "Student"} Faculty — ${r.team}</td></tr>`;
     }
     const nameCell = (() => {
-      if (!r.canonical || !r.canonical.name) return r.name;
+      if (!r.canonical || !r.canonical.displayName) return r.name;
       const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
-      if (norm(r.canonical.name) === norm(r.name)) return r.name;
-      return `${r.name} <span style="color:#b7410e;font-size:11px;" title="This paste says \"${r.name}\", their account record says \"${r.canonical.name}\" — worth checking which is current before importing.">⚠ differs from account: ${r.canonical.name}</span> <a href="#" onclick="event.preventDefault();syncPreviewName(${i})" style="font-size:11px;" title="Overwrite this pasted name with the account record's name, before importing.">⟳ sync</a>`;
+      const editLink = r.canonical.uid
+        ? ` <a href="#" onclick="event.preventDefault();editPreferredName(${i})" style="font-size:11px;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</a>`
+        : "";
+      if (norm(r.canonical.displayName) === norm(r.name)) return r.name + editLink;
+      return `${r.name} <span style="color:#b7410e;font-size:11px;" title="This paste says \"${r.name}\", their account record says \"${r.canonical.displayName}\" — worth checking which is current before importing.">⚠ differs from account: ${r.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncPreviewName(${i})" style="font-size:11px;" title="Overwrite this pasted name with the account record's name, before importing.">⟳ sync</a>${editLink}`;
     })();
     return groupRow + `<tr>
       <td id="preview-name-${i}" style="font-weight:700;color:var(--rmd-navy);">${nameCell}</td>
@@ -338,11 +341,32 @@ async function parsePreview() {
 // against admin-director-access.html/admin-mou-dashboard.html afterward.
 function syncPreviewName(i) {
   const r = parsedRows[i];
-  if (!r || !r.canonical || !r.canonical.name) return;
-  if (!confirm(`Update this pasted entry's name from "${r.name}" to "${r.canonical.name}" (their account record)? This only changes the preview — nothing is saved until you import.`)) return;
-  r.name = r.canonical.name;
+  if (!r || !r.canonical || !r.canonical.displayName) return;
+  if (!confirm(`Update this pasted entry's name from "${r.name}" to "${r.canonical.displayName}" (their account record)? This only changes the preview — nothing is saved until you import.`)) return;
+  r.name = r.canonical.displayName;
   const cell = document.getElementById(`preview-name-${i}`);
   if (cell) cell.textContent = r.name;
+}
+
+// Section 0.1 follow-up (2026-09-06): unlike syncPreviewName() above, this
+// writes straight to Firestore (people/{uid}.preferredName), even though
+// the rest of this page is preview-only — it's a different collection to
+// the one being imported, so there's nothing unsafe about committing it
+// immediately. Same prompt()-based pattern as editPreferredName() in
+// admin-director-access.html. Re-resolves this row and re-renders the
+// whole preview afterward so the warning/sync link reflect the change.
+async function editPreferredName(i) {
+  const r = parsedRows[i];
+  if (!r || !r.canonical || !r.canonical.uid) return;
+  const value = prompt("What should this person be called (preferred/display name)?\n\nLeave blank to clear and fall back to their account's registered name.", r.canonical.preferredName || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(r.canonical.uid, value);
+    r.canonical = await resolveCanonicalName(r.email);
+    renderPreview();
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
+  }
 }
 
 async function confirmImport() {

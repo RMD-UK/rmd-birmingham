@@ -64,6 +64,15 @@
   </div>
 
   <div class="card">
+    <div class="card-header">Candidate resource access code</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">A single shared code that gets candidates into <code>candidate-resources.html</code> — not a personal login, just enough of a barrier that it isn't wide open to the public. Hand it out at the intro session; it's the same code for every candidate on every course until you change it.</p>
+      <div id="accessCodeDisplay" style="font-size:20px;font-weight:800;color:var(--rmd-navy);font-family:monospace;margin-bottom:12px;">Loading…</div>
+      <button class="btn-secondary" onclick="changeAccessCode()">Set / change code</button>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header">Add candidates</div>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>name, email, degree, course, room</strong> — email and a day/month of birth (e.g. <code>14/03</code>, added as a 6th field) are optional but help tell apart two candidates with a similar name in the same course and room. Tab or comma separated.</p>
@@ -256,6 +265,38 @@ async function confirmImport() {
   }
 }
 
+// ── Candidate resource access code (feeds candidate-resources.html) ───────
+// Public/unauthenticated read on this one Firestore document is deliberate
+// — see firestore.rules — so the code itself is not a secret in any real
+// sense, just a light barrier Jon asked for ("not just open access to
+// public easily"). Write stays super-user only, same as every other
+// config/* document.
+async function loadAccessCode() {
+  const el = document.getElementById("accessCodeDisplay");
+  try {
+    const snap = await db.collection("config").doc("candidate_access").get();
+    const code = snap.exists ? snap.data().code : null;
+    el.textContent = code ? code : "Not set yet — click \"Set / change code\" below.";
+  } catch (err) {
+    el.textContent = "Couldn't load — " + err.message;
+  }
+}
+
+async function changeAccessCode() {
+  const current = document.getElementById("accessCodeDisplay").textContent;
+  const next = prompt("New candidate resource access code (whatever's easy to say out loud and remember — this isn't meant to be a strong password):", "");
+  if (next === null) return;
+  const trimmed = next.trim();
+  if (!trimmed) { alert("Code can't be blank."); return; }
+  if (!confirm(`Set the candidate resource access code to "${trimmed}"?\n\nEveryone using the old code will need the new one — only change this between courses, not mid-course.`)) return;
+  try {
+    await db.collection("config").doc("candidate_access").set({ code: trimmed }, { merge: true });
+    await loadAccessCode();
+  } catch (err) {
+    alert("Failed to update code: " + err.message);
+  }
+}
+
 // ── Candidates list ───────────────────────────────────────────────────────
 function renderCandidates() {
   const courseFilter = document.getElementById("courseFilter").value;
@@ -388,6 +429,7 @@ async function promoteToInstructor(candidateId) {
 function todayIso() { return new Date().toISOString().slice(0, 10); }
 
 loadCandidates();
+loadAccessCode();
 
 </script>
 </body>

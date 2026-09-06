@@ -261,11 +261,39 @@ async function loadRoster() {
 function renderNameCell(m, kind) {
   kind = kind || "roster";
   const rosterName = fullName(m);
-  if (!m.canonical || !m.canonical.name) return rosterName;
+  if (!m.canonical || !m.canonical.displayName) return rosterName;
   const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
-  if (norm(m.canonical.name) === norm(rosterName)) return rosterName;
-  const safeCanonical = m.canonical.name.replace(/'/g, "\\'");
-  return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="Roster says \"${rosterName}\", their account record says \"${m.canonical.name}\" — worth checking which is current.">⚠ differs from account: ${m.canonical.name}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${m.id}','${safeCanonical}','${kind}')" style="font-size:11px;" title="Overwrite this record's name with the account record's name.">⟳ sync</a>`;
+  const editLink = m.canonical.uid
+    ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${m.canonical.uid}','${(m.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</a>`
+    : "";
+  if (norm(m.canonical.displayName) === norm(rosterName)) return rosterName + editLink;
+  const safeCanonical = m.canonical.displayName.replace(/'/g, "\\'");
+  return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="Roster says \"${rosterName}\", their account record says \"${m.canonical.displayName}\" — worth checking which is current.">⚠ differs from account: ${m.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${m.id}','${safeCanonical}','${kind}')" style="font-size:11px;" title="Overwrite this record's name with the account record's name.">⟳ sync</a>${editLink}`;
+}
+
+// Section 0.1 follow-up (2026-09-06): same pattern as
+// admin-director-access.html's editPreferredName() — lets a director set
+// people/{uid}.preferredName directly from either roster or submission
+// rows on this page, so sync stops defaulting to the account's
+// legal/registered name. Re-resolves against both in-memory lists (a
+// person can appear in roster and submissions at once) and re-renders the
+// current tab.
+async function editPreferredName(uid, currentPreferred) {
+  if (!uid) return;
+  const value = prompt("What should this person be called (preferred/display name)?\n\nLeave blank to clear and fall back to their account's registered name.", currentPreferred || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(uid, value);
+    await Promise.all(roster.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    await Promise.all(allSubmissions.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
+  }
 }
 
 // Section 0.1: director-driven fix, not automatic — only ever copies the
