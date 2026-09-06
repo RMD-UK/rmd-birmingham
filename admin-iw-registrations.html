@@ -406,8 +406,40 @@ async function loadAll() {
       return;
     }
   }
+  // Section 0.1 (platform workplan): surface name drift against the person's
+  // own people/{uid} record — confirmed registrations only, since that's the
+  // only status syncIwRegistrationToPeople ever creates a people doc for
+  // (pending/declined rows would just return null every time, wasted reads).
+  await Promise.all(allRegistrations
+    .filter(r => r.status === "confirmed")
+    .map(async (r) => { r.canonical = await resolveCanonicalName(r.email); }));
+
   updateSummary();
   renderTable();
+}
+
+function renderNameCell(r) {
+  const regName = r.name || "–";
+  if (!r.canonical || !r.canonical.name) return regName;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  if (norm(r.canonical.name) === norm(regName)) return regName;
+  const safeCanonical = r.canonical.name.replace(/'/g, "\\'");
+  return `${regName} <span style="color:#b7410e;font-size:11px;" title="Registration says \"${regName}\", their account record says \"${r.canonical.name}\" — worth checking which is current.">⚠ differs from account: ${r.canonical.name}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${r.id}','${safeCanonical}')" style="font-size:11px;" title="Overwrite this registration's name with the account record's name.">⟳ sync</a>`;
+}
+
+// Section 0.1: director-driven fix, not automatic — only ever copies the
+// account's name onto this registration, never the reverse.
+async function syncNameToAccount(docId, canonicalName) {
+  const r = allRegistrations.find(x => x.id === docId);
+  if (!r) return;
+  if (!confirm(`Update this registration's name from "${r.name || ""}" to "${canonicalName}" (their account record)?`)) return;
+  try {
+    await db.collection(IW_COLL).doc(docId).update({ name: canonicalName });
+    r.name = canonicalName;
+    renderTable();
+  } catch (err) {
+    alert("Failed to update name: " + err.message);
+  }
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
@@ -489,7 +521,7 @@ function renderTable() {
     const isConf = r.status === "confirmed";
     const isDecl = r.status === "declined";
     return `<tr class="${isDecl?"status-declined":""}">
-      <td style="font-weight:700;color:var(--rmd-navy);">${r.name||"–"}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${roleBadge(r.role)}</td>
       <td>${statusBadge(r.status)}</td>

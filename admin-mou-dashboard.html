@@ -246,6 +246,46 @@ async function loadRoster() {
   } catch (err) {
     roster = [];
   }
+
+  // Section 0.1 (platform workplan): surface name drift against the person's
+  // own people/{uid} record, same pattern as admin-director-access.html.
+  // Read-only, additive — fullName() itself is untouched since it's also used
+  // for plain-text contexts (confirm dialogs, the roster export at line ~601)
+  // where HTML markup would corrupt the output; see renderNameCell() below,
+  // used only in the HTML table row.
+  await Promise.all(roster.map(async (m) => {
+    m.canonical = await resolveCanonicalName(m.email);
+  }));
+}
+
+function renderNameCell(m, kind) {
+  kind = kind || "roster";
+  const rosterName = fullName(m);
+  if (!m.canonical || !m.canonical.name) return rosterName;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  if (norm(m.canonical.name) === norm(rosterName)) return rosterName;
+  const safeCanonical = m.canonical.name.replace(/'/g, "\\'");
+  return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="Roster says \"${rosterName}\", their account record says \"${m.canonical.name}\" — worth checking which is current.">⚠ differs from account: ${m.canonical.name}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${m.id}','${safeCanonical}','${kind}')" style="font-size:11px;" title="Overwrite this record's name with the account record's name.">⟳ sync</a>`;
+}
+
+// Section 0.1: director-driven fix, not automatic — only ever copies the
+// account's name onto the roster/submission record, never the reverse.
+// Handles mou_roster and mou_responses, the two collections renderNameCell()
+// is used for on this page, via the kind flag set at each call site.
+async function syncNameToAccount(docId, canonicalName, kind) {
+  const isSubmission = kind === "submission";
+  const list = isSubmission ? allSubmissions : roster;
+  const obj = list.find(x => x.id === docId);
+  if (!obj) return;
+  if (!confirm(`Update this ${isSubmission ? "submission" : "roster"} entry's name from "${fullName(obj)}" to "${canonicalName}" (their account record)?`)) return;
+  try {
+    const coll = isSubmission ? COLLECTIONS.mouResponses : COLLECTIONS.mouRoster;
+    await db.collection(coll).doc(docId).update({ name: canonicalName });
+    obj.name = canonicalName;
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update name: " + err.message);
+  }
 }
 
 async function loadSubmissions() {
@@ -258,6 +298,10 @@ async function loadSubmissions() {
         const tb = b.submittedAt ? b.submittedAt.seconds : 0;
         return tb - ta;
       });
+    // Section 0.1: same drift check as loadRoster() above, but against the actual
+    // mou_responses submission doc's own stored name, not the roster's. renderNameCell()
+    // works unchanged here since it only needs fullName(m)-shaped input and m.canonical.
+    await Promise.all(allSubmissions.map(async (r) => { r.canonical = await resolveCanonicalName(r.email); }));
   } catch (err) {
     document.getElementById("tabContent").innerHTML =
       `<div class="empty-state">Could not load MOU submissions. Check you are signed in as director.<br><small>${err.message}</small></div>`;
@@ -457,7 +501,7 @@ function renderRosterStatus() {
           : m.status === "disagreed" ? `<span class="badge-disagree">⚠ Disagreed</span>`
           : `<span class="badge-outstanding">✗ Outstanding</span>`;
         return `<tr>
-          <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+          <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(m)}</td>
           <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
           <td>${badge}</td>
           <td>${cwStatusBadge(m.submission)}</td>
@@ -490,7 +534,7 @@ function renderOutstanding() {
 
   const rows = list.length
     ? list.map(m => `<tr>
-        <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+        <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(m)}</td>
         <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
         <td>${m.role||"–"}</td>
       </tr>`).join("")
@@ -514,7 +558,7 @@ function renderDisagreed() {
 
   const rows = list.length
     ? list.map(m => `<tr>
-        <td style="font-weight:700;color:var(--rmd-navy);">${fullName(m)}</td>
+        <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(m)}</td>
         <td style="color:var(--rmd-muted);font-size:12px;">${m.email||"–"}</td>
         <td>${m.submission.role||"–"}</td>
         <td>${fmtDate(m.submission)}</td>
@@ -544,7 +588,7 @@ function renderAllSubmissions() {
         const onRoster = roster.some(m => (m.email||"").toLowerCase() === (r.email||"").toLowerCase());
         const agreeBadge = r.agreed === false ? `<span class="badge-disagree">⚠ Disagreed</span>` : `<span class="badge-agree">✓ Agreed</span>`;
         return `<tr>
-          <td style="font-weight:700;color:var(--rmd-navy);">${r.name||r.email}</td>
+          <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(r, "submission")}</td>
           <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
           <td>${r.role||"–"}</td>
           <td>${agreeBadge}</td>

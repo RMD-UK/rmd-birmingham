@@ -141,6 +141,46 @@ async function loadRoster() {
   } catch (e) {
     rosterMembers = [];
   }
+
+  // Section 0.1 (platform workplan): look up each person's canonical name
+  // from their own people/{uid} doc, in parallel, purely to surface drift —
+  // this doesn't change what's stored or displayed as primary, see
+  // renderNameCell() below. A null result (no people doc, e.g. no login yet)
+  // is expected and not treated as a problem.
+  await Promise.all(rosterMembers.map(async (m) => {
+    m.canonical = await resolveCanonicalName(m.email);
+  }));
+}
+
+// Compares the roster's typed name against the person's canonical people/{uid}
+// name (if one exists) and flags a mismatch rather than silently picking one —
+// same "flag it, don't guess" principle used elsewhere on this platform.
+// Whitespace/case-only differences aren't flagged, only genuine drift.
+function renderNameCell(m) {
+  const rosterName = m.name || "(no name)";
+  if (!m.canonical || !m.canonical.name) return rosterName;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  if (norm(m.canonical.name) === norm(rosterName)) return rosterName;
+  const safeCanonical = m.canonical.name.replace(/'/g, "\\'");
+  return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="Roster says \"${rosterName}\", their account record says \"${m.canonical.name}\" — worth checking which is current.">⚠ differs from account: ${m.canonical.name}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${m.id}','${safeCanonical}')" style="font-size:11px;" title="Overwrite this roster entry's name with the account record's name.">⟳ sync</a>`;
+}
+
+// Section 0.1: the deliberate "fix" half of the flag-it-don't-guess pattern —
+// a director-driven action, not an automatic one. Only ever copies the
+// account's (people/{uid}) name into this roster entry, never the reverse:
+// if the roster name is actually the correct one and the account is wrong,
+// that's a different fix (edit their account), not this button.
+async function syncNameToAccount(docId, canonicalName) {
+  const m = rosterMembers.find(x => x.id === docId);
+  if (!m) return;
+  if (!confirm(`Update this roster entry's name from "${m.name || ""}" to "${canonicalName}" (their account record)?`)) return;
+  try {
+    await db.collection(COLLECTIONS.facultyRoster).doc(docId).update({ name: canonicalName });
+    m.name = canonicalName;
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update name: " + err.message);
+  }
 }
 
 function isDirectorEmail(email) {
@@ -207,7 +247,7 @@ function makeRow(m) {
   }
 
   return `<tr>
-    <td style="font-weight:700;color:var(--rmd-navy);">${name}</td>
+    <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(m)}</td>
     <td style="color:var(--rmd-muted);font-size:12px;">${email || "–"}</td>
     <td style="color:var(--rmd-muted);font-size:12px;">${m.team || ""}${m.role ? " · " + m.role : ""}</td>
     <td>${access}</td>

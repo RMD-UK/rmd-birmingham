@@ -230,7 +230,7 @@ function rosterDocId(email, group, name) {
   return email ? email.toLowerCase() : "noemail_" + group + "_" + slugify(name);
 }
 
-function parsePreview() {
+async function parsePreview() {
   const raw = document.getElementById("rosterPaste").value.trim();
   if (!raw) { alert("Paste at least one person first."); return; }
 
@@ -279,6 +279,14 @@ function parsePreview() {
 
   parsedRows = deduped;
 
+  // Section 0.1 (platform workplan): check the freshly-typed names in this
+  // paste against each person's actual account name BEFORE import, so drift
+  // (a typo, an old surname, a nickname) gets caught at the point it's being
+  // introduced rather than discovered later on an already-live page.
+  await Promise.all(deduped.map(async (r) => {
+    r.canonical = await resolveCanonicalName(r.email);
+  }));
+
   const studentCount = deduped.filter(r => r.group === "student").length;
   const seniorCount  = deduped.filter(r => r.group === "senior").length;
   const noEmailCount = deduped.filter(r => !r.email).length;
@@ -295,15 +303,21 @@ function parsePreview() {
     ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : "";
 
   let lastGroupTeam = null;
-  const bodyRows = deduped.map(r => {
+  const bodyRows = deduped.map((r, i) => {
     const groupTeam = r.group + "|" + r.team;
     let groupRow = "";
     if (groupTeam !== lastGroupTeam) {
       lastGroupTeam = groupTeam;
       groupRow = `<tr class="group-row"><td colspan="6">${r.group === "senior" ? "Senior" : "Student"} Faculty — ${r.team}</td></tr>`;
     }
+    const nameCell = (() => {
+      if (!r.canonical || !r.canonical.name) return r.name;
+      const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+      if (norm(r.canonical.name) === norm(r.name)) return r.name;
+      return `${r.name} <span style="color:#b7410e;font-size:11px;" title="This paste says \"${r.name}\", their account record says \"${r.canonical.name}\" — worth checking which is current before importing.">⚠ differs from account: ${r.canonical.name}</span> <a href="#" onclick="event.preventDefault();syncPreviewName(${i})" style="font-size:11px;" title="Overwrite this pasted name with the account record's name, before importing.">⟳ sync</a>`;
+    })();
     return groupRow + `<tr>
-      <td style="font-weight:700;color:var(--rmd-navy);">${r.name}</td>
+      <td id="preview-name-${i}" style="font-weight:700;color:var(--rmd-navy);">${nameCell}</td>
       <td style="font-size:12px;">${r.email || `<span class="flag-missing-email">⚠ none</span>`}</td>
       <td>${r.group}</td>
       <td>${r.team}</td>
@@ -316,6 +330,19 @@ function parsePreview() {
   document.getElementById("previewCard").style.display = "block";
   document.getElementById("importLog").style.display = "none";
   document.getElementById("previewCard").scrollIntoView({ behavior: "smooth" });
+}
+
+// Section 0.1: director-driven fix, not automatic. In-memory only — nothing
+// is written to Firestore until Import is clicked, so this just corrects the
+// pasted value before it gets committed, rather than needing a second pass
+// against admin-director-access.html/admin-mou-dashboard.html afterward.
+function syncPreviewName(i) {
+  const r = parsedRows[i];
+  if (!r || !r.canonical || !r.canonical.name) return;
+  if (!confirm(`Update this pasted entry's name from "${r.name}" to "${r.canonical.name}" (their account record)? This only changes the preview — nothing is saved until you import.`)) return;
+  r.name = r.canonical.name;
+  const cell = document.getElementById(`preview-name-${i}`);
+  if (cell) cell.textContent = r.name;
 }
 
 async function confirmImport() {

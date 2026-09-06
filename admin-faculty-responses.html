@@ -489,6 +489,7 @@ async function loadResponses() {
         return aFirst.localeCompare(bFirst) ||
                (a.lastName || "").toLowerCase().localeCompare((b.lastName || "").toLowerCase());
       });
+    await Promise.all(allResponses.map(async (r) => { r.canonical = await resolveCanonicalName(r.email); }));
   } catch (err) {
     document.getElementById("tabContent").innerHTML =
       `<div class="empty-state">Could not load responses. Check you are signed in as director.<br><small>${err.message}</small></div>`;
@@ -561,13 +562,59 @@ function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").repl
 function knownAsOrFirst(r) { return (r.knownAs && r.knownAs.trim()) || r.firstName || ""; }
 function fullName(r) { return [knownAsOrFirst(r), r.lastName].filter(Boolean).join(" "); }
 function passportName(r) { return [r.firstName, r.middleName, r.lastName].filter(Boolean).join(" "); }
+// renderNameCell(r) — HTML-safe display name with a drift warning appended when it
+// differs from their people/{uid} account name. Deliberately separate from fullName(r),
+// which stays plain text because it also feeds onclick handler arguments (removeDirector,
+// makeDirector, deleteResponse, roleSelectHtml) and the CSV export, where HTML would
+// corrupt the output. Only use this in contexts that render straight into the DOM.
+function renderNameCell(r) {
+  const displayName = fullName(r) || r.email || "–";
+  if (!r.canonical || !r.canonical.name) return displayName;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  if (norm(r.canonical.name) === norm(displayName)) return displayName;
+  // A <span> with stopPropagation, not an <a> — renderNameCell() is also used inside
+  // nameLink()'s own <a onclick="goToEntry(...)">, and a nested <a> would break that
+  // outer link's click handling in every browser.
+  return `${displayName} <span style="color:#b7410e;font-size:11px;" title="This record shows &quot;${displayName}&quot;, their account record says &quot;${r.canonical.name}&quot; — worth checking which is current.">⚠ differs from account: ${esc(r.canonical.name)}</span> <span onclick="event.preventDefault();event.stopPropagation();syncNameToAccount('${r.id}')" style="font-size:11px;color:var(--rmd-navy);text-decoration:underline;cursor:pointer;" title="Overwrite this response's name with the account record's name.">⟳ sync</span>`;
+}
+
+// Section 0.1: director-driven fix, not automatic — only ever copies the
+// account's name onto this response, never the reverse. faculty_responses
+// splits name into firstName/lastName/knownAs (unlike the other collections'
+// single name field), so a straight overwrite isn't safe: a canonical name
+// like "Anna-Maria De Souza" can't be reliably auto-split into first/last.
+// Pre-fill a sensible guess (last word = surname) but let the director
+// confirm or correct it, same prompt()-based pattern as editKnownAs() above.
+async function syncNameToAccount(docId) {
+  const r = allResponses.find(x => x.id === docId);
+  if (!r || !r.canonical || !r.canonical.name) return;
+  const canonical = r.canonical.name.trim();
+  const parts = canonical.split(/\s+/);
+  const suggestedLast = parts.length > 1 ? parts[parts.length - 1] : "";
+  const suggestedFirst = parts.length > 1 ? parts.slice(0, -1).join(" ") : canonical;
+  const first = prompt(`Their account record says "${canonical}".\n\nFirst / known-as name to use here:`, suggestedFirst);
+  if (first === null) return;
+  const last = prompt(`Last name to use here:`, suggestedLast);
+  if (last === null) return;
+  const firstTrimmed = first.trim(), lastTrimmed = last.trim();
+  try {
+    await db.collection("faculty_responses").doc(docId).update({
+      firstName: firstTrimmed, knownAs: firstTrimmed, lastName: lastTrimmed
+    });
+    r.firstName = firstTrimmed; r.knownAs = firstTrimmed; r.lastName = lastTrimmed;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update name: " + err.message);
+  }
+}
 function fmtDate(r)  {
   return r.submittedAt
     ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
     : "–";
 }
 function nameLink(r) {
-  const label = fullName(r) || r.email || "\u2013";
+  const label = renderNameCell(r);
   return `<a href="#" class="name-link" onclick="event.preventDefault();goToEntry('${r.id}')">${label}</a>`;
 }
 function goToEntry(docId) {
@@ -637,7 +684,7 @@ function renderAll() {
     return `
       <div class="response-card">
         <div class="rc-header" onclick="toggleCard(${i})">
-          <div class="rc-name">${fullName(r) || r.email}</div>
+          <div class="rc-name">${renderNameCell(r)}</div>
           ${dirBadge}
           ${statusBadge}
           ${provisionalBadge}

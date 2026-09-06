@@ -235,6 +235,81 @@ function requireSuperUser(redirectTo) {
   });
 }
 
+// resolveCanonicalName(email) → { uid, name } or null
+// Client-side lookup of a person's name as stored on their own people/{uid}
+// doc, by querying people where email == the given address (people docs
+// already store their own lowercased email field — no Admin SDK needed for
+// this, unlike the UID resolution in functions/index.js).
+// Read-only. Returns null if no matching people doc exists (e.g. someone
+// with no login yet) — callers should fall back to whatever name they
+// already have in that case, not treat null as an error.
+// Added 2026-09-06 as the first step of Section 0.1 of the "One Person, One
+// Record" platform workplan: a way to surface (not yet auto-fix) name drift
+// between people and other collections like faculty_roster/mou_roster.
+async function resolveCanonicalName(email) {
+  const e = (email || "").trim().toLowerCase();
+  if (!e) return null;
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("email", "==", e).limit(1).get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0];
+    return { uid: doc.id, name: doc.data().name || null };
+  } catch (err) {
+    return null;
+  }
+}
+
+// ── Role history (Section 0.3 of the platform workplan) ──────────────────────
+// people/{uid}.roleHistory is an array of dated periods, never overwritten,
+// only appended to:
+//   { role, from: "YYYY-MM-DD"|null, to: "YYYY-MM-DD"|null, source, note }
+// A null `to` means that period is still open/current. Starting a new period
+// closes whatever period was previously open (sets its `to`), it never
+// deletes or edits past entries. This is what the eligibility shortlist
+// (3.3), CPD certificate (2.4) and annual review (2.1) are meant to read
+// from once those exist — added 2026-09-06 specifically so those features
+// have something real to build on, not just a design note. Suggested role
+// values match the four pipeline stages (Instructor / Student Faculty /
+// Senior Faculty / Director) used elsewhere on the platform (see the "One
+// Person, One Record" workplan's stage diagram), but this deliberately
+// isn't locked to that list — free text is accepted for the finer-grained
+// weekend-specific roles (Assessor, Instructor Trainer, etc.) that don't
+// map cleanly onto the four pipeline stages.
+
+// Adds a new open role period starting at fromDate, closing any period that
+// was still open beforehand at that same date. Never deletes past entries.
+async function addRoleHistoryEntry(uid, role, fromDate, source, note) {
+  const ref = db.collection(COLLECTIONS.people).doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("No people record for uid " + uid);
+  const history = Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory.slice() : [];
+  history.forEach(h => { if (h.to === null || h.to === undefined) h.to = fromDate || null; });
+  history.push({ role, from: fromDate || null, to: null, source: source || "manual", note: note || null });
+  await ref.update({ roleHistory: history });
+  return history;
+}
+
+// Closes whatever role period is currently open, without opening a new one —
+// for a stand-down (leaving RMD) rather than a promotion/role change. Returns
+// the updated history, or the unchanged history if nothing was open to close.
+async function closeRoleHistory(uid, toDate, note) {
+  const ref = db.collection(COLLECTIONS.people).doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("No people record for uid " + uid);
+  const history = Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory.slice() : [];
+  let closedAny = false;
+  history.forEach(h => {
+    if (h.to === null || h.to === undefined) {
+      h.to = toDate || null;
+      if (note) h.note = h.note ? h.note + " / " + note : note;
+      closedAny = true;
+    }
+  });
+  if (!closedAny) return history;
+  await ref.update({ roleHistory: history });
+  return history;
+}
+
 // ── Firebase initialisation (loaded after firebase SDK scripts) ──────────────
 let db, auth, storage;
 

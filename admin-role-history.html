@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Role History — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 900px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .director-note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:16px; line-height:1.5; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin-top:8px; line-height:1.5; }
+    .btn-primary { padding:12px 20px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:disabled { background:#aab8c2; cursor:default; }
+    .btn-primary:hover:not(:disabled) { background:var(--rmd-navy); }
+    .btn-secondary { padding:8px 14px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-secondary:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
+    .btn-close { padding:8px 14px; background:white; color:#b7410e; border:2px solid #f5b8b0; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-close:hover { background:#fce8e6; }
+    .summary-line { font-size:13px; color:var(--rmd-muted); margin-bottom:12px; }
+    .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
+    input[type=text] { width:100%; padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:14px; font-family:var(--font); margin-bottom:10px; }
+    .preview-row { display:flex; align-items:center; gap:10px; padding:8px 12px; border-top:1px solid #f0f3f6; font-size:13px; }
+    .preview-row .name { font-weight:700; color:var(--rmd-navy); min-width:160px; }
+    .preview-row .meta { color:var(--rmd-muted); font-size:12px; }
+    .preview-row .will-add { margin-left:auto; font-size:11px; color:#1a6e31; background:#e1efe3; padding:2px 8px; border-radius:10px; font-weight:700; }
+    .person-row { border:1px solid #e8edf2; border-radius:6px; margin-bottom:10px; overflow:hidden; }
+    .person-head { display:flex; align-items:center; gap:10px; padding:10px 12px; background:#f7f9fb; }
+    .person-head .name { font-weight:700; color:var(--rmd-navy); }
+    .person-head .meta { color:var(--rmd-muted); font-size:12px; }
+    .person-head .actions { margin-left:auto; display:flex; gap:6px; }
+    .history-list { padding:8px 12px; }
+    .history-entry { display:flex; gap:10px; align-items:center; padding:5px 0; font-size:12px; border-top:1px solid #f4f6f8; }
+    .history-entry:first-child { border-top:none; }
+    .history-entry .role { font-weight:700; color:var(--rmd-navy); min-width:140px; }
+    .history-entry .span { color:var(--rmd-muted); font-family:monospace; }
+    .history-entry .open-tag { background:#e2ebf4; color:#2f5a8a; font-size:10px; font-weight:700; padding:1px 6px; border-radius:8px; }
+    .history-entry .src { margin-left:auto; color:#aab8c2; font-size:11px; }
+    .no-history { color:#aab8c2; font-size:12px; font-style:italic; padding:4px 0; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="admin-global-tools.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Role History</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only</div>
+    </div>
+  </div>
+
+  <div class="director-note">
+    Every promotion, stand-down, or renewal gets recorded as a dated period against the person's own record, instead of just overwriting a single "current role" field. This is Section 0.3 of the platform workplan — the eligibility shortlist, CPD certificate and annual review are all meant to read from this once they're built, so this page exists to make the data real and checkable before those depend on it.<br><br>
+    Adding a role period never deletes or edits an earlier one — it closes whatever period was open and starts a new one. Nothing here is automatic yet: there's no annual review screen calling this, so use the actions below directly when a role actually changes.
+  </div>
+
+  <div class="card">
+    <div class="card-header">One-time backfill</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">People who already have a current role but no role history yet (i.e. everyone, before this page existed) can be seeded with a single open period starting from their current role, so the eligibility shortlist and CPD certificate have something to read immediately rather than waiting a full year. The exact start date isn't known for a backfilled period, so it's recorded as "from: unknown" rather than guessed.</p>
+      <button class="btn-primary" id="scanBtn" onclick="scanBackfill()">🔍 Scan for people missing role history</button>
+      <div id="backfillResults" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">People</div>
+    <div class="card-body">
+      <input type="text" id="searchBox" placeholder="Search by name, email or role…" oninput="renderPeople()">
+      <div class="summary-line" id="summaryLine"></div>
+      <div id="peopleList"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+requireDirector("timetable.html");
+
+const SUGGESTED_ROLES = ["Instructor", "Student Faculty", "Senior Faculty", "Director"];
+
+let allPeople = [];
+
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+async function loadPeople() {
+  const snap = await db.collection(COLLECTIONS.people).get();
+  allPeople = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  renderPeople();
+}
+
+function fmtDate(d) { return d ? d : "unknown"; }
+
+function historyHtml(p) {
+  const history = Array.isArray(p.roleHistory) ? p.roleHistory : [];
+  if (!history.length) return `<div class="no-history">No role history recorded yet.</div>`;
+  return history.map(h => `
+    <div class="history-entry">
+      <span class="role">${h.role || "(no role)"}</span>
+      <span class="span">${fmtDate(h.from)} – ${h.to ? h.to : "present"}</span>
+      ${!h.to ? `<span class="open-tag">OPEN</span>` : ""}
+      <span class="src">${h.source || ""}</span>
+    </div>`).join("");
+}
+
+function renderPeople() {
+  const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
+  const filtered = q
+    ? allPeople.filter(p =>
+        (p.name || "").toLowerCase().includes(q) ||
+        (p.email || "").toLowerCase().includes(q) ||
+        (p.role || "").toLowerCase().includes(q))
+    : allPeople;
+
+  document.getElementById("summaryLine").textContent =
+    `${filtered.length} of ${allPeople.length} people`;
+
+  document.getElementById("peopleList").innerHTML = filtered.length
+    ? filtered.map(p => `
+      <div class="person-row">
+        <div class="person-head">
+          <span class="name">${p.name || "(no name)"}</span>
+          <span class="meta">${p.email || "–"} · current: ${p.role || "–"}</span>
+          <div class="actions">
+            <button class="btn-secondary" onclick="promptAddRole('${p.id}')">+ Add role period</button>
+            <button class="btn-close" onclick="promptCloseRole('${p.id}')">Close current period</button>
+          </div>
+        </div>
+        <div class="history-list">${historyHtml(p)}</div>
+      </div>`).join("")
+    : `<div class="empty-state">No matches.</div>`;
+}
+
+async function promptAddRole(uid) {
+  const p = allPeople.find(x => x.id === uid);
+  if (!p) return;
+  const suggestion = SUGGESTED_ROLES.join(" / ");
+  const role = prompt(`Role for ${p.name || p.email} (suggested: ${suggestion} — or type any other role):`, "");
+  if (role === null) return;
+  const roleTrimmed = role.trim();
+  if (!roleTrimmed) { alert("Role can't be blank."); return; }
+  const fromDate = prompt(`Starting date for "${roleTrimmed}" (YYYY-MM-DD):`, todayIso());
+  if (fromDate === null) return;
+  if (!confirm(`Add "${roleTrimmed}" starting ${fromDate.trim() || "unknown date"} for ${p.name || p.email}?\n\nThis will close whatever role period is currently open for them.`)) return;
+  try {
+    const history = await addRoleHistoryEntry(uid, roleTrimmed, fromDate.trim() || null, "manual");
+    p.roleHistory = history;
+    renderPeople();
+  } catch (err) {
+    alert("Failed to add role period: " + err.message);
+  }
+}
+
+async function promptCloseRole(uid) {
+  const p = allPeople.find(x => x.id === uid);
+  if (!p) return;
+  const hasOpen = Array.isArray(p.roleHistory) && p.roleHistory.some(h => !h.to);
+  if (!hasOpen) { alert(`${p.name || p.email} has no open role period to close.`); return; }
+  const toDate = prompt(`Closing date for ${p.name || p.email}'s current role period (YYYY-MM-DD):`, todayIso());
+  if (toDate === null) return;
+  const note = prompt(`Optional note (e.g. "stood down"):`, "") || "";
+  if (!confirm(`Close ${p.name || p.email}'s current role period as of ${toDate.trim() || "unknown date"}? This does not start a new period.`)) return;
+  try {
+    const history = await closeRoleHistory(uid, toDate.trim() || null, note.trim());
+    p.roleHistory = history;
+    renderPeople();
+  } catch (err) {
+    alert("Failed to close role period: " + err.message);
+  }
+}
+
+// ── Backfill ──────────────────────────────────────────────────────────────
+let backfillCandidates = [];
+
+async function scanBackfill() {
+  const btn = document.getElementById("scanBtn");
+  btn.disabled = true;
+  btn.textContent = "Scanning…";
+  try {
+    if (!allPeople.length) await loadPeople();
+    backfillCandidates = allPeople.filter(p =>
+      p.role && (!Array.isArray(p.roleHistory) || p.roleHistory.length === 0));
+
+    const el = document.getElementById("backfillResults");
+    if (!backfillCandidates.length) {
+      el.innerHTML = `<div class="empty-state">Everyone with a current role already has role history. Nothing to backfill.</div>`;
+    } else {
+      el.innerHTML = `
+        <div class="summary-line">${backfillCandidates.length} people have a current role but no history yet:</div>
+        ${backfillCandidates.map(p => `
+          <div class="preview-row">
+            <span class="name">${p.name || "(no name)"}</span>
+            <span class="meta">${p.email || "–"}</span>
+            <span class="will-add">will add: ${p.role} (from: unknown)</span>
+          </div>`).join("")}
+        <div style="margin-top:14px;">
+          <button class="btn-primary" onclick="confirmBackfill()">Add role history for ${backfillCandidates.length} people</button>
+        </div>`;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔍 Scan for people missing role history";
+  }
+}
+
+async function confirmBackfill() {
+  if (!backfillCandidates.length) return;
+  if (!confirm(`Add a single open role-history period to ${backfillCandidates.length} people, seeded from their current role field?\n\nThis only adds data — it never changes anyone's current role, and can be corrected later by adding a new period.`)) return;
+
+  const batch = db.batch();
+  const source = "backfill-" + todayIso();
+  backfillCandidates.forEach(p => {
+    const ref = db.collection(COLLECTIONS.people).doc(p.id);
+    batch.update(ref, {
+      roleHistory: [{
+        role: p.role,
+        from: null,
+        to: null,
+        source: source,
+        note: "Seeded from their role field at the time role history was introduced; exact start date unknown."
+      }]
+    });
+  });
+
+  try {
+    await batch.commit();
+    backfillCandidates.forEach(p => {
+      p.roleHistory = [{ role: p.role, from: null, to: null, source: source, note: "Seeded from their role field at the time role history was introduced; exact start date unknown." }];
+    });
+    document.getElementById("backfillResults").innerHTML =
+      `<div class="empty-state">Done — role history added for ${backfillCandidates.length} people.</div>`;
+    backfillCandidates = [];
+    renderPeople();
+  } catch (err) {
+    alert("Backfill failed: " + err.message);
+  }
+}
+
+loadPeople();
+
+</script>
+</body>
+</html>
