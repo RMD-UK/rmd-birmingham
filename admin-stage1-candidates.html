@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stage 1 Candidates — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 1000px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .director-note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:16px; line-height:1.5; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin-top:8px; line-height:1.5; }
+    .btn-primary { padding:12px 20px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:disabled { background:#aab8c2; cursor:default; }
+    .btn-primary:hover:not(:disabled) { background:var(--rmd-navy); }
+    .btn-secondary { padding:8px 14px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-secondary:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
+    .btn-promote { padding:6px 12px; background:#e1efe3; color:#1a6e31; border:2px solid #1a6e31; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-promote:hover { background:#1a6e31; color:white; }
+    .btn-danger-sm { padding:6px 12px; background:white; color:#b7410e; border:2px solid #f5b8b0; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger-sm:hover { background:#fce8e6; }
+    .summary-line { font-size:13px; color:var(--rmd-muted); margin-bottom:12px; }
+    .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
+    textarea { width:100%; min-height:120px; padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:13px; font-family:monospace; margin-bottom:8px; }
+    input[type=text], select { padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:14px; font-family:var(--font); }
+    input[type=text] { width:100%; margin-bottom:10px; }
+    .filters { display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+    .filters select { min-width:180px; }
+    table.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+    table.data-table th { text-align:left; background:#eef2f6; padding:8px 10px; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--rmd-muted); }
+    table.data-table td { padding:8px 10px; border-top:1px solid #f0f3f6; vertical-align:top; }
+    .name-cell { font-weight:700; color:var(--rmd-navy); }
+    .promoted-badge { background:#e1efe3; color:#1a6e31; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; }
+    .dup-warning { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:6px 10px; font-size:11px; color:#856404; margin-top:4px; }
+    .dup-exact { background:#fce8e6; border-color:#f5b8b0; color:#b7410e; }
+    .preview-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+    .preview-table th { text-align:left; background:#eef2f6; padding:6px 8px; font-size:10px; text-transform:uppercase; color:var(--rmd-muted); }
+    .preview-table td { padding:6px 8px; border-top:1px solid #f0f3f6; }
+    .error-list { background:#fce8e6; border:1px solid #f5b8b0; border-radius:6px; padding:8px 12px; font-size:12px; color:#b7410e; margin-top:10px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="admin-global-tools.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Stage 1 Candidates</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only</div>
+    </div>
+  </div>
+
+  <div class="director-note">
+    Section 3.5 of the platform workplan: a lightweight per-year record for every taught first-year, no login involved. This is the population the course room/instructor allocation tool (3.6) will load candidates from, once it's built.<br><br>
+    Course and room names below are free text for now — the definitive teaching-room list hasn't been confirmed yet, so nothing here is locked to a fixed list. Rating is deliberately not on this page: the structured BLS appraisal (3.7) that replaces a free rating hasn't been built yet either. "Promote to Instructor" creates the person a real account (Firebase login + a <code>people</code> record) and starts their role history — do this only for someone actually being made an Instructor, not as a test.
+  </div>
+
+  <div class="card">
+    <div class="card-header">Add candidates</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>name, email, degree, course, room</strong> — email and a day/month of birth (e.g. <code>14/03</code>, added as a 6th field) are optional but help tell apart two candidates with a similar name in the same course and room. Tab or comma separated.</p>
+      <textarea id="pasteBox" placeholder="Jane Smith, j.smith@bham.ac.uk, Medicine, Course 1, CM01, 14/03&#10;Tom Jones,, Medicine, Course 1, CM01"></textarea>
+      <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
+      <div id="previewWrap"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Candidates</div>
+    <div class="card-body">
+      <div class="filters">
+        <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
+        <input type="text" id="searchBox" placeholder="Search by name, email or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
+      </div>
+      <div class="summary-line" id="summaryLine"></div>
+      <div id="candidatesWrap"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+requireDirector("timetable.html");
+
+let allCandidates = [];
+let parsedRows = null;
+
+function normName(s) { return (s || "").trim().toLowerCase().replace(/\s+/g, " "); }
+function surnameOf(name) {
+  const parts = normName(name).split(" ").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+function normCourseRoom(s) { return (s || "").trim().toLowerCase(); }
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+async function loadCandidates() {
+  const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+  allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  populateCourseFilter();
+  renderCandidates();
+}
+
+function populateCourseFilter() {
+  const sel = document.getElementById("courseFilter");
+  const current = sel.value;
+  const courses = Array.from(new Set(allCandidates.map(c => c.course).filter(Boolean))).sort();
+  sel.innerHTML = `<option value="">All courses</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  sel.value = current;
+}
+
+// ── Duplicate detection ──────────────────────────────────────────────────
+// Same "flag it, don't guess" rule used elsewhere (visitor-export, 0.1's
+// drift flags): an exact match on name+degree+course+room is flagged, and so
+// is a same-surname match within the same course+room that isn't already an
+// exact hit — same soft "check, don't auto-exclude" approach as the IW
+// visitor-export review list, since a nickname or spelling variant (e.g.
+// "Tom"/"Thomas") won't match on full name but is still worth a second look.
+// A day/month-of-birth match/mismatch between two near-matches is surfaced
+// as extra evidence, not used to auto-resolve anything — a director always
+// makes the final call.
+function findDuplicates(candidate, against) {
+  const name = normName(candidate.name);
+  const surname = surnameOf(candidate.name);
+  const course = normCourseRoom(candidate.course);
+  const room = normCourseRoom(candidate.room);
+  const degree = normCourseRoom(candidate.degree);
+
+  const exact = against.filter(o =>
+    o !== candidate &&
+    normName(o.name) === name &&
+    normCourseRoom(o.degree) === degree &&
+    normCourseRoom(o.course) === course &&
+    normCourseRoom(o.room) === room);
+
+  const near = against.filter(o =>
+    o !== candidate &&
+    !exact.includes(o) &&
+    normCourseRoom(o.course) === course &&
+    normCourseRoom(o.room) === room &&
+    surnameOf(o.name) === surname &&
+    surname !== "");
+
+  return { exact, near };
+}
+
+function duplicateWarningHtml(dupes, candidate) {
+  const parts = [];
+  if (dupes.exact.length) {
+    parts.push(`<div class="dup-warning dup-exact">⚠ Exact match on name, degree, course and room against: ${dupes.exact.map(o => esc(o.name)).join(", ")}. Likely the same person entered twice.</div>`);
+  }
+  if (dupes.near.length) {
+    const dobNote = candidate.dob
+      ? dupes.near.map(o => o.dob
+          ? (o.dob === candidate.dob ? `${esc(o.name)} (same DOB — likely the same person)` : `${esc(o.name)} (different DOB — likely a different person)`)
+          : `${esc(o.name)} (no DOB on file to compare)`).join("; ")
+      : dupes.near.map(o => esc(o.name)).join(", ");
+    parts.push(`<div class="dup-warning">⚠ Possible match — same surname, course and room: ${dobNote}. Check before assuming these are different people.</div>`);
+  }
+  return parts.join("");
+}
+
+// ── Add candidates (paste, parse, preview, import) ──────────────────────
+function parseLine(line) {
+  const parts = line.split(/\t|,/).map(s => s.trim());
+  const [name, email, degree, course, room, dob] = parts;
+  return { name: name || "", email: email || "", degree: degree || "", course: course || "", room: room || "", dob: dob || "" };
+}
+
+function parsePreview() {
+  const raw = document.getElementById("pasteBox").value;
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const errors = [];
+  const rows = [];
+
+  lines.forEach((line, i) => {
+    const r = parseLine(line);
+    if (!r.name) { errors.push(`Line ${i + 1}: no name — skipped ("${esc(line)}").`); return; }
+    if (!r.course || !r.room) { errors.push(`Line ${i + 1} ("${esc(r.name)}"): missing course or room — kept, but check it before importing.`); }
+    rows.push(r);
+  });
+
+  parsedRows = rows;
+
+  const wrap = document.getElementById("previewWrap");
+  if (!rows.length) {
+    wrap.innerHTML = errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : `<div class="empty-state">Nothing to preview — paste some rows above.</div>`;
+    return;
+  }
+
+  const rowsHtml = rows.map((r, i) => {
+    const dupes = findDuplicates(r, [...rows.slice(0, i), ...rows.slice(i + 1), ...allCandidates]);
+    const warn = duplicateWarningHtml(dupes, r);
+    return `<tr>
+      <td class="name-cell">${esc(r.name)}</td>
+      <td>${esc(r.email) || "<em>none</em>"}</td>
+      <td>${esc(r.degree)}</td>
+      <td>${esc(r.course)}</td>
+      <td>${esc(r.room)}</td>
+      <td>${esc(r.dob) || "–"}</td>
+      <td>${warn}</td>
+    </tr>`;
+  }).join("");
+
+  wrap.innerHTML = `
+    ${errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : ""}
+    <table class="preview-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th>DOB (day/mth)</th><th>Flags</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div style="margin-top:12px;">
+      <button class="btn-primary" onclick="confirmImport()">Import ${rows.length} candidate${rows.length === 1 ? "" : "s"}</button>
+    </div>`;
+}
+
+async function confirmImport() {
+  if (!parsedRows || !parsedRows.length) return;
+  if (!confirm(`Add ${parsedRows.length} candidate${parsedRows.length === 1 ? "" : "s"} to Stage 1 Candidates?\n\nFlagged possible duplicates above are NOT blocked — review them yourself before or after importing.`)) return;
+
+  const CHUNK = 400; // Firestore batch limit is 500 writes; leave headroom
+  try {
+    for (let start = 0; start < parsedRows.length; start += CHUNK) {
+      const batch = db.batch();
+      parsedRows.slice(start, start + CHUNK).forEach(r => {
+        const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
+        batch.set(ref, {
+          name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: r.course, room: r.room, dob: r.dob,
+          promotedToUid: null, promotedAt: null,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      await batch.commit();
+    }
+    document.getElementById("pasteBox").value = "";
+    document.getElementById("previewWrap").innerHTML = `<div class="empty-state">Imported ${parsedRows.length} candidate(s).</div>`;
+    parsedRows = null;
+    await loadCandidates();
+  } catch (err) {
+    alert("Import failed: " + err.message);
+  }
+}
+
+// ── Candidates list ───────────────────────────────────────────────────────
+function renderCandidates() {
+  const courseFilter = document.getElementById("courseFilter").value;
+  const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
+
+  let filtered = allCandidates;
+  if (courseFilter) filtered = filtered.filter(c => c.course === courseFilter);
+  if (q) filtered = filtered.filter(c =>
+    (c.name || "").toLowerCase().includes(q) ||
+    (c.email || "").toLowerCase().includes(q) ||
+    (c.room || "").toLowerCase().includes(q));
+
+  document.getElementById("summaryLine").textContent = `${filtered.length} of ${allCandidates.length} candidates`;
+
+  document.getElementById("candidatesWrap").innerHTML = filtered.length
+    ? `<table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
+        <tbody>${filtered.map(c => `
+          <tr>
+            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}</td>
+            <td>${esc(c.email) || "–"}</td>
+            <td>${esc(c.degree) || "–"}</td>
+            <td>${esc(c.course) || "–"}</td>
+            <td>${esc(c.room) || "–"}</td>
+            <td>${c.promotedToUid ? "" : `<button class="btn-promote" onclick="promoteToInstructor('${c.id}')">Promote to Instructor</button>`}</td>
+            <td><button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
+          </tr>`).join("")}</tbody>
+      </table>`
+    : `<div class="empty-state">No candidates match.</div>`;
+}
+
+async function deleteCandidate(id) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(`Delete this candidate record?\n\n${c.name || "(no name)"} — ${c.course || "no course"} / ${c.room || "no room"}\n\nThis cannot be undone. If they've already been promoted to Instructor, this only removes their Stage 1 record — their account is untouched.`)) return;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).delete();
+    allCandidates = allCandidates.filter(x => x.id !== id);
+    populateCourseFilter();
+    renderCandidates();
+  } catch (err) {
+    alert("Delete failed: " + err.message);
+  }
+}
+
+// ── Promotion to Instructor ───────────────────────────────────────────────
+// Same account-creation mechanism as admin-bulk-users.html: the Identity
+// Toolkit REST signUp endpoint works from the browser with the public API
+// key, no Admin SDK needed. Every account gets its own random, never-shown
+// password, then a standard Firebase password-reset email so the person
+// sets their own before ever signing in — see admin-bulk-users.html for the
+// original reasoning (replaced a hardcoded shared default, a real credential
+// exposure fixed 2026-07-07).
+function randomPassword(len = 24) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*";
+  const bytes = new Uint32Array(len);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => chars[b % chars.length]).join("");
+}
+
+async function sendPasswordResetEmailTo(email) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_CONFIG.apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestType: "PASSWORD_RESET", email,
+        continueUrl: "https://rmd.uk.com/index.html", canHandleCodeInApp: false
+      })
+    }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+}
+
+async function promoteToInstructor(candidateId) {
+  const c = allCandidates.find(x => x.id === candidateId);
+  if (!c) return;
+  if (!c.email) { alert(`${c.name || "This candidate"} has no email on file — add one before promoting, since it's needed to create their account.`); return; }
+  if (!confirm(`Promote ${c.name} to Instructor?\n\nThis creates them a real RMD account (${c.email}) and starts their role history as "Instructor" from today. This is not reversible from this page — only do this for a genuine new Instructor.`)) return;
+
+  try {
+    let uid;
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_CONFIG.apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: c.email, password: randomPassword(), returnSecureToken: false })
+      }
+    );
+    const data = await res.json();
+    if (data.error) {
+      if (data.error.message === "EMAIL_EXISTS") {
+        // They already have an account (e.g. re-promoted, or created another
+        // way) — look it up rather than failing, same "don't lose the person
+        // over a technicality" approach as admin-bulk-users.html.
+        const existing = await resolveCanonicalName(c.email);
+        if (!existing) throw new Error("An account already exists for this email, but it couldn't be looked up to continue.");
+        uid = existing.uid;
+      } else {
+        throw new Error(data.error.message);
+      }
+    } else {
+      uid = data.localId;
+      await sendPasswordResetEmailTo(c.email);
+    }
+
+    await db.collection(COLLECTIONS.people).doc(uid).set({
+      name: c.name, email: c.email, role: ROLES.INSTRUCTOR, stream: "instructor",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    await addRoleHistoryEntry(uid, "Instructor", todayIso(), "promoted-from-stage1",
+      `Promoted from Stage 1 candidate record (${c.course || "course unknown"} / ${c.room || "room unknown"}).`);
+
+    await db.collection(COLLECTIONS.stage1Candidates).doc(candidateId).update({
+      promotedToUid: uid, promotedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    c.promotedToUid = uid;
+    renderCandidates();
+    alert(`${c.name} promoted. They'll receive a password-reset email at ${c.email} to set up their sign-in.`);
+  } catch (err) {
+    alert("Promotion failed: " + err.message);
+  }
+}
+
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+loadCandidates();
+
+</script>
+</body>
+</html>

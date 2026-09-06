@@ -37,7 +37,8 @@ const COLLECTIONS = {
   facultyRoster:    "faculty_roster",    // director-only annual roster (name, email, group, team, role) — see below
   facultyDirectory: "faculty_directory", // public display copy of the same roster, no email — feeds faculty.html
   iwRegistrations:  "iw_registrations",  // director-managed Instructor Weekend attendee list — see admin-iw-registrations.html
-  iwAssessorRsvp:   "iw_assessor_rsvp"   // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
+  iwAssessorRsvp:   "iw_assessor_rsvp",  // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
+  stage1Candidates: "stage1_candidates"  // taught first-year candidate records, no login — see admin-stage1-candidates.html (Section 3.5)
 };
 
 // ── Memorandum of Understanding ─────────────────────────────────────────────
