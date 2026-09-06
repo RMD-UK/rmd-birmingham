@@ -304,6 +304,12 @@
       </div>
     </div>
 
+    <div class="field" id="employmentField" style="display:none;">
+      <label>Current employment status (including name of employer) <span class="req">*</span></label>
+      <input type="text" id="employmentStatus" placeholder="e.g. ICU Consultant, Sandwell and West Birmingham NHS Trust">
+      <div class="hint-text">Needed each year for your University of Birmingham visitor access request (Jon files this on your behalf, alongside your Contingent Worker status above). If you're a current student, give your course and host university instead — e.g. &quot;5th-year MBChB student, University of Birmingham&quot;.</div>
+    </div>
+
     <div class="field">
       <label>Academic year</label>
       <input type="text" id="academicYear" disabled>
@@ -453,6 +459,7 @@ let cwConfirmed = null;
 document.getElementById("role").addEventListener("change", function () {
   const isSeniorFaculty = this.value === "RMD Senior Faculty";
   document.getElementById("cwField").style.display = isSeniorFaculty ? "block" : "none";
+  document.getElementById("employmentField").style.display = isSeniorFaculty ? "block" : "none";
   if (!isSeniorFaculty) {
     cwConfirmed = null;
     document.querySelectorAll("#cwGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no","selected-exempt"));
@@ -485,6 +492,7 @@ async function submitForm() {
   const nationality = document.getElementById("memberNationality").value;
   const email = document.getElementById("memberEmail").value.trim().toLowerCase();
   const role  = document.getElementById("role").value;
+  const employmentStatus = document.getElementById("employmentStatus").value.trim();
   const read  = document.getElementById("readConfirm").checked;
   const comment = document.getElementById("disagreeComment").value.trim();
 
@@ -495,6 +503,7 @@ async function submitForm() {
   if (role === "RMD Senior Faculty") {
     if (cwConfirmed === null) { alert("Please confirm your UoB Contingent Worker status."); return; }
     if (cwConfirmed === false) { alert("Your MoU can't be submitted until your UoB Contingent Worker status is active and up to date.\n\nApply or renew here, then come back and submit once it's underway:\nhttps://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=z8oksN7eQUKhXDyX1VPp8wBtHh5KrpBHoi12PKseGCdUNUE0VkU1VjVDRURFNkw2WjVKNUwwN1kzVi4u\n\nQueries: smsvisitingpersonnel@contacts.bham.ac.uk and j.durrant@bham.ac.uk"); return; }
+    if (!employmentStatus) { alert("Please enter your current employment status (including name of employer) — needed for your UoB visitor access request."); return; }
   }
   if (!read) { alert("Please confirm you have read and understood the Memorandum of Understanding."); return; }
   if (agreed === null) { alert("Please confirm whether you agree to the Memorandum of Understanding."); return; }
@@ -511,6 +520,7 @@ async function submitForm() {
     email: email,
     studentId: document.getElementById("studentId").value.trim(),
     role: role,
+    employmentStatus: role === "RMD Senior Faculty" ? employmentStatus : "",
     cwStatusConfirmed: role === "RMD Senior Faculty" ? (cwConfirmed === "exempt" ? null : cwConfirmed) : null,
     cwExempt: role === "RMD Senior Faculty" ? (cwConfirmed === "exempt") : false,
     academicYear: CURRENT_MOU_YEAR,
