@@ -38,7 +38,8 @@ const COLLECTIONS = {
   facultyDirectory: "faculty_directory", // public display copy of the same roster, no email — feeds faculty.html
   iwRegistrations:  "iw_registrations",  // director-managed Instructor Weekend attendee list — see admin-iw-registrations.html
   iwAssessorRsvp:   "iw_assessor_rsvp",  // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
-  stage1Candidates: "stage1_candidates"  // taught first-year candidate records, no login — see admin-stage1-candidates.html (Section 3.5)
+  stage1Candidates: "stage1_candidates",  // taught first-year candidate records, no login — see admin-stage1-candidates.html (Section 3.5)
+  courseAllocations: "course_allocations" // per-course room + instructor-team allocation — see admin-course-room-allocation.html (Section 3.6)
 };
 
 // ── Memorandum of Understanding ─────────────────────────────────────────────
@@ -79,6 +80,22 @@ const SFR_NEXT_ACADEMIC_YEAR = "2027/28"; // the academic year the form is askin
 
 // ── Rooms ───────────────────────────────────────────────────────────────────
 const INSTRUCTOR_ROOMS = ["CM01","CM02","CM03","CM04","CM13","CM14","CM15","CM16"];
+
+// ── Stage 1 (taught first-year) teaching rooms — Section 3.6 ───────────────
+// Definitive list supplied and confirmed by Jon 2026-09-07. CM05 is
+// deliberately absent (confirmed — not a teaching room, not an omission).
+// Distinct from INSTRUCTOR_ROOMS above, which is the Instructor Weekend's
+// own separate room set — these two lists are unrelated.
+const STAGE1_TEACHING_ROOMS = [
+  "CM01","CM02","CM03","CM04","CM06","CM07","CM08","CM09","CM10",
+  "CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18"
+];
+// Exam-night rooms, used IN ADDITION to all of the above on the 3rd/
+// assessment evening only. Recorded per Jon 2026-09-07 but deliberately NOT
+// wired into admin-course-room-allocation.html yet — the initial 3.6 build
+// covers teaching nights only, per Jon's explicit instruction. Do not use
+// this constant for room allocation until Jon asks for exam-night handling.
+const STAGE1_EXAM_ROOMS = ["WF19","EF5","EF27","EF30","EF10d"];
 
 // ── Roles ───────────────────────────────────────────────────────────────────
 const ROLES = {

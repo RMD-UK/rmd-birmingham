@@ -415,6 +415,29 @@ service cloud.firestore {
       allow write: if isDirector();
     }
 
+    // ── Stage 1 (taught first-year) candidates — Section 3.5 ────────────────
+    // BUG FIX 2026-09-07: this collection has existed since 3.5 was built
+    // 2026-09-06 (admin-stage1-candidates.html reads/writes it) but no match
+    // block was ever added here — Firestore denies by default with no
+    // matching rule, so every read/write on this collection has been failing
+    // with permission-denied since the page went live. Found while building
+    // 3.6, which depends on reading/writing stage1_candidates.room. Director
+    // only, same as the page's own requireDirector() gate — no candidate
+    // login exists to need broader read access, and no public form writes
+    // here (bulk import is the only write path, director-only).
+    match /stage1_candidates/{docId} {
+      allow read, write: if isDirector();
+    }
+
+    // ── Course roster / room + instructor allocation — Section 3.6 ─────────
+    // One doc per Stage 1 evening course, holding that course's per-room
+    // instructor teams (candidate→room assignment lives on stage1_candidates
+    // .room instead, reusing that existing field rather than duplicating it
+    // here). Director only — see admin-course-room-allocation.html.
+    match /course_allocations/{docId} {
+      allow read, write: if isDirector();
+    }
+
     // ── IW registrations ────────────────────────────────────────────────────
     // Director only — director-managed attendee list for Instructor Weekend
     match /iw_registrations/{docId} {
