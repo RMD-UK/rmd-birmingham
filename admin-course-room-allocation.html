@@ -384,7 +384,9 @@ function assignedIds() {
 function renderPool() {
   const assigned = assignedIds();
   const q = (document.getElementById("poolSearch").value || "").toLowerCase();
-  const unassigned = courseCandidates.filter(c => !assigned.has(c.id) && (!q || c.name.toLowerCase().includes(q)));
+  const unassigned = courseCandidates
+    .filter(c => !assigned.has(c.id) && (!q || c.name.toLowerCase().includes(q)))
+    .sort((a, b) => surnameOf(a.name).localeCompare(surnameOf(b.name)) || a.name.localeCompare(b.name));
   document.getElementById("poolCount").textContent = courseCandidates.filter(c => !assigned.has(c.id)).length;
   document.getElementById("poolList").innerHTML = unassigned.length
     ? unassigned.map(c => makeCard(c, "pool")).join("")
@@ -409,7 +411,9 @@ function renderInstructorPool() {
   const assigned = new Set();
   ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
   const q = (document.getElementById("instrPoolSearch")?.value || "").toLowerCase();
-  const unassigned = allInstructors.filter(i => !assigned.has(i.uid) && (!q || i.name.toLowerCase().includes(q)));
+  const unassigned = allInstructors
+    .filter(i => !assigned.has(i.uid) && (!q || i.name.toLowerCase().includes(q)))
+    .sort((a, b) => surnameOf(a.name).localeCompare(surnameOf(b.name)) || a.name.localeCompare(b.name));
   document.getElementById("instrPoolCount").textContent = unassigned.length;
   document.getElementById("instrPoolList").innerHTML = unassigned.length
     ? unassigned.map(makeInstructorCard).join("")
@@ -588,6 +592,13 @@ function removeFromRoom(id, event) {
 // still be treated as a different degree, since there's no fixed degree
 // list to match against.
 function degreeKey(c) { return (c.degree || "").trim().toLowerCase(); }
+// Last whitespace-separated token of a full name, used to alphabetise the
+// unallocated pools by surname (per Jon 2026-09-07) rather than however
+// Firestore happened to return the docs.
+function surnameOf(name) {
+  const parts = (name || "").trim().split(/\s+/);
+  return (parts[parts.length - 1] || "").toLowerCase();
+}
 function randomizeCandidates() {
   const pool = courseCandidates.filter(c => !c.room);
   if (!pool.length) { showStatus("Nothing unassigned to allocate", "ok"); return; }
