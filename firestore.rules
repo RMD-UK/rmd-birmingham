@@ -97,6 +97,37 @@ service cloud.firestore {
       return isFaculty() || isFullInstructor() || isDirector();
     }
 
+    // True if the signed-in user is on this year's RMD Student/Senior Faculty
+    // roster (faculty_roster, group "student"/"senior") — added 2026-09-07
+    // for read-only oversight of Stage 1 evening-course allocations (Jon:
+    // "RMD student & senior faculty to be able to see, but not edit, all
+    // evening course allocations"). Deliberately checked against
+    // faculty_roster, NOT people/{uid}.role — Student/Senior Faculty
+    // membership has never lived on the people record (see the
+    // "Roster comes from faculty_roster... deliberately NOT derived from
+    // people.role" note on SFR_CYCLE_YEAR in firebase-config.js): the
+    // roster includes named committee seats (Finance, Research, etc.) with
+    // no teaching role or people doc at all. faculty_roster docs are keyed
+    // by the person's own lowercased email (rosterDocId() in
+    // admin-faculty-roster.html), and the existing
+    // "allow get: ... docId == request.auth.token.email.lower()" rule below
+    // already lets a signed-in user read their OWN roster doc this way —
+    // these two functions just name that check. A person on the roster with
+    // no email on file (committee seats without a personal login) is
+    // correctly excluded, same pre-existing limitation as everywhere else
+    // this roster is read.
+    function myFacultyRosterGroup() {
+      return exists(/databases/$(database)/documents/faculty_roster/$(request.auth.token.email.lower()))
+        ? get(/databases/$(database)/documents/faculty_roster/$(request.auth.token.email.lower())).data.group
+        : null;
+    }
+    function isStudentFaculty() {
+      return isSignedIn() && myFacultyRosterGroup() == "student";
+    }
+    function isSeniorFaculty() {
+      return isSignedIn() && myFacultyRosterGroup() == "senior";
+    }
+
     // ── People directory ────────────────────────────────────────────────────
     // Read: public — QR landing page looks up candidate name without login
     // Write: director only — this collection decides who counts as a director,
@@ -435,7 +466,14 @@ service cloud.firestore {
     // .room instead, reusing that existing field rather than duplicating it
     // here). Director only — see admin-course-room-allocation.html.
     match /course_allocations/{docId} {
-      allow read, write: if isDirector();
+      // Read-only oversight for RMD Student/Senior Faculty added 2026-09-07
+      // (Jon: view all evening-course allocations, edits director-only).
+      // stage1_candidates (candidate personal details, incl. email) is
+      // deliberately NOT opened up alongside this yet — pending a decision
+      // on whether Student/Senior Faculty should see candidate emails or a
+      // redacted view (see [[rmd_website_permissions_audit]]).
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow write: if isDirector();
     }
 
     // ── IW registrations ────────────────────────────────────────────────────
