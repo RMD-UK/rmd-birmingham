@@ -95,6 +95,8 @@
   <button class="cra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
   <button class="cra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly allocate unassigned candidates</button>
   <button class="cra-btn" id="autoInstrBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate unassigned instructors</button>
+  <button class="cra-btn" id="restoreBtn" onclick="restoreSaved()" style="display:none">↩ Restore saved</button>
+  <button class="cra-btn" id="setDefaultBtn" onclick="setAsDefault()" style="display:none">⭐ Set as default for all courses</button>
   <button class="cra-btn save" id="saveBtn" onclick="saveAll()" style="display:none">💾 Save all</button>
 </div>
 
@@ -162,7 +164,8 @@ const ROOMS = STAGE1_TEACHING_ROOMS;
 // ── State ────────────────────────────────────────────────────────────────
 let allCandidates   = [];   // every stage1_candidates doc, all courses
 let allInstructors  = [];   // people with role === ROLES.INSTRUCTOR
-let allAllocDocs    = [];   // every course_allocations doc, {id, course, instructorTeams, updatedAt}
+let allAllocDocs    = [];   // every course_allocations doc, {id, course, instructorTeams, updatedAt} — excludes the reserved "_default" doc
+let defaultAllocDoc = null; // the single course_allocations/_default doc, if one has been saved: {id:"_default", instructorTeams, updatedAt}
 
 let currentCourse   = null; // course name string
 let courseCandidates = [];  // subset of allCandidates for currentCourse, working copy: {id, name, email, degree, room, originalRoom, flagText}
@@ -201,7 +204,9 @@ async function loadData() {
 
   try {
     const snap = await db.collection(COLLECTIONS.courseAllocations).get();
-    allAllocDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    defaultAllocDoc = docs.find(d => d.id === "_default") || null;
+    allAllocDocs = docs.filter(d => d.id !== "_default");
   } catch(e) { console.warn("course_allocations load failed:", e.message); }
 
   populateCourseDropdown();
@@ -236,6 +241,8 @@ function selectCourse(course) {
   currentCourse = course || null;
   document.getElementById("autoBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("autoInstrBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("restoreBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("setDefaultBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("saveBtn").style.display  = currentCourse ? "" : "none";
   document.getElementById("noCourse").style.display  = currentCourse ? "none" : "";
   document.getElementById("allocationUI").style.display = currentCourse ? "" : "none";
@@ -251,31 +258,68 @@ function selectCourse(course) {
     };
   });
 
-  // Instructor teams: use this course's own saved allocation if it exists,
-  // otherwise carry forward the most-recently-updated team for each room
-  // from any other course (confirmed by Jon: teams default to repeating
-  // course to course; explicit drag/drop still available to change them).
+  // Instructor teams: use this course's own saved allocation if it exists.
+  // Otherwise pre-fill from the single explicit default (course_allocations/_default,
+  // set automatically on the first course ever saved, or deliberately via
+  // "⭐ Set as default"). Per Jon 2026-09-07: once instructors are allocated,
+  // that becomes THE default for every course — not a "most recently touched
+  // course wins" heuristic, which could drift if one course's team gets a
+  // one-off tweak. Adjusting one course's team here never changes the shared
+  // default unless ⭐ is clicked deliberately.
   const own = allAllocDocs.find(d => d.id === slugify(currentCourse) || d.course === currentCourse);
   roomTeams = {};
   ROOMS.forEach(r => { roomTeams[r] = { uids: [], prefilled: false }; });
   if (own && own.instructorTeams) {
     ROOMS.forEach(r => { roomTeams[r].uids = (own.instructorTeams[r] || []).slice(); });
     document.getElementById("courseHint").textContent = "Editing this course's saved allocation.";
-  } else {
-    const others = allAllocDocs.filter(d => d.course !== currentCourse)
-      .sort((a,b) => (b.updatedAt?.toMillis?.() || 0) - (a.updatedAt?.toMillis?.() || 0));
+  } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {
     ROOMS.forEach(r => {
-      for (const doc of others) {
-        const team = doc.instructorTeams && doc.instructorTeams[r];
-        if (team && team.length) { roomTeams[r] = { uids: team.slice(), prefilled: true }; break; }
-      }
+      const team = defaultAllocDoc.instructorTeams[r];
+      if (team && team.length) roomTeams[r] = { uids: team.slice(), prefilled: true };
     });
-    document.getElementById("courseHint").textContent = others.length
-      ? "New course — instructor teams pre-filled from the most recent course per room. Adjust as needed."
-      : "First course of the year — instructor teams start empty.";
+    document.getElementById("courseHint").textContent = "New course — instructor teams pre-filled from the default allocation. Adjust as needed, or use ⭐ Set as default to update the default itself.";
+  } else {
+    document.getElementById("courseHint").textContent = "First course of the year — instructor teams start empty. Save, then use ⭐ Set as default so every later course starts from it.";
   }
 
   render();
+}
+
+// ── Default instructor allocation ───────────────────────────────────────
+// Explicit, deliberate default — not "whichever course was saved most
+// recently" — so a one-off tweak to one course's team never silently
+// changes what every other new course starts from.
+async function setAsDefault() {
+  if (!currentCourse) return;
+  if (!confirm(`Save the current instructor teams for "${currentCourse}" as the default for every future course?\n\nThis does not touch any other course's own saved teams — only what a brand-new course starts from.`)) return;
+  showStatus("Saving default…", "");
+  try {
+    const instructorTeams = {};
+    ROOMS.forEach(r => { instructorTeams[r] = (roomTeams[r]?.uids || []).slice(); });
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+    const uid = auth.currentUser?.uid;
+    await db.collection(COLLECTIONS.courseAllocations).doc("_default").set({
+      instructorTeams, updatedAt: ts, updatedBy: uid || null, isDefault: true
+    });
+    defaultAllocDoc = { id: "_default", instructorTeams, updatedAt: { toMillis: () => Date.now() }, isDefault: true };
+    showStatus("✓ Default updated", "ok");
+  } catch (e) {
+    console.error(e);
+    showStatus("Failed to save default", "err");
+  }
+}
+
+// ── Restore to last saved ───────────────────────────────────────────────
+// Discards any unsaved in-memory changes (e.g. a randomize you don't like)
+// and reloads this course from what's actually saved — the cached
+// allCandidates/allAllocDocs/defaultAllocDoc state, which is only ever
+// updated on a successful saveAll(), so this is always "back to the last
+// save," never "back to the server" mid-edit.
+function restoreSaved() {
+  if (!currentCourse) return;
+  if (!confirm(`Discard unsaved changes and restore "${currentCourse}" back to what was last saved?`)) return;
+  selectCourse(currentCourse);
+  showStatus("Restored to last saved", "ok");
 }
 
 // ── Master render ────────────────────────────────────────────────────────
@@ -556,10 +600,21 @@ async function saveAll() {
       course: currentCourse, instructorTeams, updatedAt: ts, updatedBy: uid || null
     });
 
+    // First allocation ever saved becomes the default automatically (Jon,
+    // 2026-09-07: "keep that as default for all courses"). Once a default
+    // exists, saving a course again never silently overwrites it — that's
+    // what the explicit ⭐ Set as default button is for.
+    const settingDefaultNow = !defaultAllocDoc;
+    if (settingDefaultNow) {
+      batch.set(db.collection(COLLECTIONS.courseAllocations).doc("_default"), {
+        instructorTeams, updatedAt: ts, updatedBy: uid || null, isDefault: true
+      });
+    }
+
     await batch.commit();
 
-    // Sync local caches so re-selecting this course (or another that carries
-    // its teams forward) reflects what was just saved, without a full reload.
+    // Sync local caches so re-selecting this course (or another that starts
+    // from the default) reflects what was just saved, without a full reload.
     courseCandidates.forEach(c => {
       const original = allCandidates.find(x => x.id === c.id);
       if (original) original.room = c.room;
@@ -567,8 +622,11 @@ async function saveAll() {
     const idx = allAllocDocs.findIndex(d => d.id === slugify(currentCourse));
     const savedDoc = { id: slugify(currentCourse), course: currentCourse, instructorTeams, updatedAt: { toMillis: () => Date.now() } };
     if (idx >= 0) allAllocDocs[idx] = savedDoc; else allAllocDocs.push(savedDoc);
+    if (settingDefaultNow) {
+      defaultAllocDoc = { id: "_default", instructorTeams, updatedAt: { toMillis: () => Date.now() }, isDefault: true };
+    }
 
-    showStatus("✓ All saved", "ok");
+    showStatus(settingDefaultNow ? "✓ All saved (also set as the default)" : "✓ All saved", "ok");
   } catch(e) {
     console.error(e);
     showStatus("Save failed — check Firestore rules", "err");
