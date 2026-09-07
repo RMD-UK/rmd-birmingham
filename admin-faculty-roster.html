@@ -239,7 +239,7 @@ function previewNameCell(r, i) {
   if (!r.canonical || !r.canonical.displayName) return r.name;
   const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
   const editLink = r.canonical.uid
-    ? ` <a href="#" onclick="event.preventDefault();editPreferredName(${i})" style="font-size:11px;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</a>`
+    ? ` <a href="#" onclick="event.preventDefault();editPreferredName(${i})" style="font-size:11px;" title="Set the first name this person actually goes by (their surname is always kept as-is) — sync, here and everywhere else on the site, offers that instead of their account's legal/registered first name.">✎ preferred name</a>`
     : "";
   if (norm(r.canonical.displayName) === norm(r.name)) return r.name + editLink;
   return `${r.name} <span style="color:#b7410e;font-size:11px;" title="This paste says \"${r.name}\", their account record says \"${r.canonical.displayName}\" — worth checking which is current before importing.">⚠ differs from account: ${r.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncPreviewName(${i})" style="font-size:11px;" title="Overwrite this pasted name with the account record's name, before importing.">⟳ sync</a>${editLink}`;
@@ -365,7 +365,7 @@ function syncPreviewName(i) {
 async function editPreferredName(i) {
   const r = parsedRows[i];
   if (!r || !r.canonical || !r.canonical.uid) return;
-  const value = prompt("What should this person be called (preferred/display name)?\n\nLeave blank to clear and fall back to their account's registered name.", r.canonical.preferredName || "");
+  const value = prompt("What FIRST name should this person actually go by (e.g. 'Becca' for Rebecca)?\n\nTheir surname is always taken from their account record automatically — this only replaces the first name, never the whole name. Leave blank to clear and fall back to their account's registered first name.", r.canonical.preferredName || "");
   if (value === null) return;
   try {
     await setPreferredName(r.canonical.uid, value);

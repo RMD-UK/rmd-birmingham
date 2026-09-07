@@ -423,7 +423,7 @@ function renderNameCell(r) {
   if (!r.canonical || !r.canonical.displayName) return regName;
   const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
   const editLink = r.canonical.uid
-    ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${r.canonical.uid}','${(r.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set what this person is actually called, so sync (here and everywhere else on the site) offers that instead of their account's legal/registered name.">✎ preferred name</a>`
+    ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${r.canonical.uid}','${(r.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set the first name this person actually goes by (their surname is always kept as-is) — sync, here and everywhere else on the site, offers that instead of their account's legal/registered first name.">✎ preferred name</a>`
     : "";
   if (norm(r.canonical.displayName) === norm(regName)) return regName + editLink;
   const safeCanonical = r.canonical.displayName.replace(/'/g, "\\'");
@@ -436,7 +436,7 @@ function renderNameCell(r) {
 // defaulting to the account's legal/registered name.
 async function editPreferredName(uid, currentPreferred) {
   if (!uid) return;
-  const value = prompt("What should this person be called (preferred/display name)?\n\nLeave blank to clear and fall back to their account's registered name.", currentPreferred || "");
+  const value = prompt("What FIRST name should this person actually go by (e.g. 'Becca' for Rebecca)?\n\nTheir surname is always taken from their account record automatically — this only replaces the first name, never the whole name. Leave blank to clear and fall back to their account's registered first name.", currentPreferred || "");
   if (value === null) return;
   try {
     await setPreferredName(uid, value);

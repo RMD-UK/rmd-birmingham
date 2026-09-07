@@ -276,7 +276,23 @@ async function resolveCanonicalName(email) {
     const preferredName = data.preferredName || null;
     // displayName is what every drift-flag/sync call site should show and
     // sync to — see setPreferredName() below for why.
-    return { uid: doc.id, name, preferredName, displayName: preferredName || name };
+    //
+    // 2026-09-07 (Jon): a preferred name is a first-name swap ("Becca" for
+    // "Rebecca"), not a replacement for the whole name — showing/syncing
+    // just "Becca" silently drops the surname everywhere this feeds,
+    // including what "sync" actually WRITES back into
+    // faculty_roster/mou_roster/iw_registrations/faculty_directory.name.
+    // Surname comes from passportLastName when My Account has been used
+    // (most reliable, structured), otherwise the last word of the
+    // account's registered name — same surname heuristic already used for
+    // duplicate-detection elsewhere (admin-stage1-candidates.html). Only
+    // the first word of preferredName is used, in case it was ever set to
+    // a full name under the old behaviour.
+    const surname = data.passportLastName || (name ? name.trim().split(/\s+/).pop() : "");
+    const displayName = preferredName
+      ? [preferredName.trim().split(/\s+/)[0], surname].filter(Boolean).join(" ")
+      : name;
+    return { uid: doc.id, name, preferredName, displayName };
   } catch (err) {
     return null;
   }
