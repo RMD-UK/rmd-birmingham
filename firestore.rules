@@ -143,8 +143,27 @@ service cloud.firestore {
     // whole collection, is already director-only; Cloud Functions use the
     // Admin SDK and bypass these rules entirely regardless).
     match /people/{docId} {
-      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector());
-      allow list: if isDirector();
+      // Widened 2026-09-07 per Jon: RMD Student Faculty and Senior Faculty
+      // may see the full roster (name, email, passport name fields
+      // included) — explicitly confirmed acceptable to share within the
+      // team, not just each other's own records. Powers attendance.html's
+      // registration roster and session-feedback.html's "all groups" view
+      // for these two tiers, both of which need to list/query this
+      // collection, not just fetch their own doc. Write stays
+      // director-only — this is read visibility only.
+      //
+      // Widened again 2026-09-07 (same session, second decision) per Jon:
+      // ordinary Faculty and Full-Instructor also need real names/emails to
+      // give session feedback on their own group — session-feedback.html's
+      // original core audience was left out of the first widening above.
+      // Jon explicitly accepted full name + email visibility for these two
+      // roles as the price of making the feedback flow work. Still no
+      // passport-field promise was made for this tier (unlike Student/Senior
+      // Faculty above) — only name/email were requested — but Firestore
+      // can't grant get/list on a subset of fields, so this line opens the
+      // whole document, same all-or-nothing limit as before.
+      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor();
       allow write: if isDirector();
 
       // Self-service "My Account" (added 2026-09-06): a signed-in member may

@@ -253,6 +253,34 @@ function requireSuperUser(redirectTo) {
   });
 }
 
+// myFacultyRosterGroup(email) → "student" | "senior" | null
+// Client-side mirror of myFacultyRosterGroup() in firestore.rules: looks up
+// the signed-in user's own faculty_roster doc (keyed by lowercased email —
+// same convention as rosterDocId() in admin-faculty-roster.html) and
+// returns its group field. firestore.rules already allows a signed-in user
+// to read their own faculty_roster doc (docId == their own email), so this
+// needs no new rule. Returns null if there's no roster doc for this email
+// (not a Student/Senior Faculty member) or on any read error.
+// Added 2026-09-07 for the attendance.html / session-feedback.html grants —
+// see isStudentFaculty()/isSeniorFaculty() below.
+async function myFacultyRosterGroup(email) {
+  const el = (email || "").toLowerCase();
+  if (!el) return null;
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).doc(el).get();
+    return snap.exists ? (snap.data().group || null) : null;
+  } catch (e) { return null; }
+}
+
+// isStudentFaculty(email) / isSeniorFaculty(email) — convenience wrappers
+// mirroring isStudentFaculty()/isSeniorFaculty() in firestore.rules.
+async function isStudentFaculty(email) {
+  return (await myFacultyRosterGroup(email)) === "student";
+}
+async function isSeniorFaculty(email) {
+  return (await myFacultyRosterGroup(email)) === "senior";
+}
+
 // resolveCanonicalName(email) → { uid, name } or null
 // Client-side lookup of a person's name as stored on their own people/{uid}
 // doc, by querying people where email == the given address (people docs
