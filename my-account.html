@@ -272,12 +272,18 @@
     btn.textContent = "Saving…";
 
     try {
-      await db.collection(COLLECTIONS.people).doc(currentUid).update({
+      // set(..., {merge:true}) rather than update(): some accounts (director/
+      // super-user ones especially) predate admin-bulk-users.html and have
+      // no people/{uid} doc at all yet — update() fails outright on a
+      // missing doc ("No document to update"), merge-set creates it. The
+      // matching firestore.rules "create" branch restricts a self-created
+      // doc to exactly these 4 fields, same as an update would be.
+      await db.collection(COLLECTIONS.people).doc(currentUid).set({
         preferredName:      preferred,
         passportFirstName:  firstName,
         passportMiddleName: middleName,
         passportLastName:   lastName
-      });
+      }, { merge: true });
       showStatus("Saved.", "ok");
     } catch (err) {
       showStatus("Couldn't save: " + err.message, "err");

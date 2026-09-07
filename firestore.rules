@@ -117,7 +117,7 @@ service cloud.firestore {
       allow write: if isDirector();
 
       // Self-service "My Account" (added 2026-09-06): a signed-in member may
-      // update their OWN people doc, but only the four name-identity fields
+      // write their OWN people doc, but only the four name-identity fields
       // my-account.html exposes — never role, stream, email, roleHistory, or
       // anything else. hasOnly() means the write is rejected outright if it
       // touches any other key, so this can't be used to self-promote a role
@@ -126,6 +126,17 @@ service cloud.firestore {
       // mou-form.html/faculty-form.html submission (Jon, 2026-09-06): no
       // director/admin path writes to these fields at all any more, by
       // design — see [[rmd_website_preferred_name_field]].
+      //
+      // Split into create + update (2026-09-07, after Jon's own account hit
+      // this): some accounts — director/super-user ones especially — predate
+      // admin-bulk-users.html and have no people/{uid} doc at all, so
+      // my-account.html's first save is a create, not an update. `resource`
+      // is null during create, so the update rule's diff() against it can't
+      // run — hasOnly() on the request data's own keys instead, which also
+      // guarantees a self-created doc can ONLY ever contain these 4 fields.
+      allow create: if isSignedIn() && request.auth.uid == docId &&
+        request.resource.data.keys()
+          .hasOnly(["preferredName", "passportFirstName", "passportMiddleName", "passportLastName"]);
       allow update: if isSignedIn() && request.auth.uid == docId &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["preferredName", "passportFirstName", "passportMiddleName", "passportLastName"]);
