@@ -101,6 +101,8 @@
   <button class="cra-btn" id="autoInstrBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate unassigned instructors</button>
   <button class="cra-btn" id="restoreBtn" onclick="restoreSaved()" style="display:none">↩ Restore saved</button>
   <button class="cra-btn" id="setDefaultBtn" onclick="setAsDefault()" style="display:none">⭐ Set as default for all courses</button>
+  <button class="cra-btn" id="resetCandBtn" onclick="resetCandidates()" style="display:none">↺ Reset candidates to unallocated</button>
+  <button class="cra-btn" id="resetInstrBtn" onclick="resetInstructors()" style="display:none">↺ Reset instructors to unallocated</button>
   <button class="cra-btn save" id="saveBtn" onclick="saveAll()" style="display:none">💾 Save all</button>
 </div>
 
@@ -258,6 +260,8 @@ function selectCourse(course) {
   document.getElementById("autoInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("restoreBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("setDefaultBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("resetCandBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("resetInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("saveBtn").style.display  = currentCourse ? "" : "none";
   document.getElementById("noCourse").style.display  = currentCourse ? "none" : "";
   document.getElementById("allocationUI").style.display = currentCourse ? "" : "none";
@@ -335,6 +339,32 @@ function restoreSaved() {
   if (!confirm(`Discard unsaved changes and restore "${currentCourse}" back to what was last saved?`)) return;
   selectCourse(currentCourse);
   showStatus("Restored to last saved", "ok");
+}
+
+// ── Reset to unallocated (in-memory only ─────────────────────────────────────────
+// Both of these only touch the working copy in memory (courseCandidates /
+// roomTeams). Nothing is written to Firestore here, so the last saved
+// version is untouched — "↩ Restore saved" still recovers exactly what
+// was last saved even after one of these is used. Save afterwards to make
+// the empty state permanent.
+function resetCandidates() {
+  if (!currentCourse) return;
+  if (!courseCandidates.length) { showStatus("No candidates on this course", "ok"); return; }
+  if (!confirm(`Move all candidates on "${currentCourse}" back to Unassigned?\n\nThis only changes what's on screen — nothing is saved until you click 💾 Save all, and it does not touch the last saved version.`)) return;
+  courseCandidates.forEach(c => { c.room = null; });
+  clearSelection();
+  render();
+  showStatus("Candidates reset to unallocated (not yet saved)", "ok");
+}
+function resetInstructors() {
+  if (!currentCourse) return;
+  const anyAssigned = ROOMS.some(r => (roomTeams[r]?.uids || []).length);
+  if (!anyAssigned) { showStatus("No instructors assigned on this course", "ok"); return; }
+  if (!confirm(`Move all instructors on "${currentCourse}" back to Unassigned?\n\nThis only changes what's on screen — nothing is saved until you click 💾 Save all, and it does not touch the last saved version.`)) return;
+  ROOMS.forEach(r => { roomTeams[r] = { uids: [], prefilled: false }; });
+  clearSelection();
+  render();
+  showStatus("Instructors reset to unallocated (not yet saved)", "ok");
 }
 
 // ── Master render ────────────────────────────────────────────────────────
