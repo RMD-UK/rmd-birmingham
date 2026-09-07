@@ -176,7 +176,13 @@ async function loadData() {
     const snap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get();
     allInstructors = snap.docs.map(d => {
       const data = d.data();
-      return { uid: d.id, name: data.preferredName || data.name || d.id };
+      // Preferred name is a first-name swap, not a whole-name replacement
+      // (Jon, 2026-09-07) — always show the surname alongside it, same
+      // logic as resolveCanonicalName()'s displayName in firebase-config.js.
+      const surname = data.passportLastName || (data.name ? data.name.trim().split(/\s+/).pop() : "");
+      const first = data.preferredName ? data.preferredName.trim().split(/\s+/)[0] : null;
+      const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
+      return { uid: d.id, name };
     }).sort((a,b) => a.name.localeCompare(b.name));
   } catch(e) { console.warn("Instructor load failed:", e.message); }
 
