@@ -37,6 +37,8 @@
     .cra-layout { display:flex; min-height:calc(100vh - 168px); }
 
     .cra-pool { width:250px; min-width:190px; background:#fff; border-right:2px solid #dde1ec; display:flex; flex-direction:column; flex-shrink:0; }
+    .pool-section { display:flex; flex-direction:column; flex:1 1 50%; min-height:0; }
+    .pool-section + .pool-section { border-top:2px solid #dde1ec; }
     .pool-head { padding:9px 14px; background:#e8ecf4; border-bottom:1px solid #d5daea; font-weight:800; font-size:13px; color:var(--rmd-navy); display:flex; justify-content:space-between; align-items:center; }
     .pool-badge { background:var(--rmd-navy); color:#fff; border-radius:10px; padding:1px 8px; font-size:11px; font-weight:700; }
     .pool-search { padding:7px 8px 4px; }
@@ -64,10 +66,8 @@
     .room-id { font-size:15px; font-weight:800; letter-spacing:.5px; }
     .room-count { font-size:11px; opacity:.55; }
     .team-hint { font-size:10px; color:#ffd97a; margin-bottom:4px; }
-    .instr-sel { width:100%; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.22); border-radius:5px; color:#fff; font-size:12px; padding:4px 6px; cursor:pointer; font-family:var(--font); box-sizing:border-box; }
-    .instr-sel option { background:#152c45; }
-    .instr-sel:disabled { opacity:.4; cursor:not-allowed; }
-    .team-full { font-size:11px; color:rgba(255,255,255,.6); padding:3px 0; }
+    .instr-empty { color:rgba(255,255,255,.45); font-size:11px; font-style:italic; }
+    .team-count { font-size:10px; color:rgba(255,255,255,.5); margin-top:2px; }
     .instr-chips { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:5px; }
     .instr-chip { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); border-radius:4px; padding:2px 5px 2px 8px; font-size:11px; color:#fff; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
     .instr-chip button { background:none; border:none; color:rgba(255,255,255,.6); cursor:pointer; padding:0; font-size:14px; line-height:1; font-family:var(--font); }
@@ -94,6 +94,7 @@
   <span id="saveStatus"></span>
   <button class="cra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
   <button class="cra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly allocate unassigned candidates</button>
+  <button class="cra-btn" id="autoInstrBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate unassigned instructors</button>
   <button class="cra-btn save" id="saveBtn" onclick="saveAll()" style="display:none">💾 Save all</button>
 </div>
 
@@ -117,16 +118,28 @@
   </div>
   <div class="cra-layout">
     <div class="cra-pool">
-      <div class="pool-head">Unassigned <span class="pool-badge" id="poolCount">0</span></div>
-      <div class="pool-search">
-        <input type="search" id="poolSearch" placeholder="Search…" oninput="renderPool()">
+      <div class="pool-section">
+        <div class="pool-head">Unassigned candidates <span class="pool-badge" id="poolCount">0</span></div>
+        <div class="pool-search">
+          <input type="search" id="poolSearch" placeholder="Search…" oninput="renderPool()">
+        </div>
+        <div class="pool-list" id="poolList"
+             ondragover="onDragOver(event,'pool')" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'pool')">
+          <div class="pool-empty">No candidates for this course.</div>
+        </div>
+        <div class="pool-add">
+          <button class="cra-btn" style="width:100%;background:var(--rmd-navy)" onclick="quickAddCandidate()">+ Add a candidate to this course</button>
+        </div>
       </div>
-      <div class="pool-list" id="poolList"
-           ondragover="onDragOver(event,'pool')" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'pool')">
-        <div class="pool-empty">No candidates for this course.</div>
-      </div>
-      <div class="pool-add">
-        <button class="cra-btn" style="width:100%;background:var(--rmd-navy)" onclick="quickAddCandidate()">+ Add a candidate to this course</button>
+      <div class="pool-section">
+        <div class="pool-head">Unassigned instructors <span class="pool-badge" id="instrPoolCount">0</span></div>
+        <div class="pool-search">
+          <input type="search" id="instrPoolSearch" placeholder="Search…" oninput="renderInstructorPool()">
+        </div>
+        <div class="pool-list" id="instrPoolList"
+             ondragover="onDragOver(event,'instructorPool')" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'instructorPool')">
+          <div class="pool-empty">No instructors found.</div>
+        </div>
       </div>
     </div>
     <div class="rooms-grid" id="roomsGrid"></div>
@@ -155,8 +168,8 @@ let currentCourse   = null; // course name string
 let courseCandidates = [];  // subset of allCandidates for currentCourse, working copy: {id, name, email, degree, room, originalRoom, flagText}
 let roomTeams        = {};  // {CM01: {uids:[...], prefilled:bool}, ...}
 
-let dragging      = null;   // {email/id, source}
-let selectedId     = null;
+let dragging = null;   // {id, source, kind}
+let selected = null;   // {kind:"candidate"|"instructor", id}
 
 initFirebase();
 
@@ -222,6 +235,7 @@ function selectCourse(course) {
   clearSelection();
   currentCourse = course || null;
   document.getElementById("autoBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("autoInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("saveBtn").style.display  = currentCourse ? "" : "none";
   document.getElementById("noCourse").style.display  = currentCourse ? "none" : "";
   document.getElementById("allocationUI").style.display = currentCourse ? "" : "none";
@@ -267,6 +281,7 @@ function selectCourse(course) {
 // ── Master render ────────────────────────────────────────────────────────
 function render() {
   renderPool();
+  renderInstructorPool();
   renderRooms();
   updateStats();
 }
@@ -288,7 +303,7 @@ function renderPool() {
 }
 
 function makeCard(c, source) {
-  const sel = selectedId === c.id;
+  const sel = selected && selected.kind === "candidate" && selected.id === c.id;
   const rmBtn = source !== "pool"
     ? `<button class="pcard-rm" onclick="removeFromRoom('${c.id}',event)" title="Return to unassigned">×</button>`
     : "";
@@ -301,24 +316,37 @@ function makeCard(c, source) {
           </div>`;
 }
 
+function renderInstructorPool() {
+  const assigned = new Set();
+  ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
+  const q = (document.getElementById("instrPoolSearch")?.value || "").toLowerCase();
+  const unassigned = allInstructors.filter(i => !assigned.has(i.uid) && (!q || i.name.toLowerCase().includes(q)));
+  document.getElementById("instrPoolCount").textContent = unassigned.length;
+  document.getElementById("instrPoolList").innerHTML = unassigned.length
+    ? unassigned.map(makeInstructorCard).join("")
+    : `<div class="pool-empty">${allInstructors.length ? "All assigned ✓" : "No instructors found."}</div>`;
+}
+
+function makeInstructorCard(i) {
+  const sel = selected && selected.kind === "instructor" && selected.id === i.uid;
+  return `<div class="pcard${sel ? " selected" : ""}"
+               draggable="true" data-id="${i.uid}"
+               ondragstart="onDragStart(event,'${i.uid}','instructorPool','instructor')"
+               onclick="onCardClick(event,'${i.uid}','instructorPool','instructor')">
+            <span class="pcard-name">${i.name}</span>
+          </div>`;
+}
+
 function renderRooms() {
   const assigned = assignedIds();
   document.getElementById("roomsGrid").innerHTML = ROOMS.map(rid => {
     const inRoom = courseCandidates.filter(c => c.room === rid);
     const team = roomTeams[rid] || { uids: [], prefilled: false };
-    const teamFull = team.uids.length >= 5;
     const chips = team.uids.map(uid => {
       const inst = allInstructors.find(i => i.uid === uid);
       const name = inst ? inst.name : uid;
       return `<span class="instr-chip">${name}<button onclick="event.stopPropagation();removeInstructor('${rid}','${uid}')" title="Remove">×</button></span>`;
     }).join("");
-    const availableInstr = allInstructors.filter(i => !team.uids.includes(i.uid));
-    const selector = teamFull
-      ? `<div class="team-full">Room full (5/5)</div>`
-      : `<select class="instr-sel" onchange="addInstructor('${rid}',this.value)" onclick="event.stopPropagation()">
-           <option value="">${team.uids.length ? "+ Add another instructor" : "— No instructor assigned —"}</option>
-           ${availableInstr.map(i => `<option value="${i.uid}">${i.name}</option>`).join("")}
-         </select>`;
     return `<div class="room-col" id="room-${rid}"
                  ondragover="onDragOver(event,'${rid}')"
                  ondragleave="onDragLeave(event)"
@@ -327,11 +355,11 @@ function renderRooms() {
               <div class="room-head">
                 <div class="room-head-row">
                   <span class="room-id">${rid}</span>
-                  <span class="room-count">${inRoom.length} assigned</span>
+                  <span class="room-count">${inRoom.length} candidate${inRoom.length === 1 ? "" : "s"}</span>
                 </div>
                 ${team.prefilled ? `<div class="team-hint">carried over — not yet confirmed for this course</div>` : ""}
-                ${chips ? `<div class="instr-chips">${chips}</div>` : ""}
-                ${selector}
+                <div class="instr-chips">${chips || `<span class="instr-empty">No instructors yet — drag or click to add</span>`}</div>
+                <div class="team-count">${team.uids.length}/5 instructors</div>
               </div>
               <div class="room-body">
                 ${inRoom.length ? inRoom.map(c => makeCard(c, rid)).join("") : `<div class="room-drop-hint">Drop here</div>`}
@@ -351,30 +379,51 @@ function updateStats() {
 }
 
 // ── Instructor team edits ───────────────────────────────────────────────
-function addInstructor(rid, uid) {
-  if (!uid) return;
+function addInstructorFromPool(rid, uid) {
   const team = roomTeams[rid];
-  if (team.uids.length >= 5 || team.uids.includes(uid)) return;
+  if (!team || team.uids.length >= 5 || team.uids.includes(uid)) return;
   team.uids.push(uid);
   team.prefilled = false;
-  renderRooms(); updateStats();
+  render();
 }
 function removeInstructor(rid, uid) {
   const team = roomTeams[rid];
   team.uids = team.uids.filter(x => x !== uid);
   team.prefilled = false;
-  renderRooms(); updateStats();
+  render();
+}
+
+// ── Randomize instructors (unassigned only, respects the 5-per-room cap,
+// never reshuffles an existing team) ────────────────────────────────────
+function randomizeInstructors() {
+  const assigned = new Set();
+  ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
+  const pool = allInstructors.filter(i => !assigned.has(i.uid));
+  if (!pool.length) { showStatus("Nothing unassigned to allocate", "ok"); return; }
+  pool.sort(() => Math.random() - .5).forEach(inst => {
+    const open = ROOMS.filter(r => (roomTeams[r]?.uids?.length || 0) < 5);
+    if (!open.length) return; // every room already at 5/5 — leftover instructors stay unassigned
+    const smallest = open.sort((a, b) => roomTeams[a].uids.length - roomTeams[b].uids.length)[0];
+    roomTeams[smallest].uids.push(inst.uid);
+    roomTeams[smallest].prefilled = false;
+  });
+  render();
 }
 
 // ── Drag & drop ──────────────────────────────────────────────────────────
-function onDragStart(event, id, source) {
-  dragging = { id, source };
+function onDragStart(event, id, source, kind) {
+  dragging = { id, source, kind: kind || "candidate" };
   event.dataTransfer.effectAllowed = "move";
   setTimeout(() => { document.querySelector(`[data-id="${id}"]`)?.classList.add("is-dragging"); }, 0);
 }
 function onDragOver(event, target) {
   event.preventDefault();
-  const el = target === "pool" ? document.getElementById("poolList") : document.getElementById(`room-${target}`);
+  const kind = dragging ? dragging.kind : null;
+  if (target === "pool" && kind === "instructor") return;
+  if (target === "instructorPool" && kind === "candidate") return;
+  const el = target === "pool" ? document.getElementById("poolList")
+    : target === "instructorPool" ? document.getElementById("instrPoolList")
+    : document.getElementById(`room-${target}`);
   el?.classList.add("drag-over");
 }
 function onDragLeave(event) {
@@ -383,7 +432,11 @@ function onDragLeave(event) {
 function onDrop(event, target) {
   event.preventDefault(); clearHighlights();
   if (!dragging) return;
-  moveCandidate(dragging.id, target);
+  if (dragging.kind === "instructor") {
+    if (target !== "pool" && target !== "instructorPool") addInstructorFromPool(target, dragging.id);
+  } else if (target !== "instructorPool") {
+    moveCandidate(dragging.id, target);
+  }
   dragging = null;
 }
 function clearHighlights() { document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over")); }
@@ -394,23 +447,28 @@ document.addEventListener("dragend", () => {
 });
 
 // ── Click-to-move ────────────────────────────────────────────────────────
-function onCardClick(event, id, source) {
+function onCardClick(event, id, source, kind) {
   event.stopPropagation();
-  if (selectedId === id) { clearSelection(); return; }
-  selectedId = id;
+  kind = kind || "candidate";
+  if (selected && selected.kind === kind && selected.id === id) { clearSelection(); return; }
+  selected = { kind, id };
   document.getElementById("clearSelBtn").style.display = "";
   document.getElementById("selHint").style.display = "";
+  document.getElementById("selHint").textContent = kind === "instructor"
+    ? "Click a room to add selected instructor"
+    : "Click a room to assign selected candidate";
   ROOMS.forEach(r => document.getElementById(`room-${r}`)?.classList.add("click-target"));
   render();
 }
 function onRoomClick(rid, event) {
-  if (!selectedId) return;
+  if (!selected) return;
   event.stopPropagation();
-  moveCandidate(selectedId, rid);
+  if (selected.kind === "instructor") addInstructorFromPool(rid, selected.id);
+  else moveCandidate(selected.id, rid);
   clearSelection();
 }
 function clearSelection() {
-  selectedId = null;
+  selected = null;
   const btn = document.getElementById("clearSelBtn"); if (btn) btn.style.display = "none";
   const hint = document.getElementById("selHint"); if (hint) hint.style.display = "none";
   document.querySelectorAll(".click-target").forEach(el => el.classList.remove("click-target"));
