@@ -594,9 +594,14 @@ function removeFromRoom(id, event) {
 function degreeKey(c) { return (c.degree || "").trim().toLowerCase(); }
 // Last whitespace-separated token of a full name, used to alphabetise the
 // unallocated pools by surname (per Jon 2026-09-07) rather than however
-// Firestore happened to return the docs.
+// Firestore happened to return the docs. Strips a trailing "(Nickname)"
+// annotation first -- found live on one instructor record whose stored
+// `name` is literally "Yu Ooi (Ariel)" (the nickname typed into the name
+// field itself, not the separate preferredName field the rest of this
+// page reads), which without this would sort as "(ariel)" ahead of A.
 function surnameOf(name) {
-  const parts = (name || "").trim().split(/\s+/);
+  const stripped = (name || "").trim().replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const parts = stripped.split(/\s+/);
   return (parts[parts.length - 1] || "").toLowerCase();
 }
 function randomizeCandidates() {
