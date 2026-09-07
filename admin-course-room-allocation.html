@@ -576,14 +576,33 @@ function removeFromRoom(id, event) {
 }
 
 // ── Randomize (unassigned only — never reshuffles an existing placement) ──
+// Degree-aware: per Jon 2026-09-07, rooms should end up multidisciplinary,
+// not just evenly sized. Each candidate goes to whichever room currently
+// has the FEWEST people of their own degree (already-placed candidates
+// count too, so a manually-built room still gets balanced against),
+// falling back to smallest total room size to break ties, then a random
+// tiebreak so equal options don't always resolve the same way. Degree is
+// compared trimmed+lowercased (same normalisation admin-stage1-candidates.html
+// uses for its duplicate check) so "Medicine" and "medicine" match — a
+// genuinely different spelling (e.g. "Medicine" vs "Medicine Y1") will
+// still be treated as a different degree, since there's no fixed degree
+// list to match against.
+function degreeKey(c) { return (c.degree || "").trim().toLowerCase(); }
 function randomizeCandidates() {
   const pool = courseCandidates.filter(c => !c.room);
   if (!pool.length) { showStatus("Nothing unassigned to allocate", "ok"); return; }
   pool.sort(() => Math.random() - .5).forEach(c => {
-    const smallest = ROOMS.slice().sort((a,b) =>
-      courseCandidates.filter(x=>x.room===a).length - courseCandidates.filter(x=>x.room===b).length
-    )[0];
-    c.room = smallest;
+    const dk = degreeKey(c);
+    const best = ROOMS.slice().sort((a, b) => {
+      const aSame = courseCandidates.filter(x => x.room === a && degreeKey(x) === dk).length;
+      const bSame = courseCandidates.filter(x => x.room === b && degreeKey(x) === dk).length;
+      if (aSame !== bSame) return aSame - bSame;
+      const aTotal = courseCandidates.filter(x => x.room === a).length;
+      const bTotal = courseCandidates.filter(x => x.room === b).length;
+      if (aTotal !== bTotal) return aTotal - bTotal;
+      return Math.random() - .5;
+    })[0];
+    c.room = best;
   });
   render();
 }
