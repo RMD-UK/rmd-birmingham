@@ -115,6 +115,20 @@ service cloud.firestore {
       allow get: if isSignedIn() && (request.auth.uid == docId || isDirector());
       allow list: if isDirector();
       allow write: if isDirector();
+
+      // Self-service "My Account" (added 2026-09-06): a signed-in member may
+      // update their OWN people doc, but only the four name-identity fields
+      // my-account.html exposes — never role, stream, email, roleHistory, or
+      // anything else. hasOnly() means the write is rejected outright if it
+      // touches any other key, so this can't be used to self-promote a role
+      // or edit someone else's record. Passport fields written here are the
+      // person's own self-declaration — same "considered true" status as a
+      // mou-form.html/faculty-form.html submission (Jon, 2026-09-06): no
+      // director/admin path writes to these fields at all any more, by
+      // design — see [[rmd_website_preferred_name_field]].
+      allow update: if isSignedIn() && request.auth.uid == docId &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["preferredName", "passportFirstName", "passportMiddleName", "passportLastName"]);
     }
 
     // ── Attendance ──────────────────────────────────────────────────────────

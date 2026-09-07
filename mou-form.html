@@ -373,11 +373,37 @@ auth.onAuthStateChanged(function (user) {
     const emailField = document.getElementById("memberEmail");
     emailField.value = user.email;
     emailField.disabled = true;
+    prefillFromMyAccount(user.uid);
   } else {
     document.getElementById("mouSigninGate").style.display = "flex";
     document.getElementById("mouAppRoot").style.display = "none";
   }
 });
+
+// Added 2026-09-06 alongside my-account.html: this form used to ask for the
+// full legal name fresh every year with nothing prefilled. Now prefers the
+// member's own canonical people/{uid} record (set via My Account) as the
+// starting point — still fully editable, and still what actually gets
+// submitted to mou_responses.name either way, per Jon's standing rule that
+// only the person's own submission (not an admin sync) can set this. Only
+// fills fields that are still empty, so it never clobbers something the
+// member has already started typing.
+async function prefillFromMyAccount(uid) {
+  try {
+    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
+    if (!snap.exists) return;
+    const data = snap.data();
+    const nameField = document.getElementById("memberName");
+    const knownAsField = document.getElementById("memberKnownAs");
+    if (!nameField.value.trim() && data.passportFirstName) {
+      nameField.value = [data.passportFirstName, data.passportMiddleName, data.passportLastName]
+        .filter(Boolean).join(" ");
+    }
+    if (!knownAsField.value.trim() && data.preferredName) {
+      knownAsField.value = data.preferredName;
+    }
+  } catch (err) { /* no My Account record yet, or a read error — leave the form blank */ }
+}
 
 async function handleMouSignin(e) {
   e.preventDefault();
