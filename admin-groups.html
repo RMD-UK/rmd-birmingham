@@ -376,6 +376,7 @@ let usingFirebase = false;
 // peopleByName["Dr Smith"] = { id: "doc-id", email: "...", role: "faculty", ... }
 // Used to write room back to people records on save
 let peopleByName = {};
+let iwAssignments = {};  // { uid: function }  -- this year's IW job, from iw_assignments; falls back to people.role when absent
 
 // Demo seed data (used when Firebase unavailable)
 const DEMO_GROUPS = {
@@ -626,6 +627,22 @@ async function loadFromFirestore() {
     console.warn("Could not load groups from Firestore:", err);
   }
 
+  // Layered access, step 4 (read side): this year's IW job now lives in
+  // iw_assignments, kept separate from permanent standing on the person doc.
+  // One bulk read for everyone rather than one per person. If it fails or
+  // a person has no assignment doc yet, we fall back to people.role exactly
+  // as before -- nothing here can break room/group assignment.
+  try {
+    const aSnap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    aSnap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignments[a.uid] = a.function;
+    });
+  } catch (err) {
+    console.warn("Could not load iw_assignments from Firestore:", err);
+  }
+
   // Load people to populate name lists and build peopleByName index
   try {
     const pSnap = await db.collection(COLLECTIONS.people).get();
@@ -634,10 +651,11 @@ async function loadFromFirestore() {
     pSnap.forEach(doc => {
       const d = doc.data();
       const name = d.name || d.displayName || d.email || doc.id;
-      peopleByName[name] = { id: doc.id, email: d.email || "", role: d.role || "", ...d };
-      if (d.role === "faculty" || d.role === "director") {
+      const role = iwAssignments[doc.id] || d.role || "";
+      peopleByName[name] = { id: doc.id, email: d.email || "", ...d, role };
+      if (role === "faculty" || role === "director") {
         facultyNames.push(name);
-      } else if (d.role === "instructor" || d.role === "itc") {
+      } else if (role === "instructor" || role === "itc") {
         candidateNames.push(name);
       }
     });
