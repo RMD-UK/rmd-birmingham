@@ -156,7 +156,7 @@
     <div class="card">
       <h2>Account</h2>
       <div class="readonly-row"><span class="k">Email</span><span class="v" id="acctEmail">–</span></div>
-      <div class="readonly-row"><span class="k">Role</span><span class="v" id="acctRole">–</span></div>
+      <div class="readonly-row"><span class="k">Standing</span><span class="v" id="acctRole">–</span></div>
     </div>
 
     <div class="card">
@@ -203,19 +203,12 @@
 <script>
   initFirebase();
 
-  // Mirrors ROLE_LABELS in member-menu.html / timetable.html / attendance.html
-  // / site-info.html — kept in sync manually since it isn't shared via
-  // firebase-config.js.
-  const ROLE_LABELS = {
-    director:            "Course Director",
-    faculty:             "Faculty",
-    "full-instructor":   "Instructor Trainer",
-    instructor:          "Instructor Candidate",
-    assessor:            "Assessor / Senior Instructor",
-    "assessor-faculty":  "Assessor Faculty",
-    itc:                 "Instructor Trainer Candidate"
-  };
-
+  // 2026-09-08: this used to show resolveRole()'s Instructor Weekend job
+  // title (director/faculty/full-instructor/instructor/assessor/
+  // assessor-faculty/itc) via a local ROLE_LABELS map. Per Jon, none of
+  // those are permanent standing - they're this year's IW job only. Now
+  // shows resolveAxisAStanding() instead (see firebase-config.js for what
+  // it can and can't resolve yet, and why).
   let currentUid = null;
 
   auth.onAuthStateChanged(async function (user) {
@@ -226,9 +219,9 @@
     currentUid = user.uid;
     document.getElementById("acctEmail").textContent = user.email || "–";
 
-    let role = null;
-    try { role = await resolveRole(user.uid, user.email || ""); } catch (e) {}
-    document.getElementById("acctRole").textContent = ROLE_LABELS[role] || role || "–";
+    let standing = null;
+    try { standing = await resolveAxisAStanding(user.uid, user.email || ""); } catch (e) {}
+    document.getElementById("acctRole").textContent = standing ? standing.label : "Not yet confirmed";
 
     try {
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();

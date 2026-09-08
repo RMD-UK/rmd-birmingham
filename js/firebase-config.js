@@ -315,6 +315,47 @@ async function isSeniorFaculty(email) {
   return (await myFacultyRosterGroup(email)) === "senior";
 }
 
+// resolveAxisAStanding(uid, email) -> { standing, label } | null
+// Returns the person's PERMANENT Axis A standing, as distinct from
+// resolveRole()'s Instructor Weekend Axis B job title (director/faculty/
+// full-instructor/instructor/assessor/assessor-faculty/itc are all IW-only
+// job labels for a given weekend, per Jon 2026-09-08 - none of them are
+// safe to show as "who someone permanently is").
+//
+// Only two tiers are resolvable today:
+//   1. Course Director - via resolveRole(), which already checks
+//      config/platform.directors + superUsers before ever falling back to
+//      people.role, so a "director" result here is the real, authoritative
+//      list, not just this year's job label.
+//   2. RMD Senior Faculty / RMD Student Faculty - via faculty_roster.group,
+//      same source used by isStudentFaculty()/isSeniorFaculty() elsewhere.
+//
+// Everything else (Instructor / Assessor / Senior Instructor as a permanent
+// tier) has NO reliable data source yet. Per Jon 2026-09-08: "Instructor"
+// as a standing means an Instructor Candidate who has PASSED the Instructor
+// Weekend course - a confirmation step that happens at the end of IW and
+// isn't built anywhere yet (IW itself doesn't run until Oct 2026). Assessor
+// vs Senior Instructor as permanent tiers: Jon said he'll specify who's
+// which later. Deliberately returns null rather than guessing from
+// resolveRole()'s IW-job value or from the free-text, optionally-populated
+// roleHistory field - a wrong permanent-standing label is worse than a
+// blank one. Callers should show an explicit "not yet confirmed" state for
+// null, not silently render nothing.
+async function resolveAxisAStanding(uid, email) {
+  const role = await resolveRole(uid, email);
+  if (role === ROLES.DIRECTOR) {
+    return { standing: "director", label: "Course Director" };
+  }
+  const group = await myFacultyRosterGroup(email);
+  if (group === "senior") {
+    return { standing: "senior-faculty", label: "RMD Senior Faculty" };
+  }
+  if (group === "student") {
+    return { standing: "student-faculty", label: "RMD Student Faculty" };
+  }
+  return null;
+}
+
 // resolveCanonicalName(email) → { uid, name } or null
 // Client-side lookup of a person's name as stored on their own people/{uid}
 // doc, by querying people where email == the given address (people docs
