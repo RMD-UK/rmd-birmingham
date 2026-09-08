@@ -691,6 +691,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 let currentUser  = null;
 let allPeople    = [];    // all people docs
+let iwAssignments = {};   // { uid: function } -- this year's IW job, from iw_assignments; falls back to people.role when absent
 let feedbackData = [];    // session_feedback docs
 let decisions    = {};    // { candidateId: decision }
 let currentSection = "overview";
@@ -746,7 +747,7 @@ window.addEventListener("load", () => {
   requireDirector("timetable.html").then(async user => {
     currentUser = user;
 
-    await Promise.all([loadPeople(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries()]);
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries()]);
     renderOverview();
     renderProgramme("saturday");
     renderFeedback("saturday");
@@ -762,6 +763,19 @@ window.addEventListener("load", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA LOADERS
 // ─────────────────────────────────────────────────────────────────────────────
+async function loadIwAssignments() {
+  try {
+    const snap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    snap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignments[a.uid] = a.function;
+    });
+  } catch (e) { /* leave map empty, effectiveRole() falls back to p.role */ }
+}
+function effectiveRole(p) {
+  return iwAssignments[p.id] || p.role;
+}
 async function loadPeople() {
   try {
     const snap = await db.collection(COLLECTIONS.people).get();
@@ -816,8 +830,8 @@ async function loadItcSummaries() {
 // OVERVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 function renderOverview() {
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(p.role));
-  const faculty    = allPeople.filter(p => [ROLES.FACULTY, ROLES.FULL_INSTRUCTOR, ROLES.ITC, ROLES.ASSESSOR_FACULTY].includes(p.role));
+  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
+  const faculty    = allPeople.filter(p => [ROLES.FACULTY, ROLES.FULL_INSTRUCTOR, ROLES.ITC, ROLES.ASSESSOR_FACULTY].includes(effectiveRole(p)));
 
   const ratings = feedbackData.map(f => f.rating);
   const green   = ratings.filter(r => r === "green").length;
@@ -927,7 +941,7 @@ function showProgDay(day, btn) {
 // CANDIDATES
 // ─────────────────────────────────────────────────────────────────────────────
 function renderCandidates(filter) {
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(p.role));
+  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
   const filtered   = filter
     ? candidates.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()))
     : candidates;
@@ -949,7 +963,7 @@ function renderCandidates(filter) {
     const dec     = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
-      <td>${esc(c.roleLabel || c.stream || ROLE_LABELS[c.role] || c.role)}</td>
+      <td>${esc(c.roleLabel || c.stream || ROLE_LABELS[effectiveRole(c)] || effectiveRole(c))}</td>
       <td>${esc(c.group || "–")}</td>
       <td><span class="tl-badge ${rating}">${rating === "none" ? "Not yet rated" : rating.charAt(0).toUpperCase() + rating.slice(1)}</span></td>
       <td>
@@ -972,7 +986,7 @@ function filterCandidates(val) { renderCandidates(val); }
 // see loadFacultyResponses() below for the pre-sync response list)
 // ─────────────────────────────────────────────────────────────────────────────
 function renderFacultyList(filter) {
-  const faculty = allPeople.filter(p => [ROLES.FACULTY, ROLES.FULL_INSTRUCTOR, ROLES.ITC, ROLES.ASSESSOR_FACULTY].includes(p.role));
+  const faculty = allPeople.filter(p => [ROLES.FACULTY, ROLES.FULL_INSTRUCTOR, ROLES.ITC, ROLES.ASSESSOR_FACULTY].includes(effectiveRole(p)));
   const filtered = filter
     ? faculty.filter(f => (f.name || "").toLowerCase().includes(filter.toLowerCase()))
     : faculty;
@@ -984,7 +998,7 @@ function renderFacultyList(filter) {
   tbody.innerHTML = filtered.map(f => `<tr>
     <td><strong>${esc(f.name || "–")}</strong></td>
     <td>${esc(f.email || "–")}</td>
-    <td>${esc(f.roleLabel || ROLE_LABELS[f.role] || f.role || "–")}</td>
+    <td>${esc(f.roleLabel || ROLE_LABELS[effectiveRole(f)] || effectiveRole(f) || "–")}</td>
   </tr>`).join("");
 }
 
@@ -1082,7 +1096,7 @@ async function generateItcSummary(itcEmail, docId) {
 // FACULTY MEETINGS
 // ─────────────────────────────────────────────────────────────────────────────
 function buildMeetingSlides(day) {
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(p.role));
+  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
   const latestRating = {};
   feedbackData.forEach(f => {
     const existing = latestRating[f.candidateId];
@@ -1234,7 +1248,7 @@ async function loadMeetingNotes() {
 function renderFeedback(day) {
   currentFeedbackDay = day;
   const body = document.getElementById("feedbackBody");
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(p.role));
+  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
 
   // Get sessions for this day that have feedback
   const daySessions = (PROGRAMME[day]?.sessions || [])
@@ -1266,7 +1280,7 @@ function renderFeedback(day) {
       <div class="tl-row">
         <div class="tl-name">
           ${esc(c.name)}
-          <div class="tl-sub">${esc(c.roleLabel || c.stream || ROLE_LABELS[c.role] || "")}</div>
+          <div class="tl-sub">${esc(c.roleLabel || c.stream || ROLE_LABELS[effectiveRole(c)] || "")}</div>
         </div>
         <div class="tl-sessions">
           ${fb.length ? fb.map(f => `<span class="tl-badge ${f.rating}" title="${esc(f.sessionId)}">${f.rating.charAt(0).toUpperCase()}</span>`).join("") : `<span class="tl-badge none">–</span>`}
@@ -1418,7 +1432,7 @@ function exportReport() {
   };
 
   // Candidate summary
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(p.role));
+  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
   const decisionLines = candidates.map(c =>
     `  - ${c.name}: ${decisions[c.id] ? decisions[c.id].toUpperCase() : "No decision recorded"}`
   ).join("\n");
