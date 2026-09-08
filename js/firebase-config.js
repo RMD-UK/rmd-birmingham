@@ -37,7 +37,9 @@ const COLLECTIONS = {
   facultyRoster:    "faculty_roster",    // director-only annual roster (name, email, group, team, role) — see below
   facultyDirectory: "faculty_directory", // public display copy of the same roster, no email — feeds faculty.html
   iwRegistrations:  "iw_registrations",  // director-managed Instructor Weekend attendee list — see admin-iw-registrations.html
-  iwAssessorRsvp:   "iw_assessor_rsvp"   // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
+  iwAssessorRsvp:   "iw_assessor_rsvp",  // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
+  stage1Candidates: "stage1_candidates",  // taught first-year candidate records, no login — see admin-stage1-candidates.html (Section 3.5)
+  courseAllocations: "course_allocations" // per-course room + instructor-team allocation — see admin-course-room-allocation.html (Section 3.6)
 };
 
 // ── Memorandum of Understanding ─────────────────────────────────────────────
@@ -78,6 +80,22 @@ const SFR_NEXT_ACADEMIC_YEAR = "2027/28"; // the academic year the form is askin
 
 // ── Rooms ───────────────────────────────────────────────────────────────────
 const INSTRUCTOR_ROOMS = ["CM01","CM02","CM03","CM04","CM13","CM14","CM15","CM16"];
+
+// ── Stage 1 (taught first-year) teaching rooms — Section 3.6 ───────────────
+// Definitive list supplied and confirmed by Jon 2026-09-07. CM05 is
+// deliberately absent (confirmed — not a teaching room, not an omission).
+// Distinct from INSTRUCTOR_ROOMS above, which is the Instructor Weekend's
+// own separate room set — these two lists are unrelated.
+const STAGE1_TEACHING_ROOMS = [
+  "CM01","CM02","CM03","CM04","CM06","CM07","CM08","CM09","CM10",
+  "CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18"
+];
+// Exam-night rooms, used IN ADDITION to all of the above on the 3rd/
+// assessment evening only. Recorded per Jon 2026-09-07 but deliberately NOT
+// wired into admin-course-room-allocation.html yet — the initial 3.6 build
+// covers teaching nights only, per Jon's explicit instruction. Do not use
+// this constant for room allocation until Jon asks for exam-night handling.
+const STAGE1_EXAM_ROOMS = ["WF19","EF5","EF27","EF30","EF10d"];
 
 // ── Roles ───────────────────────────────────────────────────────────────────
 const ROLES = {
@@ -233,6 +251,146 @@ function requireSuperUser(redirectTo) {
       resolve(user);
     });
   });
+}
+
+// myFacultyRosterGroup(email) → "student" | "senior" | null
+// Client-side mirror of myFacultyRosterGroup() in firestore.rules: looks up
+// the signed-in user's own faculty_roster doc (keyed by lowercased email —
+// same convention as rosterDocId() in admin-faculty-roster.html) and
+// returns its group field. firestore.rules already allows a signed-in user
+// to read their own faculty_roster doc (docId == their own email), so this
+// needs no new rule. Returns null if there's no roster doc for this email
+// (not a Student/Senior Faculty member) or on any read error.
+// Added 2026-09-07 for the attendance.html / session-feedback.html grants —
+// see isStudentFaculty()/isSeniorFaculty() below.
+async function myFacultyRosterGroup(email) {
+  const el = (email || "").toLowerCase();
+  if (!el) return null;
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).doc(el).get();
+    return snap.exists ? (snap.data().group || null) : null;
+  } catch (e) { return null; }
+}
+
+// isStudentFaculty(email) / isSeniorFaculty(email) — convenience wrappers
+// mirroring isStudentFaculty()/isSeniorFaculty() in firestore.rules.
+async function isStudentFaculty(email) {
+  return (await myFacultyRosterGroup(email)) === "student";
+}
+async function isSeniorFaculty(email) {
+  return (await myFacultyRosterGroup(email)) === "senior";
+}
+
+// resolveCanonicalName(email) → { uid, name } or null
+// Client-side lookup of a person's name as stored on their own people/{uid}
+// doc, by querying people where email == the given address (people docs
+// already store their own lowercased email field — no Admin SDK needed for
+// this, unlike the UID resolution in functions/index.js).
+// Read-only. Returns null if no matching people doc exists (e.g. someone
+// with no login yet) — callers should fall back to whatever name they
+// already have in that case, not treat null as an error.
+// Added 2026-09-06 as the first step of Section 0.1 of the "One Person, One
+// Record" platform workplan: a way to surface (not yet auto-fix) name drift
+// between people and other collections like faculty_roster/mou_roster.
+async function resolveCanonicalName(email) {
+  const e = (email || "").trim().toLowerCase();
+  if (!e) return null;
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("email", "==", e).limit(1).get();
+    if (snap.empty) return null;
+    const doc = snap.docs[0];
+    const data = doc.data();
+    const name = data.name || null;
+    const preferredName = data.preferredName || null;
+    // displayName is what every drift-flag/sync call site should show and
+    // sync to — see setPreferredName() below for why.
+    //
+    // 2026-09-07 (Jon): a preferred name is a first-name swap ("Becca" for
+    // "Rebecca"), not a replacement for the whole name — showing/syncing
+    // just "Becca" silently drops the surname everywhere this feeds,
+    // including what "sync" actually WRITES back into
+    // faculty_roster/mou_roster/iw_registrations/faculty_directory.name.
+    // Surname comes from passportLastName when My Account has been used
+    // (most reliable, structured), otherwise the last word of the
+    // account's registered name — same surname heuristic already used for
+    // duplicate-detection elsewhere (admin-stage1-candidates.html). Only
+    // the first word of preferredName is used, in case it was ever set to
+    // a full name under the old behaviour.
+    const surname = data.passportLastName || (name ? name.trim().split(/\s+/).pop() : "");
+    const displayName = preferredName
+      ? [preferredName.trim().split(/\s+/)[0], surname].filter(Boolean).join(" ")
+      : name;
+    return { uid: doc.id, name, preferredName, displayName };
+  } catch (err) {
+    return null;
+  }
+}
+
+// setPreferredName(uid, preferredName) → writes people/{uid}.preferredName.
+// Added 2026-09-06 alongside displayName above: people.name is whatever was
+// typed at account-provisioning time (admin-bulk-users.html) — often
+// someone's legal/registered name, not what they actually go by (e.g.
+// "Rebecca" vs "Becca"). Section 0.1's drift-flag/sync pattern compared and
+// synced against .name directly, which meant "sync" could overwrite a
+// correct nickname with the wrong legal name. preferredName is optional and
+// additive: when unset, displayName just falls back to name and behaviour
+// for anyone without one is unchanged. Pass an empty string to clear it.
+async function setPreferredName(uid, preferredName) {
+  const trimmed = (preferredName || "").trim();
+  await db.collection(COLLECTIONS.people).doc(uid).set({
+    preferredName: trimmed ? trimmed : firebase.firestore.FieldValue.delete()
+  }, { merge: true });
+}
+
+// ── Role history (Section 0.3 of the platform workplan) ──────────────────────
+// people/{uid}.roleHistory is an array of dated periods, never overwritten,
+// only appended to:
+//   { role, from: "YYYY-MM-DD"|null, to: "YYYY-MM-DD"|null, source, note }
+// A null `to` means that period is still open/current. Starting a new period
+// closes whatever period was previously open (sets its `to`), it never
+// deletes or edits past entries. This is what the eligibility shortlist
+// (3.3), CPD certificate (2.4) and annual review (2.1) are meant to read
+// from once those exist — added 2026-09-06 specifically so those features
+// have something real to build on, not just a design note. Suggested role
+// values match the four pipeline stages (Instructor / Student Faculty /
+// Senior Faculty / Director) used elsewhere on the platform (see the "One
+// Person, One Record" workplan's stage diagram), but this deliberately
+// isn't locked to that list — free text is accepted for the finer-grained
+// weekend-specific roles (Assessor, Instructor Trainer, etc.) that don't
+// map cleanly onto the four pipeline stages.
+
+// Adds a new open role period starting at fromDate, closing any period that
+// was still open beforehand at that same date. Never deletes past entries.
+async function addRoleHistoryEntry(uid, role, fromDate, source, note) {
+  const ref = db.collection(COLLECTIONS.people).doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("No people record for uid " + uid);
+  const history = Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory.slice() : [];
+  history.forEach(h => { if (h.to === null || h.to === undefined) h.to = fromDate || null; });
+  history.push({ role, from: fromDate || null, to: null, source: source || "manual", note: note || null });
+  await ref.update({ roleHistory: history });
+  return history;
+}
+
+// Closes whatever role period is currently open, without opening a new one —
+// for a stand-down (leaving RMD) rather than a promotion/role change. Returns
+// the updated history, or the unchanged history if nothing was open to close.
+async function closeRoleHistory(uid, toDate, note) {
+  const ref = db.collection(COLLECTIONS.people).doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error("No people record for uid " + uid);
+  const history = Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory.slice() : [];
+  let closedAny = false;
+  history.forEach(h => {
+    if (h.to === null || h.to === undefined) {
+      h.to = toDate || null;
+      if (note) h.note = h.note ? h.note + " / " + note : note;
+      closedAny = true;
+    }
+  });
+  if (!closedAny) return history;
+  await ref.update({ roleHistory: history });
+  return history;
 }
 
 // ── Firebase initialisation (loaded after firebase SDK scripts) ──────────────

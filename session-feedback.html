@@ -250,7 +250,7 @@
   <a href="timetable.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
   <div class="top-bar-title">
     Session Feedback
-    <span class="top-bar-sub">Traffic light rating for your group</span>
+    <span class="top-bar-sub" id="topBarSub">Traffic light rating for your group</span>
   </div>
   <div class="top-bar-time" id="topBarTime">--:--</div>
 </div>
@@ -311,7 +311,8 @@ const preSession = params.get("session") || "";
 
 let currentUser     = null;
 let currentUserDoc  = null;    // people doc for the signed-in faculty member
-let myCandidates    = [];      // candidates in this instructor's group
+let seeAllGroups    = false;   // Director/Super-user/Student Faculty/Senior Faculty — set in the auth handler
+let myCandidates    = [];      // candidates in this instructor's group (or every group, if seeAllGroups)
 let currentSession  = preSession;
 let ratings         = {};      // { candidateId: { rating, comment, strong, weak, savedAt } }
 let saveDebounce    = {};
@@ -358,7 +359,32 @@ window.addEventListener("load", () => {
     if (!user) { window.location.href = "index.html"; return; }
     currentUser = user;
 
-    // Load the faculty member's people doc to find their group
+    // Restricted 2026-09-07 per Jon: session feedback is for the teaching
+    // faculty who actually run groups (faculty/full-instructor, same
+    // audience session-quality.html already restricted to), plus the usual
+    // Director/Super-user override, plus (new) RMD Student Faculty and
+    // Senior Faculty — who see feedback across every group, not just one.
+    // Previously any signed-in user could open this page — no role check
+    // existed at all.
+    const email = user.email || "";
+    const [role, studentFac, seniorFac] = await Promise.all([
+      resolveRole(user.uid, email),
+      isStudentFaculty(email),
+      isSeniorFaculty(email)
+    ]);
+    seeAllGroups = (role === "director") || studentFac || seniorFac;
+    const allowed = ["faculty", "full-instructor", "director"];
+    if (!seeAllGroups && !(role && allowed.includes(role))) {
+      window.location.href = "timetable.html";
+      return;
+    }
+    if (seeAllGroups) {
+      const sub = document.getElementById("topBarSub");
+      if (sub) sub.textContent = "Traffic light rating — all groups";
+    }
+
+    // Load the faculty member's people doc to find their group (used only
+    // when seeAllGroups is false — an ordinary group-lead instructor).
     try {
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
       if (snap.exists) currentUserDoc = { id: snap.id, ...snap.data() };
@@ -400,7 +426,12 @@ function onSessionChange() {
 // ─────────────────────────────────────────────────────────────────────────────
 async function loadCandidates() {
   try {
-    const myGroup = currentUserDoc?.group || currentUserDoc?.room || null;
+    // seeAllGroups (Director/Super-user/Student Faculty/Senior Faculty) —
+    // deliberately skip the group filter below regardless of any group
+    // value that happens to be sitting on this person's own people doc
+    // (e.g. left over from before they were promoted to Faculty), rather
+    // than relying on it being accidentally absent.
+    const myGroup = seeAllGroups ? null : (currentUserDoc?.group || currentUserDoc?.room || null);
 
     let query = db.collection(COLLECTIONS.people)
       .where("role", "in", [ROLES.INSTRUCTOR, ROLES.ASSESSOR]);

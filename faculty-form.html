@@ -720,6 +720,7 @@ async function nextSection() {
     btn.textContent = "Checking…";
     const email = document.getElementById("email").value.trim().toLowerCase();
     await checkExistingSubmission(email);
+    await prefillFromMyAccount(email);
     btn.disabled = false;
     btn.textContent = originalText;
   }
@@ -764,6 +765,35 @@ function selectButtonByValue(containerEl, value, selectedClass) {
   if (!btn) return;
   containerEl.querySelectorAll(".option-btn").forEach(b => b.classList.remove("selected", "selected-yes", "selected-no"));
   btn.classList.add(selectedClass || "selected");
+}
+
+// Added 2026-09-06 alongside my-account.html: this form has no sign-in
+// requirement (see emailDocId() above), but if the browser happens to have
+// an active RMD sign-in (e.g. this person is also signed into
+// member-menu.html/mou-form.html) whose email matches what was just typed
+// here, prefer their canonical people/{uid} passport name over whatever
+// checkExistingSubmission() loaded from a previous year's response — that's
+// the whole point of My Account: one place to keep it correct, per Jon's
+// standing rule that only the person's own declaration can set it. Only
+// touches the name fields; everything else (nationality, meals, role, etc.)
+// still comes from the previous submission as before. Silently does nothing
+// if there's no matching signed-in session, which is the normal case here.
+async function prefillFromMyAccount(email) {
+  try {
+    const user = auth.currentUser;
+    if (!user || (user.email || "").trim().toLowerCase() !== email) return;
+    const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+    if (!snap.exists) return;
+    const data = snap.data();
+    if (data.passportFirstName) {
+      document.getElementById("firstName").value  = data.passportFirstName;
+      document.getElementById("middleName").value = data.passportMiddleName || "";
+      document.getElementById("lastName").value   = data.passportLastName  || "";
+    }
+    if (data.preferredName) {
+      document.getElementById("knownAs").value = data.preferredName;
+    }
+  } catch (err) { /* no signed-in session, no My Account record yet, or a read error */ }
 }
 
 function prefillForm(data) {

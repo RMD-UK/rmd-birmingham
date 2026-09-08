@@ -406,8 +406,62 @@ async function loadAll() {
       return;
     }
   }
+  // Section 0.1 (platform workplan): surface name drift against the person's
+  // own people/{uid} record — confirmed registrations only, since that's the
+  // only status syncIwRegistrationToPeople ever creates a people doc for
+  // (pending/declined rows would just return null every time, wasted reads).
+  await Promise.all(allRegistrations
+    .filter(r => r.status === "confirmed")
+    .map(async (r) => { r.canonical = await resolveCanonicalName(r.email); }));
+
   updateSummary();
   renderTable();
+}
+
+function renderNameCell(r) {
+  const regName = r.name || "–";
+  if (!r.canonical || !r.canonical.displayName) return regName;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const editLink = r.canonical.uid
+    ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${r.canonical.uid}','${(r.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set the first name this person actually goes by (their surname is always kept as-is) — sync, here and everywhere else on the site, offers that instead of their account's legal/registered first name.">✎ preferred name</a>`
+    : "";
+  if (norm(r.canonical.displayName) === norm(regName)) return regName + editLink;
+  const safeCanonical = r.canonical.displayName.replace(/'/g, "\\'");
+  return `${regName} <span style="color:#b7410e;font-size:11px;" title="Registration says \"${regName}\", their account record says \"${r.canonical.displayName}\" — worth checking which is current.">⚠ differs from account: ${r.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${r.id}','${safeCanonical}')" style="font-size:11px;" title="Overwrite this registration's name with the account record's name.">⟳ sync</a>${editLink}`;
+}
+
+// Section 0.1 follow-up (2026-09-06): same pattern as
+// admin-director-access.html's editPreferredName() — lets a director set
+// people/{uid}.preferredName from a registration row, so sync stops
+// defaulting to the account's legal/registered name.
+async function editPreferredName(uid, currentPreferred) {
+  if (!uid) return;
+  const value = prompt("What FIRST name should this person actually go by (e.g. 'Becca' for Rebecca)?\n\nTheir surname is always taken from their account record automatically — this only replaces the first name, never the whole name. Leave blank to clear and fall back to their account's registered first name.", currentPreferred || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(uid, value);
+    await Promise.all(allRegistrations.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    renderTable();
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
+  }
+}
+
+// Section 0.1: director-driven fix, not automatic — only ever copies the
+// account's name onto this registration, never the reverse.
+async function syncNameToAccount(docId, canonicalName) {
+  const r = allRegistrations.find(x => x.id === docId);
+  if (!r) return;
+  if (!confirm(`Update this registration's name from "${r.name || ""}" to "${canonicalName}" (their account record)?`)) return;
+  try {
+    await db.collection(IW_COLL).doc(docId).update({ name: canonicalName });
+    r.name = canonicalName;
+    renderTable();
+  } catch (err) {
+    alert("Failed to update name: " + err.message);
+  }
 }
 
 // ── Summary ───────────────────────────────────────────────────────────────────
@@ -489,7 +543,7 @@ function renderTable() {
     const isConf = r.status === "confirmed";
     const isDecl = r.status === "declined";
     return `<tr class="${isDecl?"status-declined":""}">
-      <td style="font-weight:700;color:var(--rmd-navy);">${r.name||"–"}</td>
+      <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
       <td>${roleBadge(r.role)}</td>
       <td>${statusBadge(r.status)}</td>

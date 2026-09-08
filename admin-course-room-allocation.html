@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Room &amp; Instructor Allocation — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    body { background:#f0f2f7; margin:0; }
+
+    /* ── Toolbar ── */
+    .cra-toolbar { background:var(--rmd-navy); color:#fff; padding:10px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:50; flex-wrap:wrap; }
+    .cra-back { color:rgba(255,255,255,.55); text-decoration:none; font-size:13px; }
+    .cra-back:hover { color:#fff; }
+    .cra-title { font-size:16px; font-weight:800; flex:1; margin:0; white-space:nowrap; }
+    .cra-btn { background:rgba(255,255,255,.14); color:#fff; border:none; padding:7px 13px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+    .cra-btn:hover { background:rgba(255,255,255,.24); }
+    .cra-btn:disabled { opacity:.4; cursor:not-allowed; }
+    .cra-btn.save { background:var(--rmd-red); }
+    .cra-btn.save:hover { background:#a93226; }
+    #saveStatus { font-size:12px; min-width:80px; }
+    #saveStatus.ok  { color:#4ade80; }
+    #saveStatus.err { color:#f87171; }
+
+    /* ── Course picker ── */
+    .course-bar { background:#fff; border-bottom:2px solid #e0e4ee; padding:12px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .course-bar label { font-size:13px; font-weight:700; color:var(--rmd-navy); }
+    .course-bar select { padding:8px 12px; border:1.5px solid #d0d5e0; border-radius:7px; font-size:14px; font-family:var(--font); min-width:280px; }
+    .course-hint { font-size:12px; color:#8893b0; }
+    .no-course { padding:60px 20px; text-align:center; color:#8893b0; font-size:15px; }
+
+    /* ── Stats bar ── */
+    .cra-stats { background:rgba(13,32,53,.9); color:rgba(255,255,255,.55); font-size:12px; padding:5px 16px; display:flex; gap:20px; flex-wrap:wrap; }
+    .cra-stats b { color:#fff; }
+
+    /* ── Layout ── */
+    .cra-layout { display:flex; min-height:calc(100vh - 168px); }
+
+    .cra-pool { width:250px; min-width:190px; background:#fff; border-right:2px solid #dde1ec; display:flex; flex-direction:column; flex-shrink:0; }
+    .pool-tabs { display:flex; border-bottom:2px solid #dde1ec; flex-shrink:0; }
+    .pool-tab { flex:1; background:#eef1f8; border:none; padding:9px 6px; font-size:12px; font-weight:800; color:#8893b0; cursor:pointer; font-family:var(--font); border-bottom:3px solid transparent; }
+    .pool-tab:hover { background:#e4e9f4; }
+    .pool-tab.active { background:#fff; color:var(--rmd-navy); border-bottom-color:var(--rmd-blue); }
+    .pool-tab-count { background:var(--rmd-navy); color:#fff; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:700; margin-left:3px; }
+    .pool-tab.active .pool-tab-count { background:var(--rmd-blue); }
+    .pool-section { display:none; flex-direction:column; flex:1; min-height:0; }
+    .pool-section.active { display:flex; }
+    .pool-search { padding:7px 8px 4px; }
+    .pool-search input { width:100%; padding:6px 10px; border:1.5px solid #d0d5e0; border-radius:6px; font-size:13px; box-sizing:border-box; outline:none; font-family:var(--font); }
+    .pool-search input:focus { border-color:var(--rmd-blue); }
+    .pool-list { flex:1; overflow-y:auto; padding:6px; }
+    .pool-empty { padding:20px 10px; text-align:center; color:#b0b8cc; font-size:12px; }
+    .pool-add { padding:6px 8px; }
+
+    .pcard { border:1.5px solid #dde2ed; border-radius:6px; padding:5px 8px; margin-bottom:3px; font-size:13px; font-family:var(--font); cursor:grab; user-select:none; display:flex; align-items:center; gap:6px; background:#f7f9fc; transition:background .1s, opacity .15s; }
+    .pcard:hover { background:#edf1f9; border-color:#b8c2d8; }
+    .pcard.is-dragging { opacity:.35; }
+    .pcard.selected { background:#dbeafe; border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.18); }
+    .pcard-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pcard-flag { font-size:10px; color:#b7410e; display:block; }
+    .pcard-rm { background:none; border:none; color:#c0c8d8; cursor:pointer; padding:0 2px 0 4px; font-size:15px; line-height:1; flex-shrink:0; font-family:var(--font); }
+    .pcard-rm:hover { color:var(--rmd-red); }
+
+    .rooms-grid { flex:1; overflow:auto; padding:10px; display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; align-content:start; }
+    .room-col { background:#fff; border:1.5px solid #dde2ed; border-radius:10px; display:flex; flex-direction:column; min-height:170px; overflow:hidden; transition:border-color .12s, box-shadow .12s; }
+    .room-col.drag-over { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); background:#f0f6ff; }
+    .room-col.click-target { border-color:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.18); }
+    .room-head { background:var(--rmd-navy); color:#fff; padding:8px 10px; flex-shrink:0; }
+    .room-head-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
+    .room-id { font-size:15px; font-weight:800; letter-spacing:.5px; }
+    .room-count { font-size:11px; opacity:.55; }
+    .team-hint { font-size:10px; color:#ffd97a; margin-bottom:4px; }
+    .instr-empty { color:rgba(255,255,255,.45); font-size:11px; font-style:italic; }
+    .team-count { font-size:10px; color:rgba(255,255,255,.5); margin-top:2px; }
+    .instr-chips { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:5px; }
+    .instr-chip { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); border-radius:4px; padding:2px 5px 2px 8px; font-size:11px; color:#fff; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+    .instr-chip button { background:none; border:none; color:rgba(255,255,255,.6); cursor:pointer; padding:0; font-size:14px; line-height:1; font-family:var(--font); }
+    .instr-chip button:hover { color:#fff; }
+    .room-body { flex:1; padding:5px; min-height:50px; }
+    .room-drop-hint { text-align:center; color:#c8cede; font-size:12px; padding:16px 8px; }
+
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+    #authMsg { font-size:15px; opacity:.7; }
+
+    @media (max-width:820px) { .cra-layout { flex-direction:column; } .cra-pool { width:100%; border-right:none; border-bottom:2px solid #dde1ec; max-height:220px; } }
+  </style>
+</head>
+<body>
+
+<div id="authOverlay" class="auth-overlay">
+  <div style="font-size:36px">🏫</div>
+  <div id="authMsg">Checking access…</div>
+</div>
+
+<div class="cra-toolbar">
+  <a href="admin-stage1-candidates.html" class="cra-back">← Stage 1 Candidates</a>
+  <h1 class="cra-title">Course Room &amp; Instructor Allocation</h1>
+  <span id="saveStatus"></span>
+  <button class="cra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
+  <button class="cra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly allocate unassigned candidates</button>
+  <button class="cra-btn" id="autoInstrBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate unassigned instructors</button>
+  <button class="cra-btn" id="restoreBtn" onclick="restoreSaved()" style="display:none">↩ Restore saved</button>
+  <button class="cra-btn" id="setDefaultBtn" onclick="setAsDefault()" style="display:none">⭐ Set as default for all courses</button>
+  <button class="cra-btn" id="resetCandBtn" onclick="resetCandidates()" style="display:none">↺ Reset candidates to unallocated</button>
+  <button class="cra-btn" id="resetInstrBtn" onclick="resetInstructors()" style="display:none">↺ Reset instructors to unallocated</button>
+  <button class="cra-btn save" id="saveBtn" onclick="saveAll()" style="display:none">💾 Save all</button>
+</div>
+
+<div class="course-bar">
+  <label for="courseSelect">Course:</label>
+  <select id="courseSelect" onchange="selectCourse(this.value)">
+    <option value="">— Choose a course —</option>
+  </select>
+  <span class="course-hint" id="courseHint"></span>
+</div>
+
+<div id="noCourse" class="no-course">Pick a course above to allocate its candidates into rooms and build its instructor teams.<br>Courses come from what's already been imported on the Stage 1 Candidates page — nothing to type here.</div>
+
+<div id="allocationUI" style="display:none">
+  <div class="cra-stats">
+    <div>Candidates: <b id="statCand">—</b></div>
+    <div>Assigned: <b id="statAssigned">0</b></div>
+    <div>Unassigned: <b id="statUnassigned">—</b></div>
+    <div>Instructors placed: <b id="statInstr">0</b></div>
+    <div id="selHint" style="display:none;color:rgba(255,255,255,.8)">Click a room to assign selected candidate</div>
+  </div>
+  <div class="cra-layout">
+    <div class="cra-pool">
+      <div class="pool-tabs">
+        <button class="pool-tab active" id="tabCandidates" onclick="setPoolView('candidates')">Candidates <span class="pool-tab-count" id="poolCount">0</span></button>
+        <button class="pool-tab" id="tabInstructors" onclick="setPoolView('instructors')">Instructors <span class="pool-tab-count" id="instrPoolCount">0</span></button>
+      </div>
+      <div class="pool-section active" id="candidatePoolSection">
+        <div class="pool-search">
+          <input type="search" id="poolSearch" placeholder="Search…" oninput="renderPool()">
+        </div>
+        <div class="pool-list" id="poolList"
+             ondragover="onDragOver(event,'pool')" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'pool')">
+          <div class="pool-empty">No candidates for this course.</div>
+        </div>
+        <div class="pool-add">
+          <button class="cra-btn" style="width:100%;background:var(--rmd-navy)" onclick="quickAddCandidate()">+ Add a candidate to this course</button>
+        </div>
+      </div>
+      <div class="pool-section" id="instructorPoolSection">
+        <div class="pool-search">
+          <input type="search" id="instrPoolSearch" placeholder="Search…" oninput="renderInstructorPool()">
+        </div>
+        <div class="pool-list" id="instrPoolList"
+             ondragover="onDragOver(event,'instructorPool')" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'instructorPool')">
+          <div class="pool-empty">No instructors found.</div>
+        </div>
+      </div>
+    </div>
+    <div class="rooms-grid" id="roomsGrid"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ── Constants ────────────────────────────────────────────────────────────
+// STAGE1_TEACHING_ROOMS is declared once in js/firebase-config.js — do not
+// redeclare it here (two <script> tags share one global scope; a duplicate
+// top-level const throws and silently kills this whole block, per the
+// documented DIRECTOR_EMAILS lesson in admin-room-allocation.html).
+const ROOMS = STAGE1_TEACHING_ROOMS;
+
+// ── State ────────────────────────────────────────────────────────────────
+let allCandidates   = [];   // every stage1_candidates doc, all courses
+let allInstructors  = [];   // people with role === ROLES.INSTRUCTOR
+let allAllocDocs    = [];   // every course_allocations doc, {id, course, instructorTeams, updatedAt} — excludes the reserved "_default" doc
+let defaultAllocDoc = null; // the single course_allocations/_default doc, if one has been saved: {id:"_default", instructorTeams, updatedAt}
+
+let currentCourse   = null; // course name string
+let courseCandidates = [];  // subset of allCandidates for currentCourse, working copy: {id, name, email, degree, room, originalRoom, flagText}
+let roomTeams        = {};  // {CM01: {uids:[...], prefilled:bool}, ...}
+
+let dragging = null;   // {id, source, kind}
+let selected = null;   // {kind:"candidate"|"instructor", id}
+let poolView = "candidates"; // which sidebar pool is showing: "candidates" | "instructors"
+
+function setPoolView(view) {
+  poolView = view;
+  document.getElementById("candidatePoolSection").classList.toggle("active", view === "candidates");
+  document.getElementById("instructorPoolSection").classList.toggle("active", view === "instructors");
+  document.getElementById("tabCandidates").classList.toggle("active", view === "candidates");
+  document.getElementById("tabInstructors").classList.toggle("active", view === "instructors");
+}
+
+initFirebase();
+
+requireDirector("admin-stage1-candidates.html").then(async () => {
+  document.getElementById("authOverlay").style.display = "none";
+  await loadData();
+});
+
+// ── Load ─────────────────────────────────────────────────────────────────
+async function loadData() {
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) { console.warn("stage1_candidates load failed:", e.message); showStatus("Couldn't load candidates — check Firestore rules", "err"); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get();
+    allInstructors = snap.docs.map(d => {
+      const data = d.data();
+      // Preferred name is a first-name swap, not a whole-name replacement
+      // (Jon, 2026-09-07) — always show the surname alongside it, same
+      // logic as resolveCanonicalName()'s displayName in firebase-config.js.
+      const surname = data.passportLastName || (data.name ? data.name.trim().split(/\s+/).pop() : "");
+      const first = data.preferredName ? data.preferredName.trim().split(/\s+/)[0] : null;
+      const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
+      return { uid: d.id, name };
+    }).sort((a,b) => a.name.localeCompare(b.name));
+  } catch(e) { console.warn("Instructor load failed:", e.message); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.courseAllocations).get();
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    defaultAllocDoc = docs.find(d => d.id === "_default") || null;
+    allAllocDocs = docs.filter(d => d.id !== "_default");
+  } catch(e) { console.warn("course_allocations load failed:", e.message); }
+
+  populateCourseDropdown();
+}
+
+function courseList() {
+  const set = new Set();
+  allCandidates.forEach(c => { if (c.course) set.add(c.course); });
+  return Array.from(set).sort();
+}
+
+function populateCourseDropdown() {
+  const sel = document.getElementById("courseSelect");
+  const courses = courseList();
+  sel.innerHTML = `<option value="">— Choose a course —</option>` +
+    courses.map(c => {
+      const n = allCandidates.filter(x => x.course === c).length;
+      return `<option value="${escAttr(c)}">${c} (${n} candidate${n===1?"":"s"})</option>`;
+    }).join("");
+  if (!courses.length) {
+    document.getElementById("noCourse").textContent = "No courses found yet — import candidates first on the Stage 1 Candidates page (each candidate's \"course\" field is what shows up here).";
+  }
+}
+
+// ── Course selection ─────────────────────────────────────────────────────
+function slugify(s) {
+  return (s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "course";
+}
+
+function selectCourse(course) {
+  clearSelection();
+  currentCourse = course || null;
+  document.getElementById("autoBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("autoInstrBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("restoreBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("setDefaultBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("resetCandBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("resetInstrBtn").style.display = currentCourse ? "" : "none";
+  document.getElementById("saveBtn").style.display  = currentCourse ? "" : "none";
+  document.getElementById("noCourse").style.display  = currentCourse ? "none" : "";
+  document.getElementById("allocationUI").style.display = currentCourse ? "" : "none";
+  if (!currentCourse) return;
+
+  // Working copy of this course's candidates.
+  courseCandidates = allCandidates.filter(c => c.course === currentCourse).map(c => {
+    const room = ROOMS.includes(c.room) ? c.room : null;
+    return {
+      id: c.id, name: c.name || "(no name)", email: c.email || "", degree: c.degree || "",
+      room,
+      flagText: (c.room && !room) ? `had: "${c.room}"` : ""
+    };
+  });
+
+  // Instructor teams: use this course's own saved allocation if it exists.
+  // Otherwise pre-fill from the single explicit default (course_allocations/_default,
+  // set automatically on the first course ever saved, or deliberately via
+  // "⭐ Set as default"). Per Jon 2026-09-07: once instructors are allocated,
+  // that becomes THE default for every course — not a "most recently touched
+  // course wins" heuristic, which could drift if one course's team gets a
+  // one-off tweak. Adjusting one course's team here never changes the shared
+  // default unless ⭐ is clicked deliberately.
+  const own = allAllocDocs.find(d => d.id === slugify(currentCourse) || d.course === currentCourse);
+  roomTeams = {};
+  ROOMS.forEach(r => { roomTeams[r] = { uids: [], prefilled: false }; });
+  if (own && own.instructorTeams) {
+    ROOMS.forEach(r => { roomTeams[r].uids = (own.instructorTeams[r] || []).slice(); });
+    document.getElementById("courseHint").textContent = "Editing this course's saved allocation.";
+  } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {
+    ROOMS.forEach(r => {
+      const team = defaultAllocDoc.instructorTeams[r];
+      if (team && team.length) roomTeams[r] = { uids: team.slice(), prefilled: true };
+    });
+    document.getElementById("courseHint").textContent = "New course — instructor teams pre-filled from the default allocation. Adjust as needed, or use ⭐ Set as default to update the default itself.";
+  } else {
+    document.getElementById("courseHint").textContent = "First course of the year — instructor teams start empty. Save, then use ⭐ Set as default so every later course starts from it.";
+  }
+
+  render();
+}
+
+// ── Default instructor allocation ───────────────────────────────────────
+// Explicit, deliberate default — not "whichever course was saved most
+// recently" — so a one-off tweak to one course's team never silently
+// changes what every other new course starts from.
+async function setAsDefault() {
+  if (!currentCourse) return;
+  if (!confirm(`Save the current instructor teams for "${currentCourse}" as the default for every future course?\n\nThis does not touch any other course's own saved teams — only what a brand-new course starts from.`)) return;
+  showStatus("Saving default…", "");
+  try {
+    const instructorTeams = {};
+    ROOMS.forEach(r => { instructorTeams[r] = (roomTeams[r]?.uids || []).slice(); });
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+    const uid = auth.currentUser?.uid;
+    await db.collection(COLLECTIONS.courseAllocations).doc("_default").set({
+      instructorTeams, updatedAt: ts, updatedBy: uid || null, isDefault: true
+    });
+    defaultAllocDoc = { id: "_default", instructorTeams, updatedAt: { toMillis: () => Date.now() }, isDefault: true };
+    showStatus("✓ Default updated", "ok");
+  } catch (e) {
+    console.error(e);
+    showStatus("Failed to save default", "err");
+  }
+}
+
+// ── Restore to last saved ───────────────────────────────────────────────
+// Discards any unsaved in-memory changes (e.g. a randomize you don't like)
+// and reloads this course from what's actually saved — the cached
+// allCandidates/allAllocDocs/defaultAllocDoc state, which is only ever
+// updated on a successful saveAll(), so this is always "back to the last
+// save," never "back to the server" mid-edit.
+function restoreSaved() {
+  if (!currentCourse) return;
+  if (!confirm(`Discard unsaved changes and restore "${currentCourse}" back to what was last saved?`)) return;
+  selectCourse(currentCourse);
+  showStatus("Restored to last saved", "ok");
+}
+
+// ── Reset to unallocated (in-memory only ─────────────────────────────────────────
+// Both of these only touch the working copy in memory (courseCandidates /
+// roomTeams). Nothing is written to Firestore here, so the last saved
+// version is untouched — "↩ Restore saved" still recovers exactly what
+// was last saved even after one of these is used. Save afterwards to make
+// the empty state permanent.
+function resetCandidates() {
+  if (!currentCourse) return;
+  if (!courseCandidates.length) { showStatus("No candidates on this course", "ok"); return; }
+  if (!confirm(`Move all candidates on "${currentCourse}" back to Unassigned?\n\nThis only changes what's on screen — nothing is saved until you click 💾 Save all, and it does not touch the last saved version.`)) return;
+  courseCandidates.forEach(c => { c.room = null; });
+  clearSelection();
+  render();
+  showStatus("Candidates reset to unallocated (not yet saved)", "ok");
+}
+function resetInstructors() {
+  if (!currentCourse) return;
+  const anyAssigned = ROOMS.some(r => (roomTeams[r]?.uids || []).length);
+  if (!anyAssigned) { showStatus("No instructors assigned on this course", "ok"); return; }
+  if (!confirm(`Move all instructors on "${currentCourse}" back to Unassigned?\n\nThis only changes what's on screen — nothing is saved until you click 💾 Save all, and it does not touch the last saved version.`)) return;
+  ROOMS.forEach(r => { roomTeams[r] = { uids: [], prefilled: false }; });
+  clearSelection();
+  render();
+  showStatus("Instructors reset to unallocated (not yet saved)", "ok");
+}
+
+// ── Master render ────────────────────────────────────────────────────────
+function render() {
+  renderPool();
+  renderInstructorPool();
+  renderRooms();
+  updateStats();
+}
+
+function assignedIds() {
+  const s = new Set();
+  courseCandidates.forEach(c => { if (c.room) s.add(c.id); });
+  return s;
+}
+
+function renderPool() {
+  const assigned = assignedIds();
+  const q = (document.getElementById("poolSearch").value || "").toLowerCase();
+  const unassigned = courseCandidates
+    .filter(c => !assigned.has(c.id) && (!q || c.name.toLowerCase().includes(q)))
+    .sort((a, b) => surnameOf(a.name).localeCompare(surnameOf(b.name)) || a.name.localeCompare(b.name));
+  document.getElementById("poolCount").textContent = courseCandidates.filter(c => !assigned.has(c.id)).length;
+  document.getElementById("poolList").innerHTML = unassigned.length
+    ? unassigned.map(c => makeCard(c, "pool")).join("")
+    : `<div class="pool-empty">${courseCandidates.length ? "All assigned ✓" : "No candidates for this course yet."}</div>`;
+}
+
+function makeCard(c, source) {
+  const sel = selected && selected.kind === "candidate" && selected.id === c.id;
+  const rmBtn = source !== "pool"
+    ? `<button class="pcard-rm" onclick="removeFromRoom('${c.id}',event)" title="Return to unassigned">×</button>`
+    : "";
+  const flag = c.flagText ? `<span class="pcard-flag">${c.flagText}</span>` : "";
+  return `<div class="pcard${sel ? " selected" : ""}"
+               draggable="true" data-id="${c.id}"
+               ondragstart="onDragStart(event,'${c.id}','${source}')"
+               onclick="onCardClick(event,'${c.id}','${source}')">
+            <span class="pcard-name">${c.name}${flag}</span>${rmBtn}
+          </div>`;
+}
+
+function renderInstructorPool() {
+  const assigned = new Set();
+  ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
+  const q = (document.getElementById("instrPoolSearch")?.value || "").toLowerCase();
+  const unassigned = allInstructors
+    .filter(i => !assigned.has(i.uid) && (!q || i.name.toLowerCase().includes(q)))
+    .sort((a, b) => surnameOf(a.name).localeCompare(surnameOf(b.name)) || a.name.localeCompare(b.name));
+  document.getElementById("instrPoolCount").textContent = unassigned.length;
+  document.getElementById("instrPoolList").innerHTML = unassigned.length
+    ? unassigned.map(makeInstructorCard).join("")
+    : `<div class="pool-empty">${allInstructors.length ? "All assigned ✓" : "No instructors found."}</div>`;
+}
+
+function makeInstructorCard(i) {
+  const sel = selected && selected.kind === "instructor" && selected.id === i.uid;
+  return `<div class="pcard${sel ? " selected" : ""}"
+               draggable="true" data-id="${i.uid}"
+               ondragstart="onDragStart(event,'${i.uid}','instructorPool','instructor')"
+               onclick="onCardClick(event,'${i.uid}','instructorPool','instructor')">
+            <span class="pcard-name">${i.name}</span>
+          </div>`;
+}
+
+function renderRooms() {
+  const assigned = assignedIds();
+  document.getElementById("roomsGrid").innerHTML = ROOMS.map(rid => {
+    const inRoom = courseCandidates.filter(c => c.room === rid);
+    const team = roomTeams[rid] || { uids: [], prefilled: false };
+    const chips = team.uids.map(uid => {
+      const inst = allInstructors.find(i => i.uid === uid);
+      const name = inst ? inst.name : uid;
+      return `<span class="instr-chip">${name}<button onclick="event.stopPropagation();removeInstructor('${rid}','${uid}')" title="Remove">×</button></span>`;
+    }).join("");
+    return `<div class="room-col" id="room-${rid}"
+                 ondragover="onDragOver(event,'${rid}')"
+                 ondragleave="onDragLeave(event)"
+                 ondrop="onDrop(event,'${rid}')"
+                 onclick="onRoomClick('${rid}',event)">
+              <div class="room-head">
+                <div class="room-head-row">
+                  <span class="room-id">${rid}</span>
+                  <span class="room-count">${inRoom.length} candidate${inRoom.length === 1 ? "" : "s"}</span>
+                </div>
+                ${team.prefilled ? `<div class="team-hint">carried over — not yet confirmed for this course</div>` : ""}
+                <div class="instr-chips">${chips || `<span class="instr-empty">No instructors yet — drag or click to add</span>`}</div>
+                <div class="team-count">${team.uids.length}/5 instructors</div>
+              </div>
+              <div class="room-body">
+                ${inRoom.length ? inRoom.map(c => makeCard(c, rid)).join("") : `<div class="room-drop-hint">Drop here</div>`}
+              </div>
+            </div>`;
+  }).join("");
+}
+
+function updateStats() {
+  const a = assignedIds();
+  document.getElementById("statCand").textContent = courseCandidates.length;
+  document.getElementById("statAssigned").textContent = a.size;
+  document.getElementById("statUnassigned").textContent = courseCandidates.length - a.size;
+  const instrPlaced = new Set();
+  ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => instrPlaced.add(uid)));
+  document.getElementById("statInstr").textContent = instrPlaced.size;
+}
+
+// ── Instructor team edits ───────────────────────────────────────────────
+function addInstructorFromPool(rid, uid) {
+  const team = roomTeams[rid];
+  if (!team || team.uids.length >= 5 || team.uids.includes(uid)) return;
+  team.uids.push(uid);
+  team.prefilled = false;
+  render();
+}
+function removeInstructor(rid, uid) {
+  const team = roomTeams[rid];
+  team.uids = team.uids.filter(x => x !== uid);
+  team.prefilled = false;
+  render();
+}
+
+// ── Randomize instructors (unassigned only, respects the 5-per-room cap,
+// never reshuffles an existing team) ────────────────────────────────────
+function randomizeInstructors() {
+  const assigned = new Set();
+  ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
+  const pool = allInstructors.filter(i => !assigned.has(i.uid));
+  if (!pool.length) { showStatus("Nothing unassigned to allocate", "ok"); return; }
+  pool.sort(() => Math.random() - .5).forEach(inst => {
+    const open = ROOMS.filter(r => (roomTeams[r]?.uids?.length || 0) < 5);
+    if (!open.length) return; // every room already at 5/5 — leftover instructors stay unassigned
+    const smallest = open.sort((a, b) => roomTeams[a].uids.length - roomTeams[b].uids.length)[0];
+    roomTeams[smallest].uids.push(inst.uid);
+    roomTeams[smallest].prefilled = false;
+  });
+  render();
+}
+
+// ── Drag & drop ──────────────────────────────────────────────────────────
+function onDragStart(event, id, source, kind) {
+  dragging = { id, source, kind: kind || "candidate" };
+  event.dataTransfer.effectAllowed = "move";
+  setTimeout(() => { document.querySelector(`[data-id="${id}"]`)?.classList.add("is-dragging"); }, 0);
+}
+function onDragOver(event, target) {
+  event.preventDefault();
+  const kind = dragging ? dragging.kind : null;
+  if (target === "pool" && kind === "instructor") return;
+  if (target === "instructorPool" && kind === "candidate") return;
+  const el = target === "pool" ? document.getElementById("poolList")
+    : target === "instructorPool" ? document.getElementById("instrPoolList")
+    : document.getElementById(`room-${target}`);
+  el?.classList.add("drag-over");
+}
+function onDragLeave(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.classList.remove("drag-over");
+}
+function onDrop(event, target) {
+  event.preventDefault(); clearHighlights();
+  if (!dragging) return;
+  if (dragging.kind === "instructor") {
+    if (target !== "pool" && target !== "instructorPool") addInstructorFromPool(target, dragging.id);
+  } else if (target !== "instructorPool") {
+    moveCandidate(dragging.id, target);
+  }
+  dragging = null;
+}
+function clearHighlights() { document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over")); }
+document.addEventListener("dragend", () => {
+  clearHighlights();
+  document.querySelectorAll(".is-dragging").forEach(el => el.classList.remove("is-dragging"));
+  dragging = null;
+});
+
+// ── Click-to-move ────────────────────────────────────────────────────────
+function onCardClick(event, id, source, kind) {
+  event.stopPropagation();
+  kind = kind || "candidate";
+  if (selected && selected.kind === kind && selected.id === id) { clearSelection(); return; }
+  selected = { kind, id };
+  document.getElementById("clearSelBtn").style.display = "";
+  document.getElementById("selHint").style.display = "";
+  document.getElementById("selHint").textContent = kind === "instructor"
+    ? "Click a room to add selected instructor"
+    : "Click a room to assign selected candidate";
+  ROOMS.forEach(r => document.getElementById(`room-${r}`)?.classList.add("click-target"));
+  render();
+}
+function onRoomClick(rid, event) {
+  if (!selected) return;
+  event.stopPropagation();
+  if (selected.kind === "instructor") addInstructorFromPool(rid, selected.id);
+  else moveCandidate(selected.id, rid);
+  clearSelection();
+}
+function clearSelection() {
+  selected = null;
+  const btn = document.getElementById("clearSelBtn"); if (btn) btn.style.display = "none";
+  const hint = document.getElementById("selHint"); if (hint) hint.style.display = "none";
+  document.querySelectorAll(".click-target").forEach(el => el.classList.remove("click-target"));
+  if (currentCourse) render();
+}
+
+function moveCandidate(id, target) {
+  const c = courseCandidates.find(x => x.id === id);
+  if (!c) return;
+  c.room = target === "pool" ? null : target;
+  render();
+}
+function removeFromRoom(id, event) {
+  event.stopPropagation();
+  moveCandidate(id, "pool");
+}
+
+// ── Randomize (unassigned only — never reshuffles an existing placement) ──
+// Degree-aware: per Jon 2026-09-07, rooms should end up multidisciplinary,
+// not just evenly sized. Each candidate goes to whichever room currently
+// has the FEWEST people of their own degree (already-placed candidates
+// count too, so a manually-built room still gets balanced against),
+// falling back to smallest total room size to break ties, then a random
+// tiebreak so equal options don't always resolve the same way. Degree is
+// compared trimmed+lowercased (same normalisation admin-stage1-candidates.html
+// uses for its duplicate check) so "Medicine" and "medicine" match — a
+// genuinely different spelling (e.g. "Medicine" vs "Medicine Y1") will
+// still be treated as a different degree, since there's no fixed degree
+// list to match against.
+function degreeKey(c) { return (c.degree || "").trim().toLowerCase(); }
+// Last whitespace-separated token of a full name, used to alphabetise the
+// unallocated pools by surname (per Jon 2026-09-07) rather than however
+// Firestore happened to return the docs. Strips a trailing "(Nickname)"
+// annotation first -- found live on one instructor record whose stored
+// `name` is literally "Yu Ooi (Ariel)" (the nickname typed into the name
+// field itself, not the separate preferredName field the rest of this
+// page reads), which without this would sort as "(ariel)" ahead of A.
+function surnameOf(name) {
+  const stripped = (name || "").trim().replace(/\s*\([^)]*\)\s*$/, "").trim();
+  const parts = stripped.split(/\s+/);
+  return (parts[parts.length - 1] || "").toLowerCase();
+}
+function randomizeCandidates() {
+  const pool = courseCandidates.filter(c => !c.room);
+  if (!pool.length) { showStatus("Nothing unassigned to allocate", "ok"); return; }
+  pool.sort(() => Math.random() - .5).forEach(c => {
+    const dk = degreeKey(c);
+    const best = ROOMS.slice().sort((a, b) => {
+      const aSame = courseCandidates.filter(x => x.room === a && degreeKey(x) === dk).length;
+      const bSame = courseCandidates.filter(x => x.room === b && degreeKey(x) === dk).length;
+      if (aSame !== bSame) return aSame - bSame;
+      const aTotal = courseCandidates.filter(x => x.room === a).length;
+      const bTotal = courseCandidates.filter(x => x.room === b).length;
+      if (aTotal !== bTotal) return aTotal - bTotal;
+      return Math.random() - .5;
+    })[0];
+    c.room = best;
+  });
+  render();
+}
+
+// ── Quick-add a candidate directly from this page ──────────────────────
+// Same "flag, don't guess" duplicate check as admin-stage1-candidates.html's
+// bulk import — a same-surname match within this course is surfaced as a
+// warning the director confirms past, never silently blocked or merged.
+function quickAddCandidate() {
+  if (!currentCourse) return;
+  const input = prompt(`Add a candidate to "${currentCourse}"\n\nFormat: Name, Degree, email (email optional)\ne.g. John Smith, MBChB Y1, j.smith@bham.ac.uk`);
+  if (input === null) return;
+  const parts = input.split(",").map(s => s.trim());
+  const name = parts[0], degree = parts[1] || "", email = (parts[2] || "").toLowerCase();
+  if (!name) { alert("Name is required."); return; }
+
+  const surname = name.trim().split(/\s+/).pop().toLowerCase();
+  const nearMatches = courseCandidates.filter(c => c.name.trim().split(/\s+/).pop().toLowerCase() === surname);
+  if (nearMatches.length) {
+    const list = nearMatches.map(c => `- ${c.name}${c.room ? ` (${c.room})` : " (unassigned)"}`).join("\n");
+    if (!confirm(`Possible existing match on this course by surname:\n${list}\n\nAdd "${name}" anyway as a new, separate candidate?`)) return;
+  }
+
+  db.collection(COLLECTIONS.stage1Candidates).add({
+    name, degree, email, course: currentCourse, room: null,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  }).then(ref => {
+    const rec = { id: ref.id, name, email, degree, course: currentCourse, room: null };
+    allCandidates.push(rec);
+    courseCandidates.push({ id: ref.id, name, email, degree, room: null, flagText: "" });
+    populateCourseDropdown();
+    document.querySelector(`#courseSelect option[value="${CSS.escape(currentCourse)}"]`) && (document.getElementById("courseSelect").value = currentCourse);
+    render();
+    showStatus("Candidate added", "ok");
+  }).catch(e => { console.error(e); alert("Failed to add candidate: " + e.message); });
+}
+
+// ── Save ─────────────────────────────────────────────────────────────────
+async function saveAll() {
+  if (!currentCourse) return;
+  showStatus("Saving…", "");
+  try {
+    const batch = db.batch();
+    const uid = auth.currentUser?.uid;
+    const ts  = firebase.firestore.FieldValue.serverTimestamp();
+
+    courseCandidates.forEach(c => {
+      const original = allCandidates.find(x => x.id === c.id);
+      if (!original) return;
+      const originalRoom = ROOMS.includes(original.room) ? original.room : (original.room || null);
+      if ((c.room || null) !== (originalRoom || null)) {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { room: c.room || null });
+      }
+    });
+
+    const instructorTeams = {};
+    ROOMS.forEach(r => { instructorTeams[r] = (roomTeams[r]?.uids || []).slice(); });
+    batch.set(db.collection(COLLECTIONS.courseAllocations).doc(slugify(currentCourse)), {
+      course: currentCourse, instructorTeams, updatedAt: ts, updatedBy: uid || null
+    });
+
+    // First allocation ever saved becomes the default automatically (Jon,
+    // 2026-09-07: "keep that as default for all courses"). Once a default
+    // exists, saving a course again never silently overwrites it — that's
+    // what the explicit ⭐ Set as default button is for.
+    const settingDefaultNow = !defaultAllocDoc;
+    if (settingDefaultNow) {
+      batch.set(db.collection(COLLECTIONS.courseAllocations).doc("_default"), {
+        instructorTeams, updatedAt: ts, updatedBy: uid || null, isDefault: true
+      });
+    }
+
+    await batch.commit();
+
+    // Sync local caches so re-selecting this course (or another that starts
+    // from the default) reflects what was just saved, without a full reload.
+    courseCandidates.forEach(c => {
+      const original = allCandidates.find(x => x.id === c.id);
+      if (original) original.room = c.room;
+    });
+    const idx = allAllocDocs.findIndex(d => d.id === slugify(currentCourse));
+    const savedDoc = { id: slugify(currentCourse), course: currentCourse, instructorTeams, updatedAt: { toMillis: () => Date.now() } };
+    if (idx >= 0) allAllocDocs[idx] = savedDoc; else allAllocDocs.push(savedDoc);
+    if (settingDefaultNow) {
+      defaultAllocDoc = { id: "_default", instructorTeams, updatedAt: { toMillis: () => Date.now() }, isDefault: true };
+    }
+
+    showStatus(settingDefaultNow ? "✓ All saved (also set as the default)" : "✓ All saved", "ok");
+  } catch(e) {
+    console.error(e);
+    showStatus("Save failed — check Firestore rules", "err");
+  }
+}
+
+function showStatus(msg, cls) {
+  const el = document.getElementById("saveStatus");
+  el.textContent = msg; el.className = cls;
+  if (cls === "ok") setTimeout(() => { el.textContent = ""; el.className = ""; }, 3000);
+}
+
+function escAttr(s) { return String(s).replace(/"/g, "&quot;"); }
+</script>
+</body>
+</html>

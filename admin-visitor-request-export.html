@@ -139,6 +139,28 @@
  * merged, since the two groups have different sourcing, different fixed
  * details, and different renewal cadence (annual vs per-weekend).
  * ══════════════════════════════════════════════════════════════════════════
+ *
+ * ── ADDENDUM 2026-09-06: full 15-field export, not just the original 8 ──
+ * Discovered live (filling the form for real via browser automation) that
+ * the actual Microsoft Form now asks 16 questions, not the 8 this tool
+ * originally exported — it grew over time without this export tool being
+ * updated to match. Rather than re-derive this gap next year, the CSV now
+ * covers every question except Date of Birth (adults only, n/a). Of the
+ * 7 new questions: "Current employment status (incl. employer)" is genuinely
+ * per-person and wasn't captured anywhere, so it's now a required mou-form.html
+ * field (role === "RMD Senior Faculty" only, alongside the CW status question)
+ * — see [[rmd_website_annual_visitor_form_fields]]. "Is your visitor a
+ * student?" is derived from whether they gave a Student ID on their MOU
+ * submission (no new question needed). The other five (duration, paid by
+ * university, coming from overseas, visiting a lab, contingent worker access
+ * required) are the same answer for every RMD Senior Faculty row — see the
+ * reasoning against each in the Fixed Details card — so they're fixed
+ * details, not per-person data, same treatment as department/purpose/dates
+ * above. The Instructor Weekend external-instructor section below is
+ * deliberately NOT extended the same way — Jon's ask was specifically "for
+ * all RMD senior faculty", and that group doesn't submit mou-form.html so
+ * there's no employment-status source for them yet.
+ * ══════════════════════════════════════════════════════════════════════════
  */
 
 initFirebase();
@@ -211,7 +233,17 @@ function defaultFixedDetails() {
     department: "Birmingham Medical School",
     applicant: "Jonathan Hulme",
     purpose: "Basic life support training: this person is an instructor for the UoB life support course.",
-    from, to
+    from, to,
+    // Added 2026-09-06 when the live UoB form turned out to have 16 questions,
+    // not 8 — these are the same answer for every RMD Senior Faculty row, so
+    // they're fixed details here rather than per-person fields. See warn-banner
+    // for the reasoning behind each (role-based CW status, BLS training isn't
+    // lab work, etc).
+    duration: "More than 7 days",
+    paidByUniversity: "No",
+    comingFromOverseas: "No",
+    visitingLab: "No",
+    contingentAccessRequired: "No"
   };
 }
 
@@ -239,11 +271,14 @@ function currentRows() {
     const sub = submissionFor(m.email);
     const ov = overrides[m.id] || {};
     const passportName = (sub && sub.name) ? sub.name : (m.name || "");
+    const studentId = sub ? (sub.studentId || "") : "";
     return {
       id: m.id,
       email: m.email || "",
       name: ov.name != null ? ov.name : passportName,
       nationality: ov.nationality != null ? ov.nationality : (sub ? (sub.nationality || "") : ""),
+      employmentStatus: ov.employmentStatus != null ? ov.employmentStatus : (sub ? (sub.employmentStatus || "") : ""),
+      isStudent: !!studentId,
       hasSubmission: !!sub
     };
   });
@@ -419,7 +454,12 @@ function readFixedDetailsFromForm() {
     applicant: document.getElementById("fd-applicant").value,
     purpose: document.getElementById("fd-purpose").value,
     from: document.getElementById("fd-from").value,
-    to: document.getElementById("fd-to").value
+    to: document.getElementById("fd-to").value,
+    duration: document.getElementById("fd-duration").value,
+    paidByUniversity: document.getElementById("fd-paid").value,
+    comingFromOverseas: document.getElementById("fd-overseas").value,
+    visitingLab: document.getElementById("fd-lab").value,
+    contingentAccessRequired: document.getElementById("fd-cw").value
   };
 }
 
@@ -430,7 +470,12 @@ function copyFixedDetails() {
     `Application made by: ${fixedDetails.applicant}`,
     `Purpose of Visit: ${fixedDetails.purpose}`,
     `Proposed Date of Visit from: ${fixedDetails.from}`,
-    `Proposed Date of visit to: ${fixedDetails.to}`
+    `Proposed Date of visit to: ${fixedDetails.to}`,
+    `Proposed duration of visit: ${fixedDetails.duration}`,
+    `Is your visitor to be paid by the University?: ${fixedDetails.paidByUniversity}`,
+    `Is your visitor coming from overseas?: ${fixedDetails.comingFromOverseas}`,
+    `Will the visitor be visiting a lab for any reason?: ${fixedDetails.visitingLab}`,
+    `Is contingency worker access required?: ${fixedDetails.contingentAccessRequired}`
   ].join("\n");
   navigator.clipboard.writeText(text).then(() => alert("Fixed details copied."));
 }
@@ -440,18 +485,27 @@ function exportCsv() {
   const rows = currentRows();
   if (!rows.length) { alert("No RMD Senior Faculty found on the current roster."); return; }
   const headers = [
-    "Full Name of Visitor (as per passport)",
-    "Visitor's email address",
-    "Visitor's Nationality",
     "Which department will the visitor be based in?",
     "Application made by",
+    "Full Name of Visitor (as per passport)",
+    "Visitor's email address",
     "Purpose of Visit",
     "Proposed Date of Visit from",
-    "Proposed Date of visit to"
+    "Proposed Date of visit to",
+    "Visitor's Nationality",
+    "Proposed duration of visit",
+    "Is your visitor to be paid by the University?",
+    "Is your visitor a student?",
+    "Current employment status (including name of employer)",
+    "Is your visitor coming from overseas?",
+    "Will the visitor be visiting a lab for any reason?",
+    "Is contingency worker access required?"
   ];
   const csvRows = rows.map(r => [
-    r.name, r.email, r.nationality,
-    fixedDetails.department, fixedDetails.applicant, fixedDetails.purpose, fixedDetails.from, fixedDetails.to
+    fixedDetails.department, fixedDetails.applicant, r.name, r.email, fixedDetails.purpose, fixedDetails.from, fixedDetails.to,
+    r.nationality, fixedDetails.duration, fixedDetails.paidByUniversity,
+    r.isStudent ? "Yes" : "No", r.employmentStatus, fixedDetails.comingFromOverseas,
+    fixedDetails.visitingLab, fixedDetails.contingentAccessRequired
   ]);
   downloadCsv(`rmd-senior-faculty-visitor-request-${CURRENT_MOU_YEAR.replace("/", "-")}.csv`, toCsv(headers, csvRows));
 }
@@ -468,6 +522,7 @@ async function copyCsvToClipboard() {
 function render() {
   const rows = currentRows();
   const missingNationality = rows.filter(r => !r.nationality);
+  const missingEmploymentStatus = rows.filter(r => !r.employmentStatus);
   const fd = fixedDetails || defaultFixedDetails();
 
   const iwAllRows = allConfirmedIwRows();
@@ -485,8 +540,11 @@ function render() {
       submissions. "Full Name" comes from this year's MOU submission (self-declared passport
       name) where one exists; for anyone who hasn't submitted yet it falls back to the roster
       name, which is not a verified passport name — check/edit those rows before submitting.
-      Nationality only populates once someone has submitted this year's MOU (via the MOU
-      Dashboard) — rows with none are outlined orange below.
+      Nationality and employment status only populate once someone has submitted this year's MOU
+      (via the MOU Dashboard) — rows missing either are outlined orange below. "Student?" is
+      derived from whether they gave a Student ID on their MOU submission, not asked separately.
+      The five columns after "Proposed Date of visit to" in the CSV (duration, paid, overseas,
+      lab, contingent access) are the same fixed answer for every row here — see the card above.
     </div>
 
     <div class="card">
@@ -498,28 +556,36 @@ function render() {
         <label>Purpose of Visit</label><textarea id="fd-purpose">${esc(fd.purpose)}</textarea>
         <label>Proposed Date of Visit from</label><input id="fd-from" value="${esc(fd.from)}">
         <label>Proposed Date of visit to</label><input id="fd-to" value="${esc(fd.to)}">
+        <label>Proposed duration of visit</label><input id="fd-duration" value="${esc(fd.duration)}">
+        <label>Paid by the University?</label><input id="fd-paid" value="${esc(fd.paidByUniversity)}">
+        <label>Coming from overseas?</label><input id="fd-overseas" value="${esc(fd.comingFromOverseas)}">
+        <label>Visiting a lab?</label><input id="fd-lab" value="${esc(fd.visitingLab)}">
+        <label>Contingent worker access required?</label><input id="fd-cw" value="${esc(fd.contingentAccessRequired)}">
       </div>
+      <div class="card-sub" style="margin-top:10px;">The last five are the same answer for every row in this group: duration is "More than 7 days" because the window below always spans a full academic year; paid/overseas/lab are "No" for BLS instructor training; contingent worker access is "No" because RMD Senior Faculty already hold it (or are UoB-employed) — see the Contingent Worker status question on their MOU submission. Edit here only if one of these stops being true for the whole group.</div>
       <div style="margin-top:12px;"><button class="btn-action secondary" onclick="copyFixedDetails()">📋 Copy fixed details</button></div>
     </div>
 
     <div class="card">
       <div class="card-title">RMD Senior Faculty visitor details</div>
-      <div class="card-counts"><b>${rows.length}</b> senior faculty on roster${missingNationality.length ? ` · <b style="color:var(--rmd-warn);">${missingNationality.length}</b> missing nationality (MOU not yet submitted)` : ""}</div>
+      <div class="card-counts"><b>${rows.length}</b> senior faculty on roster${missingNationality.length ? ` · <b style="color:var(--rmd-warn);">${missingNationality.length}</b> missing nationality` : ""}${missingEmploymentStatus.length ? ` · <b style="color:var(--rmd-warn);">${missingEmploymentStatus.length}</b> missing employment status` : ""}${(missingNationality.length || missingEmploymentStatus.length) ? " (MOU not yet submitted, or submitted before these questions existed)" : ""}</div>
       ${rows.length ? `
       <table>
-        <thead><tr><th>Full Name (as per passport)</th><th>Email</th><th>Nationality</th></tr></thead>
+        <thead><tr><th>Full Name (as per passport)</th><th>Email</th><th>Nationality</th><th>Student?</th><th>Employment status (incl. employer)</th></tr></thead>
         <tbody>
           ${rows.map(r => `
             <tr>
               <td><input value="${esc(r.name)}" onchange="updateField('${r.id}','name',this.value)"></td>
               <td class="row-email">${esc(r.email)}</td>
               <td><input class="${r.nationality ? "" : "flagged"}" value="${esc(r.nationality)}" placeholder="${r.hasSubmission ? "" : "MOU not submitted"}" onchange="updateField('${r.id}','nationality',this.value)"></td>
+              <td class="row-email">${r.isStudent ? "Yes" : "No"}</td>
+              <td><input class="${r.employmentStatus ? "" : "flagged"}" value="${esc(r.employmentStatus)}" placeholder="${r.hasSubmission ? "not answered" : "MOU not submitted"}" onchange="updateField('${r.id}','employmentStatus',this.value)"></td>
             </tr>`).join("")}
         </tbody>
       </table>
       ` : `<div style="color:var(--rmd-muted);font-size:13px;">No one tagged "RMD Senior Faculty" found on the current mou_roster. Check the MOU Dashboard's "Manage roster" tab.</div>`}
       <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn-action" onclick="exportCsv()">⬇ Download CSV (all 8 form fields)</button>
+        <button class="btn-action" onclick="exportCsv()">⬇ Download CSV (all 15 form fields)</button>
         <button class="btn-action secondary" onclick="copyCsvToClipboard()">📋 Copy name/email/nationality only</button>
       </div>
     </div>

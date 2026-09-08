@@ -291,19 +291,23 @@ window.addEventListener("load", () => {
     if (!user) { window.location.href = "index.html"; return; }
     currentUser = user;
 
-    // Load role — restrict to faculty/full-instructor/director
+    // Load role via the shared resolveRole() helper (config/platform.directors
+    // and superUsers, falling back to people.role) rather than reading
+    // people.role directly — the old inline read missed anyone who is a
+    // director/super-user via config/platform but doesn't also have
+    // people.role === "director", incorrectly bouncing them to timetable.html.
+    // Restrict to faculty/full-instructor/director; unchanged fail-open
+    // behaviour when there's no role on file or Firestore is unavailable.
     try {
+      const role = await resolveRole(user.uid, user.email || "");
+      const allowed = ["faculty", "full-instructor", "director"];
+      if (role && !allowed.includes(role)) {
+        window.location.href = "timetable.html";
+        return;
+      }
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
-      if (snap.exists) {
-        const data = snap.data();
-        const allowed = ["faculty", "full-instructor", "director"];
-        if (data.role && !allowed.includes(data.role)) {
-          window.location.href = "timetable.html";
-          return;
-        }
-        if (data.name) {
-          document.getElementById("topBarSub").textContent = data.name;
-        }
+      if (snap.exists && snap.data().name) {
+        document.getElementById("topBarSub").textContent = snap.data().name;
       }
     } catch (e) { /* allow through if Firestore unavailable */ }
 

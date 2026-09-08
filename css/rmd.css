@@ -475,7 +475,14 @@ body {
 .room-card .room-timer { font-size: 24px; font-weight: 700; color: var(--rmd-current); font-variant-numeric: tabular-nums; }
 .room-card .room-msg { font-size: 11px; color: var(--rmd-muted); margin-top: 4px; }
 
-/* ── Role selector (dev/demo only) ── */
+/* ── Role selector (director-only "view as" preview tool) ──
+   Fixed 2026-09-07: timetable.html auto-scrolls the "current" live session
+   into view on load (scrollIntoView block:"center"). Since this bar sits in
+   normal document flow at the very top of <body>, that auto-scroll carried
+   it off the top of the viewport whenever a session is actually "current" —
+   it was still in the DOM and still working, just invisible. `position:
+   sticky` keeps it pinned to the top of the viewport regardless of any
+   scroll (auto or manual), so it survives that interaction. */
 .role-selector {
   background: #fff3cd;
   border-bottom: 1px solid #ffc107;
@@ -484,6 +491,9 @@ body {
   align-items: center;
   gap: 10px;
   font-size: 13px;
+  position: sticky;
+  top: 0;
+  z-index: 200;
 }
 
 .role-selector label { font-weight: 700; color: #856404; }

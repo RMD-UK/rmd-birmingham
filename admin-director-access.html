@@ -141,6 +141,75 @@ async function loadRoster() {
   } catch (e) {
     rosterMembers = [];
   }
+
+  // Section 0.1 (platform workplan): look up each person's canonical name
+  // from their own people/{uid} doc, in parallel, purely to surface drift —
+  // this doesn't change what's stored or displayed as primary, see
+  // renderNameCell() below. A null result (no people doc, e.g. no login yet)
+  // is expected and not treated as a problem.
+  await Promise.all(rosterMembers.map(async (m) => {
+    m.canonical = await resolveCanonicalName(m.email);
+  }));
+}
+
+// Compares the roster's typed name against the person's canonical
+// people/{uid} displayName (their preferredName if they have one set, else
+// their account name — see resolveCanonicalName()/setPreferredName() in
+// firebase-config.js) and flags a mismatch rather than silently picking
+// one — same "flag it, don't guess" principle used elsewhere on this
+// platform. Whitespace/case-only differences aren't flagged, only genuine
+// drift. A "✎ preferred name" action sits alongside sync so a director can
+// fix the account side (set what this person actually goes by) instead of
+// always pushing the account's legal/registered name onto the roster.
+function renderNameCell(m) {
+  const rosterName = m.name || "(no name)";
+  if (!m.canonical || !m.canonical.displayName) return rosterName;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const editLink = m.canonical.uid
+    ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${m.canonical.uid}','${(m.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set the first name this person actually goes by (their surname is always kept as-is) — sync, here and everywhere else on the site, offers that instead of their account's legal/registered first name.">✎ preferred name</a>`
+    : "";
+  if (norm(m.canonical.displayName) === norm(rosterName)) return rosterName + editLink;
+  const safeCanonical = m.canonical.displayName.replace(/'/g, "\\'");
+  return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="Roster says \"${rosterName}\", their account record says \"${m.canonical.displayName}\" — worth checking which is current.">⚠ differs from account: ${m.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${m.id}','${safeCanonical}')" style="font-size:11px;" title="Overwrite this roster entry's name with the account record's name.">⟳ sync</a>${editLink}`;
+}
+
+// Section 0.1 follow-up (2026-09-06): lets a director set people/{uid}.preferredName
+// directly from wherever the drift warning/edit link shows, so "sync" starts
+// offering the name someone actually goes by instead of always their account's
+// legal/registered name. Same prompt()-based pattern as editKnownAs() in
+// admin-faculty-responses.html. Re-resolves and re-renders afterward so the
+// warning/sync link reflect the change immediately, without a page reload.
+async function editPreferredName(uid, currentPreferred) {
+  if (!uid) return;
+  const value = prompt("What FIRST name should this person actually go by (e.g. 'Becca' for Rebecca)?\n\nTheir surname is always taken from their account record automatically — this only replaces the first name, never the whole name. Leave blank to clear and fall back to their account's registered first name.", currentPreferred || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(uid, value);
+    await Promise.all(rosterMembers.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
+  }
+}
+
+// Section 0.1: the deliberate "fix" half of the flag-it-don't-guess pattern —
+// a director-driven action, not an automatic one. Only ever copies the
+// account's (people/{uid}) name into this roster entry, never the reverse:
+// if the roster name is actually the correct one and the account is wrong,
+// that's a different fix (edit their account), not this button.
+async function syncNameToAccount(docId, canonicalName) {
+  const m = rosterMembers.find(x => x.id === docId);
+  if (!m) return;
+  if (!confirm(`Update this roster entry's name from "${m.name || ""}" to "${canonicalName}" (their account record)?`)) return;
+  try {
+    await db.collection(COLLECTIONS.facultyRoster).doc(docId).update({ name: canonicalName });
+    m.name = canonicalName;
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update name: " + err.message);
+  }
 }
 
 function isDirectorEmail(email) {
@@ -207,7 +276,7 @@ function makeRow(m) {
   }
 
   return `<tr>
-    <td style="font-weight:700;color:var(--rmd-navy);">${name}</td>
+    <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(m)}</td>
     <td style="color:var(--rmd-muted);font-size:12px;">${email || "–"}</td>
     <td style="color:var(--rmd-muted);font-size:12px;">${m.team || ""}${m.role ? " · " + m.role : ""}</td>
     <td>${access}</td>

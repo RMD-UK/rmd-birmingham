@@ -278,6 +278,22 @@ window.addEventListener("load", () => {
   auth.onAuthStateChanged(async user => {
     if (!user) { window.location.href = "index.html"; return; }
     currentUser = user;
+
+    // Restricted 2026-09-07 per Jon: Registration (check-in + "who's here"
+    // dashboard) is for RMD Student Faculty and Senior Faculty, plus the
+    // usual Director/Super-user override via resolveRole(). Previously any
+    // signed-in user could open this page — no role check existed at all.
+    const email = user.email || "";
+    const [role, studentFac, seniorFac] = await Promise.all([
+      resolveRole(user.uid, email),
+      isStudentFaculty(email),
+      isSeniorFaculty(email)
+    ]);
+    if (role !== "director" && !studentFac && !seniorFac) {
+      window.location.href = "timetable.html";
+      return;
+    }
+
     await Promise.all([loadPeople(), loadAttendance()]);
     renderList();
     subscribeAttendance();

@@ -97,6 +97,37 @@ service cloud.firestore {
       return isFaculty() || isFullInstructor() || isDirector();
     }
 
+    // True if the signed-in user is on this year's RMD Student/Senior Faculty
+    // roster (faculty_roster, group "student"/"senior") — added 2026-09-07
+    // for read-only oversight of Stage 1 evening-course allocations (Jon:
+    // "RMD student & senior faculty to be able to see, but not edit, all
+    // evening course allocations"). Deliberately checked against
+    // faculty_roster, NOT people/{uid}.role — Student/Senior Faculty
+    // membership has never lived on the people record (see the
+    // "Roster comes from faculty_roster... deliberately NOT derived from
+    // people.role" note on SFR_CYCLE_YEAR in firebase-config.js): the
+    // roster includes named committee seats (Finance, Research, etc.) with
+    // no teaching role or people doc at all. faculty_roster docs are keyed
+    // by the person's own lowercased email (rosterDocId() in
+    // admin-faculty-roster.html), and the existing
+    // "allow get: ... docId == request.auth.token.email.lower()" rule below
+    // already lets a signed-in user read their OWN roster doc this way —
+    // these two functions just name that check. A person on the roster with
+    // no email on file (committee seats without a personal login) is
+    // correctly excluded, same pre-existing limitation as everywhere else
+    // this roster is read.
+    function myFacultyRosterGroup() {
+      return exists(/databases/$(database)/documents/faculty_roster/$(request.auth.token.email.lower()))
+        ? get(/databases/$(database)/documents/faculty_roster/$(request.auth.token.email.lower())).data.group
+        : null;
+    }
+    function isStudentFaculty() {
+      return isSignedIn() && myFacultyRosterGroup() == "student";
+    }
+    function isSeniorFaculty() {
+      return isSignedIn() && myFacultyRosterGroup() == "senior";
+    }
+
     // ── People directory ────────────────────────────────────────────────────
     // Read: public — QR landing page looks up candidate name without login
     // Write: director only — this collection decides who counts as a director,
@@ -112,9 +143,53 @@ service cloud.firestore {
     // whole collection, is already director-only; Cloud Functions use the
     // Admin SDK and bypass these rules entirely regardless).
     match /people/{docId} {
-      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector());
-      allow list: if isDirector();
+      // Widened 2026-09-07 per Jon: RMD Student Faculty and Senior Faculty
+      // may see the full roster (name, email, passport name fields
+      // included) — explicitly confirmed acceptable to share within the
+      // team, not just each other's own records. Powers attendance.html's
+      // registration roster and session-feedback.html's "all groups" view
+      // for these two tiers, both of which need to list/query this
+      // collection, not just fetch their own doc. Write stays
+      // director-only — this is read visibility only.
+      //
+      // Widened again 2026-09-07 (same session, second decision) per Jon:
+      // ordinary Faculty and Full-Instructor also need real names/emails to
+      // give session feedback on their own group — session-feedback.html's
+      // original core audience was left out of the first widening above.
+      // Jon explicitly accepted full name + email visibility for these two
+      // roles as the price of making the feedback flow work. Still no
+      // passport-field promise was made for this tier (unlike Student/Senior
+      // Faculty above) — only name/email were requested — but Firestore
+      // can't grant get/list on a subset of fields, so this line opens the
+      // whole document, same all-or-nothing limit as before.
+      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor();
       allow write: if isDirector();
+
+      // Self-service "My Account" (added 2026-09-06): a signed-in member may
+      // write their OWN people doc, but only the four name-identity fields
+      // my-account.html exposes — never role, stream, email, roleHistory, or
+      // anything else. hasOnly() means the write is rejected outright if it
+      // touches any other key, so this can't be used to self-promote a role
+      // or edit someone else's record. Passport fields written here are the
+      // person's own self-declaration — same "considered true" status as a
+      // mou-form.html/faculty-form.html submission (Jon, 2026-09-06): no
+      // director/admin path writes to these fields at all any more, by
+      // design — see [[rmd_website_preferred_name_field]].
+      //
+      // Split into create + update (2026-09-07, after Jon's own account hit
+      // this): some accounts — director/super-user ones especially — predate
+      // admin-bulk-users.html and have no people/{uid} doc at all, so
+      // my-account.html's first save is a create, not an update. `resource`
+      // is null during create, so the update rule's diff() against it can't
+      // run — hasOnly() on the request data's own keys instead, which also
+      // guarantees a self-created doc can ONLY ever contain these 4 fields.
+      allow create: if isSignedIn() && request.auth.uid == docId &&
+        request.resource.data.keys()
+          .hasOnly(["preferredName", "passportFirstName", "passportMiddleName", "passportLastName"]);
+      allow update: if isSignedIn() && request.auth.uid == docId &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["preferredName", "passportFirstName", "passportMiddleName", "passportLastName"]);
     }
 
     // ── Attendance ──────────────────────────────────────────────────────────
@@ -299,6 +374,22 @@ service cloud.firestore {
       allow write: if isSuperUser();
     }
 
+    // ── Candidate resource access code (Section 3.5 follow-up, 2026-09-06) ──
+    // A single shared "pass" Stage 1 candidates use on candidate-resources.html
+    // — confirmed by Jon as a deliberate first (RMD has never had a no-login
+    // generic-code gate before): not a personal login, just enough of a
+    // barrier that the resources aren't wide open with no gate at all. Handed
+    // out at the intro session, not tied to any individual's record.
+    // Public/unauthenticated read is intentional and safe here: this single
+    // document holds nothing but the code itself, and Firestore evaluates
+    // matching rules as OR'd — this only widens access to this ONE document,
+    // every other config/* document still requires isSignedIn() via the
+    // wildcard rule above. Write stays super-user only, same as config/platform.
+    match /config/candidate_access {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+
     // ── MOU responses ───────────────────────────────────────────────────────
     // Create: authenticated — member submits their own MOU form response
     // Read/update/delete: director only — only directors review submissions
@@ -371,6 +462,36 @@ service cloud.firestore {
     // Write: director only — room allocation admin page
     match /groups/{docId} {
       allow read: if isSignedIn();
+      allow write: if isDirector();
+    }
+
+    // ── Stage 1 (taught first-year) candidates — Section 3.5 ────────────────
+    // BUG FIX 2026-09-07: this collection has existed since 3.5 was built
+    // 2026-09-06 (admin-stage1-candidates.html reads/writes it) but no match
+    // block was ever added here — Firestore denies by default with no
+    // matching rule, so every read/write on this collection has been failing
+    // with permission-denied since the page went live. Found while building
+    // 3.6, which depends on reading/writing stage1_candidates.room. Director
+    // only, same as the page's own requireDirector() gate — no candidate
+    // login exists to need broader read access, and no public form writes
+    // here (bulk import is the only write path, director-only).
+    match /stage1_candidates/{docId} {
+      allow read, write: if isDirector();
+    }
+
+    // ── Course roster / room + instructor allocation — Section 3.6 ─────────
+    // One doc per Stage 1 evening course, holding that course's per-room
+    // instructor teams (candidate→room assignment lives on stage1_candidates
+    // .room instead, reusing that existing field rather than duplicating it
+    // here). Director only — see admin-course-room-allocation.html.
+    match /course_allocations/{docId} {
+      // Read-only oversight for RMD Student/Senior Faculty added 2026-09-07
+      // (Jon: view all evening-course allocations, edits director-only).
+      // stage1_candidates (candidate personal details, incl. email) is
+      // deliberately NOT opened up alongside this yet — pending a decision
+      // on whether Student/Senior Faculty should see candidate emails or a
+      // redacted view (see [[rmd_website_permissions_audit]]).
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
       allow write: if isDirector();
     }
 

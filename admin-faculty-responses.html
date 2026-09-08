@@ -489,6 +489,7 @@ async function loadResponses() {
         return aFirst.localeCompare(bFirst) ||
                (a.lastName || "").toLowerCase().localeCompare((b.lastName || "").toLowerCase());
       });
+    await Promise.all(allResponses.map(async (r) => { r.canonical = await resolveCanonicalName(r.email); }));
   } catch (err) {
     document.getElementById("tabContent").innerHTML =
       `<div class="empty-state">Could not load responses. Check you are signed in as director.<br><small>${err.message}</small></div>`;
@@ -561,13 +562,67 @@ function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").repl
 function knownAsOrFirst(r) { return (r.knownAs && r.knownAs.trim()) || r.firstName || ""; }
 function fullName(r) { return [knownAsOrFirst(r), r.lastName].filter(Boolean).join(" "); }
 function passportName(r) { return [r.firstName, r.middleName, r.lastName].filter(Boolean).join(" "); }
+// renderNameCell(r) — HTML-safe display name with a drift warning appended when it
+// differs from their people/{uid} account name. Deliberately separate from fullName(r),
+// which stays plain text because it also feeds onclick handler arguments (removeDirector,
+// makeDirector, deleteResponse, roleSelectHtml) and the CSV export, where HTML would
+// corrupt the output. Only use this in contexts that render straight into the DOM.
+//
+// Locked down 2026-09-06 (Jon): firstName/lastName here are the self-declared
+// "as on passport" legal name (faculty-form.html) and feed
+// admin-visitor-request-export.html's UoB visitor registration export
+// directly via fullName(r) there — they must stay exactly what the person
+// entered. The drift check below compares that legal name against the
+// account's actual legal name (canonical.name), never against
+// preferredName/displayName or knownAs — a legitimate nickname differing
+// from someone's legal name is expected, not drift — and there is no sync
+// action for it any more: a genuine mismatch means asking them to resubmit,
+// not a director's click. knownAs already has its own dedicated editor
+// (editKnownAs() above) if that's what actually needs changing.
+function renderNameCell(r) {
+  const displayName = fullName(r) || r.email || "–";
+  const editLink = r.canonical && r.canonical.uid
+    ? ` <span onclick="event.preventDefault();event.stopPropagation();editPreferredName('${r.canonical.uid}')" style="font-size:11px;color:var(--rmd-navy);text-decoration:underline;cursor:pointer;" title="Set the first name this person actually goes by (their surname is always kept as-is) — sync, here and everywhere else on the site, offers that instead of their account's legal/registered first name.">✎ preferred name</span>`
+    : "";
+  if (!r.canonical || !r.canonical.name) return displayName + editLink;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const legalName = [r.firstName, r.lastName].filter(Boolean).join(" ");
+  if (norm(r.canonical.name) === norm(legalName)) return displayName + editLink;
+  // A <span>, not an <a> — renderNameCell() is also used inside nameLink()'s own
+  // <a onclick="goToEntry(...)">, and a nested <a> would break that outer link's
+  // click handling in every browser.
+  return `${displayName} <span style="color:#b7410e;font-size:11px;" title="This is their self-declared passport name, used on the actual UoB visitor registration export. Their account record says &quot;${esc(r.canonical.name)}&quot; — worth checking with them directly, this can't be auto-corrected.">⚠ differs from account: ${esc(r.canonical.name)}</span>${editLink}`;
+}
+
+// Section 0.1 follow-up (2026-09-06): same pattern as
+// admin-director-access.html's editPreferredName() — lets a director set
+// people/{uid}.preferredName from this page. Independent of the passport
+// name fields locked down in renderNameCell() above: this only ever writes
+// to the canonical people/{uid} record, never to this response's own
+// firstName/lastName/knownAs.
+async function editPreferredName(uid) {
+  if (!uid) return;
+  const current = allResponses.find(x => x.canonical && x.canonical.uid === uid);
+  const value = prompt("What FIRST name should this person actually go by (e.g. 'Becca' for Rebecca)?\n\nTheir surname is always taken from their account record automatically — this only replaces the first name, never the whole name. Leave blank to clear and fall back to their account's registered first name.", (current && current.canonical.preferredName) || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(uid, value);
+    await Promise.all(allResponses.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
+  }
+}
 function fmtDate(r)  {
   return r.submittedAt
     ? new Date(r.submittedAt.seconds * 1000).toLocaleDateString("en-GB", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})
     : "–";
 }
 function nameLink(r) {
-  const label = fullName(r) || r.email || "\u2013";
+  const label = renderNameCell(r);
   return `<a href="#" class="name-link" onclick="event.preventDefault();goToEntry('${r.id}')">${label}</a>`;
 }
 function goToEntry(docId) {
@@ -637,7 +692,7 @@ function renderAll() {
     return `
       <div class="response-card">
         <div class="rc-header" onclick="toggleCard(${i})">
-          <div class="rc-name">${fullName(r) || r.email}</div>
+          <div class="rc-name">${renderNameCell(r)}</div>
           ${dirBadge}
           ${statusBadge}
           ${provisionalBadge}
