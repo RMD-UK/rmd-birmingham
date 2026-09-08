@@ -36,6 +36,12 @@
       white-space: nowrap;
     }
     .feedback-btn:hover { background: var(--rmd-navy); }
+
+    /* 2026-09-08: pairs with #directorToolbar's overflow-x:auto fix
+       (see the comment above that element) - keeps every child at its
+       natural width so the row scrolls instead of squeezing buttons into
+       wrapped, illegible multi-line labels on narrow/iOS viewports. */
+    #directorToolbar > * { flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -252,13 +258,21 @@
 </main>
 
 <!-- ── Director floating toolbar ── -->
+<!-- 2026-09-08: overflow-x:auto (+ -webkit-overflow-scrolling for iOS
+     momentum) added so this row scrolls horizontally instead of silently
+     clipping when it doesn't fit - see #directorToolbar > * { flex-shrink:0 }
+     in <style> above, which stops buttons being squeezed into wrapped
+     multi-line labels instead of just scrolling. Jon: "these icons at
+     bottom of timetable.html?role=director do not display on screen all
+     at once and are non-scrollable - resolve view options." -->
 <div id="directorToolbar" class="hidden" style="
   position:fixed; bottom:0; left:0; right:0;
   background:var(--rmd-navy); padding:10px 16px;
   display:flex; gap:10px; align-items:center; z-index:200;
   box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
 ">
-  <span style="color:white;font-size:13px;font-weight:700;">Director</span>
+  <span style="color:white;font-size:13px;font-weight:700;flex-shrink:0;">Director</span>
   <button class="btn btn-sm" onclick="togglePanel('directorMessagePanel')">📣 Message</button>
   <button class="btn btn-sm" onclick="openShiftPanel()">⏩ Shift Times</button>
   <button class="btn btn-sm" onclick="window.location.href='attendance.html'">✅ Registration</button>

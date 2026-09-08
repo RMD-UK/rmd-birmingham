@@ -680,11 +680,11 @@ function renderManageRoster() {
     <div class="roster-card">
       <p class="section-heading">Import expected member roster</p>
       <p style="font-size:13px;color:var(--rmd-muted);margin-bottom:12px;">
-        Paste one member per line as <strong>Name, email, role</strong>. Role should match exactly: Instructor, Senior Instructor, Assessor, RMD Student Faculty, or RMD Senior Faculty.
+        Paste one member per line as <strong>first name, surname, email, role</strong> — matches copying two separate name columns straight out of a spreadsheet. Role should match exactly: Instructor, Senior Instructor, Assessor, RMD Student Faculty, or RMD Senior Faculty.
         Importing <strong>replaces the entire current roster</strong> — existing MOU submissions are not affected.
       </p>
-      <textarea id="rosterPaste" placeholder="Jane Smith, jane.smith@bham.ac.uk, Instructor
-John Doe, john.doe@bham.ac.uk, Senior Instructor"></textarea>
+      <textarea id="rosterPaste" placeholder="Jane, Smith, jane.smith@bham.ac.uk, Instructor
+John, Doe, john.doe@bham.ac.uk, Senior Instructor"></textarea>
       <div style="display:flex;gap:10px;margin-top:12px;">
         <button class="btn-action" onclick="importRoster()">⬆ Import roster (replace all)</button>
         <button class="btn-action secondary" onclick="loadRosterIntoTextarea()">↺ Load current roster</button>
@@ -695,7 +695,16 @@ John Doe, john.doe@bham.ac.uk, Senior Instructor"></textarea>
 }
 
 function loadRosterIntoTextarea() {
-  const lines = roster.map(m => `${m.name||""}, ${m.email||""}, ${m.role||""}`).join("\n");
+  // 2026-09-08 (Jon): paste format is now two separate name columns, so the
+  // reverse (existing roster -> textarea, for re-editing) splits the stored
+  // combined name back into first-word / rest-of-name, mirroring how
+  // importRoster() below joins them back together on the way in.
+  const lines = roster.map(m => {
+    const nameParts = (m.name || "").trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const surname = nameParts.slice(1).join(" ");
+    return `${firstName}, ${surname}, ${m.email||""}, ${m.role||""}`;
+  }).join("\n");
   document.getElementById("rosterPaste").value = lines;
 }
 
@@ -709,14 +718,24 @@ async function importRoster() {
 
   lines.forEach((line, i) => {
     const parts = line.split(",").map(p => p.trim());
-    if (parts.length < 2 || !parts[1].includes("@")) {
+    // 2026-09-08 (Jon): source is a spreadsheet with first name and surname
+    // as two SEPARATE columns, not one combined name column — same change
+    // made to admin-stage1-candidates.html's bulk paste the same week.
+    // Joined back into a single `name` here so storage (mou_roster.name)
+    // and everything downstream that reads it (drift-flagging/sync in
+    // Section 0.1, admin-visitor-request-export.html, this page's own
+    // canonicalName sync) is unchanged — only the paste box and its parsing
+    // know the format changed.
+    if (parts.length < 3 || !parts[2].includes("@")) {
       errors.push(`Line ${i+1}: could not parse "${line}"`);
       return;
     }
+    const [firstName, surname, email, role] = parts;
+    const name = [firstName, surname].filter(Boolean).join(" ");
     parsed.push({
-      name:  parts[0] || "",
-      email: parts[1].toLowerCase(),
-      role:  parts[2] || ""
+      name:  name || "",
+      email: email.toLowerCase(),
+      role:  role || ""
     });
   });
 

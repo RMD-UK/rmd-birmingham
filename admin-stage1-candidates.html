@@ -78,8 +78,8 @@
   <div class="card">
     <div class="card-header">Add candidates</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>name, email, degree, course</strong> — email and a day/month of birth (e.g. <code>14/03</code>, added as a 5th field) are optional but help tell apart two candidates with a similar name on the same course. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
-      <textarea id="pasteBox" placeholder="Jane Smith, j.smith@bham.ac.uk, Medicine, Course 1, 14/03&#10;Tom Jones,, Medicine, Course 1"></textarea>
+      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>first name, surname, email, degree, course</strong> — matches copying two separate name columns straight out of a spreadsheet. Email and a day/month of birth (e.g. <code>14/03</code>, added as a 6th field) are optional but help tell apart two candidates with a similar name on the same course. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
+      <textarea id="pasteBox" placeholder="Jane, Smith, j.smith@bham.ac.uk, Medicine, Course 1, 14/03&#10;Tom, Jones,, Medicine, Course 1"></textarea>
       <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
       <div id="previewWrap"></div>
     </div>
@@ -197,7 +197,16 @@ function duplicateWarningHtml(dupes, candidate) {
 // ── Add candidates (paste, parse, preview, import) ──────────────────────
 function parseLine(line) {
   const parts = line.split(/\t|,/).map(s => s.trim());
-  const [name, email, degree, course, dob] = parts;
+  // 2026-09-08 (Jon): the real source is a spreadsheet with first name and
+  // surname as two SEPARATE columns, not one combined "name" column — this
+  // is what a straight column-paste out of a spreadsheet actually looks
+  // like. Parsed as two fields and joined back into a single `name` here,
+  // so storage (stage1_candidates.name) and everything downstream that
+  // reads it — findDuplicates()/surnameOf() below, admin-course-room-
+  // allocation.html, promotion to people/{uid} — is unchanged and doesn't
+  // need to know the paste format changed.
+  const [firstName, surname, email, degree, course, dob] = parts;
+  const name = [firstName, surname].filter(Boolean).join(" ");
   // Room is deliberately not collected here (2026-09-07, Jon) — it's set on
   // Course Room & Instructor Allocation (3.6) instead, once a course's real
   // roster is confirmed. Every imported candidate starts unassigned.
@@ -214,6 +223,14 @@ function parsePreview() {
     const r = parseLine(line);
     if (!r.name) { errors.push(`Line ${i + 1}: no name — skipped ("${esc(line)}").`); return; }
     if (!r.course) { errors.push(`Line ${i + 1} ("${esc(r.name)}"): missing course — kept, but check it before importing.`); }
+    // Degree standardisation (2026-09-08, Jon: 9 standard names, work plan
+    // item now built) — checked against STAGE1_DEGREE_GROUPS in
+    // js/firebase-config.js, the single source of truth shared with
+    // admin-course-room-allocation.html's room-mixing randomizer. Not
+    // blocked at preview time — flagged here, then hard-gated at Import
+    // (see confirmImport()) so a real but not-yet-listed degree can still
+    // be pushed through deliberately rather than silently rejected.
+    r.degreeMatch = resolveStage1Degree(r.degree);
     rows.push(r);
   });
 
@@ -225,13 +242,18 @@ function parsePreview() {
     return;
   }
 
+  const unrecognizedCount = rows.filter(r => r.degree && !r.degreeMatch).length;
+
   const rowsHtml = rows.map((r, i) => {
     const dupes = findDuplicates(r, [...rows.slice(0, i), ...rows.slice(i + 1), ...allCandidates]);
     const warn = duplicateWarningHtml(dupes, r);
+    const degreeCell = (r.degree && !r.degreeMatch)
+      ? `${esc(r.degree)} <span class="dup-warning" style="display:inline;">⚠ not one of the 9 standard names</span>`
+      : esc(r.degree);
     return `<tr>
       <td class="name-cell">${esc(r.name)}</td>
       <td>${esc(r.email) || "<em>none</em>"}</td>
-      <td>${esc(r.degree)}</td>
+      <td>${degreeCell}</td>
       <td>${esc(r.course)}</td>
       <td>${esc(r.dob) || "–"}</td>
       <td>${warn}</td>
@@ -240,6 +262,7 @@ function parsePreview() {
 
   wrap.innerHTML = `
     ${errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : ""}
+    ${unrecognizedCount ? `<div class="error-list">⚠ ${unrecognizedCount} row${unrecognizedCount === 1 ? "" : "s"} ${unrecognizedCount === 1 ? "has" : "have"} a degree that isn't one of the 9 standard names — you'll be asked to confirm these specifically before import.</div>` : ""}
     <table class="preview-table">
       <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>DOB (day/mth)</th><th>Flags</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -251,6 +274,19 @@ function parsePreview() {
 
 async function confirmImport() {
   if (!parsedRows || !parsedRows.length) return;
+
+  // Hard confirm gate on unrecognized degrees (2026-09-08, Jon's build-plan
+  // spec) — separate from and BEFORE the general import confirm below, so
+  // declining this one stops the import outright rather than falling
+  // through to "Add N candidates?". Rows with no degree at all aren't
+  // included here — that's a pre-existing, separate "missing course"-style
+  // soft warning, not a standardisation problem.
+  const unrecognized = parsedRows.filter(r => r.degree && !r.degreeMatch);
+  if (unrecognized.length) {
+    const list = unrecognized.map(r => `"${r.name}": "${r.degree}"`).join("\n");
+    if (!confirm(`${unrecognized.length} candidate${unrecognized.length === 1 ? "" : "s"} ${unrecognized.length === 1 ? "has" : "have"} a degree that doesn't match any of the 9 standard names:\n\n${list}\n\nImport anyway with this text as typed?`)) return;
+  }
+
   if (!confirm(`Add ${parsedRows.length} candidate${parsedRows.length === 1 ? "" : "s"} to Stage 1 Candidates?\n\nFlagged possible duplicates above are NOT blocked — review them yourself before or after importing.`)) return;
 
   const CHUNK = 400; // Firestore batch limit is 500 writes; leave headroom

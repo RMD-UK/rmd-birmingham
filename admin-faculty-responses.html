@@ -368,8 +368,14 @@ function isDirector(email) {
 // "Declined" on this same page (e.g. Ben Stanley) because those views only ever read the raw
 // meals.*/accommodation.* fields from the original RSVP, never attendanceStatus. Mirrors the
 // same fix already applied on admin-room-allocation.html (2026-08-27) for the same underlying issue.
+//
+// 2026-09-08: also excludes provisional === true, per Jon: "if there are provisional (or
+// declined) even after initially being confirmed, need them removed from meal and accommodation
+// filtered lists as well." Provisional people are still visible and editable everywhere else on
+// this page (their card, the Provisional tab) - this only pulls them out of the meal/accommodation
+// counts/lists/CSV/add-to-list dropdown, which is what isActiveResponse() feeds exclusively.
 function isActiveResponse(x) {
-  return x.attendanceStatus !== "declined" && x.cannotAttend !== true;
+  return x.attendanceStatus !== "declined" && x.cannotAttend !== true && x.provisional !== true;
 }
 
 function isHardcoded(email) {
@@ -736,7 +742,7 @@ function renderAll() {
               ${r.attendanceStatus ? `<button class="btn-reset-status" onclick="setAttendanceStatus('${r.id}','pending',${i})" title="Reset to pending">↺</button>` : ""}
               <span style="font-size:12px;color:var(--rmd-muted);margin:0 4px 0 10px;">Role:</span>
               ${roleSelectHtml(r, fullName(r) || r.email)}
-              ${r.provisional ? `<button class="btn-action secondary" onclick="clearProvisional('${r.id}')" style="margin-left:6px;">Mark finalized</button>` : ""}
+              ${r.provisional ? `<button class="btn-action secondary" onclick="clearProvisional('${r.id}')" style="margin-left:6px;">Mark finalized</button>` : `<button class="btn-action secondary" onclick="setProvisional('${r.id}')" style="margin-left:6px;">Mark provisional</button>`}
             </div>
             <button onclick="deleteResponse('${r.id}','${fullName(r)||r.email}')" style="padding:7px 14px;background:#fce8e6;color:#b7410e;border:1px solid #f5b8b0;border-radius:6px;font-size:12px;font-weight:700;font-family:var(--font);cursor:pointer;">🗑 Delete</button>
           </div>
@@ -1141,6 +1147,26 @@ function renderProvisional() {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+// setProvisional(docId) - admin-initiated version of the provisional flag,
+// added 2026-09-08. Until now "provisional" could only be set by the person
+// themselves ticking a box on their own form; this lets a director flag
+// someone provisional directly (e.g. a confirmed attendee whose plans have
+// become uncertain) without waiting for them to resubmit. Also pulls them
+// out of meal/accommodation counts immediately via isActiveResponse() above
+// - attendanceStatus is left untouched, this is independent of confirm/decline.
+async function setProvisional(docId) {
+  if (!confirm("Mark this response as provisional? They'll be excluded from meal/accommodation counts until finalized.")) return;
+  try {
+    await db.collection("faculty_responses").doc(docId).update({ provisional: true });
+    const r = allResponses.find(x => x.id === docId);
+    if (r) r.provisional = true;
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update: " + err.message);
+  }
 }
 
 async function clearProvisional(docId) {

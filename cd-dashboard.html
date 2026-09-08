@@ -1446,6 +1446,18 @@ function exportReport() {
 // ─────────────────────────────────────────────────────────────────────────────
 let facResponsesLoaded = false;
 
+// isActiveResponse(x) - 2026-09-08. Mirrors the same-named helper in
+// admin-faculty-responses.html (fixed there 2026-08-31, plus a provisional
+// exclusion added 2026-09-08). This dashboard's own dinner counts below had
+// never had the fix applied - they read raw meals.* fields with no filter
+// at all, so a declined or provisional faculty member was still counted in
+// the Course Director's Friday/Saturday dinner totals. Found while
+// investigating Jon's "meal/accommodation filtered lists must reflect
+// current status" request - see [[rmd_website_iw_registrations_editing]].
+function isActiveResponse(x) {
+  return x.attendanceStatus !== "declined" && x.cannotAttend !== true && x.provisional !== true;
+}
+
 async function loadFacultyResponses() {
   if (facResponsesLoaded) return;
   try {
@@ -1456,8 +1468,8 @@ async function loadFacultyResponses() {
     document.getElementById("facStatTotal").textContent     = rs.length;
     document.getElementById("facStatFaculty").textContent   = rs.filter(r => r.role === "Faculty").length;
     document.getElementById("facStatITC").textContent       = rs.filter(r => r.role === "Instructor Trainer Candidate").length;
-    document.getElementById("facStatFriDinner").textContent = rs.filter(r => r.meals && r.meals.friday   === "yes").length;
-    document.getElementById("facStatSatDinner").textContent = rs.filter(r => r.meals && r.meals.saturday === "yes").length;
+    document.getElementById("facStatFriDinner").textContent = rs.filter(r => isActiveResponse(r) && r.meals && r.meals.friday   === "yes").length;
+    document.getElementById("facStatSatDinner").textContent = rs.filter(r => isActiveResponse(r) && r.meals && r.meals.saturday === "yes").length;
     document.getElementById("facStatERC").textContent       = rs.filter(r => r.ercCorrectlyListed === "no").length;
 
     if (!rs.length) {

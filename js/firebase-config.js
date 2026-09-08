@@ -97,6 +97,40 @@ const STAGE1_TEACHING_ROOMS = [
 // this constant for room allocation until Jon asks for exam-night handling.
 const STAGE1_EXAM_ROOMS = ["WF19","EF5","EF27","EF30","EF10d"];
 
+// ── Stage 1 degree standardisation — Section 3.6 work-plan item ────────────
+// The 9 standard degree names and their distribution groups, confirmed by
+// Jon 2026-09-07 (list + Nursing example) and 2026-09-07 again ("apply
+// grouping logic to all the degree names in same way" — general rule, not
+// Nursing-specific). Single source of truth, shared by both pages that care
+// about degree: admin-stage1-candidates.html validates paste-imports
+// against the 9 exact names below; admin-course-room-allocation.html's
+// randomizer mixes rooms by GROUP, so both Nursing degrees (and both Physio
+// degrees) land in the same bucket instead of being treated as different
+// degrees. Add any future degree to BOTH the exact name and its group here
+// at once — don't let the two pages' understanding of this drift apart.
+const STAGE1_DEGREE_GROUPS = {
+  "Nursing MSc": "Nursing",
+  "Nursing BNurs": "Nursing",
+  "Midwifery BSc": "Midwifery",
+  "Medicine MBChB": "Medicine",
+  "CEP MSc": "CEP",
+  "Dentistry BDS": "Dentistry",
+  "Pharmacy MPharm": "Pharmacy",
+  "Physio Y2 MSci": "Physio",
+  "Physio Y1 MSc": "Physio"
+};
+// Case-insensitive, trimmed lookup against the 9 standard names above.
+// Returns {exact, group} on a match, or null if the text doesn't match any
+// of them (e.g. a typo, a not-yet-added degree, or genuinely free text).
+function resolveStage1Degree(rawDegree) {
+  const lower = (rawDegree || "").trim().toLowerCase();
+  if (!lower) return null;
+  for (const exact of Object.keys(STAGE1_DEGREE_GROUPS)) {
+    if (exact.toLowerCase() === lower) return { exact, group: STAGE1_DEGREE_GROUPS[exact] };
+  }
+  return null;
+}
+
 // ── Roles ───────────────────────────────────────────────────────────────────
 const ROLES = {
   DIRECTOR:        "director",
@@ -279,6 +313,47 @@ async function isStudentFaculty(email) {
 }
 async function isSeniorFaculty(email) {
   return (await myFacultyRosterGroup(email)) === "senior";
+}
+
+// resolveAxisAStanding(uid, email) -> { standing, label } | null
+// Returns the person's PERMANENT Axis A standing, as distinct from
+// resolveRole()'s Instructor Weekend Axis B job title (director/faculty/
+// full-instructor/instructor/assessor/assessor-faculty/itc are all IW-only
+// job labels for a given weekend, per Jon 2026-09-08 - none of them are
+// safe to show as "who someone permanently is").
+//
+// Only two tiers are resolvable today:
+//   1. Course Director - via resolveRole(), which already checks
+//      config/platform.directors + superUsers before ever falling back to
+//      people.role, so a "director" result here is the real, authoritative
+//      list, not just this year's job label.
+//   2. RMD Senior Faculty / RMD Student Faculty - via faculty_roster.group,
+//      same source used by isStudentFaculty()/isSeniorFaculty() elsewhere.
+//
+// Everything else (Instructor / Assessor / Senior Instructor as a permanent
+// tier) has NO reliable data source yet. Per Jon 2026-09-08: "Instructor"
+// as a standing means an Instructor Candidate who has PASSED the Instructor
+// Weekend course - a confirmation step that happens at the end of IW and
+// isn't built anywhere yet (IW itself doesn't run until Oct 2026). Assessor
+// vs Senior Instructor as permanent tiers: Jon said he'll specify who's
+// which later. Deliberately returns null rather than guessing from
+// resolveRole()'s IW-job value or from the free-text, optionally-populated
+// roleHistory field - a wrong permanent-standing label is worse than a
+// blank one. Callers should show an explicit "not yet confirmed" state for
+// null, not silently render nothing.
+async function resolveAxisAStanding(uid, email) {
+  const role = await resolveRole(uid, email);
+  if (role === ROLES.DIRECTOR) {
+    return { standing: "director", label: "Course Director" };
+  }
+  const group = await myFacultyRosterGroup(email);
+  if (group === "senior") {
+    return { standing: "senior-faculty", label: "RMD Senior Faculty" };
+  }
+  if (group === "student") {
+    return { standing: "student-faculty", label: "RMD Student Faculty" };
+  }
+  return null;
 }
 
 // resolveCanonicalName(email) → { uid, name } or null

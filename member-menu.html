@@ -239,6 +239,18 @@
     <div class="action-card-arrow">›</div>
   </a>
 
+  <!-- ── Evening course rosters (Director / Student Faculty / Senior Faculty) ── -->
+  <div class="section-label hidden" id="courseRostersSectionLabel">Evening course rosters</div>
+
+  <a class="action-card is-admin hidden" id="courseRostersLink" href="course-roster-view.html">
+    <div class="action-card-icon">📋</div>
+    <div class="action-card-text">
+      <div class="action-card-title">Evening Course Rosters</div>
+      <div class="action-card-sub">Stage 1 Provider Course rooms, candidates and instructor teams — view only</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
   <!-- ── Director-only tools ── -->
   <div class="section-label hidden" id="directorSectionLabel">Director tools</div>
 
@@ -292,8 +304,18 @@
     }
 
     let role = "instructor";
+    let studentFac = false;
+    let seniorFac = false;
     try {
-      role = (await resolveRole(user.uid, user.email || "")) || role;
+      const email = user.email || "";
+      const [resolvedRole, sf, snf] = await Promise.all([
+        resolveRole(user.uid, email),
+        isStudentFaculty(email),
+        isSeniorFaculty(email)
+      ]);
+      role = resolvedRole || role;
+      studentFac = sf;
+      seniorFac = snf;
     } catch (e) { /* fall back to default role */ }
 
     let roleLabel = null;
@@ -308,10 +330,10 @@
       }
     } catch (e) { /* keep generic welcome */ }
 
-    applyRole(role, roleLabel);
+    applyRole(role, roleLabel, studentFac, seniorFac);
   });
 
-  function applyRole(role, roleLabel) {
+  function applyRole(role, roleLabel, studentFac, seniorFac) {
     document.getElementById("rolePill").textContent = roleLabel || ROLE_LABELS[role] || role;
 
     // Carry role through to pages that read it from the URL
@@ -327,6 +349,15 @@
       // Unhide it once that page has real content.
       document.getElementById("badgeTemplatesLink").classList.remove("hidden");
       document.getElementById("checkinPosterLink").classList.remove("hidden");
+    }
+
+    // Evening Course Rosters — Director, RMD Student Faculty, RMD Senior
+    // Faculty (2026-09-08, per Jon: "They can have access too" — see
+    // [[rmd_website_permissions_audit]]). studentFac/seniorFac come from
+    // faculty_roster.group (Axis A standing), not the weekend role field.
+    if (role === "director" || studentFac || seniorFac) {
+      document.getElementById("courseRostersSectionLabel").classList.remove("hidden");
+      document.getElementById("courseRostersLink").classList.remove("hidden");
     }
 
     if (role === "director") {

@@ -298,6 +298,101 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    // ── Session feedback (traffic-light ratings, session-feedback.html) ─────
+    // FIX 2026-09-08 (bug found 2026-09-07 on self-review): this collection
+    //   had NO rule at all until now — every read/write here had always
+    //   failed with permission-denied for everyone, including directors,
+    //   since the page was built. See rmd_website_permissions_audit project
+    //   memory for the full history.
+    // Same "blind, self-scoped" shape as itc_observations below — session-
+    //   feedback.html's own query (.where("sessionId","==",...)
+    //   .where("submittedByUid","==",currentUser.uid)) already restricts
+    //   every read to the caller's own submitted ratings for a session;
+    //   nothing in the app ever asks for anyone else's. So "own records
+    //   only" is both what's needed AND what Firestore can cleanly enforce
+    //   here — the "own group only, can't be scoped by a list rule" concern
+    //   flagged 2026-09-07 doesn't actually apply to this collection once
+    //   the real query shape was checked against the code.
+    // Read: the submitter (resource.data.submittedByUid), or director.
+    // Create: faculty, full-instructor, or director only, and only
+    //   self-attributed (request.resource.data.submittedByUid must equal
+    //   the caller) — mirrors itc_observations' raterUid self-attribution.
+    // Update: same self-attribution check against the EXISTING doc — the
+    //   auto-save path uses set(...,{merge:true}) on an existing doc once a
+    //   candidate's already been rated this session, which rules treat as
+    //   an update, not a create.
+    // Delete: director only. The app has no delete path for this collection
+    //   today — belt-and-braces, matching the pattern used elsewhere.
+    match /session_feedback/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.submittedByUid == request.auth.uid);
+      allow create: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow update: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── Session quality (found 2026-09-08: same missing-rule bug as
+    // session_feedback had, never fixed until now — no submission had ever
+    // actually saved). session-quality.html's own role gate already
+    // restricts who can open the page (faculty/full-instructor/director,
+    // fixed 2026-09-07); this rule mirrors that plus session_feedback's
+    // exact self-scoped read/write shape, since the two collections have
+    // an identical upsert pattern: one doc per (sessionId, submittedByUid),
+    // queried and updated via set(...,{merge:true}) once already submitted.
+    match /session_quality/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.submittedByUid == request.auth.uid);
+      allow create: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow update: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── Participant feedback (found 2026-09-08: same missing-rule bug as
+    // session_feedback had — every survey submission had been silently
+    // failing since built). participant-feedback.html is deliberately a
+    // fully anonymous, unauthenticated end-of-course evaluation survey (no
+    // login gate on the page at all, no submittedByUid field) — so unlike
+    // session_feedback/session_quality this can't be self-scoped, and the
+    // create rule has no request.auth to check at all. Jon confirmed
+    // 2026-09-08: results visible to Course Director only, nobody else.
+    // hasOnly() constrains the shape of what an anonymous write can
+    // contain, since "allow create: if true" would otherwise accept any
+    // document shape from anyone who can reach the Firestore API directly,
+    // not just through this page.
+    match /participant_feedback/{docId} {
+      allow read: if isDirector();
+      allow create: if request.resource.data.keys().hasOnly([
+        "stream", "experience", "likert", "averageScore", "duration",
+        "valuable", "recommend", "suggestions", "submittedAt", "courseId"
+      ]);
+      allow update, delete: if isDirector();
+    }
+
+    // ── Course Director Dashboard collections (found 2026-09-08, same
+    // missing-rule bug as session_feedback/session_quality/participant_feedback
+    // — never had ANY firestore.rules coverage since built). All three are
+    // read and written exclusively by cd-dashboard.html, which is itself
+    // wrapped in requireDirector() for its entire boot sequence (verified —
+    // correcting an earlier mistaken claim in this session that the page had
+    // no gate at all; it does, this was just never checked properly the
+    // first time). Director-only end to end, no other page or role touches
+    // any of these three.
+    match /decisions/{docId} {
+      allow read, write: if isDirector();
+    }
+    match /meeting_notes/{docId} {
+      allow read, write: if isDirector();
+    }
+    match /report/{docId} {
+      allow read, write: if isDirector();
+    }
+
     // ── ITC observations ────────────────────────────────────────────────────
     // Blind feedback (decided 2026-07-09): each observer's rating of an ITC
     //   must not be visible to other observers rating the same ITC — only
@@ -476,7 +571,13 @@ service cloud.firestore {
     // login exists to need broader read access, and no public form writes
     // here (bulk import is the only write path, director-only).
     match /stage1_candidates/{docId} {
-      allow read, write: if isDirector();
+      // Read widened 2026-09-08 to match the people-collection decision:
+      // Jon confirmed RMD Student/Senior Faculty can see full candidate
+      // detail (name, email, DOB, degree, room) for evening-course
+      // candidates, same as they already can for people. Write stays
+      // director-only - no change there.
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow write: if isDirector();
     }
 
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────

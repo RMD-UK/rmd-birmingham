@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evening Course Rosters — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 30px; }
+
+    /* ── Top bar ── */
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:100; box-shadow:0 2px 6px rgba(0,0,0,.3); flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar-sub { font-size:11px; font-weight:400; opacity:.65; display:block; }
+    .top-bar-back { color:rgba(255,255,255,.6); text-decoration:none; font-size:12px; }
+    .top-bar-back:hover { color:#fff; }
+
+    /* ── Course picker ── */
+    .course-bar { background:#fff; border-bottom:2px solid #e0e4ee; padding:12px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .course-bar label { font-size:13px; font-weight:700; color:var(--rmd-navy); }
+    .course-bar select { padding:8px 12px; border:1.5px solid #d0d5e0; border-radius:7px; font-size:14px; font-family:var(--font); min-width:260px; }
+    .view-only-pill { margin-left:auto; background:#eef1f8; color:#5a6b8c; font-size:11px; font-weight:700; padding:4px 10px; border-radius:20px; }
+
+    /* ── Stats ── */
+    .stats-strip { display:grid; grid-template-columns:repeat(3,1fr); background:#fff; border-bottom:1px solid #e8edf2; }
+    .stat-cell { text-align:center; padding:10px 6px; border-right:1px solid #e8edf2; }
+    .stat-cell:last-child { border-right:none; }
+    .stat-cell .num { font-size:22px; font-weight:700; color:var(--rmd-navy); line-height:1; }
+    .stat-cell .lbl { font-size:10px; color:var(--rmd-muted); margin-top:2px; text-transform:uppercase; letter-spacing:.5px; }
+    .stat-cell.unassigned .num { color:#c17a00; }
+
+    .no-course { padding:60px 20px; text-align:center; color:#8893b0; font-size:15px; }
+
+    /* ── Rooms ── */
+    .rooms-grid { padding:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+    .room-col { background:#fff; border:1.5px solid #dde2ed; border-radius:10px; overflow:hidden; }
+    .room-head { background:var(--rmd-navy); color:#fff; padding:8px 10px; }
+    .room-head-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
+    .room-id { font-size:15px; font-weight:800; letter-spacing:.5px; }
+    .room-count { font-size:11px; opacity:.55; }
+    .instr-chips { display:flex; flex-wrap:wrap; gap:4px; }
+    .instr-chip { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); border-radius:4px; padding:2px 8px; font-size:11px; color:#fff; }
+    .instr-empty { color:rgba(255,255,255,.45); font-size:11px; font-style:italic; }
+    .room-body { padding:6px; }
+    .ccard { border:1.5px solid #dde2ed; border-radius:6px; padding:6px 8px; margin-bottom:4px; font-size:13px; background:#f7f9fc; }
+    .ccard-name { font-weight:700; color:var(--rmd-navy); }
+    .ccard-meta { font-size:11px; color:#8893b0; margin-top:1px; }
+    .room-empty { text-align:center; color:#c8cede; font-size:12px; padding:14px 8px; }
+
+    /* ── Unassigned ── */
+    .unassigned-wrap { margin:0 12px 12px; }
+    .unassigned-head { font-size:13px; font-weight:800; color:var(--rmd-navy); margin:14px 0 6px; }
+    .unassigned-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px; }
+
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+    #authMsg { font-size:15px; opacity:.7; }
+  </style>
+</head>
+<body>
+
+<div id="authOverlay" class="auth-overlay">
+  <div style="font-size:36px">🏫</div>
+  <div id="authMsg">Checking access…</div>
+</div>
+
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">
+    Evening Course Rosters
+    <span class="top-bar-sub">RMD Birmingham — Stage 1 Provider Courses</span>
+  </div>
+  <a class="top-bar-back" href="member-menu.html">← Menu</a>
+</div>
+
+<div class="course-bar">
+  <label for="courseSelect">Course</label>
+  <select id="courseSelect" onchange="selectCourse(this.value)">
+    <option value="">— Choose a course —</option>
+  </select>
+  <span class="view-only-pill">View only</span>
+</div>
+
+<div id="statsStrip" class="stats-strip" style="display:none">
+  <div class="stat-cell"><div class="num" id="statCand">0</div><div class="lbl">Candidates</div></div>
+  <div class="stat-cell"><div class="num" id="statAssigned">0</div><div class="lbl">In a room</div></div>
+  <div class="stat-cell unassigned"><div class="num" id="statUnassigned">0</div><div class="lbl">Unassigned</div></div>
+</div>
+
+<div id="noCourse" class="no-course">Choose a course above to see its room and candidate list.</div>
+
+<div id="rosterUI" style="display:none">
+  <div id="roomsGrid" class="rooms-grid"></div>
+  <div id="unassignedWrap" class="unassigned-wrap" style="display:none">
+    <div class="unassigned-head">Not yet assigned to a room</div>
+    <div id="unassignedGrid" class="unassigned-grid"></div>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Evening Course Rosters — read-only view for RMD Student/Senior Faculty
+// (and Director). Built 2026-09-08 per Jon: Student/Senior Faculty now have
+// firestore.rules read access to stage1_candidates and course_allocations,
+// but admin-course-room-allocation.html — the only page that previously read
+// either collection — is entirely wrapped in requireDirector(), so that
+// access had no page behind it. This page is deliberately a SEPARATE,
+// stripped-down view rather than a "read-only mode" bolted onto the full
+// editor: the editor has drag-and-drop, imports, resets and a save action,
+// and disabling every one of those correctly (and keeping them disabled)
+// is a bigger risk of accidentally leaving a write path open than building
+// a small page with no write code in it at all. No candidate data is
+// editable here — no drag/drop, no buttons beyond the course picker.
+// ─────────────────────────────────────────────────────────────────────────────
+const ROOMS = STAGE1_TEACHING_ROOMS;
+
+let allCandidates  = [];
+let allInstructors = [];
+let allAllocDocs   = [];
+let defaultAllocDoc = null;
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+initFirebase();
+
+window.addEventListener("load", () => {
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "signin.html"; return; }
+
+    const email = user.email || "";
+    const [role, studentFac, seniorFac] = await Promise.all([
+      resolveRole(user.uid, email),
+      isStudentFaculty(email),
+      isSeniorFaculty(email)
+    ]);
+    if (role !== "director" && !studentFac && !seniorFac) {
+      const msg = document.getElementById("authMsg");
+      if (msg) msg.textContent = "RMD Senior/Student Faculty and Directors only.";
+      setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+      return;
+    }
+
+    document.getElementById("authOverlay").style.display = "none";
+    await loadData();
+    populateCourseDropdown();
+  });
+});
+
+async function loadData() {
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn("stage1_candidates load failed:", e.message); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get();
+    allInstructors = snap.docs.map(d => {
+      const data = d.data();
+      const surname = data.passportLastName || (data.name ? data.name.trim().split(/\s+/).pop() : "");
+    const first = data.preferredName ? data.preferredName.trim().split(/\s+/)[0] : null;
+    const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
+    return { uid: d.id, name };
+  });
+  } catch (e) { console.warn("instructor load failed:", e.message); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.courseAllocations).get();
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    defaultAllocDoc = docs.find(d => d.id === "_default") || null;
+    allAllocDocs = docs.filter(d => d.id !== "_default");
+  } catch (e) { console.warn("course_allocations load failed:", e.message); }
+}
+
+function courseList() {
+  const set = new Set();
+  allCandidates.forEach(c => { if (c.course) set.add(c.course); });
+  return Array.from(set).sort();
+}
+
+function slugify(s) {
+  return (s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "course";
+}
+
+function populateCourseDropdown() {
+  const sel = document.getElementById("courseSelect");
+  const courses = courseList();
+  sel.innerHTML = `<option value="">— Choose a course —</option>` +
+    courses.map(c => {
+      const n = allCandidates.filter(x => x.course === c).length;
+      return `<option value="${esc(c)}">${esc(c)} (${n} candidate${n===1?"":"s"})</option>`;
+    }).join("");
+  if (!courses.length) {
+    document.getElementById("noCourse").textContent = "No Stage 1 courses have candidates imported yet.";
+  }
+}
+
+function instructorName(uid) {
+  const i = allInstructors.find(x => x.uid === uid);
+  return i ? i.name : uid;
+}
+
+function selectCourse(course) {
+  document.getElementById("statsStrip").style.display = course ? "" : "none";
+  document.getElementById("noCourse").style.display = course ? "none" : "";
+  document.getElementById("rosterUI").style.display = course ? "" : "none";
+  if (!course) return;
+
+  const candidates = allCandidates.filter(c => c.course === course).map(c => ({
+    id: c.id,
+    name: c.name || "(no name)",
+    email: c.email || "",
+    degree: c.degree || "",
+    room: ROOMS.includes(c.room) ? c.room : null
+  }));
+
+  const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
+  const teams = {};
+  ROOMS.forEach(r => { teams[r] = []; });
+  if (own && own.instructorTeams) {
+    ROOMS.forEach(r => { teams[r] = (own.instructorTeams[r] || []).slice(); });
+  } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {
+    ROOMS.forEach(r => { teams[r] = (defaultAllocDoc.instructorTeams[r] || []).slice(); });
+  }
+
+  const assignedCount = candidates.filter(c => c.room).length;
+  document.getElementById("statCand").textContent = candidates.length;
+  document.getElementById("statAssigned").textContent = assignedCount;
+  document.getElementById("statUnassigned").textContent = candidates.length - assignedCount;
+
+  // Only show rooms that actually have a candidate or an instructor team —
+  // no point showing all 19 rooms empty for a small course.
+  const roomsWithContent = ROOMS.filter(rid =>
+    candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length)
+  );
+
+  document.getElementById("roomsGrid").innerHTML = roomsWithContent.length
+    ? roomsWithContent.map(rid => {
+        const inRoom = candidates.filter(c => c.room === rid);
+        const chips = (teams[rid] || []).map(uid => `<span class="instr-chip">${esc(instructorName(uid))}</span>`).join("");
+        const cards = inRoom.length
+          ? inRoom.map(c => `<div class="ccard"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`).join("")
+          : `<div class="room-empty">No candidates assigned</div>`;
+        return `<div class="room-col">
+                  <div class="room-head">
+                    <div class="room-head-row"><span class="room-id">${esc(rid)}</span><span class="room-count">${inRoom.length} candidate${inRoom.length===1?"":"s"}</span></div>
+                    <div class="instr-chips">${chips || `<span class="instr-empty">No instructors assigned yet</span>`}</div>
+                  </div>
+                  <div class="room-body">${cards}</div>
+                </div>`;
+      }).join("")
+    : `<div class="no-course" style="grid-column:1/-1">No rooms have been set up for this course yet.</div>`;
+
+  const unassigned = candidates.filter(c => !c.room);
+  document.getElementById("unassignedWrap").style.display = unassigned.length ? "" : "none";
+  document.getElementById("unassignedGrid").innerHTML = unassigned
+    .map(c => `<div class="ccard"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`)
+    .join("");
+}
+</script>
+</body>
+</html>
