@@ -544,18 +544,28 @@
       return;
     }
 
-    // Try to load the people doc for name + verified role
+    // Try to load the people doc for name + roleLabel
     try {
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
       if (snap.exists) {
         const data = snap.data();
-        if (data.role) curRole = data.role;
         if (data.roleLabel) curRoleLabel = data.roleLabel;
         if (data.name) {
           document.getElementById("welcomeName").textContent = `Welcome, ${data.name.split(" ")[0]}`;
         }
       }
     } catch (e) { /* use URL param role */ }
+
+    // Layered access, step 4 (read side): this year's IW job now lives in
+    // iw_assignments. resolveIwFunction() checks that first and falls back
+    // to people.role itself, so this one call replaces the old direct
+    // data.role read above while keeping the same fallback behaviour --
+    // if it fails or returns nothing, curRole stays whatever the URL param
+    // gave us, exactly as before.
+    try {
+      const iwRole = await resolveIwFunction(user.uid);
+      if (iwRole) curRole = iwRole;
+    } catch (e) { /* keep URL param role */ }
 
     applyRole(curRole, curRoleLabel);
   });
