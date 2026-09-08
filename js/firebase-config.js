@@ -97,6 +97,40 @@ const STAGE1_TEACHING_ROOMS = [
 // this constant for room allocation until Jon asks for exam-night handling.
 const STAGE1_EXAM_ROOMS = ["WF19","EF5","EF27","EF30","EF10d"];
 
+// ── Stage 1 degree standardisation — Section 3.6 work-plan item ────────────
+// The 9 standard degree names and their distribution groups, confirmed by
+// Jon 2026-09-07 (list + Nursing example) and 2026-09-07 again ("apply
+// grouping logic to all the degree names in same way" — general rule, not
+// Nursing-specific). Single source of truth, shared by both pages that care
+// about degree: admin-stage1-candidates.html validates paste-imports
+// against the 9 exact names below; admin-course-room-allocation.html's
+// randomizer mixes rooms by GROUP, so both Nursing degrees (and both Physio
+// degrees) land in the same bucket instead of being treated as different
+// degrees. Add any future degree to BOTH the exact name and its group here
+// at once — don't let the two pages' understanding of this drift apart.
+const STAGE1_DEGREE_GROUPS = {
+  "Nursing MSc": "Nursing",
+  "Nursing BNurs": "Nursing",
+  "Midwifery BSc": "Midwifery",
+  "Medicine MBChB": "Medicine",
+  "CEP MSc": "CEP",
+  "Dentistry BDS": "Dentistry",
+  "Pharmacy MPharm": "Pharmacy",
+  "Physio Y2 MSci": "Physio",
+  "Physio Y1 MSc": "Physio"
+};
+// Case-insensitive, trimmed lookup against the 9 standard names above.
+// Returns {exact, group} on a match, or null if the text doesn't match any
+// of them (e.g. a typo, a not-yet-added degree, or genuinely free text).
+function resolveStage1Degree(rawDegree) {
+  const lower = (rawDegree || "").trim().toLowerCase();
+  if (!lower) return null;
+  for (const exact of Object.keys(STAGE1_DEGREE_GROUPS)) {
+    if (exact.toLowerCase() === lower) return { exact, group: STAGE1_DEGREE_GROUPS[exact] };
+  }
+  return null;
+}
+
 // ── Roles ───────────────────────────────────────────────────────────────────
 const ROLES = {
   DIRECTOR:        "director",

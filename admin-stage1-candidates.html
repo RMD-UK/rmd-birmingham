@@ -223,6 +223,14 @@ function parsePreview() {
     const r = parseLine(line);
     if (!r.name) { errors.push(`Line ${i + 1}: no name — skipped ("${esc(line)}").`); return; }
     if (!r.course) { errors.push(`Line ${i + 1} ("${esc(r.name)}"): missing course — kept, but check it before importing.`); }
+    // Degree standardisation (2026-09-08, Jon: 9 standard names, work plan
+    // item now built) — checked against STAGE1_DEGREE_GROUPS in
+    // js/firebase-config.js, the single source of truth shared with
+    // admin-course-room-allocation.html's room-mixing randomizer. Not
+    // blocked at preview time — flagged here, then hard-gated at Import
+    // (see confirmImport()) so a real but not-yet-listed degree can still
+    // be pushed through deliberately rather than silently rejected.
+    r.degreeMatch = resolveStage1Degree(r.degree);
     rows.push(r);
   });
 
@@ -234,13 +242,18 @@ function parsePreview() {
     return;
   }
 
+  const unrecognizedCount = rows.filter(r => r.degree && !r.degreeMatch).length;
+
   const rowsHtml = rows.map((r, i) => {
     const dupes = findDuplicates(r, [...rows.slice(0, i), ...rows.slice(i + 1), ...allCandidates]);
     const warn = duplicateWarningHtml(dupes, r);
+    const degreeCell = (r.degree && !r.degreeMatch)
+      ? `${esc(r.degree)} <span class="dup-warning" style="display:inline;">⚠ not one of the 9 standard names</span>`
+      : esc(r.degree);
     return `<tr>
       <td class="name-cell">${esc(r.name)}</td>
       <td>${esc(r.email) || "<em>none</em>"}</td>
-      <td>${esc(r.degree)}</td>
+      <td>${degreeCell}</td>
       <td>${esc(r.course)}</td>
       <td>${esc(r.dob) || "–"}</td>
       <td>${warn}</td>
@@ -249,6 +262,7 @@ function parsePreview() {
 
   wrap.innerHTML = `
     ${errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : ""}
+    ${unrecognizedCount ? `<div class="error-list">⚠ ${unrecognizedCount} row${unrecognizedCount === 1 ? "" : "s"} ${unrecognizedCount === 1 ? "has" : "have"} a degree that isn't one of the 9 standard names — you'll be asked to confirm these specifically before import.</div>` : ""}
     <table class="preview-table">
       <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>DOB (day/mth)</th><th>Flags</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -260,6 +274,19 @@ function parsePreview() {
 
 async function confirmImport() {
   if (!parsedRows || !parsedRows.length) return;
+
+  // Hard confirm gate on unrecognized degrees (2026-09-08, Jon's build-plan
+  // spec) — separate from and BEFORE the general import confirm below, so
+  // declining this one stops the import outright rather than falling
+  // through to "Add N candidates?". Rows with no degree at all aren't
+  // included here — that's a pre-existing, separate "missing course"-style
+  // soft warning, not a standardisation problem.
+  const unrecognized = parsedRows.filter(r => r.degree && !r.degreeMatch);
+  if (unrecognized.length) {
+    const list = unrecognized.map(r => `"${r.name}": "${r.degree}"`).join("\n");
+    if (!confirm(`${unrecognized.length} candidate${unrecognized.length === 1 ? "" : "s"} ${unrecognized.length === 1 ? "has" : "have"} a degree that doesn't match any of the 9 standard names:\n\n${list}\n\nImport anyway with this text as typed?`)) return;
+  }
+
   if (!confirm(`Add ${parsedRows.length} candidate${parsedRows.length === 1 ? "" : "s"} to Stage 1 Candidates?\n\nFlagged possible duplicates above are NOT blocked — review them yourself before or after importing.`)) return;
 
   const CHUNK = 400; // Firestore batch limit is 500 writes; leave headroom
