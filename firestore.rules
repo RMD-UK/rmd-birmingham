@@ -393,6 +393,23 @@ service cloud.firestore {
       allow read, write: if isDirector();
     }
 
+    // ── Instructor Weekend per-year function (Axis B) ───────────────────────
+    // Added 2026-09-08, layered-access build-sequence step 4. docId is
+    // "{year}_{uid}" (e.g. "2026_abc123"); each doc carries its own `uid`
+    // field since docId isn't just the uid, unlike people/{uid}. Read grant
+    // deliberately mirrors people/{docId}'s current widened rule below,
+    // since this collection holds the same category of information (what
+    // someone's role is) for the same audience - keeping the two consistent
+    // matters while both are being written to in parallel (see
+    // CURRENT_IW_YEAR / resolveIwFunction() in firebase-config.js for why
+    // this is additive, not a replacement, for now). Write stays
+    // director-only, same as the admin-bulk-users.html page that writes it.
+    match /iw_assignments/{docId} {
+      allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor();
+      allow write: if isDirector();
+    }
+
     // ── ITC observations ────────────────────────────────────────────────────
     // Blind feedback (decided 2026-07-09): each observer's rating of an ITC
     //   must not be visible to other observers rating the same ITC — only
