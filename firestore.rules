@@ -512,7 +512,13 @@ service cloud.firestore {
     // login exists to need broader read access, and no public form writes
     // here (bulk import is the only write path, director-only).
     match /stage1_candidates/{docId} {
-      allow read, write: if isDirector();
+      // Read widened 2026-09-08 to match the people-collection decision:
+      // Jon confirmed RMD Student/Senior Faculty can see full candidate
+      // detail (name, email, DOB, degree, room) for evening-course
+      // candidates, same as they already can for people. Write stays
+      // director-only - no change there.
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow write: if isDirector();
     }
 
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────
