@@ -350,25 +350,40 @@ async function isSeniorFaculty(email) {
 // job labels for a given weekend, per Jon 2026-09-08 - none of them are
 // safe to show as "who someone permanently is").
 //
-// Only two tiers are resolvable today:
+// Checked in order, most authoritative first:
 //   1. Course Director - via resolveRole(), which already checks
 //      config/platform.directors + superUsers before ever falling back to
 //      people.role, so a "director" result here is the real, authoritative
 //      list, not just this year's job label.
 //   2. RMD Senior Faculty / RMD Student Faculty - via faculty_roster.group,
 //      same source used by isStudentFaculty()/isSeniorFaculty() elsewhere.
+//   3. Instructor / Assessor / Senior Instructor - via the currently-open
+//      period (to === null) in people/{uid}.roleHistory, see
+//      addRoleHistoryEntry() below. "Instructor" gets written there by
+//      admin-iw-pass-confirmation.html (the end-of-IW pass-confirmation
+//      step, built 2026-09-08 per Jon: "the instructors will be those
+//      Instructor Candidates who pass the instructor weekend course").
+//      "Assessor"/"Senior Instructor" are set manually per person via
+//      admin-role-history.html, per Jon 2026-09-08: "Director sets it
+//      manually, per person" - he's noted this will likely move into the
+//      annual MoU Bulk Upload eventually, but that doesn't exist yet, so
+//      this is the real mechanism for now.
 //
-// Everything else (Instructor / Assessor / Senior Instructor as a permanent
-// tier) has NO reliable data source yet. Per Jon 2026-09-08: "Instructor"
-// as a standing means an Instructor Candidate who has PASSED the Instructor
-// Weekend course - a confirmation step that happens at the end of IW and
-// isn't built anywhere yet (IW itself doesn't run until Oct 2026). Assessor
-// vs Senior Instructor as permanent tiers: Jon said he'll specify who's
-// which later. Deliberately returns null rather than guessing from
-// resolveRole()'s IW-job value or from the free-text, optionally-populated
-// roleHistory field - a wrong permanent-standing label is worse than a
-// blank one. Callers should show an explicit "not yet confirmed" state for
-// null, not silently render nothing.
+// AXIS_A_TIER_LABELS controls which roleHistory role strings map to a
+// standing - only these three exact strings resolve here; any other
+// free-text roleHistory entry (there's no restriction on what
+// admin-role-history.html accepts) is deliberately ignored rather than
+// guessed at.
+//
+// Still returns null for anyone matching none of the above - a wrong
+// permanent-standing label is worse than a blank one. Callers should show
+// an explicit "not yet confirmed" state for null, not silently render
+// nothing.
+const AXIS_A_TIER_LABELS = {
+  "Instructor":       { standing: "instructor",       label: "Instructor" },
+  "Assessor":         { standing: "assessor",         label: "Assessor" },
+  "Senior Instructor": { standing: "senior-instructor", label: "Senior Instructor" }
+};
 async function resolveAxisAStanding(uid, email) {
   const role = await resolveRole(uid, email);
   if (role === ROLES.DIRECTOR) {
@@ -381,6 +396,14 @@ async function resolveAxisAStanding(uid, email) {
   if (group === "student") {
     return { standing: "student-faculty", label: "RMD Student Faculty" };
   }
+  try {
+    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
+    const history = snap.exists && Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory : [];
+    const open = history.find(h => h.to === null || h.to === undefined);
+    if (open && AXIS_A_TIER_LABELS[open.role]) {
+      return AXIS_A_TIER_LABELS[open.role];
+    }
+  } catch (e) {}
   return null;
 }
 
