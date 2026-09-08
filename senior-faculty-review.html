@@ -357,14 +357,19 @@ async function submitForm() {
   btn.disabled = true;
   btn.textContent = "Submitting…";
 
+  // Layered access, step 4 (read side): tag the submission with this
+  // year's IW job when we have one, falling back to people.role exactly
+  // as before via resolveIwFunction() itself. If both are unavailable,
+  // role stays whatever resolveRole() already gave us at sign-in.
   let name = user.email, role = currentRole || "";
   try {
     const p = await db.collection(COLLECTIONS.people).doc(user.uid).get();
-    if (p.exists) {
-      name = p.data().name || name;
-      role = p.data().role || role;
-    }
+    if (p.exists) name = p.data().name || name;
   } catch (e) { /* fall back to defaults above */ }
+  try {
+    const iwRole = await resolveIwFunction(user.uid);
+    if (iwRole) role = iwRole;
+  } catch (e) { /* keep whatever role we already have */ }
 
   const record = {
     uid: user.uid,
