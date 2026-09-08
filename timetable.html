@@ -1019,6 +1019,23 @@
         }
       } catch (e) { console.warn("Could not load role:", e.message); }
 
+      // Layered access, step 4 (read side), file 5 of 5: for everyone
+      // except Director, "role" here really means this year's IW job
+      // (Axis B), not permanent standing -- resolveRole() falls back to
+      // people.role directly for non-directors, so prefer the real
+      // iw_assignments record instead, via the same resolveIwFunction()
+      // helper used everywhere else in this migration. Director status
+      // itself is untouched: it still comes from resolveRole() alone, so
+      // whether the "View as" override selector shows at all is unaffected
+      // -- that decision is Axis A (permanent standing) and was already
+      // correct.
+      if (role && role !== ROLES.DIRECTOR) {
+        try {
+          const iwRole = await resolveIwFunction(user.uid);
+          if (iwRole) role = iwRole;
+        } catch (e) { /* keep resolveRole()'s value */ }
+      }
+
       // Hide loading overlay
       document.getElementById("authLoading").style.display = "none";
 
