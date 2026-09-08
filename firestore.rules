@@ -334,6 +334,65 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+    // ── Session quality (found 2026-09-08: same missing-rule bug as
+    // session_feedback had, never fixed until now — no submission had ever
+    // actually saved). session-quality.html's own role gate already
+    // restricts who can open the page (faculty/full-instructor/director,
+    // fixed 2026-09-07); this rule mirrors that plus session_feedback's
+    // exact self-scoped read/write shape, since the two collections have
+    // an identical upsert pattern: one doc per (sessionId, submittedByUid),
+    // queried and updated via set(...,{merge:true}) once already submitted.
+    match /session_quality/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.submittedByUid == request.auth.uid);
+      allow create: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow update: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── Participant feedback (found 2026-09-08: same missing-rule bug as
+    // session_feedback had — every survey submission had been silently
+    // failing since built). participant-feedback.html is deliberately a
+    // fully anonymous, unauthenticated end-of-course evaluation survey (no
+    // login gate on the page at all, no submittedByUid field) — so unlike
+    // session_feedback/session_quality this can't be self-scoped, and the
+    // create rule has no request.auth to check at all. Jon confirmed
+    // 2026-09-08: results visible to Course Director only, nobody else.
+    // hasOnly() constrains the shape of what an anonymous write can
+    // contain, since "allow create: if true" would otherwise accept any
+    // document shape from anyone who can reach the Firestore API directly,
+    // not just through this page.
+    match /participant_feedback/{docId} {
+      allow read: if isDirector();
+      allow create: if request.resource.data.keys().hasOnly([
+        "stream", "experience", "likert", "averageScore", "duration",
+        "valuable", "recommend", "suggestions", "submittedAt", "courseId"
+      ]);
+      allow update, delete: if isDirector();
+    }
+
+    // ── Course Director Dashboard collections (found 2026-09-08, same
+    // missing-rule bug as session_feedback/session_quality/participant_feedback
+    // — never had ANY firestore.rules coverage since built). All three are
+    // read and written exclusively by cd-dashboard.html, which is itself
+    // wrapped in requireDirector() for its entire boot sequence (verified —
+    // correcting an earlier mistaken claim in this session that the page had
+    // no gate at all; it does, this was just never checked properly the
+    // first time). Director-only end to end, no other page or role touches
+    // any of these three.
+    match /decisions/{docId} {
+      allow read, write: if isDirector();
+    }
+    match /meeting_notes/{docId} {
+      allow read, write: if isDirector();
+    }
+    match /report/{docId} {
+      allow read, write: if isDirector();
+    }
+
     // ── ITC observations ────────────────────────────────────────────────────
     // Blind feedback (decided 2026-07-09): each observer's rating of an ITC
     //   must not be visible to other observers rating the same ITC — only
