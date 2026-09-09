@@ -39,8 +39,36 @@ const COLLECTIONS = {
   iwRegistrations:  "iw_registrations",  // director-managed Instructor Weekend attendee list — see admin-iw-registrations.html
   iwAssessorRsvp:   "iw_assessor_rsvp",  // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
   stage1Candidates: "stage1_candidates",  // taught first-year candidate records, no login — see admin-stage1-candidates.html (Section 3.5)
-  courseAllocations: "course_allocations" // per-course room + instructor-team allocation — see admin-course-room-allocation.html (Section 3.6)
+  courseAllocations: "course_allocations", // per-course room + instructor-team allocation — see admin-course-room-allocation.html (Section 3.6)
+  iwAssignments: "iw_assignments" // per-year Instructor Weekend function (Axis B) — see resolveIwFunction() below, and CURRENT_IW_YEAR
 };
+
+// ── Instructor Weekend per-year function (Axis B), layered-access build
+// sequence step 4 ──────────────────────────────────────────────────────────
+// Bump this every year, right after that year's Instructor Weekend dates are
+// set. 2026-09-08: the actual IW this points at runs 9-11 Oct 2026.
+//
+// people/{uid}.role has always been asked to mean two different things at
+// once: a person's permanent standing in RMD (Axis A - are they an
+// Instructor, a Senior Faculty member, a Director...) and their one-off job
+// at THIS SPECIFIC Instructor Weekend (Axis B - are they Faculty, an
+// Instructor Trainer, an ITC, this October). See the layered-access-model
+// artifact (7 Sep 2026, https://claude.ai/code/artifact/50cb1510-d8bb-4335-833f-f1fb13f4e9d2)
+// for the full root-cause writeup. iw_assignments/{year}_{uid} is the new,
+// separate home for Axis B, added 2026-09-08 as build-sequence step 4.
+//
+// Deliberately additive, not a cutover: admin-bulk-users.html now writes
+// BOTH iw_assignments AND people.role (see resolveIwFunction() below for
+// the read side) so nothing that still reads people.role directly breaks.
+// Existing accounts with no iw_assignments doc yet fall back to
+// people.role automatically - resolveIwFunction() is safe to call for
+// every account, migrated or not. Migrating the read side (attendance.html,
+// admin-groups.html, senior-faculty-review.html, site-info.html, and
+// timetable.html's "View as" default all still read people.role directly
+// for this) is the next phase, deliberately not done in this same change -
+// each of those has its own context worth checking individually rather
+// than batch-editing five files against a still-empty collection.
+const CURRENT_IW_YEAR = 2026;
 
 // ── Memorandum of Understanding ─────────────────────────────────────────────
 // Bump this every academic year — drives the form's locked "year" field and
@@ -322,25 +350,40 @@ async function isSeniorFaculty(email) {
 // job labels for a given weekend, per Jon 2026-09-08 - none of them are
 // safe to show as "who someone permanently is").
 //
-// Only two tiers are resolvable today:
+// Checked in order, most authoritative first:
 //   1. Course Director - via resolveRole(), which already checks
 //      config/platform.directors + superUsers before ever falling back to
 //      people.role, so a "director" result here is the real, authoritative
 //      list, not just this year's job label.
 //   2. RMD Senior Faculty / RMD Student Faculty - via faculty_roster.group,
 //      same source used by isStudentFaculty()/isSeniorFaculty() elsewhere.
+//   3. Instructor / Assessor / Senior Instructor - via the currently-open
+//      period (to === null) in people/{uid}.roleHistory, see
+//      addRoleHistoryEntry() below. "Instructor" gets written there by
+//      admin-iw-pass-confirmation.html (the end-of-IW pass-confirmation
+//      step, built 2026-09-08 per Jon: "the instructors will be those
+//      Instructor Candidates who pass the instructor weekend course").
+//      "Assessor"/"Senior Instructor" are set manually per person via
+//      admin-role-history.html, per Jon 2026-09-08: "Director sets it
+//      manually, per person" - he's noted this will likely move into the
+//      annual MoU Bulk Upload eventually, but that doesn't exist yet, so
+//      this is the real mechanism for now.
 //
-// Everything else (Instructor / Assessor / Senior Instructor as a permanent
-// tier) has NO reliable data source yet. Per Jon 2026-09-08: "Instructor"
-// as a standing means an Instructor Candidate who has PASSED the Instructor
-// Weekend course - a confirmation step that happens at the end of IW and
-// isn't built anywhere yet (IW itself doesn't run until Oct 2026). Assessor
-// vs Senior Instructor as permanent tiers: Jon said he'll specify who's
-// which later. Deliberately returns null rather than guessing from
-// resolveRole()'s IW-job value or from the free-text, optionally-populated
-// roleHistory field - a wrong permanent-standing label is worse than a
-// blank one. Callers should show an explicit "not yet confirmed" state for
-// null, not silently render nothing.
+// AXIS_A_TIER_LABELS controls which roleHistory role strings map to a
+// standing - only these three exact strings resolve here; any other
+// free-text roleHistory entry (there's no restriction on what
+// admin-role-history.html accepts) is deliberately ignored rather than
+// guessed at.
+//
+// Still returns null for anyone matching none of the above - a wrong
+// permanent-standing label is worse than a blank one. Callers should show
+// an explicit "not yet confirmed" state for null, not silently render
+// nothing.
+const AXIS_A_TIER_LABELS = {
+  "Instructor":       { standing: "instructor",       label: "Instructor" },
+  "Assessor":         { standing: "assessor",         label: "Assessor" },
+  "Senior Instructor": { standing: "senior-instructor", label: "Senior Instructor" }
+};
 async function resolveAxisAStanding(uid, email) {
   const role = await resolveRole(uid, email);
   if (role === ROLES.DIRECTOR) {
@@ -353,6 +396,37 @@ async function resolveAxisAStanding(uid, email) {
   if (group === "student") {
     return { standing: "student-faculty", label: "RMD Student Faculty" };
   }
+  try {
+    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
+    const history = snap.exists && Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory : [];
+    const open = history.find(h => h.to === null || h.to === undefined);
+    if (open && AXIS_A_TIER_LABELS[open.role]) {
+      return AXIS_A_TIER_LABELS[open.role];
+    }
+  } catch (e) {}
+  return null;
+}
+
+// resolveIwFunction(uid, year) -> role string ("faculty"/"director"/etc.) or null
+// Read side of the Axis B split (layered-access build-sequence step 4, see
+// CURRENT_IW_YEAR above for the full context). Checks iw_assignments/{year}_{uid}
+// FIRST - the correct, new, per-year home for "what is this person's job at
+// THIS Instructor Weekend." Falls back to people/{uid}.role if no assignment
+// doc exists yet, so this is safe to call for every account whether or not
+// it's been migrated - an account created before 2026-09-08 (or created since
+// but not through admin-bulk-users.html, e.g. a director set up directly in
+// Firebase Console) simply gets today's exact behaviour via the fallback.
+// year defaults to CURRENT_IW_YEAR so most callers can omit it.
+async function resolveIwFunction(uid, year) {
+  year = year || CURRENT_IW_YEAR;
+  try {
+    const snap = await db.collection(COLLECTIONS.iwAssignments).doc(`${year}_${uid}`).get();
+    if (snap.exists && snap.data().function) return snap.data().function;
+  } catch (e) {}
+  try {
+    const snap = await db.collection(COLLECTIONS.people).doc(uid).get();
+    if (snap.exists && snap.data().role) return snap.data().role;
+  } catch (e) {}
   return null;
 }
 

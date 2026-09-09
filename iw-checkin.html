@@ -99,6 +99,7 @@ initFirebase();
 
 let processing = false;
 let allPeopleCache = null;
+let iwAssignmentsCache = null;  // { uid: function } -- this year's IW job, from iw_assignments; falls back to people.role when absent
 
 const ROLE_LABELS = {
   "instructor": "Instructor Candidate", "assessor": "Assessor / Senior Instructor",
@@ -106,9 +107,25 @@ const ROLE_LABELS = {
   "full-instructor": "Instructor Trainer", "itc": "Instructor Trainer Candidate", "director": "Course Director"
 };
 
+async function ensureIwAssignmentsCache() {
+  if (iwAssignmentsCache) return iwAssignmentsCache;
+  iwAssignmentsCache = {};
+  try {
+    const snap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    snap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignmentsCache[a.uid] = a.function;
+    });
+  } catch (e) { /* leave cache empty, effectiveRole() falls back to p.role */ }
+  return iwAssignmentsCache;
+}
+function effectiveRole(p, iwAssignments) {
+  return (iwAssignments && iwAssignments[p.id]) || p.role;
+}
 async function ensurePeopleCache() {
   if (allPeopleCache) return allPeopleCache;
-  const snap = await db.collection(COLLECTIONS.people).get();
+  const [snap] = await Promise.all([db.collection(COLLECTIONS.people).get(), ensureIwAssignmentsCache()]);
   allPeopleCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   return allPeopleCache;
 }
@@ -126,6 +143,7 @@ async function runSearch(val) {
   hintEl.style.display = "none";
 
   const people = await ensurePeopleCache();
+  const iwAssignments = await ensureIwAssignmentsCache();
   const matches = people.filter(p => (p.name || "").toLowerCase().includes(q)).slice(0, 8);
 
   if (!matches.length) {
@@ -137,7 +155,7 @@ async function runSearch(val) {
     <div class="search-result">
       <div>
         <div class="name">${esc(p.name)}</div>
-        <div class="role">${esc(p.roleLabel || ROLE_LABELS[p.role] || p.role || "")}</div>
+        <div class="role">${esc(p.roleLabel || ROLE_LABELS[effectiveRole(p, iwAssignments)] || effectiveRole(p, iwAssignments) || "")}</div>
       </div>
       <button class="btn-checkin-small" onclick="confirmCheckIn('${esc(p.id)}')">Confirm attendance</button>
     </div>

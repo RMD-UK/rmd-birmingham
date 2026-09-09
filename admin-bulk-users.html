@@ -485,13 +485,32 @@ async function startCreation() {
         // Also write to Firestore people collection
         const uid = data.localId;
         const existing = existingPeopleByEmail.get(email.toLowerCase());
+        const effectiveRole = (existing && existing.role) || role;
         if (uid) {
           await db.collection(COLLECTIONS.people).doc(uid).set({
             name:   name || (existing && existing.name) || email.split("@")[0],
             email,
-            role:   (existing && existing.role) || role,
+            role:   effectiveRole,
             stream: role === "faculty" ? "faculty" : role,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          // 2026-09-08: also write the new per-year Axis B record (layered-
+          // access build-sequence step 4 - see CURRENT_IW_YEAR in
+          // firebase-config.js). Deliberately in ADDITION to people.role
+          // above, not instead of it - people.role keeps being written
+          // exactly as before so nothing that still reads it directly
+          // breaks. Uses the same effectiveRole so the two stay consistent
+          // for this account. Uses auth.currentUser directly (the
+          // signed-in director running this tool) rather than a page-level
+          // variable - this file never captures one from requireDirector(),
+          // it just calls it and lets the redirect happen on failure.
+          await db.collection(COLLECTIONS.iwAssignments).doc(`${CURRENT_IW_YEAR}_${uid}`).set({
+            year: CURRENT_IW_YEAR,
+            uid,
+            email,
+            function: effectiveRole,
+            assignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            assignedBy: (auth.currentUser && auth.currentUser.email) || null
           }, { merge: true });
         }
         try {

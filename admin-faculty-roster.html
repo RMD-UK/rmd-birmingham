@@ -68,6 +68,34 @@
   .import-log div { padding: 2px 0; }
 
   .error-list { font-size: 12.5px; color: var(--rmd-warn); margin-top: 10px; }
+
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 4px; }
+  .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--rmd-navy); }
+  .field input, .field select {
+    font-family: var(--font); font-size: 13px; font-weight: 400; color: #222;
+    padding: 8px 10px; border: 2px solid #ccd6dd; border-radius: 6px;
+  }
+  .field.wide { grid-column: 1 / -1; }
+  .form-msg { font-size: 13px; margin-top: 10px; }
+  .form-msg.ok { color: #1a7a4a; }
+  .form-msg.err { color: var(--rmd-warn); }
+
+  .roster-search { width: 100%; padding: 8px 10px; border: 2px solid #ccd6dd; border-radius: 6px; font-size: 13px; margin-bottom: 10px; font-family: var(--font); }
+  .roster-table-wrap { max-height: 480px; overflow-y: auto; border: 1px solid #e8edf2; border-radius: 6px; }
+  .roster-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .roster-table th {
+    background: #eef2f6; color: var(--rmd-muted); text-align: left;
+    padding: 7px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px;
+    position: sticky; top: 0;
+  }
+  .roster-table td { padding: 7px 10px; border-bottom: 1px solid #f0f3f6; vertical-align: top; }
+  .roster-table tr.group-row td { background: #f5f7fa; font-weight: 700; color: var(--rmd-navy); }
+  .row-btn {
+    font-size: 11px; font-weight: 700; border: none; border-radius: 5px; padding: 4px 9px;
+    cursor: pointer; font-family: var(--font); margin-right: 4px;
+  }
+  .row-btn.edit { background: #e8f0fe; color: var(--rmd-blue); }
+  .row-btn.remove { background: #fdeceb; color: var(--rmd-warn); }
 </style>
 </head>
 <body>
@@ -120,7 +148,39 @@ Jon Hulme, j.hulme.1@bham.ac.uk, senior, Course Director, , jon-hulme.jpg"></tex
 
   <div class="card">
     <h2>Current roster (live)</h2>
+    <p class="hint">Search, edit, or remove one person at a time here — no need to re-paste the whole roster for a single change. Editing pre-fills the form below; Remove deletes that person from both the public page and the roster immediately (no undo).</p>
     <div class="summary-strip" id="currentSummary"><div class="sum-pill"><div class="val">–</div><div class="lbl">Loading</div></div></div>
+    <input type="text" class="roster-search" id="rosterSearch" placeholder="Search by name, team or email…" oninput="renderCurrentRosterTable()">
+    <div class="roster-table-wrap">
+      <table class="roster-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Team</th><th>Role</th><th>Photo</th><th></th></tr></thead>
+        <tbody id="currentRosterBody"><tr><td colspan="6" style="color:var(--rmd-muted);">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 id="oneFormTitle">Add one person</h2>
+    <p class="hint">Adds a single new person without touching anyone else. To change an existing person, click "Edit" on their row above instead — this same form is used for both.</p>
+    <div class="field-grid">
+      <label class="field">Name<input type="text" id="oneName" placeholder="Jane Smith"></label>
+      <label class="field">Email <span style="font-weight:400;color:var(--rmd-muted);">(optional)</span><input type="email" id="oneEmail" placeholder="jane.smith@example.com"></label>
+      <label class="field">Group
+        <select id="oneGroup">
+          <option value="student">Student Faculty</option>
+          <option value="senior">Senior Faculty</option>
+        </select>
+      </label>
+      <label class="field">Team<input type="text" id="oneTeam" list="teamOptions" placeholder="e.g. Guidelines"></label>
+      <datalist id="teamOptions"></datalist>
+      <label class="field">Role <span style="font-weight:400;color:var(--rmd-muted);">(optional — repeats team name if blank)</span><input type="text" id="oneRole" placeholder="e.g. Team Lead"></label>
+      <label class="field">Photo filename <span style="font-weight:400;color:var(--rmd-muted);">(optional, must already exist under assets/faculty-photos/)</span><input type="text" id="onePhoto" placeholder="jane-smith.jpg"></label>
+    </div>
+    <div class="btn-row">
+      <button class="btn-action" id="oneSubmitBtn" onclick="submitOnePerson()">➕ Add to roster</button>
+      <button class="btn-action secondary" id="oneCancelBtn" onclick="clearOneForm()" style="display:none;">Cancel edit</button>
+    </div>
+    <div class="form-msg" id="oneFormMsg"></div>
   </div>
 
 </div>
@@ -137,7 +197,7 @@ initFirebase();
 
 window.addEventListener("load", () => {
   requireDirector("member-menu.html").then(() => {
-    loadCurrentSummary();
+    loadCurrentRoster();
   });
 });
 
@@ -203,25 +263,200 @@ async function loadCurrentRosterIntoTextarea() {
   }
 }
 
-async function loadCurrentSummary() {
+async function loadCurrentRoster() {
   try {
-    const snap = await db.collection(COLLECTIONS.facultyRoster).get();
-    const docs = snap.docs.map(d => d.data());
-    const student = docs.filter(d => d.group === "student").length;
-    const senior   = docs.filter(d => d.group === "senior").length;
-    const noEmail  = docs.filter(d => !d.email).length;
-    document.getElementById("currentSummary").innerHTML = `
-      <div class="sum-pill"><div class="val">${docs.length}</div><div class="lbl">Total</div></div>
-      <div class="sum-pill"><div class="val">${student}</div><div class="lbl">Student</div></div>
-      <div class="sum-pill"><div class="val">${senior}</div><div class="lbl">Senior</div></div>
-      <div class="sum-pill warn"><div class="val">${noEmail}</div><div class="lbl">No email</div></div>`;
+    const snap = await db.collection(COLLECTIONS.facultyRoster).orderBy("order").get();
+    currentRosterCache = snap.docs.map(d => ({ docId: d.id, ...d.data() }));
+    renderCurrentSummary();
+    renderCurrentRosterTable();
+    populateTeamOptions();
   } catch (err) {
     document.getElementById("currentSummary").innerHTML =
       `<div style="color:var(--rmd-warn);font-size:13px;">Could not load current roster: ${err.message}</div>`;
+    document.getElementById("currentRosterBody").innerHTML =
+      `<tr><td colspan="6" style="color:var(--rmd-warn);">Could not load: ${err.message}</td></tr>`;
+  }
+}
+
+function renderCurrentSummary() {
+  const docs = currentRosterCache;
+  const student = docs.filter(d => d.group === "student").length;
+  const senior   = docs.filter(d => d.group === "senior").length;
+  const noEmail  = docs.filter(d => !d.email).length;
+  document.getElementById("currentSummary").innerHTML = `
+    <div class="sum-pill"><div class="val">${docs.length}</div><div class="lbl">Total</div></div>
+    <div class="sum-pill"><div class="val">${student}</div><div class="lbl">Student</div></div>
+    <div class="sum-pill"><div class="val">${senior}</div><div class="lbl">Senior</div></div>
+    <div class="sum-pill warn"><div class="val">${noEmail}</div><div class="lbl">No email</div></div>`;
+}
+
+// Datalist suggestions for the Team field, so a typo doesn't silently create
+// a stray new team section on the public page (grouping is by exact team
+// name match — see faculty.html's loadRoster()).
+function populateTeamOptions() {
+  const teams = [...new Set(currentRosterCache.map(d => d.team).filter(Boolean))].sort();
+  document.getElementById("teamOptions").innerHTML =
+    teams.map(t => `<option value="${t.replace(/"/g,"&quot;")}">`).join("");
+}
+
+function renderCurrentRosterTable() {
+  const q = (document.getElementById("rosterSearch").value || "").trim().toLowerCase();
+  const rows = currentRosterCache.filter(d =>
+    !q || (d.name||"").toLowerCase().includes(q) || (d.team||"").toLowerCase().includes(q) || (d.email||"").toLowerCase().includes(q)
+  );
+  const tbody = document.getElementById("currentRosterBody");
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:var(--rmd-muted);">${currentRosterCache.length ? "No match." : "Roster is empty."}</td></tr>`;
+    return;
+  }
+  // Group by group+team the same way faculty.html does, for a readable table
+  let lastGroupTeam = null;
+  tbody.innerHTML = rows.map(r => {
+    const groupTeam = r.group + "|" + r.team;
+    let groupRow = "";
+    if (groupTeam !== lastGroupTeam) {
+      lastGroupTeam = groupTeam;
+      groupRow = `<tr class="group-row"><td colspan="6">${r.group === "senior" ? "Senior" : "Student"} Faculty — ${esc(r.team||"")}</td></tr>`;
+    }
+    return groupRow + `<tr>
+      <td style="font-weight:700;color:var(--rmd-navy);">${esc(r.name||"")}</td>
+      <td style="font-size:12px;">${r.email ? esc(r.email) : `<span class="flag-missing-email">⚠ none</span>`}</td>
+      <td>${esc(r.team||"")}</td>
+      <td>${esc(r.role||"")}</td>
+      <td style="font-size:12px;">${r.photo ? esc(r.photo) : `<span class="flag-missing-photo">initials only</span>`}</td>
+      <td style="white-space:nowrap;">
+        <button class="row-btn edit" onclick="startEditRosterEntry('${r.docId.replace(/'/g,"\\'")}')">Edit</button>
+        <button class="row-btn remove" onclick="removeRosterEntry('${r.docId.replace(/'/g,"\\'")}', '${(r.name||"").replace(/'/g,"\\'")}')">Remove</button>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function clearOneForm() {
+  editingDocId = null;
+  document.getElementById("oneName").value = "";
+  document.getElementById("oneEmail").value = "";
+  document.getElementById("oneGroup").value = "student";
+  document.getElementById("oneTeam").value = "";
+  document.getElementById("oneRole").value = "";
+  document.getElementById("onePhoto").value = "";
+  document.getElementById("oneFormTitle").textContent = "Add one person";
+  document.getElementById("oneSubmitBtn").textContent = "➕ Add to roster";
+  document.getElementById("oneCancelBtn").style.display = "none";
+  document.getElementById("oneFormMsg").textContent = "";
+  document.getElementById("oneFormMsg").className = "form-msg";
+}
+
+function startEditRosterEntry(docId) {
+  const r = currentRosterCache.find(x => x.docId === docId);
+  if (!r) return;
+  editingDocId = docId;
+  document.getElementById("oneName").value = r.name || "";
+  document.getElementById("oneEmail").value = r.email || "";
+  document.getElementById("oneGroup").value = r.group || "student";
+  document.getElementById("oneTeam").value = r.team || "";
+  document.getElementById("oneRole").value = r.role || "";
+  document.getElementById("onePhoto").value = r.photo || "";
+  document.getElementById("oneFormTitle").textContent = `Editing: ${r.name}`;
+  document.getElementById("oneSubmitBtn").textContent = "💾 Save changes";
+  document.getElementById("oneCancelBtn").style.display = "inline-block";
+  document.getElementById("oneFormMsg").textContent = "";
+  document.getElementById("oneFormMsg").className = "form-msg";
+  document.getElementById("oneFormTitle").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+// Adds or updates exactly one person in both faculty_roster and
+// faculty_directory — no textarea, no whole-roster replace. Same doc-id
+// scheme (rosterDocId) and same "email never written to faculty_directory"
+// rule as the bulk import path above, so a person added here behaves
+// identically to one pasted in bulk.
+async function submitOnePerson() {
+  const name  = document.getElementById("oneName").value.trim();
+  const email = document.getElementById("oneEmail").value.trim().toLowerCase();
+  const group = document.getElementById("oneGroup").value;
+  const team  = document.getElementById("oneTeam").value.trim();
+  const role  = document.getElementById("oneRole").value.trim();
+  const photo = document.getElementById("onePhoto").value.trim();
+
+  const msgEl = document.getElementById("oneFormMsg");
+  msgEl.className = "form-msg";
+
+  if (!name) { msgEl.className = "form-msg err"; msgEl.textContent = "Name is required."; return; }
+  if (!team) { msgEl.className = "form-msg err"; msgEl.textContent = "Team is required."; return; }
+  if (email && !email.includes("@")) { msgEl.className = "form-msg err"; msgEl.textContent = `"${email}" doesn't look like an email.`; return; }
+
+  const newDocId = rosterDocId(email, group, name);
+  const existing = currentRosterCache.find(x => x.docId === newDocId);
+
+  // Editing, but the name/email/group change means this person's doc id is
+  // moving — confirm before we delete the old doc and create a new one.
+  if (editingDocId && newDocId !== editingDocId) {
+    if (!confirm(`This change means "${name}" needs a new roster entry (their old one, "${editingDocId}", will be removed). Continue?`)) return;
+  }
+  // Adding fresh, but it collides with someone already on the roster —
+  // confirm this is meant to update that person, not create a duplicate.
+  if (!editingDocId && existing) {
+    if (!confirm(`Someone matching this name/email/group is already on the roster (${existing.name}) — update their existing entry instead of adding a new one?`)) return;
+  }
+
+  const preserveOrderFrom = editingDocId
+    ? currentRosterCache.find(x => x.docId === editingDocId)
+    : existing;
+  const order = preserveOrderFrom && typeof preserveOrderFrom.order === "number"
+    ? preserveOrderFrom.order
+    : (currentRosterCache.reduce((max, r) => typeof r.order === "number" && r.order > max ? r.order : max, -1) + 1);
+
+  const record = { order, name, email, group, team, role: role || team, photo };
+  const addedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+  const btn = document.getElementById("oneSubmitBtn");
+  btn.disabled = true;
+
+  try {
+    const batch = db.batch();
+    // Old doc id is being abandoned (name/email/group edit) — remove it.
+    if (editingDocId && newDocId !== editingDocId) {
+      batch.delete(db.collection(COLLECTIONS.facultyRoster).doc(editingDocId));
+      batch.delete(db.collection(COLLECTIONS.facultyDirectory).doc(editingDocId));
+    }
+    const rosterRef = db.collection(COLLECTIONS.facultyRoster).doc(newDocId);
+    batch.set(rosterRef, { ...record, addedAt });
+    const { email: _drop, ...publicFields } = record; // never write email to the public collection
+    const dirRef = db.collection(COLLECTIONS.facultyDirectory).doc(newDocId);
+    batch.set(dirRef, { ...publicFields, addedAt });
+    await batch.commit();
+
+    msgEl.className = "form-msg ok";
+    msgEl.textContent = `✅ ${editingDocId ? "Updated" : "Added"} ${name}.`;
+    clearOneForm();
+    await loadCurrentRoster();
+  } catch (err) {
+    msgEl.className = "form-msg err";
+    msgEl.textContent = "Failed to save: " + err.message;
+  }
+  btn.disabled = false;
+}
+
+async function removeRosterEntry(docId, name) {
+  if (!confirm(`Remove ${name} from the roster? This deletes them from both the public page and the roster immediately — no undo.`)) return;
+  try {
+    const batch = db.batch();
+    batch.delete(db.collection(COLLECTIONS.facultyRoster).doc(docId));
+    batch.delete(db.collection(COLLECTIONS.facultyDirectory).doc(docId));
+    await batch.commit();
+    await loadCurrentRoster();
+  } catch (err) {
+    alert("Failed to remove: " + err.message);
   }
 }
 
 let parsedRows = null; // set by parsePreview(), consumed by confirmImport()
+let currentRosterCache = []; // faculty_roster docs, refreshed by loadCurrentRoster()
+let editingDocId = null;     // set by startEditRosterEntry(), null when the one-person form is in "add" mode
 
 function slugify(name) {
   return (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unnamed";
@@ -425,7 +660,7 @@ async function confirmImport() {
     if (opCount > 0) { await batch.commit(); }
 
     logEl.innerHTML += `<div>✅ Imported ${parsedRows.length} member(s) into both collections.</div>`;
-    await loadCurrentSummary();
+    await loadCurrentRoster();
   } catch (err) {
     logEl.innerHTML += `<div style="color:var(--rmd-warn);">Import failed: ${err.message}</div>`;
   }

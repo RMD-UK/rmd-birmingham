@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructor Weekend — Pass Confirmation — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 900px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .director-note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:16px; line-height:1.5; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin-top:8px; line-height:1.5; }
+    .btn-primary { padding:12px 20px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:disabled { background:#aab8c2; cursor:default; }
+    .btn-primary:hover:not(:disabled) { background:var(--rmd-navy); }
+    .btn-danger { padding:12px 20px; background:#b7410e; color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger:hover { background:#8f3309; }
+    .btn-secondary { padding:8px 14px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-secondary:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
+    .summary-line { font-size:13px; color:var(--rmd-muted); margin-bottom:12px; }
+    .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
+    input[type=date] { padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:14px; font-family:var(--font); }
+    .candidate-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #e8edf2; border-radius:6px; margin-bottom:8px; }
+    .candidate-row .name { font-weight:700; color:var(--rmd-navy); }
+    .candidate-row .meta { color:var(--rmd-muted); font-size:12px; }
+    .candidate-row .already { margin-left:auto; font-size:11px; color:#856404; background:#fff3cd; padding:2px 8px; border-radius:10px; font-weight:700; }
+    .toggle-pill { margin-left:auto; border:none; border-radius:14px; padding:5px 14px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; min-width:70px; }
+    .toggle-pill.pass { background:#e1efe3; color:#1a6e31; }
+    .toggle-pill.fail { background:#fce8e6; color:#b7410e; }
+    .challenge-panel { background:#fce8e6; border:2px solid #f5b8b0; border-radius:8px; padding:16px; margin-top:16px; }
+    .challenge-panel .title { font-weight:700; color:#8f3309; font-size:14px; margin-bottom:8px; }
+    .challenge-panel ul { margin:8px 0; padding-left:20px; }
+    .challenge-panel label { display:flex; align-items:flex-start; gap:8px; font-size:13px; color:#8f3309; margin:12px 0; cursor:pointer; }
+    .success-banner { background:#e1efe3; border:1px solid #a6d8ae; border-radius:8px; padding:16px; color:#1a6e31; font-size:13px; line-height:1.6; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="admin-global-tools.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Instructor Weekend — Pass Confirmation</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only</div>
+    </div>
+  </div>
+
+  <div class="director-note">
+    This is the confirmation step Instructor Candidates need at the end of the weekend before they count as an Instructor permanently — until this runs, "not yet confirmed" is the correct, honest state for everyone on this list. Everyone defaults to <strong>Pass</strong> below, since that's the expected outcome — flip anyone who didn't pass to <strong>Fail</strong>. Before anything is saved you'll be asked to explicitly confirm the list of people being marked as <em>not</em> having passed, since that's the exceptional, higher-stakes action here. Saving records a permanent-standing period against each Pass candidate's own record (the same role-history mechanism <a href="admin-role-history.html">Role History</a> uses) — it doesn't touch this year's Instructor Weekend job assignment.<br><br>
+    Longer term, Jon's plan is to fold this into the annual MoU Bulk Upload rather than run it as a separate page — this exists now so the confirmation step is real and usable for Instructor Weekend 2026 before that's built.
+  </div>
+
+  <div class="card">
+    <div class="card-header">Confirmation date</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Recorded as the start date of each Pass candidate's Instructor standing. Defaults to this year's Instructor Weekend end date — change it if you're running this on a different day.</p>
+      <input type="date" id="confirmDate" value="2026-10-11">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Instructor Candidates</div>
+    <div class="card-body">
+      <div class="summary-line" id="summaryLine">Loading…</div>
+      <div id="candidateList"></div>
+    </div>
+  </div>
+
+  <div id="reviewSection" style="display:none;">
+    <button class="btn-primary" id="reviewBtn" onclick="reviewSubmission()">Review &amp; Confirm →</button>
+  </div>
+
+  <div id="challengeSection"></div>
+
+  <div id="resultSection"></div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+requireDirector("timetable.html");
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+let candidates = [];   // { id, name, email, pass: bool, alreadyConfirmed: bool }
+
+async function loadCandidates() {
+  const listEl = document.getElementById("candidateList");
+  const summaryEl = document.getElementById("summaryLine");
+
+  // Same pattern used across the layered-access read-side migration: bulk-load
+  // this year's iw_assignments into a map, fall back to people.role for anyone
+  // without an assignment doc yet, so this works whether or not every account
+  // has been migrated.
+  const iwAssignments = {};
+  try {
+    const aSnap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    aSnap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignments[a.uid] = a.function;
+    });
+  } catch (e) { console.warn("Could not load iw_assignments:", e.message); }
+
+  try {
+    const pSnap = await db.collection(COLLECTIONS.people).get();
+    pSnap.forEach(doc => {
+      const d = doc.data();
+      const role = iwAssignments[doc.id] || d.role || "";
+      if (role !== "instructor") return;
+      const history = Array.isArray(d.roleHistory) ? d.roleHistory : [];
+      const alreadyConfirmed = history.some(h => h.role === "Instructor" && (h.to === null || h.to === undefined));
+      candidates.push({
+        id: doc.id,
+        name: d.name || d.email || doc.id,
+        email: d.email || "",
+        pass: true,
+        alreadyConfirmed
+      });
+    });
+  } catch (e) {
+    summaryEl.textContent = "Could not load candidates — " + e.message;
+    return;
+  }
+
+  candidates.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!candidates.length) {
+    listEl.innerHTML = '<div class="empty-state">No one is assigned as an Instructor Candidate for Instructor Weekend ' + CURRENT_IW_YEAR + ' yet.</div>';
+    summaryEl.textContent = "";
+    return;
+  }
+
+  summaryEl.textContent = candidates.length + " Instructor Candidate(s) for Instructor Weekend " + CURRENT_IW_YEAR + ".";
+  document.getElementById("reviewSection").style.display = "block";
+  renderCandidates();
+}
+
+function renderCandidates() {
+  const listEl = document.getElementById("candidateList");
+  listEl.innerHTML = candidates.map(c => `
+    <div class="candidate-row">
+      <div>
+        <div class="name">${esc(c.name)}</div>
+        <div class="meta">${esc(c.email)}</div>
+      </div>
+      ${c.alreadyConfirmed ? '<div class="already">Already confirmed</div>' : ''}
+      <button class="toggle-pill ${c.pass ? "pass" : "fail"}" onclick="togglePass('${esc(c.id)}')">${c.pass ? "PASS" : "FAIL"}</button>
+    </div>
+  `).join("");
+}
+
+function togglePass(id) {
+  const c = candidates.find(x => x.id === id);
+  if (c) c.pass = !c.pass;
+  renderCandidates();
+}
+
+function reviewSubmission() {
+  const fails = candidates.filter(c => !c.pass);
+  const challengeEl = document.getElementById("challengeSection");
+
+  if (!fails.length) {
+    challengeEl.innerHTML = `
+      <div class="card"><div class="card-body">
+        <p class="hint" style="margin-top:0;">All ${candidates.length} candidate(s) are marked Pass — nothing to flag. Confirm to save.</p>
+        <button class="btn-primary" onclick="submitConfirmation(this)">Save — record ${candidates.length} Instructor(s)</button>
+      </div></div>`;
+    return;
+  }
+
+  challengeEl.innerHTML = `
+    <div class="challenge-panel">
+      <div class="title">⚠️ Confirm ${fails.length} candidate(s) did NOT pass</div>
+      <div>The following will be recorded as not yet confirmed — no Instructor standing will be saved for them, and they can be confirmed later once this is run again:</div>
+      <ul>${fails.map(c => `<li>${esc(c.name)}</li>`).join("")}</ul>
+      <label><input type="checkbox" id="challengeCheck" onchange="document.getElementById('confirmSubmitBtn').disabled = !this.checked"> I've checked this list and confirm these ${fails.length} candidate(s) genuinely did not pass Instructor Weekend ${CURRENT_IW_YEAR}.</label>
+      <button class="btn-danger" id="confirmSubmitBtn" disabled onclick="submitConfirmation(this)">Save — record ${candidates.length - fails.length} Instructor(s), ${fails.length} not confirmed</button>
+    </div>`;
+}
+
+async function submitConfirmation(btn) {
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+
+  const dateVal = document.getElementById("confirmDate").value || null;
+  const passes = candidates.filter(c => c.pass && !c.alreadyConfirmed);
+  const skipped = candidates.filter(c => c.pass && c.alreadyConfirmed);
+  const fails = candidates.filter(c => !c.pass);
+
+  let ok = 0, failed = 0;
+  for (const c of passes) {
+    try {
+      await addRoleHistoryEntry(c.id, "Instructor", dateVal, "iw-pass-confirmation", "Passed Instructor Weekend " + CURRENT_IW_YEAR);
+      ok++;
+    } catch (e) {
+      failed++;
+      console.warn("Failed to record", c.name, e.message);
+    }
+  }
+
+  document.getElementById("challengeSection").innerHTML = "";
+  document.getElementById("reviewSection").style.display = "none";
+  document.getElementById("resultSection").innerHTML = `
+    <div class="success-banner">
+      <strong>Done.</strong> ${ok} candidate(s) recorded as Instructor, effective ${esc(dateVal || "today")}.
+      ${skipped.length ? skipped.length + " already had a confirmed Instructor period and were left untouched. " : ""}
+      ${fails.length ? fails.length + " not confirmed this run — nothing was saved for them, and they can be confirmed later by running this page again." : ""}
+      ${failed ? "<br><strong>" + failed + " failed to save</strong> — check your connection and re-run for just those people." : ""}
+    </div>`;
+}
+
+document.addEventListener("DOMContentLoaded", loadCandidates);
+
+</script>
+</body>
+</html>

@@ -247,6 +247,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 let allPeople    = [];
 let attendance   = {};   // { personId: { arrivedAt (timestamp) } }
+let iwAssignments = {};  // { uid: function }  -- this year's IW job, from iw_assignments; falls back to people.role when absent
 let currentTab   = "all";
 let currentFilter = "";
 let currentUser  = null;
@@ -294,7 +295,7 @@ window.addEventListener("load", () => {
       return;
     }
 
-    await Promise.all([loadPeople(), loadAttendance()]);
+    await Promise.all([loadPeople(), loadAttendance(), loadIwAssignments()]);
     renderList();
     subscribeAttendance();
   });
@@ -321,6 +322,28 @@ async function loadPeople() {
       { id: "f2", name: "Dr Yemi Addo",   role: "full-instructor", group: "Group 2" }
     ];
   }
+}
+
+// Layered access, step 4 (read side): this year's IW job now lives in
+// iw_assignments, kept separate from permanent standing on the person doc.
+// One bulk read per page load rather than one per person. If it fails or
+// a person has no assignment doc yet, effectiveRole() falls back to
+// people.role exactly as before -- nothing here can break the page.
+async function loadIwAssignments() {
+  try {
+    const snap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if (data.uid && data.function) iwAssignments[data.uid] = data.function;
+    });
+  } catch (e) {
+    // Collection missing, empty, or unreadable -- fall back to people.role.
+  }
+}
+
+function effectiveRole(p) {
+  return iwAssignments[p.id] || p.role;
 }
 
 async function loadAttendance() {
@@ -389,7 +412,16 @@ async function addWalkIn() {
       arrived: firebase.firestore.FieldValue.serverTimestamp(),
       checkedInBy: currentUser?.uid || "manual"
     });
+    await db.collection(COLLECTIONS.iwAssignments).doc(`${CURRENT_IW_YEAR}_${ref.id}`).set({
+      year: CURRENT_IW_YEAR,
+      uid: ref.id,
+      email: null,
+      function: role,
+      assignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      assignedBy: (currentUser && currentUser.email) || null
+    }, { merge: true }).catch(() => {});
     allPeople.push({ id: ref.id, name, role, group });
+    iwAssignments[ref.id] = role;
     attendance[ref.id] = { arrived: new Date() };
     document.getElementById("addName").value  = "";
     document.getElementById("addGroup").value = "";
@@ -423,8 +455,8 @@ function renderList() {
   }
 
   // Group by role category
-  const candidates = people.filter(p => ["instructor","assessor"].includes(p.role));
-  const faculty    = people.filter(p => ["faculty","full-instructor","itc","director","assessor-faculty"].includes(p.role));
+  const candidates = people.filter(p => ["instructor","assessor"].includes(effectiveRole(p)));
+  const faculty    = people.filter(p => ["faculty","full-instructor","itc","director","assessor-faculty"].includes(effectiveRole(p)));
 
   let html = "";
   if (candidates.length) {
@@ -443,8 +475,9 @@ function personRow(p) {
   const rec     = attendance[p.id];
   const arrived = !!rec;
   const initials = (p.name || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
-  const colour  = arrived ? "avatar-green" : (ROLE_COLOURS[p.role] || "avatar-muted");
-  const label   = p.roleLabel || ROLE_LABELS[p.role] || p.role;
+  const role    = effectiveRole(p);
+  const colour  = arrived ? "avatar-green" : (ROLE_COLOURS[role] || "avatar-muted");
+  const label   = p.roleLabel || ROLE_LABELS[role] || role;
   const sub     = [label, p.group].filter(Boolean).join(" · ");
 
   let timeStr = "";
