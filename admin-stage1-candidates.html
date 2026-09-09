@@ -47,6 +47,9 @@
     .preview-table th { text-align:left; background:#eef2f6; padding:6px 8px; font-size:10px; text-transform:uppercase; color:var(--rmd-muted); }
     .preview-table td { padding:6px 8px; border-top:1px solid #f0f3f6; }
     .error-list { background:#fce8e6; border:1px solid #f5b8b0; border-radius:6px; padding:8px 12px; font-size:12px; color:#b7410e; margin-top:10px; }
+    .link-badge { display:inline-block; background:#e8f0fe; color:var(--rmd-blue); font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:6px; }
+    .btn-link-sm { padding:6px 12px; background:white; color:var(--rmd-blue); border:2px solid #b8d4f5; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-link-sm:hover { background:#e8f0fe; }
   </style>
 </head>
 <body>
@@ -92,6 +95,7 @@
         <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
         <input type="text" id="searchBox" placeholder="Search by name, email or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
       </div>
+      <p class="hint" style="margin-top:0;">Someone repeating (absence, need to redo) gets a fresh record on the new course rather than editing their old one in place — paste them in above as normal, then use <strong>Link repeat</strong> on either their old or new row to connect the two records for reference. Nothing else changes; it just stops an old attempt reading as still-pending once you can see it led to a later one.</p>
       <div class="summary-line" id="summaryLine"></div>
       <div id="candidatesWrap"></div>
     </div>
@@ -360,28 +364,121 @@ function renderCandidates() {
 
   document.getElementById("candidatesWrap").innerHTML = filtered.length
     ? `<table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th><th></th></tr></thead>
         <tbody>${filtered.map(c => `
           <tr>
-            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}</td>
+            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
             <td>${esc(c.room) || "–"}</td>
             <td>${c.promotedToUid ? "" : `<button class="btn-promote" onclick="promoteToInstructor('${c.id}')">Promote to Instructor</button>`}</td>
+            <td>${c.linkedCandidateId
+              ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
+              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}</td>
             <td><button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
           </tr>`).join("")}</tbody>
       </table>`
     : `<div class="empty-state">No candidates match.</div>`;
 }
 
+// ── Repeat/subsequent-course linking ──────────────────────────────────────
+// Recommendation (2026-09-07, see rmd_website_stage1_repeat_course_process
+// memory): never edit an existing record's course in place when someone
+// repeats — create a fresh record on the new course instead, so the first
+// attempt's history (which course, which room, what happened) is kept, not
+// overwritten. Jon's follow-up decision (2026-09-09): link the two records
+// rather than adding a status field, so a stale first-attempt record still
+// reads clearly once you can see it connects to a later attempt, without
+// needing a whole new status vocabulary. A single `linkedCandidateId`
+// pointer, written on BOTH records so either one shows the connection —
+// covers the common one-repeat case; someone repeating twice would need two
+// separate pairwise links rather than one three-way chain, judged not worth
+// the extra complexity unless it actually comes up.
+function linkedBadgeHtml(c) {
+  if (!c.linkedCandidateId) return "";
+  const other = allCandidates.find(x => x.id === c.linkedCandidateId);
+  return ` <span class="link-badge" title="Linked as the same person's repeat attempt">🔗 ${other ? esc(other.name) + " — " + esc(other.course || "no course") : "linked record"}</span>`;
+}
+
+async function linkRepeat(candidateId) {
+  const c = allCandidates.find(x => x.id === candidateId);
+  if (!c) return;
+  if (c.linkedCandidateId) { alert("Already linked — unlink first if you need to change it."); return; }
+
+  const q = prompt(`Search for the other record to link "${c.name}" to (their earlier or later attempt) — type part of their name:`, c.name.split(" ")[0] || "");
+  if (q === null) return;
+  const query = q.trim().toLowerCase();
+  if (!query) { alert("Type something to search for."); return; }
+
+  const matches = allCandidates.filter(x =>
+    x.id !== candidateId && !x.linkedCandidateId && (x.name || "").toLowerCase().includes(query));
+  if (!matches.length) { alert("No unlinked candidate record matches that search."); return; }
+
+  let target;
+  if (matches.length === 1) {
+    target = matches[0];
+  } else {
+    const list = matches.map((m, i) => `${i + 1}. ${m.name} — ${m.course || "no course"} (${m.degree || "no degree"})`).join("\n");
+    const pick = prompt(`Multiple matches — type the number of the right one:\n\n${list}`);
+    const idx = parseInt(pick, 10) - 1;
+    if (!matches[idx]) { alert("Not a valid choice — nothing linked."); return; }
+    target = matches[idx];
+  }
+
+  if (!confirm(`Link these as the same person's repeat attempts?\n\n${c.name} — ${c.course || "no course"}\n${target.name} — ${target.course || "no course"}\n\nThis just connects the two records for reference — nothing else about either one changes.`)) return;
+
+  try {
+    const linkedAt = firebase.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { linkedCandidateId: target.id, linkedAt });
+    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(target.id), { linkedCandidateId: c.id, linkedAt });
+    await batch.commit();
+    c.linkedCandidateId = target.id;
+    target.linkedCandidateId = c.id;
+    renderCandidates();
+  } catch (err) {
+    alert("Failed to link: " + err.message);
+  }
+}
+
+async function unlinkRepeat(candidateId) {
+  const c = allCandidates.find(x => x.id === candidateId);
+  if (!c || !c.linkedCandidateId) return;
+  const other = allCandidates.find(x => x.id === c.linkedCandidateId);
+  if (!confirm(`Unlink ${c.name} from ${other ? other.name : "their linked record"}?`)) return;
+  try {
+    const batch = db.batch();
+    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { linkedCandidateId: null, linkedAt: null });
+    if (other) batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(other.id), { linkedCandidateId: null, linkedAt: null });
+    await batch.commit();
+    c.linkedCandidateId = null;
+    if (other) other.linkedCandidateId = null;
+    renderCandidates();
+  } catch (err) {
+    alert("Failed to unlink: " + err.message);
+  }
+}
+
 async function deleteCandidate(id) {
   const c = allCandidates.find(x => x.id === id);
   if (!c) return;
-  if (!confirm(`Delete this candidate record?\n\n${c.name || "(no name)"} — ${c.course || "no course"} / ${c.room || "no room"}\n\nThis cannot be undone. If they've already been promoted to Instructor, this only removes their Stage 1 record — their account is untouched.`)) return;
+  const linkNote = c.linkedCandidateId ? "\n\nThis record is linked to a repeat attempt — deleting it will also clear that link on the other record." : "";
+  if (!confirm(`Delete this candidate record?\n\n${c.name || "(no name)"} — ${c.course || "no course"} / ${c.room || "no room"}${linkNote}\n\nThis cannot be undone. If they've already been promoted to Instructor, this only removes their Stage 1 record — their account is untouched.`)) return;
   try {
-    await db.collection(COLLECTIONS.stage1Candidates).doc(id).delete();
+    const batch = db.batch();
+    batch.delete(db.collection(COLLECTIONS.stage1Candidates).doc(id));
+    // Clear the dangling pointer on the linked record, if there is one —
+    // otherwise it'd show a "🔗 linked record" badge pointing at nothing.
+    if (c.linkedCandidateId) {
+      batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.linkedCandidateId), { linkedCandidateId: null, linkedAt: null });
+    }
+    await batch.commit();
     allCandidates = allCandidates.filter(x => x.id !== id);
+    if (c.linkedCandidateId) {
+      const other = allCandidates.find(x => x.id === c.linkedCandidateId);
+      if (other) other.linkedCandidateId = null;
+    }
     populateCourseFilter();
     renderCandidates();
   } catch (err) {
