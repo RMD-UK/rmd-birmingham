@@ -541,8 +541,14 @@ async function startCreation() {
       <div class="log-status ${statusClass}">${statusText}</div>`;
     document.getElementById("logList").appendChild(entry);
 
-    // Small delay to avoid rate limiting
-    await new Promise(r => setTimeout(r, 300));
+    // Delay between people to stay under Firebase Auth's abuse-protection
+    // rate limit on the public identitytoolkit signUp/sendOobCode endpoints
+    // (TOO_MANY_ATTEMPTS_TRY_LATER) -- 2026-09-09, Jon hit this mid-batch
+    // even with the old 300ms gap. Bumped to 1500ms (two calls per person,
+    // signUp + sendOobCode, so ~3s of API traffic per person either way) --
+    // trades a slower run (roughly 3 minutes per 60 people) for not tripping
+    // the limiter and needing a second run.
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   // Summary
