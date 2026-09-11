@@ -957,14 +957,15 @@ function renderERC() {
           <td>${r.email||"–"}</td>
           <td>${r.ercQualification||"–"}</td>
           <td>${r.ercLiaisonConfirmed ? "✓ Will contact ERC" : "–"}</td>
+          <td><button class="btn-action secondary" onclick="resolveErcIssue('${r.id}')">✓ Mark resolved</button></td>
         </tr>`).join("")
-    : `<tr><td colspan="4" style="color:#aab8c2;text-align:center;">No ERC issues reported</td></tr>`;
+    : `<tr><td colspan="5" style="color:#aab8c2;text-align:center;">No ERC issues reported</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
       <div class="section-heading" style="color:#b7410e;">ERC issues — needs correcting before end of September (${toFix.length})</div>
       <table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Current ERC qualification</th><th>Liaison confirmed</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Current ERC qualification</th><th>Liaison confirmed</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -1147,6 +1148,30 @@ function renderProvisional() {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+// resolveErcIssue(docId) - director-initiated override, added 2026-09-11.
+// Until now ercCorrectlyListed could only be corrected by the person
+// resubmitting faculty-form.html with their ERC listing fixed on the ERC's
+// own side; Jon confirmed it's fine for a director to just mark it resolved
+// directly here instead of waiting on that. Removes them from the "ERC
+// issues" list (renderERC()'s toFix filter) and the "ERC TO FIX" summary
+// count immediately, since both key off ercCorrectlyListed === "no".
+async function resolveErcIssue(docId) {
+  if (!confirm("Mark this person's ERC listing as resolved? This removes them from the ERC issues list.")) return;
+  try {
+    await db.collection("faculty_responses").doc(docId).update({
+      ercCorrectlyListed: "yes",
+      ercResolvedByDirector: true,
+      ercResolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    const r = allResponses.find(x => x.id === docId);
+    if (r) { r.ercCorrectlyListed = "yes"; r.ercResolvedByDirector = true; }
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update: " + err.message);
+  }
 }
 
 // setProvisional(docId) - admin-initiated version of the provisional flag,
