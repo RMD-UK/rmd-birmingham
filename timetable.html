@@ -564,8 +564,12 @@
       const end = timeToMinutes(live.start) + live.duration;
       const remaining = end - (now.getHours()*60 + now.getMinutes());
       nextInfo.textContent = `${remaining} min remaining`;
+      // 2026-09-11 (Jon): flag the last 5 minutes of a live session in red
+      // so it's visible at a glance on the programme, not just a plain count.
+      nextInfo.classList.toggle("urgent", remaining <= 5);
     } else {
       liveLabel.textContent = "";
+      nextInfo.classList.remove("urgent");
       const next = sessions.find(s => timeToMinutes(s.start) > (now.getHours()*60+now.getMinutes()));
       nextInfo.textContent = next ? `Next: ${next.start} — ${next.title}` : "";
     }
