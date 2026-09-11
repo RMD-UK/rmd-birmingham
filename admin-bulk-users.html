@@ -483,6 +483,20 @@ async function startCreation() {
     // account creation over a failed read.
   }
 
+  // 2026-09-11: same idea as the People pre-check above, for the other
+  // duplicate-account trap this project has hit — changePersonEmail (see
+  // "Change Someone's Account Email" below) frees the old address in
+  // Firebase Auth the moment it changes someone's email, which means it's
+  // available again for a fresh, unrelated signup here. Flag it instead of
+  // silently creating one.
+  let retiredEmails = new Map();
+  try {
+    const retiredSnap = await db.collection("retired_emails").get();
+    retiredSnap.forEach(doc => retiredEmails.set(doc.id, doc.data()));
+  } catch (e) {
+    // Non-fatal — same fallback as above.
+  }
+
   let ok = 0, err = 0, skip = 0;
 
   for (let i = 0; i < entries.length; i++) {
@@ -491,6 +505,21 @@ async function startCreation() {
     document.getElementById("progressBar").style.width = pct + "%";
 
     let icon, statusClass, statusText;
+
+    const retired = retiredEmails.get(email.toLowerCase());
+    if (retired) {
+      icon = "🚫"; statusClass = "skip";
+      statusText = `Skipped — this address was retired when someone's email was changed to ${retired.newEmail}. Use that address instead, or Change Someone's Account Email below if this really is meant for a new/different person.`;
+      skip++;
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      entry.innerHTML = `
+        <div class="log-icon">${icon}</div>
+        <div class="log-email">${email}${name ? ` <span style="color:var(--rmd-muted)">(${name})</span>` : ""}</div>
+        <div class="log-status ${statusClass}">${statusText}</div>`;
+      document.getElementById("logList").appendChild(entry);
+      continue;
+    }
 
     try {
       // Create Auth account via REST API (works from browser with API key).
@@ -700,6 +729,14 @@ async function startMouRosterCreation() {
   document.getElementById("mouLogList").innerHTML = "";
   document.getElementById("mouSummaryBar").innerHTML = "";
 
+  let retiredEmails = new Map();
+  try {
+    const retiredSnap = await db.collection("retired_emails").get();
+    retiredSnap.forEach(doc => retiredEmails.set(doc.id, doc.data()));
+  } catch (e) {
+    // Non-fatal — see the same check in startCreation() above.
+  }
+
   let ok = 0, err = 0, skip = 0;
 
   for (let i = 0; i < mouRosterEntries.length; i++) {
@@ -708,6 +745,21 @@ async function startMouRosterCreation() {
     document.getElementById("mouProgressBar").style.width = pct + "%";
 
     let icon, statusClass, statusText;
+
+    const retired = retiredEmails.get(email.toLowerCase());
+    if (retired) {
+      icon = "🚫"; statusClass = "skip";
+      statusText = `Skipped — this address was retired when someone's email was changed to ${retired.newEmail}. Use that address instead, or Change Someone's Account Email below if this really is meant for a new/different person.`;
+      skip++;
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      entry.innerHTML = `
+        <div class="log-icon">${icon}</div>
+        <div class="log-email">${email}${name ? ` <span style="color:var(--rmd-muted)">(${name}${role ? " — " + role : ""})</span>` : ""}</div>
+        <div class="log-status ${statusClass}">${statusText}</div>`;
+      document.getElementById("mouLogList").appendChild(entry);
+      continue;
+    }
 
     try {
       const res = await fetch(
@@ -750,7 +802,12 @@ async function startMouRosterCreation() {
       <div class="log-status ${statusClass}">${statusText}</div>`;
     document.getElementById("mouLogList").appendChild(entry);
 
-    await new Promise(r => setTimeout(r, 300));
+    // Same abuse-protection rate limit as startCreation() above
+    // (TOO_MANY_ATTEMPTS_TRY_LATER) -- this loop was still at the old
+    // 300ms gap when that one was bumped to 1500ms on 2026-09-09, and this
+    // is the "for all active members" button Jon's report almost certainly
+    // meant. Matched to the same 1500ms here.
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   document.getElementById("mouSummaryBar").innerHTML = `
