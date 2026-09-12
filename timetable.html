@@ -510,8 +510,12 @@
         ${itcObsBtn}
       </div>` : "";
 
-    // Timer button (director only, non-break)
-    const timerBtn = currentRole === "director" && !isBreak
+    // Timer button — everyone except Instructor Candidates and
+    // Assessor/Senior-Instructor Candidates (they're being timed, not
+    // running the clock themselves). Was director-only; widened 2026-09-12
+    // per Jon's instruction.
+    const TIMER_EXCLUDED_ROLES = [ROLES.INSTRUCTOR, ROLES.ASSESSOR];
+    const timerBtn = !TIMER_EXCLUDED_ROLES.includes(currentRole) && !isBreak
       ? `<button class="session-timer-btn" onclick="event.stopPropagation();launchTimer('${s.id}','${s.title.replace(/'/g,"\\'")}',${s.duration})">⏱ Timer</button>`
       : "";
 

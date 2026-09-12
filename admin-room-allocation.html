@@ -709,6 +709,46 @@ async function saveAll() {
     const itcList = allITC.filter(p => itcSet.has(p.email)).map(p => ({ name: p.name, email: p.email }));
     batch.set(db.collection("config").doc("itc_schedule"), { itcs: itcList, assignments: itcSchedule, year: CURRENT_MOU_YEAR, updatedAt: ts });
 
+    // Sync each room onto the person's own people/{uid} doc.
+    // Added 2026-09-12: session-feedback.html (candidate rating) and
+    // itc-observations.html (ITC rotation) both work out "my room" from
+    // currentUserDoc.group/.room on the signed-in person's OWN people doc —
+    // not from this groups collection. Nothing wrote that field before this,
+    // so those two pages could never actually find someone's real room
+    // (they'd either fall through to the demo candidates or, worse, an
+    // unfiltered query returning every candidate across every room). This
+    // keeps people.group in sync with whatever's actually saved here:
+    // assigned to a room → that room's id; removed/never assigned → cleared.
+    try {
+      const peopleSnap = await db.collection(COLLECTIONS.people).get();
+      const uidByEmail = {};
+      peopleSnap.forEach(doc => {
+        const em = (doc.data().email || "").toLowerCase();
+        if (em) uidByEmail[em] = doc.id;
+      });
+
+      const roomByEmail = {};
+      ROOMS.forEach(rid => {
+        [...(groups[rid].candidates || []), ...(groups[rid].instructors || []), ...(groups[rid].facultyLeads || [])]
+          .forEach(p => { roomByEmail[(p.email || "").toLowerCase()] = rid; });
+      });
+
+      // Anyone who could ever be assigned to a room this year — including
+      // people just removed from one, so their stale group gets cleared.
+      const assignablePool = uniquePeople([...allCandidates, ...allInstructors, ...allFaculty, ...allLeadCandidates]);
+      assignablePool.forEach(p => {
+        const em  = (p.email || "").toLowerCase();
+        const uid = uidByEmail[em];
+        if (!uid) return; // no login/people doc yet — nothing to sync onto
+        const rid = roomByEmail[em] || null;
+        batch.set(db.collection(COLLECTIONS.people).doc(uid), {
+          group: rid || firebase.firestore.FieldValue.delete()
+        }, { merge: true });
+      });
+    } catch (e) {
+      console.warn("Could not sync rooms onto people docs:", e.message);
+    }
+
     await batch.commit();
     showStatus("✓ All saved","ok");
   } catch(e) {
