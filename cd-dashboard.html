@@ -386,6 +386,9 @@
       <div class="nav-item" onclick="switchSection('itcs')" id="nav-itcs">
         <span class="nav-icon">🔄</span><span>ITCs</span>
       </div>
+      <div class="nav-item" onclick="switchSection('rooms')" id="nav-rooms">
+        <span class="nav-icon">🏠</span><span>Rooms</span>
+      </div>
       <div class="nav-item" onclick="switchSection('meetings')" id="nav-meetings">
         <span class="nav-icon">📋</span><span>Meetings</span>
       </div>
@@ -524,6 +527,33 @@
         <div class="card-header">ITC Observations</div>
         <div class="card-body" id="itcObsBody">
           <div class="empty-msg">Observation records will appear here as ITCs are assessed.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── ROOMS ── -->
+    <section class="section" id="section-rooms">
+      <div class="section-title">Room Rosters</div>
+      <p class="text-sm text-muted" style="margin:-6px 0 12px;">Instructor Trainers and Instructor Candidates are fixed in their room for the whole weekend. Pick a session block below to see which ITC is visiting each room for that block.</p>
+      <div class="day-tabs" id="roomBlockTabs">
+        <button class="day-tab-btn active" onclick="showRoomBlock('sat_group',this)">Sat — Equipment/BLS/First Aid</button>
+        <button class="day-tab-btn" onclick="showRoomBlock('sat_conv',this)">Sat — Learning Conversation</button>
+        <button class="day-tab-btn" onclick="showRoomBlock('sun_teaching',this)">Sun — Teaching</button>
+        <button class="day-tab-btn" onclick="showRoomBlock('sun_assess',this)">Sun — Continuous Assessment</button>
+      </div>
+      <div class="card">
+        <div class="card-header">Room Roster</div>
+        <div class="card-body" style="padding:0;">
+          <table class="cand-table">
+            <thead><tr>
+              <th>Room</th>
+              <th>Faculty Lead</th>
+              <th>Instructor Trainers</th>
+              <th>Instructor Candidates</th>
+              <th>ITC (this session)</th>
+            </tr></thead>
+            <tbody id="roomsTableBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -722,6 +752,14 @@ let itcSchedule  = {};    // { itcs:[{name,email}], assignments:{email:{sat_grou
 let itcSummaries = {};    // { itcEmail: {summary, observationCount, generatedAt, ...} }
 let fns; // firebase.functions() — set in boot, after initFirebase()
 
+// Room rosters (groups collection, one doc per room) + which session block
+// the Rooms tab is currently showing the ITC rotation for — added
+// 2026-09-13 so Instructor Trainer / Instructor Candidate / ITC can be seen
+// together for one room in one place, instead of cross-referencing Room
+// Groups and ITC Schedule by hand.
+let groups = {};             // { CM01: {facultyLeads:[], instructors:[], candidates:[]}, ... }
+let currentRoomBlock = "sat_group";
+
 // Mirrors ITC_SESSIONS in admin-room-allocation.html — the 4 rotation blocks
 // ITCs are assigned rooms for. Duplicated locally (small, stable constant;
 // no shared module for it exists yet in this codebase).
@@ -761,13 +799,14 @@ window.addEventListener("load", () => {
   requireDirector("timetable.html").then(async user => {
     currentUser = user;
 
-    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries()]);
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
     renderProgramme("saturday");
     renderFeedback("saturday");
     renderMeetingSlides("saturday");
     renderITCs();
     renderItcSummaries();
+    renderRooms();
     loadMeetingNotes();
     loadReport();
     watchAlerts();
@@ -840,6 +879,14 @@ async function loadItcSchedule() {
     const doc = await db.collection("config").doc("itc_schedule").get();
     if (doc.exists) itcSchedule = doc.data();
   } catch (e) { console.warn("ITC schedule load failed:", e.message); }
+}
+
+async function loadGroups() {
+  try {
+    const snap = await db.collection(COLLECTIONS.groups).get();
+    groups = {};
+    snap.forEach(d => { groups[d.id] = d.data(); });
+  } catch (e) { console.warn("Groups load failed:", e.message); groups = {}; }
 }
 
 async function loadItcSummaries() {
@@ -1114,6 +1161,54 @@ async function generateItcSummary(itcEmail, docId) {
     alert(`Couldn't generate summary: ${err.message || err.code || "unknown error"}`);
     if (btn) { btn.disabled = false; btn.textContent = "✨ Generate summary"; }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROOMS — combined Instructor Trainer / Instructor Candidate / ITC view per
+// room, added 2026-09-13. Room rosters (groups collection) are fixed for the
+// weekend; the ITC visiting each room rotates by session block, so the block
+// tabs only affect the ITC column, not the Trainer/Candidate columns.
+// ─────────────────────────────────────────────────────────────────────────────
+function showRoomBlock(key, btnEl) {
+  currentRoomBlock = key;
+  document.querySelectorAll("#roomBlockTabs .day-tab-btn").forEach(b => b.classList.remove("active"));
+  if (btnEl) btnEl.classList.add("active");
+  renderRooms();
+}
+
+function renderRooms() {
+  const tbody = document.getElementById("roomsTableBody");
+  if (!tbody) return;
+
+  const rooms = Object.keys(groups).sort();
+  if (!rooms.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">No rooms allocated yet — use Room Allocation to set up groups.</td></tr>`;
+    return;
+  }
+
+  // Which ITC (if any) is in each room for the currently selected block.
+  const itcs = itcSchedule.itcs || [];
+  const assignments = itcSchedule.assignments || {};
+  const itcByRoom = {};
+  itcs.forEach(itc => {
+    const room = (assignments[itc.email] || {})[currentRoomBlock];
+    if (room) itcByRoom[room] = itc.name;
+  });
+
+  tbody.innerHTML = rooms.map(rid => {
+    const g = groups[rid] || {};
+    const leads = (g.facultyLeads || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
+    const trainers = (g.instructors || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
+    const cands = (g.candidates || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
+    const itcName = itcByRoom[rid] ? esc(itcByRoom[rid]) : `<span class="empty-msg">—</span>`;
+    return `<tr>
+      <td><strong>${esc(rid)}</strong></td>
+      <td>${leads}</td>
+      <td>${trainers}</td>
+      <td>${cands}</td>
+      <td>${itcName}</td>
+    </tr>`;
+  }).join("");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1544,6 +1639,7 @@ function switchSection(name) {
   // Lazy renders
   if (name === "candidates") renderCandidates();
   if (name === "itcs")       renderITCs();
+  if (name === "rooms")      renderRooms();
   if (name === "feedback")   renderFeedback(currentFeedbackDay);
   if (name === "programme")  renderProgramme(currentProgDay);
   if (name === "faculty")    { loadFacultyResponses(); renderFacultyList(); }
@@ -1576,13 +1672,14 @@ async function refreshDashboardData(linkEl) {
   const original = linkEl ? linkEl.textContent : null;
   if (linkEl) { linkEl.textContent = "⏳ Refreshing…"; linkEl.style.pointerEvents = "none"; }
   try {
-    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries()]);
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
     renderProgramme(currentProgDay);
     renderFeedback(currentFeedbackDay);
     renderCandidates();
     renderITCs();
     renderItcSummaries();
+    renderRooms();
     if (currentSection === "faculty") { await loadFacultyResponses(); renderFacultyList(); }
   } catch (e) {
     alert(`Refresh failed: ${e.message}`);
