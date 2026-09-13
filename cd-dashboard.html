@@ -547,12 +547,11 @@
           <table class="cand-table">
             <thead><tr>
               <th>Room</th>
-              <th>Faculty Lead</th>
               <th>Instructor Trainers</th>
               <th>Instructor Candidates</th>
               <th>ITC (this session)</th>
             </tr></thead>
-            <tbody id="roomsTableBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+            <tbody id="roomsTableBody"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -757,7 +756,7 @@ let fns; // firebase.functions() — set in boot, after initFirebase()
 // 2026-09-13 so Instructor Trainer / Instructor Candidate / ITC can be seen
 // together for one room in one place, instead of cross-referencing Room
 // Groups and ITC Schedule by hand.
-let groups = {};             // { CM01: {facultyLeads:[], instructors:[], candidates:[]}, ... }
+let groups = {};             // { CM01: {instructors:[], candidates:[]}, ... }
 let currentRoomBlock = "sat_group";
 
 // Mirrors ITC_SESSIONS in admin-room-allocation.html — the 4 rotation blocks
@@ -1182,7 +1181,7 @@ function renderRooms() {
 
   const rooms = Object.keys(groups).sort();
   if (!rooms.length) {
-    tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">No rooms allocated yet — use Room Allocation to set up groups.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-msg">No rooms allocated yet — use Room Allocation to set up groups.</td></tr>`;
     return;
   }
 
@@ -1197,13 +1196,11 @@ function renderRooms() {
 
   tbody.innerHTML = rooms.map(rid => {
     const g = groups[rid] || {};
-    const leads = (g.facultyLeads || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
     const trainers = (g.instructors || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
     const cands = (g.candidates || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
     const itcName = itcByRoom[rid] ? esc(itcByRoom[rid]) : `<span class="empty-msg">—</span>`;
     return `<tr>
       <td><strong>${esc(rid)}</strong></td>
-      <td>${leads}</td>
       <td>${trainers}</td>
       <td>${cands}</td>
       <td>${itcName}</td>
