@@ -348,8 +348,22 @@
   </div>
   <div style="display:flex;align-items:center;gap:14px;">
     <span class="dash-time" id="dashTime">--:--</span>
+    <!-- Manual refresh — added 2026-09-12. Everything on this page except the
+         red-flag alert strip (watchAlerts()'s live listener) is a one-time
+         .get() at page load: room/group assignments, candidate lists,
+         decisions, ITC schedule, faculty responses. If someone changes any
+         of that elsewhere while this tab is open, it goes stale until either
+         a full page reload or this button re-runs the same loads in place. -->
+    <a href="#" onclick="refreshDashboardData(this)" class="dash-signout" id="refreshBtn">🔄 Refresh</a>
     <a href="member-menu.html" class="dash-signout">‹ Menu</a>
     <a href="timetable.html" class="dash-signout">← Timetable</a>
+    <!-- Reset practice data — director-only rehearsal tool, added 2026-09-12.
+         Clears session_feedback + decisions so a rehearsal run of the
+         Overview/Feedback tabs doesn't leave fake ratings/decisions sitting
+         on the real dashboard. Only rendered before the actual event starts
+         (see resetPracticeData()'s caller in boot) so nobody can wipe genuine
+         candidate feedback once the weekend is under way. -->
+    <a href="#" onclick="resetPracticeData()" class="dash-signout" id="resetPracticeBtn" style="display:none;color:#ffb4a0;">🗑 Reset practice data</a>
     <a href="#" onclick="signOut()" class="dash-signout">Sign out</a>
   </div>
 </div>
@@ -757,6 +771,16 @@ window.addEventListener("load", () => {
     loadMeetingNotes();
     loadReport();
     watchAlerts();
+
+    // Reset-practice-data button: only before the real event starts (9 Oct
+    // 2026), so rehearsals can clean up after themselves but nobody can
+    // wipe genuine candidate feedback once the weekend is under way.
+    const now = new Date();
+    const eventStart = new Date(2026, 9, 9); // month is 0-indexed: 9 = October
+    if (now < eventStart) {
+      const btn = document.getElementById("resetPracticeBtn");
+      if (btn) btn.style.display = "";
+    }
   });
 });
 
@@ -1538,6 +1562,92 @@ function updateClock() {
 
 function signOut() {
   auth.signOut().then(() => window.location.href = "index.html");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MANUAL REFRESH — added 2026-09-12. Re-runs the same loads the page does on
+// boot, then re-renders whatever's currently on screen using the tracked
+// current-day/section state (so it doesn't silently jump you back to
+// Saturday/Overview). Deliberately leaves meeting notes and the report draft
+// alone — those are live text Jon may be mid-typing in this same tab, not
+// data that goes stale from someone else's change elsewhere.
+// ─────────────────────────────────────────────────────────────────────────────
+async function refreshDashboardData(linkEl) {
+  const original = linkEl ? linkEl.textContent : null;
+  if (linkEl) { linkEl.textContent = "⏳ Refreshing…"; linkEl.style.pointerEvents = "none"; }
+  try {
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries()]);
+    renderOverview();
+    renderProgramme(currentProgDay);
+    renderFeedback(currentFeedbackDay);
+    renderCandidates();
+    renderITCs();
+    renderItcSummaries();
+    if (currentSection === "faculty") { await loadFacultyResponses(); renderFacultyList(); }
+  } catch (e) {
+    alert(`Refresh failed: ${e.message}`);
+  } finally {
+    if (linkEl) { linkEl.textContent = original; linkEl.style.pointerEvents = ""; }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESET PRACTICE DATA — director-only rehearsal tool, added 2026-09-12.
+// Clears session_feedback (candidate ratings/red-flags/strong-weak flags)
+// and decisions (Pass/Defer/Fail calls) so a rehearsal of this dashboard
+// doesn't leave fake data sitting on top of the real thing later. The
+// button that calls this is only shown before the event start date (see
+// boot, above) as a second safeguard against wiping genuine feedback.
+// Does NOT touch session_quality, participant_feedback, itc_summaries, or
+// any other collection — only the two this page's Overview/Feedback tabs
+// actually populate from rated candidates and CD decisions.
+// ─────────────────────────────────────────────────────────────────────────────
+async function resetPracticeData() {
+  let feedbackSnap, decisionsSnap;
+  try {
+    [feedbackSnap, decisionsSnap] = await Promise.all([
+      db.collection("session_feedback").get(),
+      db.collection("decisions").get()
+    ]);
+  } catch (e) {
+    alert(`Couldn't check what's there to reset: ${e.message}`);
+    return;
+  }
+
+  const fbCount  = feedbackSnap.size;
+  const decCount = decisionsSnap.size;
+  if (!fbCount && !decCount) {
+    alert("Nothing to reset — no candidate ratings or decisions recorded yet.");
+    return;
+  }
+
+  const names = [...new Set(feedbackSnap.docs.map(d => d.data().candidateName).filter(Boolean))];
+  const preview = names.slice(0, 8).join(", ") + (names.length > 8 ? `, +${names.length - 8} more` : "");
+  const ok = confirm(
+    `Delete ALL practice data from this dashboard?\n\n` +
+    `${fbCount} candidate rating${fbCount === 1 ? "" : "s"} (${preview || "none"})\n` +
+    `${decCount} Pass/Defer/Fail decision${decCount === 1 ? "" : "s"}\n\n` +
+    `This cannot be undone. Only do this between rehearsals — never once the real weekend has started.`
+  );
+  if (!ok) return;
+
+  try {
+    const allDocs = [...feedbackSnap.docs, ...decisionsSnap.docs];
+    // Firestore batches cap at 500 writes — chunk defensively even though
+    // today's practice runs are nowhere near that.
+    for (let i = 0; i < allDocs.length; i += 400) {
+      const batch = db.batch();
+      allDocs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+  } catch (e) {
+    alert(`Reset failed partway through: ${e.message}. Check the session_feedback and decisions collections directly before trying again.`);
+  }
+
+  await Promise.all([loadFeedback(), loadDecisions()]);
+  renderOverview();
+  renderFeedback(currentFeedbackDay || "saturday");
+  alert(`Done — cleared ${fbCount} rating${fbCount === 1 ? "" : "s"} and ${decCount} decision${decCount === 1 ? "" : "s"}.`);
 }
 
 function esc(s) {
