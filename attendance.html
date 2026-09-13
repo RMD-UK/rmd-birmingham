@@ -251,6 +251,7 @@ let iwAssignments = {};  // { uid: function }  -- this year's IW job, from iw_as
 let currentTab   = "all";
 let currentFilter = "";
 let currentUser  = null;
+let canEdit      = false;  // Director / RMD Student Faculty / RMD Senior Faculty — see boot, below
 
 const ROLE_LABELS = {
   "instructor":       "Instructor Candidate",
@@ -280,20 +281,22 @@ window.addEventListener("load", () => {
     if (!user) { window.location.href = "index.html"; return; }
     currentUser = user;
 
-    // Restricted 2026-09-07 per Jon: Registration (check-in + "who's here"
-    // dashboard) is for RMD Student Faculty and Senior Faculty, plus the
-    // usual Director/Super-user override via resolveRole(). Previously any
-    // signed-in user could open this page — no role check existed at all.
+    // Broadened 2026-09-13 per Jon: everyone who can sign in at all (Faculty,
+    // Instructor Trainers, ITCs, Assessor Faculty, Director) can now VIEW this
+    // page — Instructor Candidates and Assessor/Senior Instructors never get
+    // logins at all (see admin-bulk-users.html), so "everyone except
+    // candidates" in practice means everyone who could ever reach this
+    // authenticated page. Editing (check-in / undo / walk-in registration)
+    // stays restricted to the original set below, per the 2026-09-07 note
+    // this replaces: Director, RMD Student Faculty, RMD Senior Faculty.
     const email = user.email || "";
     const [role, studentFac, seniorFac] = await Promise.all([
       resolveRole(user.uid, email),
       isStudentFaculty(email),
       isSeniorFaculty(email)
     ]);
-    if (role !== "director" && !studentFac && !seniorFac) {
-      window.location.href = "timetable.html";
-      return;
-    }
+    canEdit = role === "director" || studentFac || seniorFac;
+    document.getElementById("tab-add").classList.toggle("hidden", !canEdit);
 
     await Promise.all([loadPeople(), loadAttendance(), loadIwAssignments()]);
     renderList();
@@ -367,6 +370,7 @@ function subscribeAttendance() {
 // Check in / undo
 // ─────────────────────────────────────────────────────────────────────────────
 async function checkIn(personId) {
+  if (!canEdit) return;
   const now = firebase.firestore.FieldValue.serverTimestamp();
   try {
     await db.collection(COLLECTIONS.attendance).doc(personId).set({
@@ -384,6 +388,7 @@ async function checkIn(personId) {
 }
 
 async function undoCheckIn(personId) {
+  if (!canEdit) return;
   try {
     await db.collection(COLLECTIONS.attendance).doc(personId).delete();
     delete attendance[personId];
@@ -398,6 +403,7 @@ async function undoCheckIn(personId) {
 // Walk-in
 // ─────────────────────────────────────────────────────────────────────────────
 async function addWalkIn() {
+  if (!canEdit) return;
   const name  = document.getElementById("addName").value.trim();
   const role  = document.getElementById("addRole").value;
   const group = document.getElementById("addGroup").value.trim();
@@ -494,10 +500,14 @@ function personRow(p) {
         <div class="person-sub">${esc(sub)}</div>
       </div>
       <div class="person-status">
-        ${arrived
-          ? `<div class="arrived-time">✓ ${timeStr}</div>
-             <button class="btn-undo" onclick="undoCheckIn('${esc(p.id)}')">Undo</button>`
-          : `<button class="btn-checkin" onclick="checkIn('${esc(p.id)}')">Check in</button>`
+        ${canEdit
+          ? (arrived
+              ? `<div class="arrived-time">✓ ${timeStr}</div>
+                 <button class="btn-undo" onclick="undoCheckIn('${esc(p.id)}')">Undo</button>`
+              : `<button class="btn-checkin" onclick="checkIn('${esc(p.id)}')">Check in</button>`)
+          : (arrived
+              ? `<div class="arrived-time">✓ ${timeStr}</div>`
+              : `<div class="arrived-time" style="opacity:.5;">Not yet arrived</div>`)
         }
       </div>
     </div>`;

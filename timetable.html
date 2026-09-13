@@ -807,10 +807,39 @@
     return false;
   }
 
+  // ── Noticeboard: dismiss (read, per-device) / delete (director, for
+  // everyone) ── 2026-09-13, per Jon: noticeboard messages shouldn't sit
+  // there forever. "Mark read" hides a message from THIS browser only — a
+  // plain localStorage set, deliberately not tracked server-side (no
+  // per-user read state to maintain). "Delete" removes it for everyone and
+  // is director-only, matching the existing firestore.rules restriction
+  // (messages update/delete already required isDirector() before this —
+  // not loosened here).
+  const DISMISSED_MESSAGES_KEY = "rmd_dismissed_messages";
+  function getDismissedMessageIds() {
+    try { return new Set(JSON.parse(localStorage.getItem(DISMISSED_MESSAGES_KEY) || "[]")); }
+    catch (e) { return new Set(); }
+  }
+  function dismissMessageLocally(id) {
+    try {
+      const ids = getDismissedMessageIds();
+      ids.add(id);
+      localStorage.setItem(DISMISSED_MESSAGES_KEY, JSON.stringify(Array.from(ids).slice(-50)));
+    } catch (e) { /* private browsing / storage blocked — message just won't stay hidden */ }
+    renderNoticeboardForRole();
+  }
+  function deleteMessage(id) {
+    db.collection(COLLECTIONS.messages).doc(id).delete()
+      .catch(err => console.warn("Delete message failed:", err.message));
+    // No local re-render needed — the onSnapshot listener updates everyone,
+    // including this tab, once the delete actually goes through.
+  }
+
   function renderNoticeboardForRole() {
     const body = document.getElementById("noticeboardBody");
     if (!body) return;
-    const visible = messagesCache.filter(m => isMessageForRole(m.target, currentRole));
+    const dismissed = getDismissedMessageIds();
+    const visible = messagesCache.filter(m => isMessageForRole(m.target, currentRole) && !dismissed.has(m.id));
     if (!visible.length) {
       body.innerHTML = `<p class="no-messages">No messages at this time.</p>`;
       return;
@@ -818,7 +847,19 @@
     body.innerHTML = visible.map(m => {
       const t = (m.sentAt && m.sentAt.toDate) ? m.sentAt.toDate() : new Date();
       const time = `${t.getHours().toString().padStart(2,"0")}:${t.getMinutes().toString().padStart(2,"0")}`;
-      return `<div class="message-item"><div>${escapeHtml(m.text)}</div><div class="message-time">${time} · to: ${escapeHtml(m.target)}</div></div>`;
+      const deleteBtn = currentRole === "director"
+        ? `<button class="msg-delete-btn" onclick="deleteMessage('${m.id}')" title="Delete for everyone">🗑</button>`
+        : "";
+      return `<div class="message-item">
+        <div class="message-item-body">
+          <div>${escapeHtml(m.text)}</div>
+          <div class="message-time">${time} · to: ${escapeHtml(m.target)}</div>
+        </div>
+        <div class="message-item-actions">
+          <button class="msg-read-btn" onclick="dismissMessageLocally('${m.id}')" title="Mark as read">✓</button>
+          ${deleteBtn}
+        </div>
+      </div>`;
     }).join("");
   }
 
@@ -828,7 +869,7 @@
       .orderBy("sentAt", "desc")
       .limit(20)
       .onSnapshot(snap => {
-        messagesCache = snap.docs.map(d => d.data());
+        messagesCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         renderNoticeboardForRole();
       }, err => console.warn("Message listener:", err.message));
   }
