@@ -360,19 +360,46 @@ async function boot() {
 }
 
 // ── Load candidates ──────────────────────────────────────────────────────────
+// 2026-09-14, per Jon: this page was pulling the WHOLE people collection with
+// no role filter at all, so faculty/directors/assessors/trainers all showed
+// up as "candidates" to track. Fixed to only include Instructor Candidates
+// and ITC (instructor trainer candidates — they rotate rooms and are still
+// being developed too, hence CHECKPOINTS' "Sun ITC obs" stage), using each
+// person's EFFECTIVE role for this specific weekend (iw_assignments doc if
+// one exists, falling back to their permanent people/{uid}.role) — same
+// layered-access pattern as effectiveRole() in cd-dashboard.html, so someone
+// whose permanent role is faculty but is assigned as an instructor candidate
+// this weekend (or vice versa) is filtered correctly either way.
 async function loadCandidates() {
+  const iwAssignments = {};
+  try {
+    const iwSnap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    iwSnap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignments[a.uid] = a.function;
+    });
+  } catch (e) { /* leave map empty, falls back to p.role below */ }
+
   try {
     const snap = await db.collection(COLLECTIONS.people).get();
     if (!snap.empty) {
-      candidates = snap.docs.map(d => {
-        const data = d.data();
-        return {
-          id:     d.id,
-          name:   data.name   || d.id,
-          stream: data.stream || "Instructor Candidate",
-          room:   (data.room  || "").toUpperCase()
-        };
-      }).sort((a, b) => a.name.localeCompare(b.name));
+      candidates = snap.docs
+        .map(d => {
+          const data = d.data();
+          return {
+            id:            d.id,
+            name:          data.name   || d.id,
+            stream:        data.stream || "Instructor Candidate",
+            room:          (data.room  || "").toUpperCase(),
+            effectiveRole: iwAssignments[d.id] || data.role
+          };
+        })
+        .filter(c => c.effectiveRole === ROLES.INSTRUCTOR || c.effectiveRole === ROLES.ITC)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      // Deliberately not falling back to demo data if this filters down to
+      // zero real matches — an empty room here should read as empty, not
+      // silently show fake names that hide a real role-tagging problem.
     } else {
       loadDemo();
     }

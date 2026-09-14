@@ -334,6 +334,25 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+    // ── Assessor / Senior Instructor feedback (2026-09-14, per Jon) ──────────
+    // Same traffic-light principle as session_feedback above, mirrored with
+    // isAssessorFaculty() in place of isFaculty()/isFullInstructor() — this
+    // collection is rated by Assessor Faculty + Director, not teaching
+    // faculty. Not session-scoped, so doc id is `${candidateId}_${uid}`
+    // rather than an auto id — assessor-feedback.html always writes/reads
+    // via that deterministic id, so create vs. update (merge) both hit the
+    // same self-attribution checks as session_feedback's do.
+    match /assessor_feedback/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.submittedByUid == request.auth.uid);
+      allow create: if (isAssessorFaculty() || isDirector()) &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow update: if (isAssessorFaculty() || isDirector()) &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
     // ── Session quality (found 2026-09-08: same missing-rule bug as
     // session_feedback had, never fixed until now — no submission had ever
     // actually saved). session-quality.html's own role gate already
