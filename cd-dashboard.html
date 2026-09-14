@@ -1439,28 +1439,55 @@ function showFeedbackDay(day, btn) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ALERTS (live listener)
 // ─────────────────────────────────────────────────────────────────────────────
+// Two live listeners feed one shared strip — session_feedback (instructor
+// stream candidates) and assessor_feedback (Assessor/SI candidates, added
+// 2026-09-14 alongside assessor-feedback.html). Each tracks its own
+// count/names so either can fire independently without clobbering the
+// other's contribution to the merged text.
+let alertCounts = { session: 0, assessor: 0 };
+let alertNames  = { session: [], assessor: [] };
+
+function renderAlertStrip() {
+  const strip = document.getElementById("alertStrip");
+  const badge = document.getElementById("navBadge");
+  const total = alertCounts.session + alertCounts.assessor;
+
+  if (total > 0 && !alertsDismissed) {
+    const parts = [];
+    if (alertCounts.session)   parts.push(`${alertNames.session.join(", ")}`);
+    if (alertCounts.assessor)  parts.push(`${alertNames.assessor.join(", ")} (Assessor/SI)`);
+    document.getElementById("alertText").textContent = `Red flag${total > 1 ? "s" : ""}: ${parts.join(" · ")}`;
+    document.getElementById("alertCount").textContent = total;
+    strip.classList.add("visible");
+    badge.textContent = total;
+    badge.classList.remove("hidden");
+  } else if (!alertsDismissed) {
+    strip.classList.remove("visible");
+    badge.classList.add("hidden");
+  }
+}
+
 function watchAlerts() {
   db.collection("session_feedback")
     .where("cdAlert", "==", true)
     .onSnapshot(snap => {
-      const count = snap.size;
-      const strip = document.getElementById("alertStrip");
-      const badge = document.getElementById("navBadge");
-
-      if (count > 0 && !alertsDismissed) {
-        const names = [...new Set(snap.docs.map(d => d.data().candidateName || "Unknown"))].join(", ");
-        document.getElementById("alertText").textContent = `Red flag${count > 1 ? "s" : ""}: ${names}`;
-        document.getElementById("alertCount").textContent = count;
-        strip.classList.add("visible");
-        badge.textContent = count;
-        badge.classList.remove("hidden");
-        // Refresh overview
+      alertCounts.session = snap.size;
+      alertNames.session  = [...new Set(snap.docs.map(d => d.data().candidateName || "Unknown"))];
+      renderAlertStrip();
+      if (alertCounts.session > 0 && !alertsDismissed) {
+        // Refresh overview (instructor-stream feedback only — unaffected by
+        // the assessor_feedback listener below)
         loadFeedback().then(renderOverview);
-      } else if (!alertsDismissed) {
-        strip.classList.remove("visible");
-        badge.classList.add("hidden");
       }
-    }, err => console.warn("Alert listener:", err.message));
+    }, err => console.warn("Alert listener (session_feedback):", err.message));
+
+  db.collection(COLLECTIONS.assessorFeedback)
+    .where("cdAlert", "==", true)
+    .onSnapshot(snap => {
+      alertCounts.assessor = snap.size;
+      alertNames.assessor  = [...new Set(snap.docs.map(d => d.data().candidateName || "Unknown"))];
+      renderAlertStrip();
+    }, err => console.warn("Alert listener (assessor_feedback):", err.message));
 }
 
 function dismissAlerts() {

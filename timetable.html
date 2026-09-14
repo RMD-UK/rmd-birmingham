@@ -433,11 +433,21 @@
       return;
     }
 
-    const tbcBanner = (ROLES_WITH_BOTH_STREAMS.includes(currentRole) && currentStream === "assessor")
-      ? `<p class="text-muted text-sm" style="padding:0 4px 12px;">⚠ Assessor programme is provisional — to be confirmed.</p>`
+    // 2026-09-14: the "provisional — to be confirmed" banner was removed here
+    // per Jon — the assessor/SI programme timings are confirmed now, not a draft.
+    //
+    // Assessor/SI feedback link — Assessor Faculty + Director, while viewing
+    // the Assessor/Senior Instructor Programme tab. Not per-session (unlike
+    // "📝 Rate candidates" on the instructor stream) because the Assessor/SI
+    // stream runs as one shared cohort in one room, not split into rotating
+    // per-session teaching groups — same traffic-light principle as
+    // session-feedback.html, just not tied to a specific session. Per Jon.
+    const showAssessorFeedback = ["director", "assessor-faculty"].includes(currentRole) && currentStream === "assessor";
+    const assessorFeedbackBar = showAssessorFeedback
+      ? `<a class="feedback-btn" href="assessor-feedback.html" style="display:inline-flex;margin:0 4px 12px;">🚦 Rate assessors / Senior Instructors</a>`
       : "";
 
-    container.innerHTML = tbcBanner + sessions.map(s => renderSession(s)).join("");
+    container.innerHTML = assessorFeedbackBar + sessions.map(s => renderSession(s)).join("");
   }
 
   function renderSession(s) {

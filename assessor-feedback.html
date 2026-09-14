@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Assessor Feedback — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 80px; }
+
+    /* ── Top bar ── */
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .top-bar img { height: 28px; border-radius: 50%; background: white; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub   { font-size: 11px; font-weight: 400; opacity: 0.7; display: block; }
+    .top-bar-time  { font-size: 13px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      background: white;
+      border-bottom: 1px solid #e8edf2;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .status-count { font-weight: 700; color: var(--rmd-navy); }
+    .status-label { color: var(--rmd-muted); flex: 1; }
+    .auto-save-indicator { font-size: 11px; color: var(--rmd-muted); }
+    .auto-save-indicator.saving { color: var(--rmd-blue); }
+    .auto-save-indicator.saved  { color: #1a6e31; }
+
+    /* ── Content wrap ── */
+    .wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 0; }
+
+    /* ── Candidate row ── */
+    .candidate-card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+      margin-bottom: 10px;
+      overflow: hidden;
+      border-left: 4px solid #dce3ea;
+      transition: border-color 0.2s;
+    }
+    .candidate-card.rating-green  { border-left-color: #1a6e31; }
+    .candidate-card.rating-amber  { border-left-color: #c17a00; }
+    .candidate-card.rating-red    { border-left-color: #b7410e; }
+
+    .candidate-header {
+      padding: 12px 14px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .candidate-name {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--rmd-navy);
+    }
+    .candidate-sub {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--rmd-muted);
+      margin-top: 2px;
+    }
+
+    /* ── Traffic lights ── */
+    .traffic-lights {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .tl-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 3px solid #dce3ea;
+      background: #f5f7fa;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .tl-btn:active { transform: scale(0.88); }
+    .tl-btn.active-green { background: #1a6e31; border-color: #145727; }
+    .tl-btn.active-amber { background: #c17a00; border-color: #9a6200; }
+    .tl-btn.active-red   { background: #b7410e; border-color: #8e3209; }
+
+    /* ── Flags ── */
+    .candidate-flags {
+      display: flex;
+      gap: 6px;
+      padding: 0 14px 0;
+    }
+    .flag-btn {
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 2px solid #dce3ea;
+      background: white;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      color: var(--rmd-muted);
+      transition: all 0.12s;
+    }
+    .flag-btn:active { transform: scale(0.94); }
+    .flag-btn.active-strong { background: #e6f4ea; color: #1a6e31; border-color: #b5d9bc; }
+    .flag-btn.active-weak   { background: #fde8e4; color: #b7410e; border-color: #f4bfb6; }
+
+    /* ── Comment box ── */
+    .comment-wrap {
+      padding: 10px 14px 12px;
+      display: none;
+    }
+    .comment-wrap.visible { display: block; }
+    .comment-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #b7410e;
+      margin-bottom: 5px;
+    }
+    .comment-textarea {
+      width: 100%;
+      min-height: 72px;
+      padding: 9px 11px;
+      border: 2px solid #f4bfb6;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: var(--font);
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .comment-textarea:focus { outline: none; border-color: #b7410e; }
+    .comment-prompt {
+      font-size: 11px;
+      color: var(--rmd-muted);
+      margin-top: 4px;
+    }
+
+    /* ── Separator ── */
+    .candidate-sep { height: 1px; background: #f0f3f6; margin: 0 14px; }
+
+    /* ── Submit bar ── */
+    .submit-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: white;
+      padding: 12px 14px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.12);
+      z-index: 50;
+    }
+    .submit-bar-inner { max-width: 680px; margin: 0 auto; }
+    .btn-submit {
+      width: 100%;
+      padding: 15px;
+      background: var(--rmd-blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-submit:hover  { background: var(--rmd-navy); }
+    .btn-submit:active { opacity: 0.85; }
+    .btn-submit:disabled { background: #aab8c2; cursor: default; }
+    .submit-note { font-size: 11px; color: var(--rmd-muted); text-align: center; margin-top: 6px; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      top: 70px; left: 50%; transform: translateX(-50%);
+      background: #1a333f;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.25s;
+      pointer-events: none;
+      white-space: nowrap;
+      max-width: 90vw;
+    }
+    .toast.show   { opacity: 1; }
+    .toast.green  { background: #1a6e31; }
+    .toast.red    { background: #b7410e; }
+
+    /* ── Empty / loading ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--rmd-muted);
+      font-size: 14px;
+    }
+    .empty-state h3 { color: var(--rmd-navy); margin-bottom: 6px; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="top-bar">
+  <a href="member-menu.html" style="color:white;text-decoration:none;font-size:12px;opacity:0.85;white-space:nowrap;">‹ Menu</a>
+  <a href="timetable.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">
+    Assessor Feedback
+    <span class="top-bar-sub" id="topBarSub">Traffic light rating — Assessors &amp; Senior Instructors</span>
+  </div>
+  <div class="top-bar-time" id="topBarTime">--:--</div>
+</div>
+
+<!-- ── Status bar ── -->
+<div class="status-bar">
+  <span class="status-count" id="ratedCount">0</span>
+  <span class="status-label" id="ratedLabel">of 0 rated</span>
+  <span class="auto-save-indicator" id="saveIndicator">Changes save automatically</span>
+</div>
+
+<!-- ── Candidate list ── -->
+<div class="wrap" id="candidateWrap">
+  <div class="empty-state" id="emptyState">
+    <h3>Loading…</h3>
+  </div>
+</div>
+
+<!-- ── Submit bar ── -->
+<div class="submit-bar">
+  <div class="submit-bar-inner">
+    <button class="btn-submit" id="submitBtn" onclick="submitAll()" disabled>Loading…</button>
+    <div class="submit-note">Ratings save as you go — rate anyone, any time over the weekend. Submit when you're done for now.</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Assessor / Senior Instructor feedback — same traffic-light principle as
+// session-feedback.html ("Rate candidates"), but NOT tied to a session: the
+// Assessor/SI stream runs as one cohort in one room across Saturday/Sunday
+// rather than split into the instructor stream's per-room teaching groups,
+// so there's nothing to lock this to. Ratings are keyed candidate+rater
+// (one doc per pair, deterministic id) instead of candidate+session.
+// Added 2026-09-14 per Jon: accessible to Assessor Faculty and Director only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let currentUser  = null;
+let candidates   = [];    // people with role === ROLES.ASSESSOR
+let ratings      = {};    // { candidateId: { rating, comment, strong, weak } }
+let saveDebounce = {};
+
+initFirebase();
+
+window.addEventListener("load", () => {
+  updateClock();
+  setInterval(updateClock, 15000);
+
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "index.html"; return; }
+    currentUser = user;
+
+    const email = user.email || "";
+    const role  = await resolveRole(user.uid, email);
+    const allowed = [ROLES.ASSESSOR_FACULTY, ROLES.DIRECTOR];
+    if (!role || !allowed.includes(role)) {
+      window.location.href = "timetable.html";
+      return;
+    }
+
+    await loadCandidates();
+    await loadMyRatings();
+    renderCandidates();
+    document.getElementById("submitBtn").disabled = false;
+    document.getElementById("submitBtn").textContent = "Submit feedback";
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load every Assessor / Senior Instructor candidate — one shared cohort, no
+// per-room split, so unlike session-feedback.html there's no group filter.
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadCandidates() {
+  try {
+    const snap = await db.collection(COLLECTIONS.people)
+      .where("role", "==", ROLES.ASSESSOR)
+      .get();
+    candidates = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    if (!candidates.length) {
+      candidates = [
+        { id: "demo1", name: "Demo Assessor Candidate A" },
+        { id: "demo2", name: "Demo Assessor Candidate B" },
+        { id: "demo3", name: "Demo Senior Instructor C" }
+      ];
+    }
+  } catch (err) {
+    console.warn("Using demo candidates:", err.message);
+    candidates = [
+      { id: "demo1", name: "Demo Assessor Candidate A" },
+      { id: "demo2", name: "Demo Assessor Candidate B" }
+    ];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load this rater's own existing ratings, across the whole weekend
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadMyRatings() {
+  if (!currentUser) return;
+  try {
+    const snap = await db.collection(COLLECTIONS.assessorFeedback)
+      .where("submittedByUid", "==", currentUser.uid)
+      .get();
+    snap.docs.forEach(d => {
+      const data = d.data();
+      ratings[data.candidateId] = { ...data, firestoreId: d.id };
+    });
+  } catch (e) { /* no saved ratings yet */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render candidate cards
+// ─────────────────────────────────────────────────────────────────────────────
+function renderCandidates() {
+  const wrap = document.getElementById("candidateWrap");
+
+  if (!candidates.length) {
+    wrap.innerHTML = `<div class="empty-state"><h3>No Assessor / Senior Instructor candidates found</h3><p>Check the Instructor Weekend registrations with the Course Director.</p></div>`;
+    return;
+  }
+
+  wrap.innerHTML = candidates.map(c => buildCard(c)).join("");
+  updateStatusBar();
+}
+
+function buildCard(c) {
+  const r        = ratings[c.id] || {};
+  const rating   = r.rating || "";
+  const comment  = r.comment || "";
+  const isStrong = !!r.strong;
+  const isWeak   = !!r.weak;
+
+  const cardClass = rating ? `candidate-card rating-${rating}` : "candidate-card";
+  const redVisible = rating === "red" ? "visible" : "";
+
+  return `
+    <div class="${cardClass}" id="card-${c.id}">
+      <div class="candidate-header">
+        <div class="candidate-name">
+          ${esc(c.name)}
+          <div class="candidate-sub">Assessor / Senior Instructor</div>
+        </div>
+        <div class="traffic-lights">
+          <button class="tl-btn ${rating === 'green' ? 'active-green' : ''}" title="On track"
+                  onclick="setRating('${c.id}','green')">🟢</button>
+          <button class="tl-btn ${rating === 'amber' ? 'active-amber' : ''}" title="Some concerns"
+                  onclick="setRating('${c.id}','amber')">🟡</button>
+          <button class="tl-btn ${rating === 'red'   ? 'active-red'   : ''}" title="Significant concern"
+                  onclick="setRating('${c.id}','red')">🔴</button>
+        </div>
+      </div>
+
+      <div class="candidate-sep"></div>
+
+      <div class="candidate-flags" style="padding:8px 14px;">
+        <button class="flag-btn ${isStrong ? 'active-strong' : ''}"
+                onclick="toggleFlag('${c.id}','strong')">⭐ Notably strong</button>
+        <button class="flag-btn ${isWeak ? 'active-weak' : ''}"
+                onclick="toggleFlag('${c.id}','weak')">⚠ Notably weak</button>
+      </div>
+
+      <div class="comment-wrap ${redVisible}" id="comment-${c.id}">
+        <div class="comment-label">Comment required for red rating *</div>
+        <textarea class="comment-textarea" id="text-${c.id}"
+          placeholder="Describe what you observed and what support was given"
+          oninput="onCommentInput('${c.id}')">${esc(comment)}</textarea>
+        <div class="comment-prompt">Be specific — this forms part of the faculty meeting record if concerns are escalated.</div>
+      </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Set rating
+// ─────────────────────────────────────────────────────────────────────────────
+function setRating(candidateId, rating) {
+  const r = ratings[candidateId] || {};
+  const newRating = r.rating === rating ? "" : rating;
+
+  ratings[candidateId] = { ...r, rating: newRating };
+
+  if (newRating !== "green") ratings[candidateId].strong = false;
+  if (newRating !== "red")   ratings[candidateId].weak   = false;
+
+  const commentWrap = document.getElementById("comment-" + candidateId);
+  if (commentWrap) {
+    if (newRating === "red") commentWrap.classList.add("visible");
+    else commentWrap.classList.remove("visible");
+  }
+
+  const card = document.getElementById("card-" + candidateId);
+  if (card) {
+    card.className = newRating ? `candidate-card rating-${newRating}` : "candidate-card";
+  }
+
+  const header = card?.querySelector(".traffic-lights");
+  if (header) {
+    header.innerHTML = ["green","amber","red"].map((col, i) => {
+      const icons = ["🟢","🟡","🔴"];
+      const titles = ["On track","Some concerns","Significant concern"];
+      return `<button class="tl-btn ${newRating === col ? `active-${col}` : ''}" title="${titles[i]}"
+                onclick="setRating('${candidateId}','${col}')">${icons[i]}</button>`;
+    }).join("");
+  }
+
+  const flagsEl = card?.querySelector(".candidate-flags");
+  if (flagsEl) {
+    const isStrong = !!ratings[candidateId].strong;
+    const isWeak   = !!ratings[candidateId].weak;
+    flagsEl.innerHTML = `
+      <button class="flag-btn ${isStrong ? 'active-strong' : ''}"
+              onclick="toggleFlag('${candidateId}','strong')">⭐ Notably strong</button>
+      <button class="flag-btn ${isWeak ? 'active-weak' : ''}"
+              onclick="toggleFlag('${candidateId}','weak')">⚠ Notably weak</button>`;
+  }
+
+  updateStatusBar();
+  scheduleAutoSave(candidateId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toggle flag
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleFlag(candidateId, flag) {
+  const r = ratings[candidateId] || {};
+  const turningOn = !r[flag];
+  const other = flag === "strong" ? "weak" : "strong";
+
+  const next = { ...r, [flag]: turningOn };
+  if (turningOn) next[other] = false;
+  if (turningOn) next.rating = flag === "strong" ? "green" : "red";
+
+  ratings[candidateId] = next;
+
+  const candidate = candidates.find(c => c.id === candidateId);
+  const card = document.getElementById("card-" + candidateId);
+  if (card && candidate) card.outerHTML = buildCard(candidate);
+
+  updateStatusBar();
+  scheduleAutoSave(candidateId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comment input
+// ─────────────────────────────────────────────────────────────────────────────
+function onCommentInput(candidateId) {
+  const text = document.getElementById("text-" + candidateId)?.value || "";
+  ratings[candidateId] = { ...(ratings[candidateId] || {}), comment: text };
+  scheduleAutoSave(candidateId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-save (debounced) — one doc per candidate+rater, deterministic id
+// ─────────────────────────────────────────────────────────────────────────────
+function scheduleAutoSave(candidateId) {
+  clearTimeout(saveDebounce[candidateId]);
+  saveDebounce[candidateId] = setTimeout(() => saveSingle(candidateId), 1200);
+  setSaveIndicator("saving");
+}
+
+async function saveSingle(candidateId) {
+  if (!currentUser) return;
+  const r = ratings[candidateId];
+  if (!r || !r.rating) return; // nothing to save yet
+
+  const candidate = candidates.find(c => c.id === candidateId);
+  const payload = {
+    candidateId,
+    candidateName:   candidate?.name || "",
+    rating:          r.rating,
+    comment:         r.comment || "",
+    strong:          !!r.strong,
+    weak:            !!r.weak,
+    submittedByUid:  currentUser.uid,
+    savedAt:         firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  // Flag red ratings for immediate CD alert — same principle as session_feedback.
+  if (r.rating === "red") payload.cdAlert = true;
+
+  try {
+    const docId = candidateId + "_" + currentUser.uid;
+    await db.collection(COLLECTIONS.assessorFeedback).doc(docId).set(payload, { merge: true });
+    ratings[candidateId] = { ...r, firestoreId: docId };
+
+    setSaveIndicator("saved");
+    setTimeout(() => setSaveIndicator(""), 3000);
+  } catch (err) {
+    console.error("Auto-save failed:", err.message);
+    setSaveIndicator("");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Submit all (validate + confirm)
+// ─────────────────────────────────────────────────────────────────────────────
+async function submitAll() {
+  const missing = candidates.filter(c => {
+    const r = ratings[c.id];
+    return r?.rating === "red" && !(r.comment || "").trim();
+  });
+
+  if (missing.length) {
+    showToast(`Add a comment for ${missing.map(c => c.name.split(" ")[0]).join(", ")} (red rating)`, "red");
+    document.getElementById("comment-" + missing[0].id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
+  const rated = candidates.filter(c => ratings[c.id]?.rating).length;
+  if (rated === 0) {
+    showToast("Rate at least one person before submitting");
+    return;
+  }
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled    = true;
+  btn.textContent = "Submitting…";
+
+  try {
+    const saves = candidates
+      .filter(c => ratings[c.id]?.rating)
+      .map(c => saveSingle(c.id));
+    await Promise.all(saves);
+
+    showToast(`Feedback submitted for ${rated} ${rated !== 1 ? "people" : "person"}`, "green");
+    btn.textContent = "✓ Submitted";
+    setTimeout(() => { btn.disabled = false; btn.textContent = "Submit feedback"; }, 3000);
+  } catch (err) {
+    showToast("Submit failed — check connection", "red");
+    btn.disabled    = false;
+    btn.textContent = "Submit feedback";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function updateStatusBar() {
+  const rated = candidates.filter(c => ratings[c.id]?.rating).length;
+  document.getElementById("ratedCount").textContent = rated;
+  document.getElementById("ratedLabel").textContent  = `of ${candidates.length} rated`;
+}
+
+function setSaveIndicator(state) {
+  const el = document.getElementById("saveIndicator");
+  el.className = "auto-save-indicator" + (state ? " " + state : "");
+  el.textContent = state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : "Changes save automatically";
+}
+
+let toastTimer;
+function showToast(msg, type) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast show" + (type ? " " + type : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById("topBarTime").textContent =
+    String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+}
+
+function esc(s) {
+  return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+</body>
+</html>

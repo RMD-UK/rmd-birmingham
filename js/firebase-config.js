@@ -40,7 +40,8 @@ const COLLECTIONS = {
   iwAssessorRsvp:   "iw_assessor_rsvp",  // self-service Y/N attendance RSVP for Assessors/Senior Instructors — see iw-rsvp.html
   stage1Candidates: "stage1_candidates",  // taught first-year candidate records, no login — see admin-stage1-candidates.html (Section 3.5)
   courseAllocations: "course_allocations", // per-course room + instructor-team allocation — see admin-course-room-allocation.html (Section 3.6)
-  iwAssignments: "iw_assignments" // per-year Instructor Weekend function (Axis B) — see resolveIwFunction() below, and CURRENT_IW_YEAR
+  iwAssignments: "iw_assignments", // per-year Instructor Weekend function (Axis B) — see resolveIwFunction() below, and CURRENT_IW_YEAR
+  assessorFeedback: "assessor_feedback" // traffic-light feedback on Assessor/SI candidates — see assessor-feedback.html. Same principle as session_feedback, but not session-scoped (one shared cohort, not per-room groups) — doc id is `${candidateId}_${raterUid}`, not an auto id.
 };
 
 // ── Instructor Weekend per-year function (Axis B), layered-access build
