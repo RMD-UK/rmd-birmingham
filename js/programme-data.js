@@ -117,6 +117,9 @@ const PROGRAMME = {
         resources: [],
         tags: []
       },
+      // 2026-09-14: assessor/SI candidates now split off into their own room at 09:30
+      // (see the assessor-stream block above) instead of joining this shared BLS/AED
+      // block until midday as before — "assessor" removed from roles below, per Jon.
       {
         id: "sat-6",
         start: "10:10",
@@ -124,7 +127,7 @@ const PROGRAMME = {
         title: "Plenary Lecture: BLS/AED",
         location: "ATH",
         lead: "",
-        roles: ["instructor", "assessor", "faculty", "director"],
+        roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
           { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" }
@@ -138,7 +141,7 @@ const PROGRAMME = {
         title: "Plenary Demonstration: BLS/AED",
         location: "ATH",
         lead: "",
-        roles: ["instructor", "assessor", "faculty", "director"],
+        roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],
         tags: []
@@ -151,8 +154,8 @@ const PROGRAMME = {
         subtitle: "Including: Closing the Gender Gap",
         location: "Teaching rooms",
         lead: "Room faculty lead",
-        roles: ["instructor", "assessor", "faculty", "director"],
-        notes: "Small group practice. ⚠ Gateway assessment: all Instructor Candidates must pass the BLS/AED competency check by 12:00 noon. Candidates who have not passed by noon cannot progress to the afternoon instructor development sessions. Assessor candidates use this session as their BLS Provider recertification.",
+        roles: ["instructor", "faculty", "director"],
+        notes: "Small group practice. ⚠ Gateway assessment: all Instructor Candidates must pass the BLS/AED competency check by 12:00 noon. Candidates who have not passed by noon cannot progress to the afternoon instructor development sessions.",
         resources: [
           { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" }
         ],
@@ -212,15 +215,29 @@ const PROGRAMME = {
         tags: ["break"]
       },
 
-      // ── Assessor / Senior Instructor stream (Saturday) — from draft deck, 2026-07-18.
-      // Morning up to midday matches the instructor stream exactly. Real "assessor"-role
-      // viewers already see sat-1/2/3/4/6/7/8/9 above directly (sat-6/7/8 carry "assessor"
-      // in their roles array). The duplicates below exist ONLY so the dedicated
-      // "Assessor / Senior Instructor Programme" tab (which director/faculty toggle to via
-      // setStream(), filtered purely on the "assessor-stream" tag — see timetable.html
-      // renderDay()) also shows this content. Deliberately roles:["faculty","director"]
-      // (no "assessor") on these duplicates, so real assessor-role viewers don't see the
-      // morning listed twice — see [[project_instructor_weekend_2026]]. ──
+      // ── Assessor / Senior Instructor stream (Saturday) — from draft deck, 2026-07-18;
+      // restructured 2026-09-14 per Jon's revised programme. Morning matches the
+      // instructor stream exactly through the 08:45 Welcome (sat-1/sat-2 above); real
+      // "assessor"-role viewers see those two directly since they're tagged roles:["all"].
+      // The duplicates below exist ONLY so the dedicated "Assessor / Senior Instructor
+      // Programme" tab (toggled via setStream(), filtered purely on the "assessor-stream"
+      // tag — see timetable.html renderDay()) also shows this content. Deliberately
+      // roles:["faculty","director"] (no "assessor") on sat-assessor-0a/0b, so real
+      // assessor-role viewers don't see the morning listed twice — see
+      // [[project_instructor_weekend_2026]].
+      //
+      // 2026-09-14: assessor/SI candidates now split off from the main course at 09:30
+      // (not midday as before) into their own room for a dedicated introduction, then
+      // straight into a 2-hour BLS Provider recertification block — they no longer join
+      // the shared Equipment Demo/Practice or Plenary BLS/AED Lecture/Demo/Group Practice
+      // (sat-3/4/6/7/8), per Jon. "assessor" removed from sat-6/7/8's roles accordingly
+      // (see above). sat-assessor-0c/0d repurposed in place (same ids, new content) for
+      // the new Introduction + Recertification sessions below; sat-assessor-0e/0f/0g/0h
+      // (the old shared BLS/AED lecture/demo/practice/break duplicates) and
+      // sat-assessor-8b (old "Grey Areas continued", no longer needed now Grey Areas runs
+      // uninterrupted — see sat-assessor-8 below) are gone from here and from Firestore —
+      // admin-migrate-programme.html's import now prunes any session doc whose id is no
+      // longer in this file, so re-running the migration after this edit removes them. ──
       {
         id: "sat-assessor-0a",
         start: "08:00",
@@ -249,82 +266,27 @@ const PROGRAMME = {
       },
       {
         id: "sat-assessor-0c",
-        start: "09:15",
-        duration: 20,
-        title: "Equipment Demonstration",
-        location: "ATH",
+        start: "09:30",
+        duration: 30,
+        title: "Assessor Course Introduction",
+        location: "WF15",
         lead: "",
-        roles: ["faculty", "director"],
-        notes: "",
-        resources: [
-          { title: "QCPR App", url: "https://laerdal.com/gb/products/simulation-training/resuscitation-training/qcpr-app/", icon: "📱" }
-        ],
+        roles: ["assessor", "faculty", "director"],
+        notes: "Assessors and Senior Instructors only.",
+        resources: [],
         tags: ["assessor-stream"]
       },
       {
         id: "sat-assessor-0d",
-        start: "09:35",
-        duration: 30,
-        title: "Equipment Practice",
-        location: "Teaching rooms",
-        lead: "Room faculty lead",
-        roles: ["faculty", "director"],
+        start: "10:00",
+        duration: 120,
+        title: "BLS Provider Recertification",
+        location: "TBC",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
         notes: "",
         resources: [],
         tags: ["assessor-stream"]
-      },
-      {
-        id: "sat-assessor-0e",
-        start: "10:10",
-        duration: 20,
-        title: "Plenary Lecture: BLS/AED",
-        location: "ATH",
-        lead: "",
-        roles: ["faculty", "director"],
-        notes: "",
-        resources: [
-          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" }
-        ],
-        tags: ["assessor-stream"]
-      },
-      {
-        id: "sat-assessor-0f",
-        start: "10:30",
-        duration: 15,
-        title: "Plenary Demonstration: BLS/AED",
-        location: "ATH",
-        lead: "",
-        roles: ["faculty", "director"],
-        notes: "",
-        resources: [],
-        tags: ["assessor-stream"]
-      },
-      {
-        id: "sat-assessor-0g",
-        start: "10:45",
-        duration: 60,
-        title: "Group Practice: BLS/AED",
-        subtitle: "Including: Closing the Gender Gap",
-        location: "Teaching rooms",
-        lead: "Room faculty lead",
-        roles: ["faculty", "director"],
-        notes: "Small group practice. Assessor candidates use this session as their BLS Provider recertification.",
-        resources: [
-          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" }
-        ],
-        tags: ["assessor-stream"]
-      },
-      {
-        id: "sat-assessor-0h",
-        start: "11:45",
-        duration: 15,
-        title: "Break",
-        location: "",
-        lead: "",
-        roles: ["faculty", "director"],
-        notes: "",
-        resources: [],
-        tags: ["assessor-stream", "break"]
       },
       {
         id: "sat-assessor-3",
@@ -365,7 +327,7 @@ const PROGRAMME = {
       {
         id: "sat-assessor-6",
         start: "14:15",
-        duration: 60,
+        duration: 45,
         title: "Examination of the Unsuccessful Candidate",
         location: "TBC",
         lead: "",
@@ -376,7 +338,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-assessor-7",
-        start: "15:15",
+        start: "15:00",
         duration: 15,
         title: "Coffee Break",
         location: "",
@@ -388,43 +350,13 @@ const PROGRAMME = {
       },
       {
         id: "sat-assessor-8",
-        start: "15:30",
-        duration: 75,
-        title: "Grey Areas & the Borderline Candidate",
+        start: "15:15",
+        duration: 90,
+        title: "Grey Areas & Examining the Borderline Candidate",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
-        notes: "Standardisation, common issues from previous examinations, and fail-point criteria (approach, 999 call, chest compressions, rescue breaths, AED). Paused for the 16:45 Whole Course Photo (all groups) — continues after.",
-        resources: [
-          { title: "Grey Areas slides", path: "resources/assessor-grey-areas.html", icon: "📊" }
-        ],
-        tags: ["assessor-stream"]
-      },
-      {
-        id: "sat-assessor-8x",
-        start: "16:45",
-        duration: 30,
-        title: "Whole Course Photo",
-        location: "Medical School steps",
-        lead: "",
-        // Duplicate of sat-21, roles:["faculty","director"] only — real "assessor"-role
-        // viewers already see it via sat-21's roles:["all"]; this copy exists purely so
-        // the assessor-stream tab (tag-filtered, see director/faculty toggle note above)
-        // shows it too, same pattern as the sat-assessor-0a..0h morning duplicates.
-        roles: ["faculty", "director"],
-        notes: "All groups please. Wear your course polo shirts.",
-        resources: [],
-        tags: ["assessor-stream"]
-      },
-      {
-        id: "sat-assessor-8b",
-        start: "17:15",
-        duration: 15,
-        title: "Grey Areas & the Borderline Candidate (continued)",
-        location: "TBC",
-        lead: "",
-        roles: ["assessor", "faculty", "director"],
-        notes: "Continues after the Whole Course Photo.",
+        notes: "Standardisation, common issues from previous examinations, and fail-point criteria (approach, 999 call, chest compressions, rescue breaths, AED). Runs straight through to 16:45 — no longer paused for the Whole Course Photo, which now sits after Feedback & Closure instead.",
         resources: [
           { title: "Grey Areas slides", path: "resources/assessor-grey-areas.html", icon: "📊" }
         ],
@@ -432,17 +364,32 @@ const PROGRAMME = {
       },
       {
         id: "sat-assessor-9",
-        start: "17:30",
-        duration: 30,
+        start: "16:45",
+        duration: 15,
         title: "Feedback & Course Closure",
         location: "",
         lead: "",
         roles: ["assessor", "faculty", "director"],
-        notes: "Assessor candidate training concludes here. Senior Instructors continue with an additional session Sunday morning. Runs 30 min later than the draft deck's 17:00/17:30 timing, to accommodate the 16:45 Whole Course Photo which the deck's assessor timetable didn't budget for.",
+        notes: "Assessor candidate training concludes here. Senior Instructors continue with an additional session Sunday morning.",
         resources: [],
         tags: ["assessor-stream"]
       },
-
+      {
+        id: "sat-assessor-8x",
+        start: "17:00",
+        duration: 30,
+        title: "Whole Course Photo",
+        location: "Medical School steps",
+        lead: "",
+        // Duplicate of sat-21, roles:["faculty","director"] only — real "assessor"-role
+        // viewers already see it via sat-21's roles:["all"]; this copy exists purely so
+        // the assessor-stream tab (tag-filtered) shows it too, same pattern as the
+        // sat-assessor-0a/0b morning duplicates above.
+        roles: ["faculty", "director"],
+        notes: "All groups please. Wear your course polo shirts.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
       // ── Instructor development (Saturday afternoon) ──
       {
         id: "sat-13",
@@ -555,7 +502,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-21",
-        start: "16:45",
+        start: "17:00",
         duration: 30,
         title: "Whole Course Photo",
         location: "Medical School steps",
@@ -587,106 +534,105 @@ const PROGRAMME = {
         resources: [],
         tags: ["assessor-stream"]
       },
-      // ── Senior Instructor Role Briefing (Sunday, after 09:45) — broken into individual
-      // section placeholders 2026-07-18, per Jon. Order confirmed, timings not — each
-      // section shows the "To be confirmed" badge via the "placeholder" tag rather than
-      // a fabricated time. All stacked at 09:45 (immediately after registration); stable
-      // sort keeps them in this order since they share a start time. ──
+      // ── Senior Instructor Role Briefing (Sunday) — real times confirmed 2026-09-14
+      // per Jon, replacing the "placeholder" stack that previously sat here (order was
+      // confirmed 2026-07-18, timings were not). sun-assessor-2i (rejoining instructors)
+      // isn't part of Jon's updated timings and is left as a placeholder below. ──
       {
         id: "sun-assessor-2a",
         start: "09:45",
-        duration: 0,
+        duration: 15,
         title: "Introduction to BLS Senior Instructor Role",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
         id: "sun-assessor-2b",
-        start: "09:45",
-        duration: 0,
+        start: "10:00",
+        duration: 30,
         title: "Discuss Role on Monday Evenings",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
         id: "sun-assessor-2c",
-        start: "09:45",
-        duration: 0,
-        title: "Reinforce Grey Areas Covered in the Assessor Course",
+        start: "10:30",
+        duration: 30,
+        title: "Reinforce Grey Areas Covered in the Examiner Course",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "And how to navigate these with instructors / common questions.",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
         id: "sun-assessor-2d",
-        start: "09:45",
-        duration: 0,
+        start: "11:00",
+        duration: 30,
         title: "Reasonable Adjustment Plan (RAP) Students",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "Including teaching and examining.",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
         id: "sun-assessor-2e",
-        start: "09:45",
-        duration: 0,
+        start: "11:30",
+        duration: 30,
         title: "Kit Issues and Troubleshooting",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
         id: "sun-assessor-2f",
-        start: "09:45",
-        duration: 0,
+        start: "12:00",
+        duration: 30,
         title: "Difficult Students",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
         id: "sun-assessor-2g",
-        start: "09:45",
-        duration: 0,
+        start: "12:30",
+        duration: 30,
         title: "Research Opportunities and Wider Involvement with RMD",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "",
         resources: [],
-        tags: ["assessor-stream", "placeholder"]
+        tags: ["assessor-stream"]
       },
       {
         id: "sun-assessor-2h",
-        start: "09:45",
-        duration: 0,
+        start: "13:00",
+        duration: 30,
         title: "Lunch Break",
         location: "TBC",
         lead: "",
         roles: ["assessor", "faculty", "director"],
         notes: "",
         resources: [],
-        tags: ["assessor-stream", "placeholder", "break"]
+        tags: ["assessor-stream", "break"]
       },
       {
         id: "sun-assessor-2i",

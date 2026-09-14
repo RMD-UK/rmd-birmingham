@@ -58,9 +58,9 @@
         this collection once it has data, and falls back to the static file until then — so running this
         is what switches the live site over to database-backed session times.
         <br><br>
-        9 sessions are linked in pairs via a <code>pairWith</code> field — these are sessions that appear
+        3 sessions are linked in pairs via a <code>pairWith</code> field — these are sessions that appear
         once in the data but show on both the instructor and assessor-stream tabs because they're the same
-        real event (Saturday morning through the 11:45 break, plus the 16:45 Whole Course Photo). Linked
+        real event (Saturday registration, the Welcome plenary, and the Whole Course Photo). Linked
         pairs are marked below.
       </div>
       <div class="warn-box">
@@ -68,6 +68,11 @@
         has already been used to move any session times live, re-running this will overwrite those live
         changes back to whatever's currently in <code>js/programme-data.js</code>. Only re-run intentionally,
         e.g. after editing the source file to fix a TBC location.
+        <br><br>
+        Also deletes: any session doc in Firestore whose id is no longer in
+        <code>js/programme-data.js</code> gets removed at the end of the run (logged separately below,
+        after the writes) — so deleting a session from the source file and re-running this is enough to
+        take it off the live site too.
       </div>
 
       <ul class="record-list" id="recordList"></ul>
@@ -113,15 +118,15 @@ requireDirector("timetable.html").then(() => {
 // the comment block above sat-assessor-0a in programme-data.js). Linking
 // them here means a future cascading time-shift on one side of a pair can
 // carry the same shift to its twin, keeping both stream tabs truthful.
+//
+// 2026-09-14: sat-3/4/6/7/8/9 no longer pair with anything — the assessor
+// stream split off its own Assessor Course Introduction + BLS Provider
+// Recertification content at sat-assessor-0c/0d instead of duplicating the
+// shared morning block, per Jon's revised Saturday programme. Only pairs
+// that are still genuinely the same event stay listed below.
 const PAIR_MAP = {
   "sat-1": "sat-assessor-0a",  "sat-assessor-0a": "sat-1",
   "sat-2": "sat-assessor-0b",  "sat-assessor-0b": "sat-2",
-  "sat-3": "sat-assessor-0c",  "sat-assessor-0c": "sat-3",
-  "sat-4": "sat-assessor-0d",  "sat-assessor-0d": "sat-4",
-  "sat-6": "sat-assessor-0e",  "sat-assessor-0e": "sat-6",
-  "sat-7": "sat-assessor-0f",  "sat-assessor-0f": "sat-7",
-  "sat-8": "sat-assessor-0g",  "sat-assessor-0g": "sat-8",
-  "sat-9": "sat-assessor-0h",  "sat-assessor-0h": "sat-9",
   "sat-21": "sat-assessor-8x", "sat-assessor-8x": "sat-21"
 };
 
@@ -209,12 +214,45 @@ async function runMigration() {
     await new Promise(res => setTimeout(res, 60));
   }
 
+  // ── Prune removed sessions ──────────────────────────────────────────────
+  // .set() above only ever creates/overwrites — a session id deleted from
+  // programme-data.js since the last import would otherwise sit in Firestore
+  // forever, still live on the timetable. Added 2026-09-14 after exactly
+  // that happened with the old assessor-stream Saturday morning duplicates.
+  // Anything in the sessions collection whose id isn't in SESSION_DOCS gets
+  // deleted here, logged the same way as the writes above.
+  const currentIds = new Set(SESSION_DOCS.map(d => d.id));
+  let pruned = 0, pruneErr = 0;
+  const existingSnap = await db.collection(COLLECTIONS.sessions).get();
+  const staleDocs = existingSnap.docs.filter(doc => !currentIds.has(doc.id));
+
+  for (const doc of staleDocs) {
+    let icon, cls, msg;
+    try {
+      await doc.ref.delete();
+      icon = "🗑️"; cls = "ok"; msg = "Removed (no longer in programme-data.js)";
+      pruned++;
+    } catch (e) {
+      icon = "❌"; cls = "err"; msg = e.message;
+      pruneErr++;
+    }
+    const el = document.createElement("div");
+    el.className = "log-entry";
+    el.innerHTML = `
+      <div class="log-icon">${icon}</div>
+      <div class="log-name">${doc.id} — ${doc.data().title || "(untitled)"}</div>
+      <div class="log-status ${cls}">${msg}</div>`;
+    document.getElementById("logList").appendChild(el);
+    await new Promise(res => setTimeout(res, 60));
+  }
+
   const summary = document.createElement("div");
   summary.style.cssText = "margin-top:12px;padding-top:12px;border-top:2px solid #f0f3f6;font-size:13px;font-weight:700;";
-  summary.textContent = `Done — ${ok} written, ${err} failed.`;
+  summary.textContent = `Done — ${ok} written, ${err} failed` +
+    (staleDocs.length ? `, ${pruned} removed${pruneErr ? ` (${pruneErr} failed)` : ""}.` : ".");
   document.getElementById("logList").appendChild(summary);
 
-  btn.textContent = err ? "Completed with errors" : "Migration complete";
+  btn.textContent = (err || pruneErr) ? "Completed with errors" : "Migration complete";
 }
 
 </script>
