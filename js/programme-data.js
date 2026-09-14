@@ -536,8 +536,9 @@ const PROGRAMME = {
       },
       // ── Senior Instructor Role Briefing (Sunday) — real times confirmed 2026-09-14
       // per Jon, replacing the "placeholder" stack that previously sat here (order was
-      // confirmed 2026-07-18, timings were not). sun-assessor-2i (rejoining instructors)
-      // isn't part of Jon's updated timings and is left as a placeholder below. ──
+      // confirmed 2026-07-18, timings were not). sun-assessor-2i ("Senior Instructors
+      // Rejoin Instructors") removed entirely 2026-09-14 per Jon — no longer part of
+      // the Sunday programme. ──
       {
         id: "sun-assessor-2a",
         start: "09:45",
@@ -633,18 +634,6 @@ const PROGRAMME = {
         notes: "",
         resources: [],
         tags: ["assessor-stream", "break"]
-      },
-      {
-        id: "sun-assessor-2i",
-        start: "09:45",
-        duration: 0,
-        title: "Senior Instructors Rejoin Instructors",
-        location: "TBC",
-        lead: "",
-        roles: ["assessor", "faculty", "director"],
-        notes: "Rejoin Instructors in room and explain role on Monday evening.",
-        resources: [],
-        tags: ["assessor-stream", "placeholder"]
       },
       {
         id: "sun-1",
