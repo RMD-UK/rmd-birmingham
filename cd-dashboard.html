@@ -383,6 +383,9 @@
       <div class="nav-item" onclick="switchSection('candidates')" id="nav-candidates">
         <span class="nav-icon">👥</span><span>Candidates</span>
       </div>
+      <div class="nav-item" onclick="switchSection('assessors')" id="nav-assessors">
+        <span class="nav-icon">🚦</span><span>Assessors &amp; SI</span>
+      </div>
       <div class="nav-item" onclick="switchSection('itcs')" id="nav-itcs">
         <span class="nav-icon">🔄</span><span>ITCs</span>
       </div>
@@ -511,6 +514,37 @@
               <th>Decision</th>
             </tr></thead>
             <tbody id="candTableBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Assessors & Senior Instructors (2026-09-14, per Jon) — same
+         principle as Candidates above, but: no per-room Group column (the
+         Assessor/SI stream runs as one shared cohort, see
+         assessor-feedback.html), and Decision is Pass/Fail only, not
+         Pass/Defer/Fail — there's no "defer" concept on this stream. Status
+         badge is sourced from assessor_feedback (merged into feedbackData
+         by loadFeedback()), same rating mechanism as Candidates' Status
+         column. ── -->
+    <section class="section" id="section-assessors">
+      <div class="section-title">Assessors &amp; Senior Instructors</div>
+      <div class="card">
+        <div class="card-header">All Assessors &amp; Senior Instructors
+          <div class="card-actions">
+            <input id="assessorSearch" type="text" placeholder="Search…"
+              style="padding:5px 8px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;font-family:var(--font);font-size:12px;background:rgba(255,255,255,0.1);color:white;width:120px;"
+              oninput="filterAssessors(this.value)">
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <table class="cand-table">
+            <thead><tr>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Decision</th>
+            </tr></thead>
+            <tbody id="assessorTableBody"><tr><td colspan="3" class="loading">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -800,6 +834,7 @@ window.addEventListener("load", () => {
 
     await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
+    renderAssessors();
     renderProgramme("saturday");
     renderFeedback("saturday");
     renderMeetingSlides("saturday");
@@ -858,12 +893,27 @@ async function loadPeople() {
 }
 
 async function loadFeedback() {
+  let sessionFeedback = [];
+  let assessorFeedback = [];
   try {
     const snap = await db.collection("session_feedback").orderBy("savedAt","desc").get();
-    feedbackData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    sessionFeedback = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (e) {
-    feedbackData = []; // no feedback yet or no index
+    // no feedback yet or no index
   }
+  try {
+    // Assessor/SI feedback (2026-09-14) — no sessionId (not session-scoped,
+    // see assessor-feedback.html), so every consumer of feedbackData that
+    // shows "Session: X" needs to handle a missing sessionId gracefully.
+    // Merged into the same array so Overview's Active Concerns/Notable Flags
+    // and Candidates' rating badges pick these up automatically — per Jon,
+    // both should show candidates and assessors/SI together.
+    const snap = await db.collection(COLLECTIONS.assessorFeedback).orderBy("savedAt","desc").get();
+    assessorFeedback = snap.docs.map(d => ({ id: d.id, ...d.data(), isAssessorFeedback: true }));
+  } catch (e) {
+    // no feedback yet or no index
+  }
+  feedbackData = [...sessionFeedback, ...assessorFeedback];
 }
 
 async function loadDecisions() {
@@ -936,7 +986,7 @@ function renderOverview() {
           <span class="tl-dot red"></span>
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--rmd-navy);">${esc(f.candidateName)}</div>
-            <div style="font-size:11px;color:var(--rmd-muted);">Session: ${esc(f.sessionId)} · Reported by faculty</div>
+            <div style="font-size:11px;color:var(--rmd-muted);">${f.isAssessorFeedback ? "Assessor / Senior Instructor" : "Session: " + esc(f.sessionId)} · Reported by ${f.isAssessorFeedback ? "assessor faculty" : "faculty"}</div>
             ${f.comment ? `<div class="comment-detail">${esc(f.comment)}</div>` : ""}
           </div>
         </div>
@@ -964,7 +1014,7 @@ function renderOverview() {
     notableEl.innerHTML = items.map(f => `
       <div class="tl-row">
         <div class="tl-name">${esc(f.candidateName)} <span class="tag ${f.flagType}">${f.flagType === "strong" ? "⭐ Notably strong" : "⚠ Notably weak"}</span></div>
-        <div class="text-sm text-muted">${esc(f.sessionId)}</div>
+        <div class="text-sm text-muted">${f.isAssessorFeedback ? "Assessor / Senior Instructor" : esc(f.sessionId)}</div>
       </div>`).join("");
   }
 }
@@ -1011,7 +1061,9 @@ function showProgDay(day, btn) {
 // CANDIDATES
 // ─────────────────────────────────────────────────────────────────────────────
 function renderCandidates(filter) {
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
+  // 2026-09-14: Assessor/SI candidates moved to their own section (see
+  // renderAssessors() below) — this table is Instructor Candidates only now.
+  const candidates = allPeople.filter(p => effectiveRole(p) === ROLES.INSTRUCTOR);
   const filtered   = filter
     ? candidates.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()))
     : candidates;
@@ -1050,6 +1102,49 @@ function renderCandidates(filter) {
 }
 
 function filterCandidates(val) { renderCandidates(val); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSESSORS & SENIOR INSTRUCTORS (2026-09-14, per Jon)
+// ─────────────────────────────────────────────────────────────────────────────
+function renderAssessors(filter) {
+  const assessors = allPeople.filter(p => effectiveRole(p) === ROLES.ASSESSOR);
+  const filtered   = filter
+    ? assessors.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()))
+    : assessors;
+
+  const tbody = document.getElementById("assessorTableBody");
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-msg">No Assessor / Senior Instructor candidates found.</td></tr>`; return; }
+
+  // Latest rating per candidate — feedbackData already includes
+  // assessor_feedback (merged in loadFeedback()), so this is the same
+  // lookup renderCandidates() does for the instructor stream.
+  const latestRating = {};
+  feedbackData.forEach(f => {
+    const existing = latestRating[f.candidateId];
+    if (!existing || (f.savedAt && (!existing.savedAt || f.savedAt.seconds > existing.savedAt.seconds)))
+      latestRating[f.candidateId] = f;
+  });
+
+  tbody.innerHTML = filtered.map(c => {
+    const latest  = latestRating[c.id];
+    const rating  = latest?.rating || "none";
+    const dec     = decisions[c.id] || "";
+    return `<tr>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td><span class="tl-badge ${rating}">${rating === "none" ? "Not yet rated" : rating.charAt(0).toUpperCase() + rating.slice(1)}</span></td>
+      <td>
+        <select class="decision-select ${decisionClass(dec)}"
+          onchange="saveDecision('${c.id}', this.value, this)">
+          <option value="">– –</option>
+          <option value="pass" ${dec==="pass" ?"selected":""}>Pass</option>
+          <option value="fail" ${dec==="fail" ?"selected":""}>Fail</option>
+        </select>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function filterAssessors(val) { renderAssessors(val); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FACULTY & ORGANISING TEAM (synced `people`, not raw faculty_responses —
@@ -1662,6 +1757,7 @@ function switchSection(name) {
 
   // Lazy renders
   if (name === "candidates") renderCandidates();
+  if (name === "assessors")  renderAssessors();
   if (name === "itcs")       renderITCs();
   if (name === "rooms")      renderRooms();
   if (name === "feedback")   renderFeedback(currentFeedbackDay);
@@ -1701,6 +1797,7 @@ async function refreshDashboardData(linkEl) {
     renderProgramme(currentProgDay);
     renderFeedback(currentFeedbackDay);
     renderCandidates();
+    renderAssessors();
     renderITCs();
     renderItcSummaries();
     renderRooms();
