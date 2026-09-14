@@ -315,20 +315,41 @@ async function boot() {
 }
 
 // ── Load candidates from Firestore or demo data ──────────────────────────────
+// 2026-09-14, per Jon: this page was pulling the WHOLE people collection with
+// no role filter at all, so faculty/directors/assessors/trainers all showed
+// up needing a BLS gateway pass. Fixed to Instructor Candidates only (per
+// Jon: the gateway deadline is an Instructor Candidate thing, not ITC —
+// see the matching fix in assessment-development.html for the sibling page,
+// which DOES include ITC, since that one tracks development more broadly).
+// Uses each person's EFFECTIVE role for this specific weekend (iw_assignments
+// doc if one exists, falling back to their permanent people/{uid}.role) —
+// same layered-access pattern as effectiveRole() in cd-dashboard.html.
 async function loadCandidates() {
+  const iwAssignments = {};
+  try {
+    const iwSnap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    iwSnap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignments[a.uid] = a.function;
+    });
+  } catch (e) { /* leave map empty, falls back to p.role below */ }
+
   try {
     const snap = await db.collection(COLLECTIONS.people).get();
     if (snap.empty) { loadDemo(); return; }
-    snap.docs.forEach(d => {
-      const data = d.data();
-      candidates[d.id] = { name: data.name || d.id, stream: data.stream || "" };
-    });
-    // Derive rooms
     const roomSet = new Set();
     snap.docs.forEach(d => {
-      const rm = (d.data().room || "").toUpperCase();
+      const data = d.data();
+      const effectiveRole = iwAssignments[d.id] || data.role;
+      if (effectiveRole !== ROLES.INSTRUCTOR) return;
+      candidates[d.id] = { name: data.name || d.id, stream: data.stream || "" };
+      const rm = (data.room || "").toUpperCase();
       if (rm) roomSet.add(rm);
     });
+    // Deliberately not falling back to demo data if this filters down to
+    // zero real matches — an empty gateway here should read as empty, not
+    // silently show fake names that hide a real role-tagging problem.
     allRooms = Array.from(roomSet).sort();
     if (!currentRoom && allRooms.length) currentRoom = allRooms[0];
   } catch (err) {
