@@ -109,6 +109,38 @@
     }
     .btn-undo:hover { border-color: #aab8c2; }
 
+    /* ── "Not expected today" (2026-09-14, per Jon) — pulls someone out of
+         the Outstanding/no-show count and list without deleting them or
+         touching real arrival data. ── */
+    .btn-not-expected {
+      padding: 6px 10px; border-radius: 6px; border: 2px dashed #dce3ea;
+      background: white; color: var(--rmd-muted);
+      font-family: var(--font); font-size: 11px; font-weight: 600;
+      cursor: pointer; margin-top: 4px;
+    }
+    .btn-not-expected:hover { border-color: #aab8c2; color: var(--rmd-navy); }
+    .person-row.not-expected { border-left-color: #dce3ea; opacity: 0.6; }
+    .not-expected-label {
+      font-size: 11px; color: var(--rmd-muted); font-style: italic;
+    }
+
+    /* ── Course-type filter (2026-09-14, per Jon) — a second filter axis
+         alongside the arrival-status tabs above: which course someone's
+         attending, not whether they've arrived. ── */
+    .course-filter {
+      display: flex; gap: 6px; background: white;
+      padding: 8px 14px; border-bottom: 2px solid #e8edf2;
+      flex-wrap: wrap;
+    }
+    .cf-btn {
+      padding: 6px 12px; border-radius: 999px; border: 2px solid #dce3ea;
+      background: white; color: var(--rmd-muted);
+      font-family: var(--font); font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 0.12s;
+    }
+    .cf-btn:hover { border-color: #aab8c2; }
+    .cf-btn.active { background: var(--rmd-navy); border-color: var(--rmd-navy); color: white; }
+
     /* ── Section headings ── */
     .list-heading {
       font-size: 11px; font-weight: 700; color: var(--rmd-muted);
@@ -206,6 +238,13 @@
   <div class="tab"        id="tab-add"         onclick="switchTab('add')">+ Add</div>
 </div>
 
+<!-- Course-type filter -->
+<div class="course-filter" id="courseFilter">
+  <div class="cf-btn active" id="cf-all"        onclick="switchCourseType('all')">All</div>
+  <div class="cf-btn"        id="cf-instructor" onclick="switchCourseType('instructor')">Instructor Candidate</div>
+  <div class="cf-btn"        id="cf-assessor"   onclick="switchCourseType('assessor')">Assessors &amp; Senior Instructor</div>
+</div>
+
 <!-- List -->
 <div class="wrap" id="listWrap"></div>
 
@@ -250,6 +289,7 @@ let attendance   = {};   // { personId: { arrivedAt (timestamp) } }
 let iwAssignments = {};  // { uid: function }  -- this year's IW job, from iw_assignments; falls back to people.role when absent
 let currentTab   = "all";
 let currentFilter = "";
+let currentCourseType = "all"; // "all" | "instructor" | "assessor" — 2026-09-14, per Jon
 let currentUser  = null;
 let canEdit      = false;  // Director / RMD Student Faculty / RMD Senior Faculty — see boot, below
 
@@ -373,9 +413,14 @@ async function checkIn(personId) {
   if (!canEdit) return;
   const now = firebase.firestore.FieldValue.serverTimestamp();
   try {
+    // Clear any earlier "not expected today" flag — they've clearly shown
+    // up after all. Same merged doc as before, just with arrived set.
     await db.collection(COLLECTIONS.attendance).doc(personId).set({
       arrived: now,
-      checkedInBy: currentUser?.uid || "manual"
+      checkedInBy: currentUser?.uid || "manual",
+      notExpected: firebase.firestore.FieldValue.delete(),
+      markedNotExpectedBy: firebase.firestore.FieldValue.delete(),
+      markedNotExpectedAt: firebase.firestore.FieldValue.delete()
     }, { merge: true });
     const person = allPeople.find(p => p.id === personId);
     showToast(`${person?.name || "Attendee"} checked in ✓`, "green");
@@ -395,6 +440,52 @@ async function undoCheckIn(personId) {
     renderList();
   } catch (e) {
     delete attendance[personId];
+    renderList();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Not expected today (2026-09-14, per Jon) — pulls someone out of the
+// Outstanding/no-show list and count without touching real arrival data.
+// Stored on the same attendance doc as check-in, but as a distinct field —
+// personRow()/renderList() check .arrived and .notExpected separately, never
+// just "does the doc exist", since a doc can now exist for either reason.
+// ─────────────────────────────────────────────────────────────────────────────
+async function markNotExpected(personId) {
+  if (!canEdit) return;
+  try {
+    await db.collection(COLLECTIONS.attendance).doc(personId).set({
+      notExpected: true,
+      markedNotExpectedBy: currentUser?.uid || "manual",
+      markedNotExpectedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    const person = allPeople.find(p => p.id === personId);
+    showToast(`${person?.name || "Attendee"} marked not expected today`, "");
+  } catch (e) {
+    attendance[personId] = { ...(attendance[personId] || {}), notExpected: true };
+    renderList();
+  }
+}
+
+async function undoNotExpected(personId) {
+  if (!canEdit) return;
+  try {
+    const rec = attendance[personId];
+    if (rec && rec.arrived) {
+      // Doc still needed for the real arrival record — just clear the flag.
+      await db.collection(COLLECTIONS.attendance).doc(personId).set({
+        notExpected: firebase.firestore.FieldValue.delete(),
+        markedNotExpectedBy: firebase.firestore.FieldValue.delete(),
+        markedNotExpectedAt: firebase.firestore.FieldValue.delete()
+      }, { merge: true });
+    } else {
+      // Doc only existed for the notExpected flag — remove it entirely so
+      // they go back to a normal "not yet arrived" state.
+      await db.collection(COLLECTIONS.attendance).doc(personId).delete();
+    }
+    renderList();
+  } catch (e) {
+    if (attendance[personId]) delete attendance[personId].notExpected;
     renderList();
   }
 }
@@ -448,15 +539,29 @@ function renderList() {
 
   const wrap = document.getElementById("listWrap");
 
-  // Filter
+  // Filter — search, then arrival status, then (2026-09-14) course type.
+  // Arrived/not-expected checks look at the specific field on the
+  // attendance doc, not just whether a doc exists — a doc can now exist
+  // purely to hold a "not expected today" flag with no arrival on it.
   const search = currentFilter.toLowerCase();
   let people = allPeople.filter(p => !search || p.name.toLowerCase().includes(search));
 
-  if (currentTab === "arrived")     people = people.filter(p => !!attendance[p.id]);
-  if (currentTab === "outstanding") people = people.filter(p => !attendance[p.id]);
+  if (currentTab === "arrived")     people = people.filter(p => !!attendance[p.id]?.arrived);
+  if (currentTab === "outstanding") people = people.filter(p => !attendance[p.id]?.arrived && !attendance[p.id]?.notExpected);
+
+  if (currentCourseType === "instructor") people = people.filter(p => effectiveRole(p) === "instructor");
+  if (currentCourseType === "assessor")   people = people.filter(p => effectiveRole(p) === "assessor");
 
   if (!people.length) {
     wrap.innerHTML = `<div class="empty-state"><h3>${currentFilter ? "No results" : "Nobody listed yet"}</h3><p>${currentFilter ? "Try a different name." : "People added via admin tools will appear here."}</p></div>`;
+    return;
+  }
+
+  // Course-type filter selects a specific candidate stream directly — no
+  // Candidates/Faculty split needed since it's asking for one stream only.
+  if (currentCourseType !== "all") {
+    const heading = currentCourseType === "instructor" ? "Instructor Candidates" : "Assessors & Senior Instructors";
+    wrap.innerHTML = `<div class="list-heading">${heading} (${people.length})</div>` + people.map(p => personRow(p)).join("");
     return;
   }
 
@@ -478,8 +583,9 @@ function renderList() {
 }
 
 function personRow(p) {
-  const rec     = attendance[p.id];
-  const arrived = !!rec;
+  const rec         = attendance[p.id];
+  const arrived     = !!rec?.arrived;
+  const notExpected = !arrived && !!rec?.notExpected;
   const initials = (p.name || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
   const role    = effectiveRole(p);
   const colour  = arrived ? "avatar-green" : (ROLE_COLOURS[role] || "avatar-muted");
@@ -487,37 +593,54 @@ function personRow(p) {
   const sub     = [label, p.group].filter(Boolean).join(" · ");
 
   let timeStr = "";
-  if (arrived && rec.arrived) {
+  if (arrived) {
     const d = rec.arrived.toDate ? rec.arrived.toDate() : new Date(rec.arrived);
     timeStr = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
   }
 
+  const rowClass = arrived ? "arrived" : (notExpected ? "not-expected" : "not-here");
+
+  let statusHtml;
+  if (canEdit) {
+    if (arrived) {
+      statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>
+                 <button class="btn-undo" onclick="undoCheckIn('${esc(p.id)}')">Undo</button>`;
+    } else if (notExpected) {
+      statusHtml = `<div class="not-expected-label">Not expected today</div>
+                 <button class="btn-undo" onclick="undoNotExpected('${esc(p.id)}')">Undo</button>`;
+    } else {
+      statusHtml = `<button class="btn-checkin" onclick="checkIn('${esc(p.id)}')">Check in</button>
+                 <button class="btn-not-expected" onclick="markNotExpected('${esc(p.id)}')">Not expected today</button>`;
+    }
+  } else {
+    if (arrived) {
+      statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>`;
+    } else if (notExpected) {
+      statusHtml = `<div class="not-expected-label">Not expected today</div>`;
+    } else {
+      statusHtml = `<div class="arrived-time" style="opacity:.5;">Not yet arrived</div>`;
+    }
+  }
+
   return `
-    <div class="person-row ${arrived ? "arrived" : "not-here"}" id="row-${esc(p.id)}">
+    <div class="person-row ${rowClass}" id="row-${esc(p.id)}">
       <div class="person-avatar ${colour}">${esc(initials)}</div>
       <div class="person-info">
         <div class="person-name">${esc(p.name)}</div>
         <div class="person-sub">${esc(sub)}</div>
       </div>
       <div class="person-status">
-        ${canEdit
-          ? (arrived
-              ? `<div class="arrived-time">✓ ${timeStr}</div>
-                 <button class="btn-undo" onclick="undoCheckIn('${esc(p.id)}')">Undo</button>`
-              : `<button class="btn-checkin" onclick="checkIn('${esc(p.id)}')">Check in</button>`)
-          : (arrived
-              ? `<div class="arrived-time">✓ ${timeStr}</div>`
-              : `<div class="arrived-time" style="opacity:.5;">Not yet arrived</div>`)
-        }
+        ${statusHtml}
       </div>
     </div>`;
 }
 
 function updateStats() {
-  const total    = allPeople.length;
-  const arrived  = Object.keys(attendance).length;
-  const outstand = Math.max(0, total - arrived);
-  const pct      = total ? Math.round(arrived / total * 100) : 0;
+  const total       = allPeople.length;
+  const arrived     = Object.values(attendance).filter(a => a?.arrived).length;
+  const notExpected = Object.values(attendance).filter(a => !a?.arrived && a?.notExpected).length;
+  const outstand    = Math.max(0, total - arrived - notExpected);
+  const pct         = total ? Math.round(arrived / total * 100) : 0;
 
   document.getElementById("statArrived").textContent    = arrived;
   document.getElementById("statOutstanding").textContent = outstand;
@@ -536,6 +659,14 @@ function switchTab(tab) {
   document.getElementById("listWrap").classList.toggle("hidden", tab === "add");
   document.getElementById("addWrap").classList.toggle("hidden",  tab !== "add");
   if (tab !== "add") renderList();
+}
+
+function switchCourseType(type) {
+  currentCourseType = type;
+  ["all","instructor","assessor"].forEach(t => {
+    document.getElementById("cf-" + t)?.classList.toggle("active", t === type);
+  });
+  renderList();
 }
 
 function filterList(val) {
