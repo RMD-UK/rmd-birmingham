@@ -348,6 +348,34 @@ r.everitt@bham.ac.uk
     </div>
   </div>
 
+  <!-- Change email card -->
+  <div class="card">
+    <div class="card-header">Change Someone's Account Email</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">
+        Changes their login email everywhere on the platform in one go — Firebase Auth,
+        and every record that's matched to them by email (people, this year's membership
+        roster, faculty responses, Instructor Weekend registrations, MoU submissions,
+        faculty directory). Use this instead of creating a second account, which is what
+        caused the Laura Ann Smith duplicate earlier this year.
+      </p>
+      <label for="changeEmailOld">Current (wrong / old) email</label>
+      <input type="email" id="changeEmailOld" placeholder="old.address@example.com"
+        style="width:100%;padding:10px;border:2px solid #ccd6dd;border-radius:6px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+      <label for="changeEmailNew">New (correct) email</label>
+      <input type="email" id="changeEmailNew" placeholder="new.address@example.com"
+        style="width:100%;padding:10px;border:2px solid #ccd6dd;border-radius:6px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">
+      <button class="btn-primary" id="changeEmailBtn" onclick="changePersonEmailUi()">Change email</button>
+      <div id="changeEmailFeedback" style="margin-top:10px;font-size:13px;"></div>
+      <p class="hint">
+        Note: this frees the old address for Firebase Auth to hand out again in future — it
+        doesn't block someone from later signing up with it under a different, unrelated
+        account. Low risk here since accounts are only ever created by a director (never
+        public self-signup), but worth knowing.
+      </p>
+    </div>
+  </div>
+
 </div>
 
 <!-- Firebase SDK -->
@@ -355,10 +383,13 @@ r.everitt@bham.ac.uk
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
+let fns; // firebase.functions() — set after initFirebase()
 initFirebase();
+fns = firebase.functions();
 requireDirector("timetable.html");
 
 // ── Parse email list ──────────────────────────────────────────────────────
@@ -452,6 +483,20 @@ async function startCreation() {
     // account creation over a failed read.
   }
 
+  // 2026-09-11: same idea as the People pre-check above, for the other
+  // duplicate-account trap this project has hit — changePersonEmail (see
+  // "Change Someone's Account Email" below) frees the old address in
+  // Firebase Auth the moment it changes someone's email, which means it's
+  // available again for a fresh, unrelated signup here. Flag it instead of
+  // silently creating one.
+  let retiredEmails = new Map();
+  try {
+    const retiredSnap = await db.collection("retired_emails").get();
+    retiredSnap.forEach(doc => retiredEmails.set(doc.id, doc.data()));
+  } catch (e) {
+    // Non-fatal — same fallback as above.
+  }
+
   let ok = 0, err = 0, skip = 0;
 
   for (let i = 0; i < entries.length; i++) {
@@ -460,6 +505,21 @@ async function startCreation() {
     document.getElementById("progressBar").style.width = pct + "%";
 
     let icon, statusClass, statusText;
+
+    const retired = retiredEmails.get(email.toLowerCase());
+    if (retired) {
+      icon = "🚫"; statusClass = "skip";
+      statusText = `Skipped — this address was retired when someone's email was changed to ${retired.newEmail}. Use that address instead, or Change Someone's Account Email below if this really is meant for a new/different person.`;
+      skip++;
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      entry.innerHTML = `
+        <div class="log-icon">${icon}</div>
+        <div class="log-email">${email}${name ? ` <span style="color:var(--rmd-muted)">(${name})</span>` : ""}</div>
+        <div class="log-status ${statusClass}">${statusText}</div>`;
+      document.getElementById("logList").appendChild(entry);
+      continue;
+    }
 
     try {
       // Create Auth account via REST API (works from browser with API key).
@@ -669,6 +729,14 @@ async function startMouRosterCreation() {
   document.getElementById("mouLogList").innerHTML = "";
   document.getElementById("mouSummaryBar").innerHTML = "";
 
+  let retiredEmails = new Map();
+  try {
+    const retiredSnap = await db.collection("retired_emails").get();
+    retiredSnap.forEach(doc => retiredEmails.set(doc.id, doc.data()));
+  } catch (e) {
+    // Non-fatal — see the same check in startCreation() above.
+  }
+
   let ok = 0, err = 0, skip = 0;
 
   for (let i = 0; i < mouRosterEntries.length; i++) {
@@ -677,6 +745,21 @@ async function startMouRosterCreation() {
     document.getElementById("mouProgressBar").style.width = pct + "%";
 
     let icon, statusClass, statusText;
+
+    const retired = retiredEmails.get(email.toLowerCase());
+    if (retired) {
+      icon = "🚫"; statusClass = "skip";
+      statusText = `Skipped — this address was retired when someone's email was changed to ${retired.newEmail}. Use that address instead, or Change Someone's Account Email below if this really is meant for a new/different person.`;
+      skip++;
+      const entry = document.createElement("div");
+      entry.className = "log-entry";
+      entry.innerHTML = `
+        <div class="log-icon">${icon}</div>
+        <div class="log-email">${email}${name ? ` <span style="color:var(--rmd-muted)">(${name}${role ? " — " + role : ""})</span>` : ""}</div>
+        <div class="log-status ${statusClass}">${statusText}</div>`;
+      document.getElementById("mouLogList").appendChild(entry);
+      continue;
+    }
 
     try {
       const res = await fetch(
@@ -719,7 +802,12 @@ async function startMouRosterCreation() {
       <div class="log-status ${statusClass}">${statusText}</div>`;
     document.getElementById("mouLogList").appendChild(entry);
 
-    await new Promise(r => setTimeout(r, 300));
+    // Same abuse-protection rate limit as startCreation() above
+    // (TOO_MANY_ATTEMPTS_TRY_LATER) -- this loop was still at the old
+    // 300ms gap when that one was bumped to 1500ms on 2026-09-09, and this
+    // is the "for all active members" button Jon's report almost certainly
+    // meant. Matched to the same 1500ms here.
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   document.getElementById("mouSummaryBar").innerHTML = `
@@ -784,6 +872,41 @@ async function startForceReset() {
 
   btn.disabled    = false;
   btn.textContent = "Send reset emails";
+}
+
+// ── Change a person's email (Auth + every Firestore record keyed to it) ────
+async function changePersonEmailUi() {
+  const oldEmail = document.getElementById("changeEmailOld").value.trim();
+  const newEmail = document.getElementById("changeEmailNew").value.trim();
+  const btn      = document.getElementById("changeEmailBtn");
+  const fb       = document.getElementById("changeEmailFeedback");
+
+  if (!oldEmail || !newEmail) { fb.textContent = "Enter both the current and new email."; fb.style.color = "#b7410e"; return; }
+  if (!confirm(`Change ${oldEmail} to ${newEmail}?\n\nThis updates their login and every matching record on the platform. This cannot be undone automatically.`)) return;
+
+  btn.disabled    = true;
+  btn.textContent = "Changing…";
+  fb.style.color  = "var(--rmd-muted)";
+  fb.textContent  = "Working…";
+
+  try {
+    const changeEmail = fns.httpsCallable("changePersonEmail");
+    const result = await changeEmail({ oldEmail, newEmail });
+    const updated = result.data && result.data.updatedCollections ? result.data.updatedCollections : {};
+    const collList = Object.keys(updated).length
+      ? Object.entries(updated).map(([c, n]) => `${c} (${n})`).join(", ")
+      : "no other records needed updating";
+    fb.style.color = "#1a6e31";
+    fb.textContent = `✓ Email changed. Also updated: ${collList}.`;
+    document.getElementById("changeEmailOld").value = "";
+    document.getElementById("changeEmailNew").value = "";
+  } catch (err) {
+    fb.style.color = "#b7410e";
+    fb.textContent = "Failed: " + err.message;
+  }
+
+  btn.disabled    = false;
+  btn.textContent = "Change email";
 }
 
 </script>

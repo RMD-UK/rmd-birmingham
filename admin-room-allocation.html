@@ -68,12 +68,6 @@
     .room-head-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
     .room-id { font-size:15px; font-weight:800; letter-spacing:.5px; }
     .room-count { font-size:11px; opacity:.55; }
-    .faculty-sel { width:100%; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.22); border-radius:5px; color:#fff; font-size:12px; padding:4px 6px; cursor:pointer; font-family:var(--font); box-sizing:border-box; }
-    .faculty-sel option { background:#152c45; }
-    .fac-leads { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:5px; }
-    .fac-chip { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); border-radius:4px; padding:2px 5px 2px 8px; font-size:11px; color:#fff; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
-    .fac-chip button { background:none; border:none; color:rgba(255,255,255,.6); cursor:pointer; padding:0; font-size:14px; line-height:1; font-family:var(--font); }
-    .fac-chip button:hover { color:#fff; }
     .room-body { flex:1; padding:5px; min-height:60px; }
     .room-sec-label { font-size:10px; font-weight:700; color:#aab0c8; text-transform:uppercase; padding:3px 3px 1px; letter-spacing:.5px; }
     .room-drop-hint { text-align:center; color:#c8cede; font-size:12px; padding:18px 8px; }
@@ -239,11 +233,10 @@ const ROOMS = INSTRUCTOR_ROOMS;
 let allCandidates  = [];   // role=instructor
 let allInstructors = [];   // role=full-instructor
 let allFaculty     = [];   // role=faculty (Teaching Faculty tab pool: Faculty + Instructor Trainer)
-let allLeadCandidates = []; // faculty_responses role="Instructor Trainer" only -- room faculty-lead picker pool
 let allITC         = [];   // role=Instructor Trainer Candidate (confirmed, from faculty_responses)
 let allPeople      = [];   // everyone
 
-let groups = {};           // {CM01:{facultyLeads:[],candidates:[],instructors:[]}, ...}
+let groups = {};           // {CM01:{candidates:[],instructors:[]}, ...}
 let teachingFaculty = new Set();
 let itcSet          = new Set();
 let itcSchedule     = {};  // {email: {sat_group:"CM01", ...}}
@@ -252,7 +245,7 @@ let dragging     = null;   // {email, source}
 let draggingRole = null;   // "candidate" | "instructor"
 let selectedEmail = null;
 
-ROOMS.forEach(r => { groups[r] = { facultyLeads: [], candidates: [], instructors: [] }; });
+ROOMS.forEach(r => { groups[r] = { candidates: [], instructors: [] }; });
 
 // ── Auth ───────────────────────────────────────────────────────────────────
 // resolveRole() is the shared one from js/firebase-config.js — do not
@@ -291,7 +284,7 @@ async function loadData() {
 
   // ② Confirmed IW attendees from faculty_responses
   //   Faculty or Instructor Trainer role → Teaching Faculty tab pool (allFaculty); Instructor Trainer
-  //   role only → room faculty-lead picker pool (allLeadCandidates) + room-placement pool if full-instructor (allInstructors)
+  //   role → also room-placement pool if full-instructor (allInstructors)
   //   ITC role → ITC picker only (via allPeople)
   //   Note: "Instructor Trainer" and "Assessor Faculty" were added as distinct faculty-form.html
   //   role options 2026-07-11 (previously Instructor Trainers had to pick "Faculty" as the closest
@@ -313,7 +306,6 @@ async function loadData() {
       if (!allPeople.some(x => x.email === em)) allPeople.push(p);
       if (d.role === "Faculty" || d.role === "Instructor Trainer") {
         allFaculty.push(p);  // all Faculty/Instructor Trainer respondents → Teaching Faculty tab pool
-        if (d.role === "Instructor Trainer") allLeadCandidates.push(p);  // room faculty-lead picker: Instructor Trainer only, not plain Faculty
         if (rosterRoleByEmail[em] === "full-instructor" || d.role === "Instructor Trainer") {
           allInstructors.push(p);  // full instructors also go in the room pool
         }
@@ -325,7 +317,7 @@ async function loadData() {
     });
   } catch(e) { console.warn("Faculty responses load failed:", e.message); }
 
-  [allCandidates, allInstructors, allFaculty, allLeadCandidates, allITC, allPeople].forEach(a => a.sort((x,y) => x.name.localeCompare(y.name)));
+  [allCandidates, allInstructors, allFaculty, allITC, allPeople].forEach(a => a.sort((x,y) => x.name.localeCompare(y.name)));
 
   try {
     const snap = await db.collection(COLLECTIONS.groups).get();
@@ -333,9 +325,6 @@ async function loadData() {
       const rid = doc.id;
       if (groups[rid]) {
         const d = doc.data();
-        // facultyLeads is the current field (array); fall back to the old
-        // singular `faculty` field for any room doc saved before multi-lead.
-        groups[rid].facultyLeads = d.facultyLeads || (d.faculty ? [d.faculty] : []);
         groups[rid].candidates   = d.candidates   || [];
         groups[rid].instructors  = d.instructors  || [];
       }
@@ -459,11 +448,6 @@ function renderRooms() {
                   <span class="room-id">${rid}</span>
                   <span class="room-count">${total} assigned</span>
                 </div>
-                ${g.facultyLeads.length ? `<div class="fac-leads">${g.facultyLeads.map(f => `<span class="fac-chip">${f.name}<button onclick="event.stopPropagation();removeFacultyLead('${rid}','${f.email}')" title="Remove">×</button></span>`).join("")}</div>` : ""}
-                <select class="faculty-sel" id="fac-${rid}" onchange="addFacultyLead('${rid}',this.value)" onclick="event.stopPropagation()">
-                  <option value="">${g.facultyLeads.length ? "+ Add another faculty lead" : "— No faculty lead —"}</option>
-                  ${allLeadCandidates.filter(f => !g.facultyLeads.some(x=>x.email===f.email)).map(f => `<option value="${f.email}">${f.name}</option>`).join("")}
-                </select>
               </div>
               <div class="room-body">
                 ${g.instructors.length ? `<div class="room-sec-label">Instructor Trainers</div>${g.instructors.map(p=>makeCard(p,rid,"instructor")).join("")}` : ""}
@@ -482,18 +466,6 @@ function updateStats() {
   document.getElementById("statInst").textContent      = selInst.length;
   document.getElementById("statAssigned").textContent  = a.size;
   document.getElementById("statUnassigned").textContent = total - a.size;
-}
-
-function addFacultyLead(rid, email) {
-  if (!email) return;
-  const f = allLeadCandidates.find(x => x.email === email);
-  if (!f) return;
-  if (!groups[rid].facultyLeads.some(x => x.email === email)) groups[rid].facultyLeads.push(f);
-  renderRooms();
-}
-function removeFacultyLead(rid, email) {
-  groups[rid].facultyLeads = groups[rid].facultyLeads.filter(x => x.email !== email);
-  renderRooms();
 }
 
 // ── Drag & drop ────────────────────────────────────────────────────────────
@@ -691,7 +663,6 @@ async function saveAll() {
     // Room groups
     ROOMS.forEach(rid => {
       batch.set(db.collection(COLLECTIONS.groups).doc(rid), {
-        facultyLeads: groups[rid].facultyLeads || [],
         candidates:   groups[rid].candidates   || [],
         instructors:  groups[rid].instructors  || [],
         year:         CURRENT_MOU_YEAR,
@@ -708,6 +679,46 @@ async function saveAll() {
     // ITC schedule
     const itcList = allITC.filter(p => itcSet.has(p.email)).map(p => ({ name: p.name, email: p.email }));
     batch.set(db.collection("config").doc("itc_schedule"), { itcs: itcList, assignments: itcSchedule, year: CURRENT_MOU_YEAR, updatedAt: ts });
+
+    // Sync each room onto the person's own people/{uid} doc.
+    // Added 2026-09-12: session-feedback.html (candidate rating) and
+    // itc-observations.html (ITC rotation) both work out "my room" from
+    // currentUserDoc.group/.room on the signed-in person's OWN people doc —
+    // not from this groups collection. Nothing wrote that field before this,
+    // so those two pages could never actually find someone's real room
+    // (they'd either fall through to the demo candidates or, worse, an
+    // unfiltered query returning every candidate across every room). This
+    // keeps people.group in sync with whatever's actually saved here:
+    // assigned to a room → that room's id; removed/never assigned → cleared.
+    try {
+      const peopleSnap = await db.collection(COLLECTIONS.people).get();
+      const uidByEmail = {};
+      peopleSnap.forEach(doc => {
+        const em = (doc.data().email || "").toLowerCase();
+        if (em) uidByEmail[em] = doc.id;
+      });
+
+      const roomByEmail = {};
+      ROOMS.forEach(rid => {
+        [...(groups[rid].candidates || []), ...(groups[rid].instructors || [])]
+          .forEach(p => { roomByEmail[(p.email || "").toLowerCase()] = rid; });
+      });
+
+      // Anyone who could ever be assigned to a room this year — including
+      // people just removed from one, so their stale group gets cleared.
+      const assignablePool = uniquePeople([...allCandidates, ...allInstructors, ...allFaculty]);
+      assignablePool.forEach(p => {
+        const em  = (p.email || "").toLowerCase();
+        const uid = uidByEmail[em];
+        if (!uid) return; // no login/people doc yet — nothing to sync onto
+        const rid = roomByEmail[em] || null;
+        batch.set(db.collection(COLLECTIONS.people).doc(uid), {
+          group: rid || firebase.firestore.FieldValue.delete()
+        }, { merge: true });
+      });
+    } catch (e) {
+      console.warn("Could not sync rooms onto people docs:", e.message);
+    }
 
     await batch.commit();
     showStatus("✓ All saved","ok");

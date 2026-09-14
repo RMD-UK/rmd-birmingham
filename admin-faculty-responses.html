@@ -665,7 +665,7 @@ function getFiltered() {
 function copyFilteredEmails() {
   const filtered = getFiltered();
   if (!filtered.length) { alert("No responses in this view."); return; }
-  const emails = filtered.map(r => r.email).filter(Boolean).join(", ");
+  const emails = filtered.map(r => r.email).filter(Boolean).join("; ");
   navigator.clipboard.writeText(emails).then(() =>
     alert(`${filtered.length} email(s) copied to clipboard.`));
 }
@@ -957,14 +957,15 @@ function renderERC() {
           <td>${r.email||"–"}</td>
           <td>${r.ercQualification||"–"}</td>
           <td>${r.ercLiaisonConfirmed ? "✓ Will contact ERC" : "–"}</td>
+          <td><button class="btn-action secondary" onclick="resolveErcIssue('${r.id}')">✓ Mark resolved</button></td>
         </tr>`).join("")
-    : `<tr><td colspan="4" style="color:#aab8c2;text-align:center;">No ERC issues reported</td></tr>`;
+    : `<tr><td colspan="5" style="color:#aab8c2;text-align:center;">No ERC issues reported</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
       <div class="section-heading" style="color:#b7410e;">ERC issues — needs correcting before end of September (${toFix.length})</div>
       <table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Current ERC qualification</th><th>Liaison confirmed</th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Current ERC qualification</th><th>Liaison confirmed</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -1005,12 +1006,23 @@ function renderITC() {
 async function setAttendanceStatus(docId, status, cardIndex) {
   try {
     const updates = { attendanceStatus: status };
-    if (status === "confirmed") updates.provisional = false;
+    if (status === "confirmed") {
+      updates.provisional = false;
+      // Also clear any stale self-decline flag. Added 2026-09-12: cannotAttend
+      // is set by faculty-form.html's "can't attend" shortcut and, until the
+      // matching fix in submitForm() the same day, was never cleared by
+      // anything — so flipping someone to Confirmed here left them still
+      // invisible to every cannotAttend-gated pool (Teaching Faculty / room
+      // allocation) even though this page showed them as Confirmed. Covers
+      // the case where a director confirms someone directly (e.g. by email)
+      // without them resubmitting the form themselves.
+      updates.cannotAttend = false;
+    }
     await db.collection("faculty_responses").doc(docId).update(updates);
     const r = allResponses.find(x => x.id === docId);
     if (r) {
       r.attendanceStatus = status === "pending" ? null : status;
-      if (status === "confirmed") r.provisional = false;
+      if (status === "confirmed") { r.provisional = false; r.cannotAttend = false; }
     }
     updateSummary();
     renderTab(currentTab);
@@ -1149,6 +1161,30 @@ function renderProvisional() {
     </div>`;
 }
 
+// resolveErcIssue(docId) - director-initiated override, added 2026-09-11.
+// Until now ercCorrectlyListed could only be corrected by the person
+// resubmitting faculty-form.html with their ERC listing fixed on the ERC's
+// own side; Jon confirmed it's fine for a director to just mark it resolved
+// directly here instead of waiting on that. Removes them from the "ERC
+// issues" list (renderERC()'s toFix filter) and the "ERC TO FIX" summary
+// count immediately, since both key off ercCorrectlyListed === "no".
+async function resolveErcIssue(docId) {
+  if (!confirm("Mark this person's ERC listing as resolved? This removes them from the ERC issues list.")) return;
+  try {
+    await db.collection("faculty_responses").doc(docId).update({
+      ercCorrectlyListed: "yes",
+      ercResolvedByDirector: true,
+      ercResolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    const r = allResponses.find(x => x.id === docId);
+    if (r) { r.ercCorrectlyListed = "yes"; r.ercResolvedByDirector = true; }
+    updateSummary();
+    renderTab(currentTab);
+  } catch (err) {
+    alert("Failed to update: " + err.message);
+  }
+}
+
 // setProvisional(docId) - admin-initiated version of the provisional flag,
 // added 2026-09-08. Until now "provisional" could only be set by the person
 // themselves ticking a box on their own form; this lets a director flag
@@ -1268,7 +1304,7 @@ function exportCSV() {
 }
 
 function copyAllEmails() {
-  const emails = allResponses.map(r => r.email).filter(Boolean).join(", ");
+  const emails = allResponses.map(r => r.email).filter(Boolean).join("; ");
   navigator.clipboard.writeText(emails).then(() =>
     alert(`${allResponses.length} email(s) copied.`));
 }

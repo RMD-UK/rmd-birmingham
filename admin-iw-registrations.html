@@ -389,6 +389,65 @@ requireDirector("timetable.html").then(async () => {
 });
 
 // ── Load ──────────────────────────────────────────────────────────────────────
+// ── Decline sync (2026-09-11, Jon) ────────────────────────────────
+// A decline recorded on faculty_responses (attendanceStatus === "declined")
+// wasn't reflected here automatically: "Import confirmed faculty" below is a
+// one-way, one-time pull of CONFIRMED people only, so anyone who declined
+// after being imported just sat here looking confirmed/pending, and anyone
+// who declined without ever being imported (e.g. Juliette Horobin) didn't
+// appear on this list at all — which is why the declined counts on
+// admin-faculty-responses.html and this page could disagree. This runs on
+// every page load: existing matching rows (by email) get flipped to
+// declined, and declined people who were never imported get added here
+// (as declined) so both pages show the same people.
+async function syncDeclinesFromFacultyResponses() {
+  let snap;
+  try {
+    snap = await db.collection("faculty_responses").where("attendanceStatus", "==", "declined").get();
+  } catch (err) {
+    console.warn("Decline sync: could not read faculty_responses", err);
+    return;
+  }
+  if (snap.empty) return;
+
+  const byEmail = new Map(allRegistrations.map(r => [(r.email || "").toLowerCase(), r]));
+  const batch   = db.batch();
+  const ts      = firebase.firestore.FieldValue.serverTimestamp();
+  let changed   = false;
+
+  snap.forEach(doc => {
+    const d     = doc.data();
+    const email = (d.email || "").toLowerCase();
+    if (!email) return;
+    const existing = byEmail.get(email);
+
+    if (existing) {
+      if (existing.status !== "declined") {
+        batch.update(db.collection(IW_COLL).doc(existing.id), {
+          status: "declined", declineSyncedAt: ts, declineSyncedFrom: "faculty_responses"
+        });
+        existing.status = "declined";
+        changed = true;
+      }
+    } else {
+      const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || email;
+      const ref  = db.collection(IW_COLL).doc();
+      const row  = { id: ref.id, name, email, role: d.role || "Faculty", notes: "", source: "faculty-decline-sync", status: "declined" };
+      batch.set(ref, { name, email, role: row.role, notes: "", source: "faculty-decline-sync", status: "declined", addedAt: ts });
+      allRegistrations.push(row);
+      byEmail.set(email, row);
+      changed = true;
+    }
+  });
+
+  if (!changed) return;
+  try {
+    await batch.commit();
+  } catch (err) {
+    console.warn("Decline sync: failed to write", err);
+  }
+}
+
 async function loadAll() {
   document.getElementById("tableContainer").innerHTML = '<div class="loading">Loading…</div>';
   try {
@@ -406,6 +465,8 @@ async function loadAll() {
       return;
     }
   }
+  await syncDeclinesFromFacultyResponses();
+
   // Section 0.1 (platform workplan): surface name drift against the person's
   // own people/{uid} record — confirmed registrations only, since that's the
   // only status syncIwRegistrationToPeople ever creates a people doc for
@@ -1300,7 +1361,7 @@ async function syncToPeople() {
 function copyConfirmedEmails() {
   const confirmed = allRegistrations.filter(r => r.status === "confirmed");
   if (!confirmed.length) { alert("No confirmed attendees yet."); return; }
-  const emails = confirmed.map(r => r.email).filter(Boolean).join(", ");
+  const emails = confirmed.map(r => r.email).filter(Boolean).join("; ");
   navigator.clipboard.writeText(emails).then(() =>
     alert(`${confirmed.length} confirmed email(s) copied to clipboard.`));
 }
@@ -1309,7 +1370,7 @@ function copyAssessorEmails() {
   const group = allRegistrations.filter(r => r.role === ASSESSOR_ROLE);
   const withEmail = group.filter(r => r.email);
   if (!withEmail.length) { alert("No Assessor/Senior Instructor emails on file."); return; }
-  const emails = withEmail.map(r => r.email).join(", ");
+  const emails = withEmail.map(r => r.email).join("; ");
   const noEmailNote = group.length - withEmail.length
     ? ` (${group.length - withEmail.length} more have no email on file, not included)` : "";
   navigator.clipboard.writeText(emails).then(() =>
@@ -1320,7 +1381,7 @@ function copyFacultyEmails() {
   const group = allRegistrations.filter(r => r.role === "Faculty");
   const withEmail = group.filter(r => r.email);
   if (!withEmail.length) { alert("No Faculty emails on file."); return; }
-  const emails = withEmail.map(r => r.email).join(", ");
+  const emails = withEmail.map(r => r.email).join("; ");
   const noEmailNote = group.length - withEmail.length
     ? ` (${group.length - withEmail.length} more have no email on file, not included)` : "";
   navigator.clipboard.writeText(emails).then(() =>

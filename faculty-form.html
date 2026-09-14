@@ -1032,6 +1032,20 @@ async function submitForm() {
     // attendanceStatus (confirmed/declined/pending). True means the faculty
     // member expects to come back and confirm/update these answers later.
     provisional: state.provisional,
+    // Explicitly clear the self-decline flag on every real submission.
+    // Added 2026-09-12: this record can already carry cannotAttend:true
+    // from an earlier submitCannotAttend()/submitStandaloneDecline() visit.
+    // Before this fix, submitForm() never mentioned cannotAttend at all, so
+    // merge:true left that stale `true` in place forever — someone who
+    // declined and then came back to submit normally (or was manually
+    // flipped to "Confirmed" by a director on admin-faculty-responses.html,
+    // which also never touches this field) stayed permanently invisible to
+    // every cannotAttend-gated pool (Teaching Faculty / room allocation on
+    // admin-room-allocation.html, the isConfirmedNotDeclined() filter on
+    // admin-faculty-responses.html) despite showing as Confirmed. Found
+    // while testing the room-allocation pipeline with a fake account that
+    // hit exactly this path.
+    cannotAttend: false,
     // Meta
     source: "faculty-form-2026"
   };

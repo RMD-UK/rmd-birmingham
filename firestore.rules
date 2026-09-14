@@ -393,6 +393,15 @@ service cloud.firestore {
       allow read, write: if isDirector();
     }
 
+    // Written only by the changePersonEmail Cloud Function (Admin SDK,
+    // bypasses these rules) when a director changes someone's login email —
+    // see functions/index.js. Read-only here so admin-bulk-users.html can
+    // warn a director before a bulk import reuses a retired address for an
+    // unrelated new person. No client write path, deliberately.
+    match /retired_emails/{docId} {
+      allow read: if isDirector();
+    }
+
     // ── Instructor Weekend per-year function (Axis B) ───────────────────────
     // Added 2026-09-08, layered-access build-sequence step 4. docId is
     // "{year}_{uid}" (e.g. "2026_abc123"); each doc carries its own `uid`

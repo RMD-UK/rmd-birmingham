@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Room Rosters — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; }
+
+    .rr-header {
+      background: var(--rmd-navy); color: white; padding: 10px 16px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .rr-header a { color: rgba(255,255,255,0.75); text-decoration: none; font-size: 13px; }
+    .rr-header a:hover { color: white; }
+    .rr-title { flex: 1; font-size: 15px; font-weight: 700; }
+    .rr-time { font-size: 13px; opacity: 0.75; font-variant-numeric: tabular-nums; }
+    .rr-signout { font-size: 12px; opacity: 0.75; cursor: pointer; text-decoration: underline; color: white; }
+
+    .rr-main { max-width: 900px; margin: 0 auto; padding: 16px; }
+    .section-title {
+      font-size: 17px; font-weight: 700; color: var(--rmd-navy);
+      margin: 0 0 6px; border-bottom: 2px solid #dce3ea; padding-bottom: 8px;
+    }
+    .text-sm    { font-size: 12px; }
+    .text-muted { color: var(--rmd-muted); }
+
+    .day-tabs { display: flex; gap: 4px; margin: 12px 0; flex-wrap: wrap; }
+    .day-tab-btn {
+      padding: 6px 14px; border-radius: 5px; border: 2px solid #dce3ea;
+      background: white; font-family: var(--font); font-size: 12px; font-weight: 700;
+      color: var(--rmd-navy); cursor: pointer;
+    }
+    .day-tab-btn.active { background: var(--rmd-navy); color: white; border-color: var(--rmd-navy); }
+
+    .card {
+      background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+      overflow: hidden;
+    }
+    .card-header {
+      background: var(--rmd-navy); color: white; padding: 10px 16px;
+      font-size: 14px; font-weight: 700;
+    }
+    .card-body { padding: 0; overflow-x: auto; }
+
+    .cand-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .cand-table th {
+      background: #f5f7fa; color: var(--rmd-navy); font-weight: 700;
+      padding: 8px 10px; text-align: left; border-bottom: 2px solid #dce3ea; font-size: 12px;
+    }
+    .cand-table td { padding: 9px 10px; border-bottom: 1px solid #f0f3f6; vertical-align: middle; }
+    .cand-table tr:last-child td { border-bottom: none; }
+    .cand-table tr:hover td { background: #fafbfc; }
+    .empty-msg { text-align: center; color: var(--rmd-muted); font-size: 13px; padding: 24px 0; }
+    .loading   { color: var(--rmd-muted); font-size: 13px; padding: 20px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+<div class="rr-header">
+  <a href="timetable.html">← Timetable</a>
+  <div class="rr-title">Room Rosters</div>
+  <div class="rr-time" id="rrTime">--:--</div>
+  <a href="#" class="rr-signout" onclick="signOut()">Sign out</a>
+</div>
+
+<div class="rr-main">
+  <div class="section-title">Room Rosters</div>
+  <p class="text-sm text-muted" style="margin:-2px 0 4px;">Instructor Trainers and Instructor Candidates are fixed in their room for the whole weekend. Pick a session block below to see which ITC is visiting each room for that block.</p>
+
+  <div class="day-tabs" id="roomBlockTabs">
+    <button class="day-tab-btn active" onclick="showRoomBlock('sat_group',this)">Sat — Equipment/BLS/First Aid</button>
+    <button class="day-tab-btn" onclick="showRoomBlock('sat_conv',this)">Sat — Learning Conversation</button>
+    <button class="day-tab-btn" onclick="showRoomBlock('sun_teaching',this)">Sun — Teaching</button>
+    <button class="day-tab-btn" onclick="showRoomBlock('sun_assess',this)">Sun — Continuous Assessment</button>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Room Roster</div>
+    <div class="card-body">
+      <table class="cand-table">
+        <thead><tr>
+          <th>Room</th>
+          <th>Instructor Trainers</th>
+          <th>Instructor Candidates</th>
+          <th>ITC (this session)</th>
+        </tr></thead>
+        <tbody id="roomsTableBody"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+// Room Rosters — standalone page, added 2026-09-13 per Jon: everyone who can
+// sign in (Instructor Candidates never get logins at all, so "everyone
+// except candidates" is just "everyone signed in") should be able to see
+// the combined Instructor Trainer / Instructor Candidate / ITC view, without
+// opening up the rest of cd-dashboard.html (candidate ratings, decisions,
+// meeting notes, report draft all stay director-only there). Same rendering
+// as cd-dashboard.html's "Rooms" tab, reading only `groups` and
+// config/itc_schedule — both already readable by any signed-in user per
+// firestore.rules, so no rules changes were needed for this page to work.
+
+initFirebase();
+
+let groups = {};
+let itcSchedule = {};
+let currentRoomBlock = "sat_group";
+
+const ITC_SESSIONS = [
+  { key: "sat_group",    label: "Sat — Equipment/BLS/First Aid" },
+  { key: "sat_conv",     label: "Sat — Learning Conversation" },
+  { key: "sun_teaching", label: "Sun — Teaching" },
+  { key: "sun_assess",   label: "Sun — Continuous Assessment" }
+];
+
+window.addEventListener("load", () => {
+  updateClock();
+  setInterval(updateClock, 15000);
+
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "signin.html"; return; }
+    await Promise.all([loadGroups(), loadItcSchedule()]);
+    renderRooms();
+  });
+});
+
+async function loadGroups() {
+  try {
+    const snap = await db.collection(COLLECTIONS.groups).get();
+    groups = {};
+    snap.forEach(d => { groups[d.id] = d.data(); });
+  } catch (e) {
+    console.warn("Groups load failed:", e.message);
+    groups = {};
+  }
+}
+
+async function loadItcSchedule() {
+  try {
+    const doc = await db.collection("config").doc("itc_schedule").get();
+    if (doc.exists) itcSchedule = doc.data();
+  } catch (e) { console.warn("ITC schedule load failed:", e.message); }
+}
+
+function showRoomBlock(key, btnEl) {
+  currentRoomBlock = key;
+  document.querySelectorAll("#roomBlockTabs .day-tab-btn").forEach(b => b.classList.remove("active"));
+  if (btnEl) btnEl.classList.add("active");
+  renderRooms();
+}
+
+function renderRooms() {
+  const tbody = document.getElementById("roomsTableBody");
+  if (!tbody) return;
+
+  const rooms = Object.keys(groups).sort();
+  if (!rooms.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-msg">No rooms allocated yet.</td></tr>`;
+    return;
+  }
+
+  const itcs = itcSchedule.itcs || [];
+  const assignments = itcSchedule.assignments || {};
+  const itcByRoom = {};
+  itcs.forEach(itc => {
+    const room = (assignments[itc.email] || {})[currentRoomBlock];
+    if (room) itcByRoom[room] = itc.name;
+  });
+
+  tbody.innerHTML = rooms.map(rid => {
+    const g = groups[rid] || {};
+    const trainers = (g.instructors || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
+    const cands = (g.candidates || []).map(p => esc(p.name)).join(", ") || `<span class="empty-msg">—</span>`;
+    const itcName = itcByRoom[rid] ? esc(itcByRoom[rid]) : `<span class="empty-msg">—</span>`;
+    return `<tr>
+      <td><strong>${esc(rid)}</strong></td>
+      <td>${trainers}</td>
+      <td>${cands}</td>
+      <td>${itcName}</td>
+    </tr>`;
+  }).join("");
+}
+
+function updateClock() {
+  const now = new Date();
+  const t = String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+  document.getElementById("rrTime").textContent = t;
+}
+
+function signOut() {
+  auth.signOut().then(() => window.location.href = "index.html");
+}
+
+function esc(s) {
+  return (s || "").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+</script>
+</body>
+</html>

@@ -25,6 +25,16 @@
  * does not allow clients to write sessions directly, only this function via
  * the Admin SDK. Full detail above the function itself, below.
  *
+ * changePersonEmail: on-demand (callable), director-only. Changes a
+ * person's Firebase Auth login email and every Firestore record that's
+ * matched to them by email (people, mou_roster, faculty_responses,
+ * iw_registrations, mou_responses, faculty_roster) — see the "Change
+ * Someone's Account Email" card on admin-bulk-users.html. This is the fix
+ * for the class of bug this project kept hitting (Laura Ann Smith, Jaimy
+ * Sajit): a wrong/stale email in one collection while another has the real
+ * one, producing duplicate accounts or false "never signed in" alerts.
+ * Full detail above the function itself, below.
+ *
  * syncIwRegistrationToPeople: Firestore trigger (not callable), fires on
  * every write to iw_registrations/{docId}. Automates the "Sync to People"
  * button in admin-iw-registrations.html — same dedupe-by-email, same role
@@ -507,6 +517,80 @@ function shiftTimeString(start, deltaMinutes) {
 function streamOf(session) {
   return (session.tags || []).includes("assessor-stream") ? "assessor" : "instructor";
 }
+
+// A person's email is used as the match key across several collections
+// (see the doc comment above). Any collection added here later that also
+// keys on email should be added to this list too.
+const EMAIL_KEYED_COLLECTIONS = [
+  "people", "mou_roster", "faculty_responses", "iw_registrations", "mou_responses", "faculty_roster"
+];
+
+exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) throw new HttpsError("permission-denied", "Director access required.");
+
+  const oldEmailRaw = String((request.data && request.data.oldEmail) || "").trim();
+  const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
+  const oldEmail = oldEmailRaw.toLowerCase();
+  const newEmail = newEmailRaw.toLowerCase();
+
+  if (!oldEmailRaw || !newEmailRaw) throw new HttpsError("invalid-argument", "Both the current and new email are required.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) throw new HttpsError("invalid-argument", "That doesn't look like a valid email address.");
+  if (oldEmail === newEmail) throw new HttpsError("invalid-argument", "New email is the same as the current one.");
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(oldEmailRaw);
+  } catch (e) {
+    throw new HttpsError("not-found", `No account found for ${oldEmailRaw}.`);
+  }
+
+  let newEmailTaken = true;
+  try {
+    await admin.auth().getUserByEmail(newEmailRaw);
+  } catch (e) {
+    if (e && e.code === "auth/user-not-found") {
+      newEmailTaken = false;
+    } else {
+      throw new HttpsError("internal", "Could not verify the new email address: " + e.message);
+    }
+  }
+  if (newEmailTaken) throw new HttpsError("already-exists", `${newEmailRaw} is already in use by another account.`);
+
+  const uid = userRecord.uid;
+
+  // 1) The Firebase Auth login credential itself.
+  await admin.auth().updateUser(uid, { email: newEmailRaw, emailVerified: false });
+
+  // 2) Every Firestore record matched to this person by email.
+  const updatedCollections = {};
+  for (const coll of EMAIL_KEYED_COLLECTIONS) {
+    const seen = new Map();
+    for (const candidate of new Set([oldEmailRaw, oldEmail])) {
+      const snap = await db.collection(coll).where("email", "==", candidate).get();
+      snap.docs.forEach(d => seen.set(d.id, d.ref));
+    }
+    if (!seen.size) continue;
+    const batch = db.batch();
+    seen.forEach(ref => batch.update(ref, { email: newEmailRaw }));
+    await batch.commit();
+    updatedCollections[coll] = seen.size;
+  }
+
+  // 3) Record the retirement so admin-bulk-users.html can warn a director
+  //    before a future account-creation run reuses this address for an
+  //    unrelated person without anyone noticing — Firebase Auth itself
+  //    frees the old address for reuse the moment updateUser() above runs.
+  await db.collection("retired_emails").doc(oldEmail).set({
+    previousUid: uid,
+    newEmail: newEmailRaw,
+    changedBy: auth.token.email || null,
+    changedAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+
+  return { uid, updatedCollections };
+});
 
 exports.shiftProgrammeSession = onCall({ region: "us-central1" }, async (request) => {
   const auth = request.auth;
