@@ -691,20 +691,8 @@ const PROGRAMME = {
         tags: ["itc-observation"]
       },
       {
-        id: "sun-5",
-        start: "12:00",
-        duration: 15,
-        title: "Course Update and Information",
-        location: "WF15",
-        lead: "RMD faculty",
-        roles: ["instructor", "faculty", "director"],
-        notes: "",
-        resources: [],
-        tags: []
-      },
-      {
         id: "sun-6",
-        start: "12:15",
+        start: "12:00",
         duration: 20,
         title: "Plenary Lecture: Assessing",
         location: "WF15",
@@ -719,7 +707,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-7",
-        start: "12:35",
+        start: "12:20",
         duration: 15,
         title: "Plenary Demonstration: Assessing",
         location: "WF15",
@@ -731,7 +719,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-8",
-        start: "12:50",
+        start: "12:35",
         duration: 10,
         title: "RMD Reasonable Adjustments Pathway",
         location: "WF15",
@@ -743,7 +731,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-9",
-        start: "13:00",
+        start: "12:45",
         duration: 30,
         title: "Lunch",
         location: "Atrium",
@@ -755,7 +743,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-10",
-        start: "13:30",
+        start: "13:15",
         duration: 90,
         title: "Group Practice: Continuous Assessment",
         location: "Teaching rooms",
@@ -769,7 +757,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-11",
-        start: "15:00",
+        start: "14:45",
         duration: 15,
         title: "Break",
         location: "",
@@ -781,8 +769,8 @@ const PROGRAMME = {
       },
       {
         id: "sun-12",
-        start: "15:15",
-        duration: 15,
+        start: "15:00",
+        duration: 30,
         title: "Course Logistics & Briefing",
         location: "WF15",
         lead: "RMD student faculty",
