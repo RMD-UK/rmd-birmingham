@@ -145,6 +145,7 @@
     <button class="btn-action secondary" onclick="copyFilteredEmails()">📋 Copy emails</button>
     <button class="btn-action secondary" onclick="exportCSV()">⬇ Export CSV</button>
     <button class="btn-action secondary" id="facultyInviteBtn" onclick="sendFacultyFormInvites()" data-tooltip="Emails every RMD Senior/Student Faculty member on the current roster a personalised faculty-form.html link with their email address already filled in.">✉ Send Instructor Weekend invite</button>
+    <button class="btn-action secondary" id="mouReminderBtn" onclick="sendMouReminders()" data-tooltip="Emails everyone on the roster who hasn't yet submitted this year's MOU, using the email already on their account. Automates what the Outstanding tab used to point you at 'Copy emails' for.">📧 Send MOU reminders</button>
     <span class="filter-label" id="filterLabel"></span>
     <div class="role-filter-group" id="roleFilterGroup">
       <button class="role-filter-btn active" data-role="all" onclick="setRoleFilter('all')">All roles <span class="rf-count" id="rf-count-all">–</span></button>
@@ -509,6 +510,48 @@ async function sendFacultyFormInvites() {
   btn.textContent = originalText;
 }
 
+// sendMouReminders() — automates what the Outstanding tab's banner used to
+// tell Jon to do by hand ("copy emails, send them yourself"). Calls the
+// sendMouReminders Cloud Function, which independently recomputes the
+// outstanding list server-side (roster vs this year's submissions) and
+// sends via the same Resend setup as the other reminder emails on this
+// platform. The client-side rosterWithStatus() filter here is only used to
+// build the confirm() preview so Jon can see who it's about to email
+// before it happens — the server is the actual source of truth for who
+// gets sent to. Added 2026-09-15 at Jon's request.
+async function sendMouReminders() {
+  const outstanding = rosterWithStatus().filter(m => m.status === "outstanding" && m.email);
+
+  if (!outstanding.length) {
+    alert("Nobody is currently outstanding for this year's MOU — nothing to send.");
+    return;
+  }
+
+  if (!confirm(`Send a reminder email to ${outstanding.length} outstanding member(s)?
+
+${outstanding.map(m => m.name || m.email).join(", ")}`)) return;
+
+  const btn = document.getElementById("mouReminderBtn");
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  try {
+    const call = fns.httpsCallable("sendMouReminders");
+    const res  = await call({ dryRun: false });
+    const d = res.data || {};
+    alert(`✅ Sent: ${d.sent || 0}` +
+      (d.failed ? `
+⚠ Failed: ${d.failed} — ${(d.failedEmails || []).join(", ")}` : ""));
+  } catch (err) {
+    console.error("sendMouReminders failed:", err);
+    alert("Reminder send failed: " + (err.message || err.code || "unknown error"));
+  }
+
+  btn.disabled = false;
+  btn.textContent = originalText;
+}
+
 const ROSTER_ROLE_ORDER = ["Instructor", "Senior Instructor", "Assessor", "RMD Student Faculty", "RMD Senior Faculty"];
 
 function renderRosterStatus() {
@@ -594,7 +637,7 @@ function renderOutstanding() {
     : `<tr><td colspan="3" style="color:#aab8c2;text-align:center;padding:20px;">Everyone on the roster has completed the MOU</td></tr>`;
 
   document.getElementById("tabContent").innerHTML = `
-    <div class="warn-banner">These roster members have not yet submitted the ${CURRENT_MOU_YEAR} MOU. Use "Copy emails" above to send a reminder.</div>
+    <div class="warn-banner">These roster members have not yet submitted the ${CURRENT_MOU_YEAR} MOU. Use "📧 Send MOU reminders" above to email them all at once, or "Copy emails" to send it yourself.</div>
     <div class="section-block">
       <div class="section-heading" style="color:var(--rmd-warn);">Outstanding (${list.length})</div>
       <table class="data-table">

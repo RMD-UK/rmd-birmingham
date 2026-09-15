@@ -18,6 +18,12 @@
  * who has never signed in. See admin-account-reminders.html. Full deploy note
  * above that function.
  *
+ * sendMouReminders: on-demand (callable), director-only. Emails everyone on
+ * mou_roster who hasn't yet submitted the current academic year's MOU — the
+ * same "Outstanding" list admin-mou-dashboard.html already showed, this
+ * automates the reminder send that page used to leave to a manual
+ * copy-emails-and-send-yourself step. Full deploy note above that function.
+ *
  * shiftProgrammeSession: on-demand (callable), director or assessor-faculty.
  * Cascading same-day, same-stream time shift for the live programme
  * (sessions collection — see admin-migrate-programme.html and timetable.html's
@@ -465,6 +471,115 @@ RMD Birmingham`
   }
 
   return { checked: authUsers.length, eligible, sent, failed: failedEmails.length, failedEmails };
+});
+
+/**
+ * sendMouReminders — director-only. Emails everyone currently on
+ * mou_roster who hasn't yet submitted this academic year's MOU — the same
+ * "Outstanding" list admin-mou-dashboard.html's Outstanding tab already
+ * computes client-side (rosterWithStatus() there). This is the automated
+ * version of the manual "copy emails, send them yourself" step that tab's
+ * banner used to point at. Same dry-run/send pattern and the same
+ * FROM_EMAIL / REPLY_TO / Resend setup as sendAccountCreationReminders
+ * above — no new secret needed. Added 2026-09-15 at Jon's request.
+ *
+ * CURRENT_MOU_YEAR below is a second copy of the client-side constant of
+ * the same name in js/firebase-config.js — Cloud Functions run in a
+ * separate Node runtime with no shared import between client and server
+ * code, so this can't just reference that one. If submissions ever look
+ * outstanding here when admin-mou-dashboard.html says otherwise (or vice
+ * versa), check the two values still match before assuming a data bug.
+ *
+ * Deploy: same as sendAccountCreationReminders (RESEND_API_KEY secret
+ * already shared, no new secret needed):
+ *   firebase deploy --only functions
+ */
+
+const MOU_REMINDERS_COLLECTION = "mou_reminders";
+const CURRENT_MOU_YEAR_SERVER  = "2026/27"; // keep in sync with js/firebase-config.js's CURRENT_MOU_YEAR
+const MOU_FORM_URL             = "https://rmd.uk.com/mou-form.html";
+
+exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const dryRun = !!request.data?.dryRun;
+
+  const [rosterSnap, submissionsSnap, remindersSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("mou_responses").where("academicYear", "==", CURRENT_MOU_YEAR_SERVER).get(),
+    db.collection(MOU_REMINDERS_COLLECTION).get()
+  ]);
+
+  const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const submittedEmails = new Set(
+    submissionsSnap.docs.map(d => (d.data().email || "").toLowerCase()).filter(Boolean)
+  );
+  const remindersByDocId = new Map(remindersSnap.docs.map(d => [d.id, d.data()]));
+
+  const outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
+
+  if (!outstanding.length) {
+    return { checked: roster.length, eligible: [], sent: 0, failed: 0, failedEmails: [] };
+  }
+
+  const eligible = outstanding.map(m => {
+    const record = remindersByDocId.get(m.id) || { remindersSent: 0 };
+    return {
+      docId: m.id,
+      email: m.email,
+      name: m.name || m.email.split("@")[0],
+      role: m.role || "",
+      reminderNumber: record.remindersSent + 1
+    };
+  });
+
+  if (dryRun) {
+    return { checked: roster.length, eligible, sent: 0, failed: 0, failedEmails: [] };
+  }
+
+  const resend = new Resend(resendApiKey.value());
+
+  let sent = 0;
+  const failedEmails = [];
+
+  for (const person of eligible) {
+    const firstName = (person.name || "").split(" ")[0] || "there";
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
+        subject: `RMD Birmingham — please complete your ${CURRENT_MOU_YEAR_SERVER} MOU`,
+        text:
+`Hi ${firstName},
+
+We don't yet have your Memorandum of Understanding on file for ${CURRENT_MOU_YEAR_SERVER}. Please take a few minutes to complete it, sign in with your existing RMD account first:
+
+${MOU_FORM_URL}
+
+If you've already submitted this and are getting this by mistake, just reply and let us know.
+
+Thanks,
+RMD Birmingham`
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+      await db.collection(MOU_REMINDERS_COLLECTION).doc(person.docId).set({
+        remindersSent:  person.reminderNumber,
+        lastReminderAt: admin.firestore.FieldValue.serverTimestamp(),
+        email:          person.email
+      }, { merge: true });
+    } catch (err) {
+      console.error(`sendMouReminders: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  return { checked: roster.length, eligible, sent, failed: failedEmails.length, failedEmails };
 });
 
 /**
