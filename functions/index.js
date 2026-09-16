@@ -522,51 +522,34 @@ exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central
 
   const dryRun = !!(request.data && request.data.dryRun);
 
-  // 2026-09-16 temporary diagnostic: onCall swallows any thrown error that
-  // isn't already an HttpsError and reports a bare "internal" to the client,
-  // which is exactly what happened here after deploy — real cause unknown.
-  // This try/catch surfaces the actual message instead of guessing blind.
-  // Remove once confirmed working.
-  let rosterSnap, submissionsSnap, remindersSnap;
-  try {
-    [rosterSnap, submissionsSnap, remindersSnap] = await Promise.all([
-      db.collection("mou_roster").get(),
-      db.collection("mou_responses").where("academicYear", "==", CURRENT_MOU_YEAR_SERVER).get(),
-      db.collection(MOU_REMINDERS_COLLECTION).get()
-    ]);
-  } catch (err) {
-    console.error("sendMouReminders: read phase failed", err);
-    throw new HttpsError("internal", "DIAG(read): " + (err.message || String(err)));
-  }
+  const [rosterSnap, submissionsSnap, remindersSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("mou_responses").where("academicYear", "==", CURRENT_MOU_YEAR_SERVER).get(),
+    db.collection(MOU_REMINDERS_COLLECTION).get()
+  ]);
 
-  let roster, submittedEmails, remindersByDocId, outstanding, eligible;
-  try {
-    roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    submittedEmails = new Set(
-      submissionsSnap.docs.map(d => (d.data().email || "").toLowerCase()).filter(Boolean)
-    );
-    remindersByDocId = new Map(remindersSnap.docs.map(d => [d.id, d.data()]));
+  const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const submittedEmails = new Set(
+    submissionsSnap.docs.map(d => (d.data().email || "").toLowerCase()).filter(Boolean)
+  );
+  const remindersByDocId = new Map(remindersSnap.docs.map(d => [d.id, d.data()]));
 
-    outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
-
-    eligible = outstanding.map(m => {
-      const record = remindersByDocId.get(m.id) || { remindersSent: 0 };
-      return {
-        docId: m.id,
-        email: m.email,
-        name: m.name || m.email.split("@")[0],
-        role: m.role || "",
-        reminderNumber: record.remindersSent + 1
-      };
-    });
-  } catch (err) {
-    console.error("sendMouReminders: build phase failed", err);
-    throw new HttpsError("internal", "DIAG(build): " + (err.message || String(err)));
-  }
+  const outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
 
   if (!outstanding.length) {
     return { checked: roster.length, eligible: [], sent: 0, failed: 0, failedEmails: [] };
   }
+
+  const eligible = outstanding.map(m => {
+    const record = remindersByDocId.get(m.id) || { remindersSent: 0 };
+    return {
+      docId: m.id,
+      email: m.email,
+      name: m.name || m.email.split("@")[0],
+      role: m.role || "",
+      reminderNumber: record.remindersSent + 1
+    };
+  });
 
   if (dryRun) {
     return { checked: roster.length, eligible, sent: 0, failed: 0, failedEmails: [] };
