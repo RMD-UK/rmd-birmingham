@@ -361,6 +361,24 @@
 
 <div id="editingBannerContainer"></div>
 
+<!-- Identity-match interstitial — shown by submitForm() when
+     checkFacultyIdentityMatch finds a likely existing account under a
+     different email. Pauses submission; the two buttons decide what
+     happens next. Hidden by default. -->
+<div id="identityMatchPanel" style="display:none;max-width:640px;margin:0 auto;padding:16px;">
+  <div style="background:#fff8ed;border:1px solid #f0d9a6;border-radius:8px;padding:18px 20px;">
+    <p style="margin:0 0 10px;font-weight:700;color:var(--rmd-navy);">Is this you?</p>
+    <p style="margin:0 0 14px;font-size:14px;line-height:1.5;color:#3a4152;">
+      We already have an account for <strong id="matchName"></strong> at
+      <strong id="matchEmail"></strong>. If that's you, please sign in there
+      instead of submitting a new response, so everything stays on one
+      account.
+    </p>
+    <button class="btn-next" style="width:auto;padding:10px 20px;margin-right:10px;" onclick="goSignInInstead()">Yes, that's me — take me to sign in</button>
+    <button class="btn-next" style="width:auto;padding:10px 20px;background:white;color:var(--rmd-navy);border:2px solid #ccd6dd;" onclick="dismissIdentityMatch()">No, that's not me — continue</button>
+  </div>
+</div>
+
 <!-- ── SECTION 0: Personal details ── -->
 <div class="section active" id="section-0">
   <p class="section-title">Personal details</p>
@@ -603,10 +621,12 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
 initFirebase();
+const fns = firebase.functions();
 
 const TOTAL_SECTIONS = 6;
 let currentSection = 0;
@@ -1054,8 +1074,56 @@ async function submitForm() {
     record.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
   } else {
     record.submittedAt = firebase.firestore.FieldValue.serverTimestamp();
+
+    // Only check for an existing-under-a-different-email match on a brand
+    // new submission — someone editing their own prior response
+    // (existingDocId set) is already on the right record, nothing to
+    // catch. Fails open: if the check itself errors (network, function
+    // not deployed yet, whatever), log it and let the real submission
+    // through rather than blocking someone over a broken safety net.
+    try {
+      const call  = fns.httpsCallable("checkFacultyIdentityMatch");
+      const res   = await call({ lastName: record.lastName, email: record.email });
+      const match = res.data || {};
+      if (match.matchFound) {
+        pendingRecord = record;
+        document.getElementById("matchName").textContent  = match.name || "an existing member";
+        document.getElementById("matchEmail").textContent = match.maskedEmail || "";
+        document.getElementById("identityMatchPanel").style.display = "block";
+        document.getElementById("identityMatchPanel").scrollIntoView({ behavior: "smooth", block: "center" });
+        btn.disabled    = false;
+        btn.textContent = "Submit →";
+        return; // pause here — the panel's two buttons decide what happens next
+      }
+    } catch (err) {
+      console.error("Identity check failed, continuing without it:", err);
+    }
   }
 
+  await writeSubmission(record, btn);
+}
+
+// pendingRecord holds the record submitForm() built while the identity-match
+// panel is up, so dismissIdentityMatch() can resume without rebuilding it
+// (and re-reading form fields that haven't changed).
+let pendingRecord = null;
+
+function goSignInInstead() {
+  window.location.href = "signin.html";
+}
+
+async function dismissIdentityMatch() {
+  document.getElementById("identityMatchPanel").style.display = "none";
+  if (!pendingRecord) return;
+  const record = pendingRecord;
+  pendingRecord = null;
+  const btn = document.getElementById("nextBtn");
+  btn.disabled    = true;
+  btn.textContent = "Submitting…";
+  await writeSubmission(record, btn);
+}
+
+async function writeSubmission(record, btn) {
   try {
     // Always write under the email-keyed doc ID (create or overwrite-merge —
     // Firestore evaluates this as `create` if the doc doesn't exist yet, so

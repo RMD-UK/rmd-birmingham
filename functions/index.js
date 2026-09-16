@@ -41,6 +41,20 @@
  * one, producing duplicate accounts or false "never signed in" alerts.
  * Full detail above the function itself, below.
  *
+ * changeMyEmail: on-demand (callable), any signed-in member, self-service.
+ * Same mechanics as changePersonEmail, sharing the performEmailChange()
+ * helper, but the "old email" always comes from the caller's own ID token,
+ * never client input, so a member can only ever change their own account.
+ * Powers the "change my email" button on my-account.html. Full detail
+ * above the function itself, below.
+ *
+ * checkFacultyIdentityMatch: on-demand (callable), public, no sign-in.
+ * Called by faculty-form.html at submit time — surname-matches the typed
+ * name against people/mou_roster and, on a match under a different email,
+ * tells the submitter so they can sign in on their real account instead of
+ * creating a duplicate. Soft prompt, not a hard block. Full detail above
+ * the function itself, below.
+ *
  * syncIwRegistrationToPeople: Firestore trigger (not callable), fires on
  * every write to iw_registrations/{docId}. Automates the "Sync to People"
  * button in admin-iw-registrations.html — same dedupe-by-email, same role
@@ -640,13 +654,17 @@ const EMAIL_KEYED_COLLECTIONS = [
   "people", "mou_roster", "faculty_responses", "iw_registrations", "mou_responses", "faculty_roster"
 ];
 
-exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) => {
-  const auth = request.auth;
-  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
-  if (!(await callerIsDirector(auth))) throw new HttpsError("permission-denied", "Director access required.");
-
-  const oldEmailRaw = String((request.data && request.data.oldEmail) || "").trim();
-  const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
+// performEmailChange — shared by changePersonEmail (director, any account)
+// and changeMyEmail (self-service, own account only). Pulled out 2026-09-15
+// when changeMyEmail was added, so the two callers can't drift apart on the
+// actual mechanics of a change — same Auth update, same
+// EMAIL_KEYED_COLLECTIONS propagation, same retired_emails record either
+// way. Callers are responsible for their own auth/permission checks and for
+// deciding what oldEmailRaw is allowed to be before calling this — this
+// function itself trusts whatever oldEmailRaw it's given.
+async function performEmailChange(oldEmailRaw, newEmailRaw, changedByEmail) {
+  oldEmailRaw = String(oldEmailRaw || "").trim();
+  newEmailRaw = String(newEmailRaw || "").trim();
   const oldEmail = oldEmailRaw.toLowerCase();
   const newEmail = newEmailRaw.toLowerCase();
 
@@ -700,11 +718,135 @@ exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) =>
   await db.collection("retired_emails").doc(oldEmail).set({
     previousUid: uid,
     newEmail: newEmailRaw,
-    changedBy: auth.token.email || null,
+    changedBy: changedByEmail || null,
     changedAt: admin.firestore.FieldValue.serverTimestamp()
   });
 
   return { uid, updatedCollections };
+}
+
+/**
+ * checkFacultyIdentityMatch — public, no sign-in required. Called by
+ * faculty-form.html at submit time to catch the specific failure mode that
+ * created this year's email-mismatch mess: someone who already has an
+ * account (a people doc, or a mou_roster entry) fills in the open
+ * faculty-form.html with a different email, quietly creating a second
+ * identity instead of using their existing one.
+ *
+ * Deliberately narrow: matches on SURNAME only (normalized last word of
+ * the stored name), not the full name — first names vary too much for the
+ * same person (Tess/Theresa, Becca/Rebecca) to be a reliable signal, but
+ * surnames essentially never do. This is a soft "is this you?" prompt, not
+ * a hard block — faculty-form.html always lets the submission through if
+ * the person says no, so a coincidental surname match between two
+ * different people never actually locks anyone out, it just asks one
+ * extra question.
+ *
+ * people docs aren't guaranteed to have a plain `name` field — some only
+ * have passportFirstName/passportMiddleName/passportLastName (seen for
+ * real 2026-09-15, Theresa "Tess" Brock's record is exactly this shape),
+ * so candidate names fall back to those before falling back to
+ * preferredName. mou_roster doesn't have this problem, it's always a
+ * single combined `name` field.
+ *
+ * No auth required, and deliberately returns as little as possible: a
+ * boolean, the matched display name, and a MASKED email (first couple of
+ * characters + domain) — enough for a genuine match to recognise
+ * themselves, not enough for this open endpoint to be usable to scrape
+ * the full roster's real email addresses one guess at a time.
+ *
+ * Deploy: same as the other functions above, no new secret needed:
+ *   firebase deploy --only functions
+ */
+function normSurname(fullName) {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1].toLowerCase() : "";
+}
+
+function candidateName(p) {
+  if (p.name) return p.name;
+  const passport = [p.passportFirstName, p.passportMiddleName, p.passportLastName].filter(Boolean).join(" ");
+  return passport || p.preferredName || "";
+}
+
+function maskEmail(email) {
+  const s = String(email || "");
+  const at = s.indexOf("@");
+  if (at <= 0) return "***";
+  const local = s.slice(0, at);
+  const domain = s.slice(at);
+  const shown = local.length <= 2 ? (local[0] || "") : local.slice(0, 2);
+  return `${shown}***${domain}`;
+}
+
+exports.checkFacultyIdentityMatch = onCall({ region: "us-central1" }, async (request) => {
+  const lastName = String((request.data && request.data.lastName) || "").trim();
+  const submittedEmail = String((request.data && request.data.email) || "").trim().toLowerCase();
+
+  const targetSurname = normSurname(lastName);
+  if (!targetSurname) return { matchFound: false };
+
+  const [peopleSnap, rosterSnap] = await Promise.all([
+    db.collection("people").get(),
+    db.collection("mou_roster").get()
+  ]);
+
+  const candidates = [
+    ...peopleSnap.docs.map(d => d.data()),
+    ...rosterSnap.docs.map(d => d.data())
+  ];
+
+  const match = candidates.find(p => {
+    const email = String(p.email || "").trim().toLowerCase();
+    if (!email || (submittedEmail && email === submittedEmail)) return false; // no email, or same email — not a mismatch
+    return normSurname(candidateName(p)) === targetSurname;
+  });
+
+  if (!match) return { matchFound: false };
+
+  return {
+    matchFound: true,
+    name: candidateName(match),
+    maskedEmail: maskEmail(match.email)
+  };
+});
+
+exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) throw new HttpsError("permission-denied", "Director access required.");
+
+  const oldEmailRaw = String((request.data && request.data.oldEmail) || "").trim();
+  const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
+
+  return performEmailChange(oldEmailRaw, newEmailRaw, auth.token.email || null);
+});
+
+/**
+ * changeMyEmail — any signed-in member, self-service only. Same mechanics
+ * as changePersonEmail (Auth login + every EMAIL_KEYED_COLLECTIONS record +
+ * retired_emails), but the "old email" is always taken from the caller's
+ * own verified ID token (auth.token.email), never from client-supplied
+ * data — that's what makes this safe to expose to non-directors. There is
+ * no path in this function for a signed-in member to change anyone's email
+ * but their own. Built 2026-09-15 for my-account.html's "change my email"
+ * button, so a person moving on from their university address (graduating,
+ * changing job) updates their one account instead of a fresh form
+ * submission quietly creating a second one — see [[rmd-uk]] memory note on
+ * the faculty-form.html email-mismatch root cause this is meant to close.
+ *
+ * Deploy: same as changePersonEmail (no new secret needed):
+ *   firebase deploy --only functions
+ */
+exports.changeMyEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const oldEmailRaw = auth.token.email;
+  if (!oldEmailRaw) throw new HttpsError("failed-precondition", "Your account has no email on file — contact a director.");
+
+  const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
+
+  return performEmailChange(oldEmailRaw, newEmailRaw, oldEmailRaw);
 });
 
 exports.shiftProgrammeSession = onCall({ region: "us-central1" }, async (request) => {
