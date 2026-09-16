@@ -24,6 +24,11 @@
  * automates the reminder send that page used to leave to a manual
  * copy-emails-and-send-yourself step. Full deploy note above that function.
  *
+ * sendMouRemindersScheduled: scheduled (runs daily, no caller), automatic
+ * version of sendMouReminders — only actually sends 1 June to 1 October
+ * each year, fortnightly per person, no cap. Full deploy note above that
+ * function.
+ *
  * shiftProgrammeSession: on-demand (callable), director or assessor-faculty.
  * Cascading same-day, same-stream time shift for the live programme
  * (sessions collection — see admin-migrate-programme.html and timetable.html's
@@ -96,6 +101,7 @@
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -488,14 +494,28 @@ RMD Birmingham`
 });
 
 /**
- * sendMouReminders — director-only. Emails everyone currently on
+ * sendMouReminders / sendMouRemindersScheduled — share one core batch
+ * helper (runMouReminderBatch below). Both email everyone currently on
  * mou_roster who hasn't yet submitted this academic year's MOU — the same
  * "Outstanding" list admin-mou-dashboard.html's Outstanding tab already
- * computes client-side (rosterWithStatus() there). This is the automated
- * version of the manual "copy emails, send them yourself" step that tab's
- * banner used to point at. Same dry-run/send pattern and the same
- * FROM_EMAIL / REPLY_TO / Resend setup as sendAccountCreationReminders
- * above — no new secret needed. Added 2026-09-15 at Jon's request.
+ * computes client-side (rosterWithStatus() there).
+ *
+ * sendMouReminders: on-demand (callable), director-only, fired by the
+ * "Send MOU reminders" button on admin-mou-dashboard.html. Sends to
+ * everyone outstanding, no matter how recently they were last reminded —
+ * a director clicking the button is a deliberate one-off nudge. Added
+ * 2026-09-15 at Jon's request.
+ *
+ * sendMouRemindersScheduled: runs automatically, no button. Only sends
+ * between 1 June and 1 October each year (the MOU collection window
+ * around Instructor Weekend), and only to people not reminded in the
+ * last 14 days — so the effective cadence is fortnightly per person
+ * regardless of how often the underlying schedule fires. No cap on total
+ * reminders: keeps nudging every cycle until they submit or are taken off
+ * the roster. Runs daily so the window/cooldown logic in code is the
+ * single source of truth (cron month/day ranges are coarser and easy to
+ * get wrong at the boundaries) — a day outside the window is a free
+ * no-op, no Firestore reads. Added 2026-09-16 at Jon's request.
  *
  * CURRENT_MOU_YEAR below is a second copy of the client-side constant of
  * the same name in js/firebase-config.js — Cloud Functions run in a
@@ -513,15 +533,24 @@ const MOU_REMINDERS_COLLECTION = "mou_reminders";
 const CURRENT_MOU_YEAR_SERVER  = "2026/27"; // keep in sync with js/firebase-config.js's CURRENT_MOU_YEAR
 const MOU_FORM_URL             = "https://rmd.uk.com/mou-form.html";
 
-exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
-  const auth = request.auth;
-  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
-  if (!(await callerIsDirector(auth))) {
-    throw new HttpsError("permission-denied", "Course Directors only.");
-  }
+// Fortnightly cooldown for the automatic send only — the manual button
+// passes minDaysSinceLastReminder: null and always sends to everyone
+// outstanding.
+const AUTO_REMINDER_COOLDOWN_DAYS = 14;
 
-  const dryRun = !!(request.data && request.data.dryRun);
+// 1 June – 1 October inclusive, any year. Compared as month*100+day so the
+// range check is one line and doesn't need a year. Cloud Functions' clock
+// is UTC; the schedule below fires at 08:00 Europe/London, which is at
+// most an hour off UTC, so a plain UTC Date is safe for a check this
+// coarse (month/day only) — it can never cross a whole calendar day.
+function isWithinMouReminderWindow(date) {
+  const md    = (date.getUTCMonth() + 1) * 100 + date.getUTCDate();
+  const start = 6 * 100 + 1;  // 1 June
+  const end   = 10 * 100 + 1; // 1 October
+  return md >= start && md <= end;
+}
 
+async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder }) {
   const [rosterSnap, submissionsSnap, remindersSnap] = await Promise.all([
     db.collection("mou_roster").get(),
     db.collection("mou_responses").where("academicYear", "==", CURRENT_MOU_YEAR_SERVER).get(),
@@ -540,16 +569,25 @@ exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central
     return { checked: roster.length, eligible: [], sent: 0, failed: 0, failedEmails: [] };
   }
 
-  const eligible = outstanding.map(m => {
-    const record = remindersByDocId.get(m.id) || { remindersSent: 0 };
-    return {
+  const now = Date.now();
+  const eligible = outstanding
+    .map(m => {
+      const record = remindersByDocId.get(m.id) || { remindersSent: 0, lastReminderAt: null };
+      return { m, record };
+    })
+    .filter(({ record }) => {
+      if (minDaysSinceLastReminder == null) return true; // manual send — no cooldown
+      if (!record.lastReminderAt) return true; // never reminded — always eligible
+      const daysSince = (now - record.lastReminderAt.toMillis()) / (1000 * 60 * 60 * 24);
+      return daysSince >= minDaysSinceLastReminder;
+    })
+    .map(({ m, record }) => ({
       docId: m.id,
       email: m.email,
       name: m.name || m.email.split("@")[0],
       role: m.role || "",
-      reminderNumber: record.remindersSent + 1
-    };
-  });
+      reminderNumber: (record.remindersSent || 0) + 1
+    }));
 
   if (dryRun) {
     return { checked: roster.length, eligible, sent: 0, failed: 0, failedEmails: [] };
@@ -594,7 +632,27 @@ RMD Birmingham`
   }
 
   return { checked: roster.length, eligible, sent, failed: failedEmails.length, failedEmails };
+}
+
+exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const dryRun = !!(request.data && request.data.dryRun);
+  return runMouReminderBatch({ dryRun, minDaysSinceLastReminder: null });
 });
+
+exports.sendMouRemindersScheduled = onSchedule(
+  { schedule: "0 8 * * *", timeZone: "Europe/London", secrets: [resendApiKey], region: "us-central1" },
+  async () => {
+    if (!isWithinMouReminderWindow(new Date())) return;
+    const result = await runMouReminderBatch({ dryRun: false, minDaysSinceLastReminder: AUTO_REMINDER_COOLDOWN_DAYS });
+    console.log(`sendMouRemindersScheduled: checked ${result.checked}, sent ${result.sent}, failed ${result.failed}`);
+  }
+);
 
 /**
  * shiftProgrammeSession — director or assessor-faculty only.
