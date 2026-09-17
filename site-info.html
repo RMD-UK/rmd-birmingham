@@ -237,6 +237,19 @@
 
   <!-- ── Instructor Weekend — primary action ── -->
   <div class="section-label">Instructor Weekend</div>
+
+  <!-- Course guide — candidate guide by default, swapped to the faculty guide
+       for session-leader roles in applyRole() below. Added per Jon, 2026-09-16,
+       as the "top option" routing people to their pre-course guide. -->
+  <a class="action-card" id="guideLink" href="pre-course-candidates.html" style="background:var(--rmd-blue);">
+    <div class="action-card-icon">📖</div>
+    <div class="action-card-text">
+      <div class="action-card-title" id="guideLinkTitle">Your candidate guide</div>
+      <div class="action-card-sub">Dates, logistics and how to use this platform</div>
+    </div>
+    <div class="action-card-arrow">›</div>
+  </a>
+
   <a class="action-card" id="iwLink" href="timetable.html">
     <div class="action-card-icon">📋</div>
     <div class="action-card-text">
@@ -576,6 +589,17 @@
 
     // Timetable link with role
     document.getElementById("iwLink").href = `timetable.html?role=${role}`;
+
+    // Course guide — session leaders (faculty/director/full-instructor/itc/
+    // assessor-faculty) get the faculty guide; everyone else (instructor,
+    // assessor — both candidate-tier roles) gets the candidate guide.
+    const guideLink = document.getElementById("guideLink");
+    if (guideLink) {
+      const isLeader = SESSION_LEADER_ROLES.has(role);
+      guideLink.href = isLeader ? "pre-course-faculty.html" : "pre-course-candidates.html";
+      const titleEl = document.getElementById("guideLinkTitle");
+      if (titleEl) titleEl.textContent = isLeader ? "Your faculty guide" : "Your candidate guide";
+    }
 
     // Session feedback link — faculty/full-instructor/director only
     if (FEEDBACK_ROLES.has(role)) {

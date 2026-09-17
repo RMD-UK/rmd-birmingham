@@ -60,7 +60,7 @@ const PROGRAMME = {
         title: "Faculty Meeting",
         location: "WF15",
         lead: "Jon",
-        roles: ["faculty", "director"],
+        roles: ["faculty", "director", "full-instructor", "itc"],
         notes: "Pre-course briefing for faculty before candidates arrive.",
         resources: [],
         tags: ["faculty-only"]
@@ -887,7 +887,14 @@ const ROLE_CONTENT_ALIAS = {
  */
 function sessionsForRole(day, role) {
   const effectiveRole = ROLE_CONTENT_ALIAS[role] || role;
+  // Checks both the content-track alias (effectiveRole) AND the raw sign-in
+  // role. This lets a session opt a specific alias role (e.g. "full-instructor",
+  // "itc") into visibility without also pulling in every other role that
+  // shares that alias's content track — e.g. the Faculty Meeting can list
+  // "full-instructor" directly without becoming visible to every
+  // "instructor" (candidate), even though full-instructor's content alias
+  // IS "instructor". Per Jon: 2026-09-16.
   return PROGRAMME[day].sessions.filter(s =>
-    s.roles.includes("all") || s.roles.includes(effectiveRole)
+    s.roles.includes("all") || s.roles.includes(effectiveRole) || s.roles.includes(role)
   );
 }

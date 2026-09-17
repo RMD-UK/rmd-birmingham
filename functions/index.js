@@ -18,6 +18,17 @@
  * who has never signed in. See admin-account-reminders.html. Full deploy note
  * above that function.
  *
+ * sendMouReminders: on-demand (callable), director-only. Emails everyone on
+ * mou_roster who hasn't yet submitted the current academic year's MOU — the
+ * same "Outstanding" list admin-mou-dashboard.html already showed, this
+ * automates the reminder send that page used to leave to a manual
+ * copy-emails-and-send-yourself step. Full deploy note above that function.
+ *
+ * sendMouRemindersScheduled: scheduled (runs daily, no caller), automatic
+ * version of sendMouReminders — only actually sends 1 June to 1 October
+ * each year, fortnightly per person, no cap. Full deploy note above that
+ * function.
+ *
  * shiftProgrammeSession: on-demand (callable), director or assessor-faculty.
  * Cascading same-day, same-stream time shift for the live programme
  * (sessions collection — see admin-migrate-programme.html and timetable.html's
@@ -34,6 +45,20 @@
  * Sajit): a wrong/stale email in one collection while another has the real
  * one, producing duplicate accounts or false "never signed in" alerts.
  * Full detail above the function itself, below.
+ *
+ * changeMyEmail: on-demand (callable), any signed-in member, self-service.
+ * Same mechanics as changePersonEmail, sharing the performEmailChange()
+ * helper, but the "old email" always comes from the caller's own ID token,
+ * never client input, so a member can only ever change their own account.
+ * Powers the "change my email" button on my-account.html. Full detail
+ * above the function itself, below.
+ *
+ * checkFacultyIdentityMatch: on-demand (callable), public, no sign-in.
+ * Called by faculty-form.html at submit time — surname-matches the typed
+ * name against people/mou_roster and, on a match under a different email,
+ * tells the submitter so they can sign in on their real account instead of
+ * creating a duplicate. Soft prompt, not a hard block. Full detail above
+ * the function itself, below.
  *
  * syncIwRegistrationToPeople: Firestore trigger (not callable), fires on
  * every write to iw_registrations/{docId}. Automates the "Sync to People"
@@ -76,6 +101,7 @@
  */
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
@@ -468,6 +494,167 @@ RMD Birmingham`
 });
 
 /**
+ * sendMouReminders / sendMouRemindersScheduled — share one core batch
+ * helper (runMouReminderBatch below). Both email everyone currently on
+ * mou_roster who hasn't yet submitted this academic year's MOU — the same
+ * "Outstanding" list admin-mou-dashboard.html's Outstanding tab already
+ * computes client-side (rosterWithStatus() there).
+ *
+ * sendMouReminders: on-demand (callable), director-only, fired by the
+ * "Send MOU reminders" button on admin-mou-dashboard.html. Sends to
+ * everyone outstanding, no matter how recently they were last reminded —
+ * a director clicking the button is a deliberate one-off nudge. Added
+ * 2026-09-15 at Jon's request.
+ *
+ * sendMouRemindersScheduled: runs automatically, no button. Only sends
+ * between 1 June and 1 October each year (the MOU collection window
+ * around Instructor Weekend), and only to people not reminded in the
+ * last 14 days — so the effective cadence is fortnightly per person
+ * regardless of how often the underlying schedule fires. No cap on total
+ * reminders: keeps nudging every cycle until they submit or are taken off
+ * the roster. Runs daily so the window/cooldown logic in code is the
+ * single source of truth (cron month/day ranges are coarser and easy to
+ * get wrong at the boundaries) — a day outside the window is a free
+ * no-op, no Firestore reads. Added 2026-09-16 at Jon's request.
+ *
+ * CURRENT_MOU_YEAR below is a second copy of the client-side constant of
+ * the same name in js/firebase-config.js — Cloud Functions run in a
+ * separate Node runtime with no shared import between client and server
+ * code, so this can't just reference that one. If submissions ever look
+ * outstanding here when admin-mou-dashboard.html says otherwise (or vice
+ * versa), check the two values still match before assuming a data bug.
+ *
+ * Deploy: same as sendAccountCreationReminders (RESEND_API_KEY secret
+ * already shared, no new secret needed):
+ *   firebase deploy --only functions
+ */
+
+const MOU_REMINDERS_COLLECTION = "mou_reminders";
+const CURRENT_MOU_YEAR_SERVER  = "2026/27"; // keep in sync with js/firebase-config.js's CURRENT_MOU_YEAR
+const MOU_FORM_URL             = "https://rmd.uk.com/mou-form.html";
+
+// Fortnightly cooldown for the automatic send only — the manual button
+// passes minDaysSinceLastReminder: null and always sends to everyone
+// outstanding.
+const AUTO_REMINDER_COOLDOWN_DAYS = 14;
+
+// 1 June – 1 October inclusive, any year. Compared as month*100+day so the
+// range check is one line and doesn't need a year. Cloud Functions' clock
+// is UTC; the schedule below fires at 08:00 Europe/London, which is at
+// most an hour off UTC, so a plain UTC Date is safe for a check this
+// coarse (month/day only) — it can never cross a whole calendar day.
+function isWithinMouReminderWindow(date) {
+  const md    = (date.getUTCMonth() + 1) * 100 + date.getUTCDate();
+  const start = 6 * 100 + 1;  // 1 June
+  const end   = 10 * 100 + 1; // 1 October
+  return md >= start && md <= end;
+}
+
+async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder }) {
+  const [rosterSnap, submissionsSnap, remindersSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("mou_responses").where("academicYear", "==", CURRENT_MOU_YEAR_SERVER).get(),
+    db.collection(MOU_REMINDERS_COLLECTION).get()
+  ]);
+
+  const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const submittedEmails = new Set(
+    submissionsSnap.docs.map(d => (d.data().email || "").toLowerCase()).filter(Boolean)
+  );
+  const remindersByDocId = new Map(remindersSnap.docs.map(d => [d.id, d.data()]));
+
+  const outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
+
+  if (!outstanding.length) {
+    return { checked: roster.length, eligible: [], sent: 0, failed: 0, failedEmails: [] };
+  }
+
+  const now = Date.now();
+  const eligible = outstanding
+    .map(m => {
+      const record = remindersByDocId.get(m.id) || { remindersSent: 0, lastReminderAt: null };
+      return { m, record };
+    })
+    .filter(({ record }) => {
+      if (minDaysSinceLastReminder == null) return true; // manual send — no cooldown
+      if (!record.lastReminderAt) return true; // never reminded — always eligible
+      const daysSince = (now - record.lastReminderAt.toMillis()) / (1000 * 60 * 60 * 24);
+      return daysSince >= minDaysSinceLastReminder;
+    })
+    .map(({ m, record }) => ({
+      docId: m.id,
+      email: m.email,
+      name: m.name || m.email.split("@")[0],
+      role: m.role || "",
+      reminderNumber: (record.remindersSent || 0) + 1
+    }));
+
+  if (dryRun) {
+    return { checked: roster.length, eligible, sent: 0, failed: 0, failedEmails: [] };
+  }
+
+  const resend = new Resend(resendApiKey.value());
+
+  let sent = 0;
+  const failedEmails = [];
+
+  for (const person of eligible) {
+    const firstName = (person.name || "").split(" ")[0] || "there";
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
+        subject: `RMD Birmingham — please complete your ${CURRENT_MOU_YEAR_SERVER} MOU`,
+        text:
+`Hi ${firstName},
+
+We don't yet have your Memorandum of Understanding on file for ${CURRENT_MOU_YEAR_SERVER}. Please take a few minutes to complete it, sign in with your existing RMD account first:
+
+${MOU_FORM_URL}
+
+If you've already submitted this and are getting this by mistake, just reply and let us know.
+
+Thanks,
+RMD Birmingham`
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+      await db.collection(MOU_REMINDERS_COLLECTION).doc(person.docId).set({
+        remindersSent:  person.reminderNumber,
+        lastReminderAt: admin.firestore.FieldValue.serverTimestamp(),
+        email:          person.email
+      }, { merge: true });
+    } catch (err) {
+      console.error(`sendMouReminders: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  return { checked: roster.length, eligible, sent, failed: failedEmails.length, failedEmails };
+}
+
+exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const dryRun = !!(request.data && request.data.dryRun);
+  return runMouReminderBatch({ dryRun, minDaysSinceLastReminder: null });
+});
+
+exports.sendMouRemindersScheduled = onSchedule(
+  { schedule: "0 8 * * *", timeZone: "Europe/London", secrets: [resendApiKey], region: "us-central1" },
+  async () => {
+    if (!isWithinMouReminderWindow(new Date())) return;
+    const result = await runMouReminderBatch({ dryRun: false, minDaysSinceLastReminder: AUTO_REMINDER_COOLDOWN_DAYS });
+    console.log(`sendMouRemindersScheduled: checked ${result.checked}, sent ${result.sent}, failed ${result.failed}`);
+  }
+);
+
+/**
  * shiftProgrammeSession — director or assessor-faculty only.
  *
  * Cascading same-day, same-stream time shift for the live programme
@@ -525,13 +712,17 @@ const EMAIL_KEYED_COLLECTIONS = [
   "people", "mou_roster", "faculty_responses", "iw_registrations", "mou_responses", "faculty_roster"
 ];
 
-exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) => {
-  const auth = request.auth;
-  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
-  if (!(await callerIsDirector(auth))) throw new HttpsError("permission-denied", "Director access required.");
-
-  const oldEmailRaw = String((request.data && request.data.oldEmail) || "").trim();
-  const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
+// performEmailChange — shared by changePersonEmail (director, any account)
+// and changeMyEmail (self-service, own account only). Pulled out 2026-09-15
+// when changeMyEmail was added, so the two callers can't drift apart on the
+// actual mechanics of a change — same Auth update, same
+// EMAIL_KEYED_COLLECTIONS propagation, same retired_emails record either
+// way. Callers are responsible for their own auth/permission checks and for
+// deciding what oldEmailRaw is allowed to be before calling this — this
+// function itself trusts whatever oldEmailRaw it's given.
+async function performEmailChange(oldEmailRaw, newEmailRaw, changedByEmail) {
+  oldEmailRaw = String(oldEmailRaw || "").trim();
+  newEmailRaw = String(newEmailRaw || "").trim();
   const oldEmail = oldEmailRaw.toLowerCase();
   const newEmail = newEmailRaw.toLowerCase();
 
@@ -585,11 +776,135 @@ exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) =>
   await db.collection("retired_emails").doc(oldEmail).set({
     previousUid: uid,
     newEmail: newEmailRaw,
-    changedBy: auth.token.email || null,
+    changedBy: changedByEmail || null,
     changedAt: admin.firestore.FieldValue.serverTimestamp()
   });
 
   return { uid, updatedCollections };
+}
+
+/**
+ * checkFacultyIdentityMatch — public, no sign-in required. Called by
+ * faculty-form.html at submit time to catch the specific failure mode that
+ * created this year's email-mismatch mess: someone who already has an
+ * account (a people doc, or a mou_roster entry) fills in the open
+ * faculty-form.html with a different email, quietly creating a second
+ * identity instead of using their existing one.
+ *
+ * Deliberately narrow: matches on SURNAME only (normalized last word of
+ * the stored name), not the full name — first names vary too much for the
+ * same person (Tess/Theresa, Becca/Rebecca) to be a reliable signal, but
+ * surnames essentially never do. This is a soft "is this you?" prompt, not
+ * a hard block — faculty-form.html always lets the submission through if
+ * the person says no, so a coincidental surname match between two
+ * different people never actually locks anyone out, it just asks one
+ * extra question.
+ *
+ * people docs aren't guaranteed to have a plain `name` field — some only
+ * have passportFirstName/passportMiddleName/passportLastName (seen for
+ * real 2026-09-15, Theresa "Tess" Brock's record is exactly this shape),
+ * so candidate names fall back to those before falling back to
+ * preferredName. mou_roster doesn't have this problem, it's always a
+ * single combined `name` field.
+ *
+ * No auth required, and deliberately returns as little as possible: a
+ * boolean, the matched display name, and a MASKED email (first couple of
+ * characters + domain) — enough for a genuine match to recognise
+ * themselves, not enough for this open endpoint to be usable to scrape
+ * the full roster's real email addresses one guess at a time.
+ *
+ * Deploy: same as the other functions above, no new secret needed:
+ *   firebase deploy --only functions
+ */
+function normSurname(fullName) {
+  const parts = String(fullName || "").trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1].toLowerCase() : "";
+}
+
+function candidateName(p) {
+  if (p.name) return p.name;
+  const passport = [p.passportFirstName, p.passportMiddleName, p.passportLastName].filter(Boolean).join(" ");
+  return passport || p.preferredName || "";
+}
+
+function maskEmail(email) {
+  const s = String(email || "");
+  const at = s.indexOf("@");
+  if (at <= 0) return "***";
+  const local = s.slice(0, at);
+  const domain = s.slice(at);
+  const shown = local.length <= 2 ? (local[0] || "") : local.slice(0, 2);
+  return `${shown}***${domain}`;
+}
+
+exports.checkFacultyIdentityMatch = onCall({ region: "us-central1" }, async (request) => {
+  const lastName = String((request.data && request.data.lastName) || "").trim();
+  const submittedEmail = String((request.data && request.data.email) || "").trim().toLowerCase();
+
+  const targetSurname = normSurname(lastName);
+  if (!targetSurname) return { matchFound: false };
+
+  const [peopleSnap, rosterSnap] = await Promise.all([
+    db.collection("people").get(),
+    db.collection("mou_roster").get()
+  ]);
+
+  const candidates = [
+    ...peopleSnap.docs.map(d => d.data()),
+    ...rosterSnap.docs.map(d => d.data())
+  ];
+
+  const match = candidates.find(p => {
+    const email = String(p.email || "").trim().toLowerCase();
+    if (!email || (submittedEmail && email === submittedEmail)) return false; // no email, or same email — not a mismatch
+    return normSurname(candidateName(p)) === targetSurname;
+  });
+
+  if (!match) return { matchFound: false };
+
+  return {
+    matchFound: true,
+    name: candidateName(match),
+    maskedEmail: maskEmail(match.email)
+  };
+});
+
+exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) throw new HttpsError("permission-denied", "Director access required.");
+
+  const oldEmailRaw = String((request.data && request.data.oldEmail) || "").trim();
+  const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
+
+  return performEmailChange(oldEmailRaw, newEmailRaw, auth.token.email || null);
+});
+
+/**
+ * changeMyEmail — any signed-in member, self-service only. Same mechanics
+ * as changePersonEmail (Auth login + every EMAIL_KEYED_COLLECTIONS record +
+ * retired_emails), but the "old email" is always taken from the caller's
+ * own verified ID token (auth.token.email), never from client-supplied
+ * data — that's what makes this safe to expose to non-directors. There is
+ * no path in this function for a signed-in member to change anyone's email
+ * but their own. Built 2026-09-15 for my-account.html's "change my email"
+ * button, so a person moving on from their university address (graduating,
+ * changing job) updates their one account instead of a fresh form
+ * submission quietly creating a second one — see [[rmd-uk]] memory note on
+ * the faculty-form.html email-mismatch root cause this is meant to close.
+ *
+ * Deploy: same as changePersonEmail (no new secret needed):
+ *   firebase deploy --only functions
+ */
+exports.changeMyEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const oldEmailRaw = auth.token.email;
+  if (!oldEmailRaw) throw new HttpsError("failed-precondition", "Your account has no email on file — contact a director.");
+
+  const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
+
+  return performEmailChange(oldEmailRaw, newEmailRaw, oldEmailRaw);
 });
 
 exports.shiftProgrammeSession = onCall({ region: "us-central1" }, async (request) => {

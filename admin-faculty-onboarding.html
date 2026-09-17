@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faculty Onboarding Wizard — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+
+    .page { max-width: 720px; margin: 0 auto; }
+
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 12px 18px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size: 16px; font-weight: 700; }
+    .top-bar-sub   { font-size: 12px; opacity: 0.7; }
+
+    /* ── Step tracker ──────────────────────────────────────────────── */
+    .tracker {
+      display: flex;
+      align-items: center;
+      margin: 0 0 22px;
+      padding: 18px 24px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+    .tstep { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; }
+    .tdot {
+      width: 30px; height: 30px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: white;
+      background: #c9d3db; transition: background 0.2s;
+      margin-bottom: 6px;
+    }
+    .tstep.active .tdot  { background: var(--rmd-blue); }
+    .tstep.done .tdot    { background: #1a8f3c; }
+    .tlabel { font-size: 11px; font-weight: 700; color: var(--rmd-muted); text-align: center; text-transform: uppercase; letter-spacing: 0.4px; }
+    .tstep.active .tlabel { color: var(--rmd-blue); }
+    .tstep.done .tlabel   { color: #1a8f3c; }
+    .tline {
+      position: absolute; top: 15px; left: 50%; width: 100%; height: 3px;
+      background: #c9d3db; z-index: 0;
+    }
+    .tstep.done .tline, .tstep.active .tline { background: #1a8f3c; }
+    .tstep:last-child .tline { display: none; }
+    .tdot, .tlabel { position: relative; z-index: 1; }
+
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .card-header {
+      background: var(--rmd-blue);
+      color: white;
+      padding: 11px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card-body { padding: 16px; }
+
+    .hint { font-size: 12px; color: var(--rmd-muted); margin-top: 8px; line-height: 1.5; }
+    .director-note {
+      background: #fff3cd; border: 1px solid #ffd700; border-radius: 6px;
+      padding: 10px 14px; font-size: 13px; color: #856404; margin-bottom: 12px;
+    }
+    .empty-state { text-align: center; padding: 30px 10px; color: var(--rmd-muted); font-size: 14px; }
+
+    .cand-row {
+      display: grid;
+      grid-template-columns: 24px 1fr 1fr 180px;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid #f0f3f6;
+      font-size: 13px;
+    }
+    .cand-row:last-child { border-bottom: none; }
+    .cand-row input[type=checkbox] { width: 17px; height: 17px; }
+    .cand-name { font-weight: 700; color: var(--rmd-navy); }
+    .cand-email { color: var(--rmd-muted); font-family: monospace; font-size: 12px; }
+    .cand-row select {
+      padding: 6px 8px; border: 2px solid #ccd6dd; border-radius: 6px;
+      font-size: 12px; font-family: var(--font);
+    }
+    .excluded-row { font-size: 12px; color: var(--rmd-muted); padding: 6px 0; border-bottom: 1px solid #f0f3f6; }
+    .excluded-row:last-child { border-bottom: none; }
+
+    .selected-bar { font-size: 13px; color: var(--rmd-muted); margin-top: 10px; }
+    .selected-bar strong { color: var(--rmd-navy); }
+
+    .btn-primary {
+      padding: 12px 22px;
+      background: var(--rmd-blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+    }
+    .btn-primary:disabled { background: #aab8c2; cursor: default; }
+    .btn-primary:hover:not(:disabled) { background: var(--rmd-navy); }
+
+    .btn-secondary {
+      padding: 10px 18px;
+      background: white;
+      color: var(--rmd-navy);
+      border: 2px solid #ccd6dd;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+    }
+    .btn-secondary:hover { border-color: var(--rmd-blue); color: var(--rmd-blue); }
+
+    .btn-row { display: flex; justify-content: space-between; gap: 10px; margin-top: 16px; }
+
+    .log-entry {
+      display: flex; align-items: center; gap: 10px; padding: 8px 0;
+      border-bottom: 1px solid #f0f3f6; font-size: 13px;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-icon { font-size: 16px; flex-shrink: 0; width: 20px; text-align: center; }
+    .log-email { flex: 1; color: var(--rmd-navy); font-family: monospace; }
+    .log-status { font-size: 12px; color: var(--rmd-muted); }
+    .log-status.ok   { color: #1a6e31; font-weight: 700; }
+    .log-status.err  { color: #b7410e; font-weight: 700; }
+    .log-status.skip { color: #c17a00; }
+
+    .progress-bar-wrap { background: #e8edf2; border-radius: 4px; height: 6px; margin: 12px 0; overflow: hidden; }
+    .progress-bar { height: 100%; background: var(--rmd-blue); border-radius: 4px; transition: width 0.3s; width: 0%; }
+
+    .summary-bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .sum { padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; }
+    .sum-ok   { background: #e6f4ea; color: #1a6e31; }
+    .sum-err  { background: #fde8e4; color: #b7410e; }
+    .sum-skip { background: #fff3cd; color: #856404; }
+
+    .done-banner {
+      text-align: center; padding: 30px 20px;
+    }
+    .done-banner .big-tick { font-size: 40px; margin-bottom: 8px; }
+    .done-banner h2 { margin: 0 0 8px; color: var(--rmd-navy); font-size: 20px; }
+    .done-banner p { color: var(--rmd-muted); font-size: 13px; }
+
+    .loading { text-align: center; padding: 30px; color: var(--rmd-muted); font-size: 13px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Faculty Onboarding Wizard</div>
+      <div class="top-bar-sub">Applicant → login account → Instructor Weekend registration, in one pass · Director only</div>
+    </div>
+    <a href="admin-faculty-responses.html" style="background:rgba(255,255,255,0.15);color:white;padding:6px 12px;border-radius:6px;font-size:13px;text-decoration:none;white-space:nowrap;">📋 Full Responses List</a>
+  </div>
+
+  <div id="authMsg" style="color:#b7410e;font-size:13px;margin-bottom:10px;"></div>
+
+  <!-- Step tracker -->
+  <div class="tracker" id="tracker">
+    <div class="tstep" id="tstep-1"><div class="tline"></div><div class="tdot">1</div><div class="tlabel">Review</div></div>
+    <div class="tstep" id="tstep-2"><div class="tline"></div><div class="tdot">2</div><div class="tlabel">Create logins</div></div>
+    <div class="tstep" id="tstep-3"><div class="tline"></div><div class="tdot">3</div><div class="tlabel">Register for IW</div></div>
+  </div>
+
+  <div class="director-note">
+    This walks a batch of new faculty applicants through all three steps that used to mean jumping between <a href="admin-faculty-responses.html">Faculty Responses</a>, <a href="admin-bulk-users.html">Bulk User Setup</a> and <a href="admin-iw-registrations.html">IW Registrations</a> by hand. It runs the exact same account-creation logic as Bulk User Setup — nothing new, just fewer tabs. RMD Student Faculty aren't included here (they don't get a login); handle those on Faculty Responses as before.
+  </div>
+
+  <!-- ══════════════ STEP 1: REVIEW ══════════════ -->
+  <div class="card" id="step1Card">
+    <div class="card-header">Step 1 — Who are we onboarding?</div>
+    <div class="card-body">
+      <div id="step1Loading" class="loading">Loading applicants…</div>
+      <div id="step1Content" class="hidden">
+        <div id="candList"></div>
+        <div id="excludedList"></div>
+        <div class="selected-bar" id="selectedBar"></div>
+        <div class="btn-row">
+          <span></span>
+          <button class="btn-primary" id="toStep2Btn" onclick="goToStep2()" disabled>Continue to Step 2 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ STEP 2: CREATE ACCOUNTS ══════════════ -->
+  <div class="card hidden" id="step2Card">
+    <div class="card-header">Step 2 — Create their login accounts</div>
+    <div class="card-body">
+      <div class="hint" id="step2Intro" style="margin-bottom:12px;"></div>
+      <div class="progress-bar-wrap hidden" id="step2ProgressWrap"><div class="progress-bar" id="step2ProgressBar"></div></div>
+      <div class="summary-bar" id="step2Summary"></div>
+      <div id="step2Log"></div>
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="goToStep(1)">← Back</button>
+        <div>
+          <button class="btn-primary" id="createAccountsBtn" onclick="runStep2()">Create accounts</button>
+          <button class="btn-primary hidden" id="toStep3Btn" onclick="goToStep3()">Continue to Step 3 →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ STEP 3: REGISTER FOR IW ══════════════ -->
+  <div class="card hidden" id="step3Card">
+    <div class="card-header">Step 3 — Add them to this year's Instructor Weekend</div>
+    <div class="card-body">
+      <div class="hint" id="step3Intro" style="margin-bottom:12px;"></div>
+      <div class="summary-bar" id="step3Summary"></div>
+      <div id="step3Log"></div>
+      <div class="btn-row">
+        <button class="btn-secondary" onclick="goToStep(2)">← Back</button>
+        <button class="btn-primary" id="registerBtn" onclick="runStep3()">Add to Instructor Weekend</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ DONE ══════════════ -->
+  <div class="card hidden" id="doneCard">
+    <div class="card-body done-banner">
+      <div class="big-tick">✅</div>
+      <h2>Onboarding complete</h2>
+      <p id="doneText"></p>
+      <div class="btn-row" style="justify-content:center;margin-top:16px;">
+        <button class="btn-secondary" onclick="location.reload()">Onboard another batch</button>
+        <a href="admin-iw-registrations.html" class="btn-primary" style="text-decoration:none;display:inline-block;">View IW Registrations →</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+
+// Role label (faculty_responses.role) → Bulk User Setup's login role value.
+// Mirrors the dropdown in admin-bulk-users.html exactly — no new roles
+// invented here. "RMD Student Faculty" has no login tier and is excluded.
+const ROLE_MAP = {
+  "Faculty": "faculty",
+  "Instructor Trainer": "full-instructor",
+  "Assessor Faculty": "assessor-faculty",
+  "Instructor Trainer Candidate": "itc",
+  "Director": "director"
+};
+const ROLE_LABELS = {
+  faculty: "Faculty",
+  "full-instructor": "Instructor Trainer",
+  "assessor-faculty": "Assessor Faculty",
+  itc: "Instructor Trainer Candidate",
+  director: "Director"
+};
+
+let candidates      = [];   // { id, name, email, roleValue }
+let excludedCount    = 0;
+let step2Results     = [];  // { email, name, roleValue, status: 'ok'|'skip'|'err' }
+let currentStep      = 1;
+
+window.addEventListener("load", () => {
+  requireDirector("timetable.html").then(() => { loadCandidates(); });
+});
+
+function setTrackerStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById(`tstep-${i}`);
+    el.classList.remove("active", "done");
+    if (i < n) el.classList.add("done");
+    else if (i === n) el.classList.add("active");
+  }
+}
+
+function goToStep(n) {
+  currentStep = n;
+  document.getElementById("step1Card").classList.toggle("hidden", n !== 1);
+  document.getElementById("step2Card").classList.toggle("hidden", n !== 2);
+  document.getElementById("step3Card").classList.toggle("hidden", n !== 3);
+  document.getElementById("doneCard").classList.add("hidden");
+  setTrackerStep(n);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ── Step 1: load faculty_responses, exclude anyone already on this
+// year's IW Registrations list (they're already onboarded) ─────────────────
+async function loadCandidates() {
+  try {
+    const [respSnap, regSnap] = await Promise.all([
+      db.collection("faculty_responses").get(),
+      db.collection(COLLECTIONS.iwRegistrations).get()
+    ]);
+
+    const alreadyRegistered = new Set();
+    regSnap.forEach(d => {
+      const e = (d.data().email || "").toLowerCase();
+      if (e) alreadyRegistered.add(e);
+    });
+
+    candidates = [];
+    excludedCount = 0;
+
+    respSnap.forEach(doc => {
+      const r = doc.data();
+      const email = (r.email || "").trim().toLowerCase();
+      const name  = [((r.knownAs && r.knownAs.trim()) || r.firstName || ""), r.lastName].filter(Boolean).join(" ") || email;
+      if (!email) { excludedCount++; return; }
+      if (alreadyRegistered.has(email)) return; // already onboarded — nothing to do
+      const roleValue = ROLE_MAP[r.role];
+      if (!roleValue) { excludedCount++; return; } // RMD Student Faculty / legacy / unset role
+      candidates.push({ id: doc.id, name, email, roleValue });
+    });
+
+    candidates.sort((a, b) => a.name.localeCompare(b.name));
+    renderStep1();
+  } catch (err) {
+    document.getElementById("step1Loading").textContent = "Couldn't load applicants: " + err.message;
+  }
+}
+
+function renderStep1() {
+  document.getElementById("step1Loading").classList.add("hidden");
+  document.getElementById("step1Content").classList.remove("hidden");
+  setTrackerStep(1);
+
+  const list = document.getElementById("candList");
+  if (!candidates.length) {
+    list.innerHTML = `<div class="empty-state">No new applicants waiting — everyone on Faculty Responses with an assignable role is already registered for this year's Instructor Weekend.</div>`;
+  } else {
+    list.innerHTML = candidates.map((c, i) => `
+      <div class="cand-row">
+        <input type="checkbox" id="chk-${i}" checked onchange="updateSelectedBar()">
+        <span class="cand-name">${esc(c.name)}</span>
+        <span class="cand-email">${esc(c.email)}</span>
+        <select id="role-${i}" onchange="candidates[${i}].roleValue = this.value">
+          ${Object.entries(ROLE_LABELS).map(([v, l]) => `<option value="${v}" ${v === c.roleValue ? "selected" : ""}>${l}</option>`).join("")}
+        </select>
+      </div>`).join("");
+  }
+
+  const excluded = document.getElementById("excludedList");
+  excluded.innerHTML = excludedCount
+    ? `<div class="hint" style="margin-top:10px;">${excludedCount} response(s) skipped — no email on file, or a role this wizard doesn't create logins for (e.g. RMD Student Faculty). Handle those on <a href="admin-faculty-responses.html">Faculty Responses</a> directly.</div>`
+    : "";
+
+  updateSelectedBar();
+}
+
+function selectedIndices() {
+  return candidates.map((_, i) => i).filter(i => {
+    const el = document.getElementById(`chk-${i}`);
+    return el && el.checked;
+  });
+}
+
+function updateSelectedBar() {
+  const n = selectedIndices().length;
+  document.getElementById("selectedBar").innerHTML = n
+    ? `<strong>${n}</strong> of ${candidates.length} selected for onboarding.`
+    : (candidates.length ? "Nothing selected." : "");
+  document.getElementById("toStep2Btn").disabled = n === 0;
+}
+
+function goToStep2() {
+  const idx = selectedIndices();
+  step2Selection = idx.map(i => candidates[i]);
+  document.getElementById("step2Intro").textContent =
+    `Ready to create ${step2Selection.length} login account(s): ${step2Selection.map(c => c.name).join(", ")}. Each gets a random one-time password nobody sees, and an immediate "set your password" email — identical to Bulk User Setup.`;
+  document.getElementById("step2Summary").innerHTML = "";
+  document.getElementById("step2Log").innerHTML = "";
+  document.getElementById("createAccountsBtn").classList.remove("hidden");
+  document.getElementById("createAccountsBtn").disabled = false;
+  document.getElementById("createAccountsBtn").textContent = "Create accounts";
+  document.getElementById("toStep3Btn").classList.add("hidden");
+  goToStep(2);
+}
+
+let step2Selection = [];
+
+// ── Password bootstrap — identical to admin-bulk-users.html ────────────────
+function randomPassword(len = 24) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*";
+  const bytes = new Uint32Array(len);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => chars[b % chars.length]).join("");
+}
+
+async function sendPasswordResetEmail(email) {
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${FIREBASE_CONFIG.apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestType: "PASSWORD_RESET",
+        email,
+        continueUrl: "https://rmd.uk.com/index.html",
+        canHandleCodeInApp: false
+      })
+    }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+}
+
+// ── Step 2: create accounts — same flow as admin-bulk-users.html's
+// startCreation(), scoped to the selection made in Step 1 ──────────────────
+async function runStep2() {
+  const btn = document.getElementById("createAccountsBtn");
+  btn.disabled = true;
+  btn.textContent = `Creating ${step2Selection.length} accounts…`;
+  document.getElementById("step2ProgressWrap").classList.remove("hidden");
+  document.getElementById("step2Log").innerHTML = "";
+  document.getElementById("step2Summary").innerHTML = "";
+
+  let existingPeopleByEmail = new Map();
+  try {
+    const peopleSnap = await db.collection(COLLECTIONS.people).get();
+    peopleSnap.forEach(doc => {
+      const e = (doc.data().email || "").toLowerCase();
+      if (e) existingPeopleByEmail.set(e, { id: doc.id, ...doc.data() });
+    });
+  } catch (e) {}
+
+  let retiredEmails = new Map();
+  try {
+    const retiredSnap = await db.collection("retired_emails").get();
+    retiredSnap.forEach(doc => retiredEmails.set(doc.id, doc.data()));
+  } catch (e) {}
+
+  step2Results = [];
+  let ok = 0, err = 0, skip = 0;
+
+  for (let i = 0; i < step2Selection.length; i++) {
+    const { email, name, roleValue } = step2Selection[i];
+    const pct = Math.round(((i + 1) / step2Selection.length) * 100);
+    document.getElementById("step2ProgressBar").style.width = pct + "%";
+
+    let icon, statusClass, statusText, resultStatus;
+
+    const retired = retiredEmails.get(email.toLowerCase());
+    if (retired) {
+      icon = "🚫"; statusClass = "skip"; resultStatus = "err";
+      statusText = `Skipped — this address was retired when someone's email was changed to ${retired.newEmail}. Sort this out on Bulk User Setup before registering them for IW.`;
+      skip++; err++;
+      appendStep2Log(icon, email, name, statusClass, statusText);
+      step2Results.push({ email, name, roleValue, status: "err" });
+      continue;
+    }
+
+    try {
+      const res = await fetch(
+        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_CONFIG.apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password: randomPassword(), returnSecureToken: false })
+        }
+      );
+      const data = await res.json();
+
+      if (data.error) {
+        if (data.error.message === "EMAIL_EXISTS") {
+          icon = "⚠️"; statusClass = "skip"; statusText = "Already has a login — skipped, safe to register for IW"; resultStatus = "ok";
+          skip++;
+        } else {
+          throw new Error(data.error.message);
+        }
+      } else {
+        const uid = data.localId;
+        const existing = existingPeopleByEmail.get(email.toLowerCase());
+        if (uid) {
+          await db.collection(COLLECTIONS.people).doc(uid).set({
+            name:   name || (existing && existing.name) || email.split("@")[0],
+            email,
+            role:   roleValue,
+            stream: roleValue === "faculty" ? "faculty" : roleValue,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          await db.collection(COLLECTIONS.iwAssignments).doc(`${CURRENT_IW_YEAR}_${uid}`).set({
+            year: CURRENT_IW_YEAR,
+            uid,
+            email,
+            function: roleValue,
+            assignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            assignedBy: (auth.currentUser && auth.currentUser.email) || null
+          }, { merge: true });
+        }
+        try {
+          await sendPasswordResetEmail(email);
+          icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent"; resultStatus = "ok";
+        } catch (resetErr) {
+          icon = "⚠️"; statusClass = "skip"; statusText = "Created, but reset email failed to send: " + resetErr.message; resultStatus = "ok";
+        }
+        ok++;
+      }
+    } catch (e) {
+      icon = "❌"; statusClass = "err"; statusText = e.message || "Failed"; resultStatus = "err";
+      err++;
+    }
+
+    appendStep2Log(icon, email, name, statusClass, statusText);
+    step2Results.push({ email, name, roleValue, status: resultStatus });
+
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  document.getElementById("step2Summary").innerHTML = `
+    ${ok   ? `<span class="sum sum-ok">✅ ${ok} created</span>` : ""}
+    ${skip ? `<span class="sum sum-skip">⚠️ ${skip} already existed</span>` : ""}
+    ${err  ? `<span class="sum sum-err">❌ ${err} failed</span>` : ""}
+  `;
+
+  btn.textContent = "Create accounts";
+  btn.classList.add("hidden");
+
+  const okCount = step2Results.filter(r => r.status === "ok").length;
+  if (okCount > 0) {
+    document.getElementById("toStep3Btn").classList.remove("hidden");
+  } else {
+    btn.classList.remove("hidden");
+    btn.disabled = false;
+    btn.textContent = "Retry";
+  }
+}
+
+function appendStep2Log(icon, email, name, statusClass, statusText) {
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.innerHTML = `
+    <div class="log-icon">${icon}</div>
+    <div class="log-email">${esc(email)}${name ? ` <span style="color:var(--rmd-muted)">(${esc(name)})</span>` : ""}</div>
+    <div class="log-status ${statusClass}">${esc(statusText)}</div>`;
+  document.getElementById("step2Log").appendChild(entry);
+}
+
+// ── Step 3: register for this year's Instructor Weekend — same write
+// admin-iw-registrations.html's importAdd() makes ─────────────────────────
+let step3Selection = [];
+
+function goToStep3() {
+  step3Selection = step2Results.filter(r => r.status === "ok");
+  document.getElementById("step3Intro").textContent =
+    `Adding ${step3Selection.length} confirmed-account holder(s) to this year's Instructor Weekend list as Pending: ${step3Selection.map(c => c.name).join(", ")}.`;
+  document.getElementById("step3Summary").innerHTML = "";
+  document.getElementById("step3Log").innerHTML = "";
+  document.getElementById("registerBtn").disabled = false;
+  document.getElementById("registerBtn").textContent = "Add to Instructor Weekend";
+  goToStep(3);
+}
+
+async function runStep3() {
+  const btn = document.getElementById("registerBtn");
+  btn.disabled = true;
+  btn.textContent = "Adding…";
+  document.getElementById("step3Log").innerHTML = "";
+
+  let existingRegEmails = new Set();
+  try {
+    const regSnap = await db.collection(COLLECTIONS.iwRegistrations).get();
+    regSnap.forEach(d => {
+      const e = (d.data().email || "").toLowerCase();
+      if (e) existingRegEmails.add(e);
+    });
+  } catch (e) {}
+
+  const toAdd = step3Selection.filter(c => !existingRegEmails.has(c.email.toLowerCase()));
+  const alreadyIn = step3Selection.filter(c => existingRegEmails.has(c.email.toLowerCase()));
+
+  let added = 0, skipped = alreadyIn.length;
+
+  if (toAdd.length) {
+    try {
+      const batch = db.batch();
+      const ts = firebase.firestore.FieldValue.serverTimestamp();
+      toAdd.forEach(c => {
+        const ref = db.collection(COLLECTIONS.iwRegistrations).doc();
+        batch.set(ref, {
+          name: c.name, email: c.email, role: ROLE_LABELS[c.roleValue] || c.roleValue,
+          notes: "", source: "onboarding-wizard", status: "pending", addedAt: ts
+        });
+      });
+      await batch.commit();
+      added = toAdd.length;
+    } catch (err) {
+      document.getElementById("step3Summary").innerHTML = `<span class="sum sum-err">❌ Failed: ${esc(err.message)}</span>`;
+      btn.disabled = false;
+      btn.textContent = "Add to Instructor Weekend";
+      return;
+    }
+  }
+
+  toAdd.forEach(c => appendGenericLog(document.getElementById("step3Log"), "✅", c.email, c.name, "ok", "Added — Pending"));
+  alreadyIn.forEach(c => appendGenericLog(document.getElementById("step3Log"), "⚠️", c.email, c.name, "skip", "Already on the list — skipped"));
+
+  document.getElementById("step3Summary").innerHTML = `
+    ${added   ? `<span class="sum sum-ok">✅ ${added} added</span>` : ""}
+    ${skipped ? `<span class="sum sum-skip">⚠️ ${skipped} already on list</span>` : ""}
+  `;
+
+  btn.classList.add("hidden");
+  showDone(added, skipped);
+}
+
+function appendGenericLog(container, icon, email, name, statusClass, statusText) {
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.innerHTML = `
+    <div class="log-icon">${icon}</div>
+    <div class="log-email">${esc(email)}${name ? ` <span style="color:var(--rmd-muted)">(${esc(name)})</span>` : ""}</div>
+    <div class="log-status ${statusClass}">${esc(statusText)}</div>`;
+  container.appendChild(entry);
+}
+
+function showDone(added, skipped) {
+  setTrackerStep(4);
+  document.getElementById("step1Card").classList.add("hidden");
+  document.getElementById("step2Card").classList.add("hidden");
+  document.getElementById("step3Card").classList.add("hidden");
+  document.getElementById("doneCard").classList.remove("hidden");
+  document.getElementById("doneText").textContent =
+    `${added} ${added === 1 ? "person is" : "people are"} now registered for this year's Instructor Weekend, ready for the usual Pending → Confirmed review.`;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function esc(s) {
+  return String(s || "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+}
+</script>
+</body>
+</html>
