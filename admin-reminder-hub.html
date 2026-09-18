@@ -54,6 +54,23 @@
     }
     .hint { font-size: 12px; color: var(--rmd-muted); margin-top: 8px; line-height: 1.5; }
 
+    /* Overview strip */
+    .overview-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid #f0f3f6; flex-wrap: wrap;
+    }
+    .overview-row:last-child { border-bottom: none; }
+    .overview-left { display: flex; align-items: center; gap: 10px; }
+    .overview-count {
+      min-width: 28px; text-align: center; font-weight: 700; font-size: 15px;
+      padding: 3px 8px; border-radius: 12px;
+    }
+    .overview-count.zero { background: #eef2f6; color: var(--rmd-muted); }
+    .overview-count.some { background: #fde8e4; color: #b7410e; }
+    .overview-label { font-size: 13.5px; color: var(--rmd-navy); font-weight: 600; cursor: pointer; }
+    .overview-label:hover { text-decoration: underline; }
+    .overview-label.active { text-decoration: underline; }
+
     .search-box {
       width: 100%;
       padding: 12px 14px;
@@ -63,6 +80,10 @@
       border-radius: 8px;
     }
     .search-box:focus { outline: none; border-color: var(--rmd-blue); }
+
+    .filter-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+    .clear-filter { font-size: 12px; color: var(--rmd-blue); cursor: pointer; white-space: nowrap; }
+    .clear-filter:hover { text-decoration: underline; }
 
     .load-status { font-size: 12px; color: var(--rmd-muted); margin-top: 8px; }
 
@@ -109,6 +130,8 @@
     .btn-send:disabled { background: #aab8c2; cursor: default; }
     .btn-send.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
     .btn-send.secondary:hover:not(:disabled) { border-color: var(--rmd-blue); color: var(--rmd-blue); }
+    .btn-send.bulk { background: #b7410e; }
+    .btn-send.bulk:hover:not(:disabled) { background: #8f3209; }
 
     .empty-state { text-align: center; padding: 30px 10px; color: var(--rmd-muted); font-size: 14px; }
     .link-box {
@@ -129,14 +152,26 @@
     </div>
   </div>
 
+  <!-- Overview -->
   <div class="card">
-    <div class="card-header">Find a person</div>
+    <div class="card-header">Overview — everyone with something outstanding</div>
     <div class="card-body">
       <div class="director-note">
-        Pulls live status from all five reminder types (account sign-in, MOU, senior faculty review, IW RSVP, faculty form) and shows what's actually outstanding for the person you pick. Nothing sends until you click a specific "Send" button and confirm — searching and browsing never emails anyone.
+        Live status from all five reminder types (account sign-in, MOU, senior faculty review, IW RSVP, faculty form). "Send all" bulk-emails everyone currently outstanding for that one type — same as the old Account Reminders page did, now available for every type here. Individual sends further down let you target one person instead. Nothing sends until you click a specific button and confirm.
       </div>
-      <input type="text" id="searchBox" class="search-box" placeholder="Search by name or email…" oninput="renderResults()" disabled>
-      <div class="load-status" id="loadStatus">Loading everyone's status…</div>
+      <div id="overviewGrid"><div class="hint">Loading…</div></div>
+    </div>
+  </div>
+
+  <!-- Full list / search -->
+  <div class="card">
+    <div class="card-header">Everyone outstanding</div>
+    <div class="card-body">
+      <input type="text" id="searchBox" class="search-box" placeholder="Search by name or email… (leave blank to see everyone)" oninput="renderResults()" disabled>
+      <div class="filter-bar">
+        <span class="load-status" id="loadStatus">Loading everyone's status…</span>
+        <span class="clear-filter" id="clearFilterBtn" style="display:none;" onclick="setCategoryFilter(null)">Clear category filter ✕</span>
+      </div>
       <div id="results"></div>
     </div>
   </div>
@@ -161,7 +196,8 @@ var fns = firebase.functions();
 // cats.<key> holds that category's raw record (name/role/etc.) when
 // outstanding, or is absent when not.
 var directory = {};
-var openEmail = null; // which row is currently expanded
+var openEmail = null;       // which row is currently expanded
+var activeCategory = null;  // category key the list is filtered to, or null for all
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
@@ -189,6 +225,7 @@ async function loadAll() {
   const results = await Promise.all(calls);
   const errors = [];
 
+  directory = {};
   for (const r of results) {
     if (r.error) { errors.push(`${r.key}: ${r.error.message || r.error.code || "failed"}`); continue; }
     const d = r.data || {};
@@ -202,35 +239,70 @@ async function loadAll() {
   document.getElementById("searchBox").disabled = false;
   document.getElementById("loadStatus").textContent = errors.length
     ? `Loaded with errors: ${errors.join("; ")}`
-    : `Loaded. ${Object.keys(directory).length} people have at least one outstanding item.`;
+    : `${Object.keys(directory).length} people have at least one outstanding item.`;
 
+  renderOverview();
   renderResults();
 }
 
 const CAT_LABELS = {
-  account: { chip: "Account not signed in", cls: "chip-account" },
-  mou:     { chip: "MOU outstanding",        cls: "chip-mou" },
-  sfr:     { chip: "Senior faculty review",  cls: "chip-sfr" },
-  rsvp:    { chip: "IW RSVP outstanding",    cls: "chip-rsvp" },
-  form:    { chip: "Faculty form incomplete", cls: "chip-form" }
+  account: { chip: "Account not signed in", cls: "chip-account", overview: "Account sign-in" },
+  mou:     { chip: "MOU outstanding",        cls: "chip-mou",     overview: "MOU" },
+  sfr:     { chip: "Senior faculty review",  cls: "chip-sfr",     overview: "Senior faculty review" },
+  rsvp:    { chip: "IW RSVP outstanding",    cls: "chip-rsvp",    overview: "IW RSVP" },
+  form:    { chip: "Faculty form incomplete", cls: "chip-form",   overview: "Faculty form" }
 };
+const CAT_ORDER = ["account", "mou", "sfr", "rsvp", "form"];
+
+const CALLABLE_BY_CAT = {
+  account: "sendAccountCreationReminders",
+  mou:     "sendMouReminders",
+  sfr:     "sendSeniorFacultyReminders",
+  rsvp:    "sendIwRsvpInvites",
+  form:    "sendFacultyFormInvites"
+};
+
+function categoryCount(catKey) {
+  return Object.values(directory).filter(p => p.cats[catKey]).length;
+}
+
+function renderOverview() {
+  const el = document.getElementById("overviewGrid");
+  el.innerHTML = CAT_ORDER.map(catKey => {
+    const count = categoryCount(catKey);
+    const label = CAT_LABELS[catKey].overview;
+    const isActive = activeCategory === catKey;
+    return `
+      <div class="overview-row">
+        <div class="overview-left">
+          <span class="overview-count ${count ? "some" : "zero"}">${count}</span>
+          <span class="overview-label ${isActive ? "active" : ""}" onclick="setCategoryFilter('${catKey}')" title="Click to filter the list below to just this category">${esc(label)}</span>
+        </div>
+        <button class="btn-send bulk" ${count ? "" : "disabled"} onclick="sendAllInCategory('${catKey}')">Send all ${count}</button>
+      </div>`;
+  }).join("");
+}
+
+function setCategoryFilter(catKey) {
+  activeCategory = catKey;
+  document.getElementById("clearFilterBtn").style.display = catKey ? "inline" : "none";
+  renderOverview();
+  renderResults();
+}
 
 function renderResults() {
   const q = document.getElementById("searchBox").value.trim().toLowerCase();
   const el = document.getElementById("results");
 
   let people = Object.values(directory);
+  if (activeCategory) people = people.filter(p => p.cats[activeCategory]);
   if (q) {
     people = people.filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q));
   }
   people.sort((a, b) => a.name.localeCompare(b.name));
 
-  if (!q) {
-    el.innerHTML = `<div class="empty-state">Type a name or email to look someone up — or search blank terms won't list everyone at once, this is a lookup, not a browse list.</div>`;
-    return;
-  }
   if (!people.length) {
-    el.innerHTML = `<div class="empty-state">No match — or nobody by that name has anything outstanding right now.</div>`;
+    el.innerHTML = `<div class="empty-state">${q || activeCategory ? "No match for this search / filter." : "Nobody has anything outstanding right now."}</div>`;
     return;
   }
 
@@ -282,14 +354,6 @@ function toggleRow(key) {
   renderResults();
 }
 
-const CALLABLE_BY_CAT = {
-  account: "sendAccountCreationReminders",
-  mou:     "sendMouReminders",
-  sfr:     "sendSeniorFacultyReminders",
-  rsvp:    "sendIwRsvpInvites",
-  form:    "sendFacultyFormInvites"
-};
-
 async function sendOne(catKey, email, btn) {
   const label = CAT_LABELS[catKey].chip;
   if (!confirm(`Send this reminder ("${label}") to ${email}?\n\nThis cannot be undone.`)) return;
@@ -310,13 +374,12 @@ async function sendOne(catKey, email, btn) {
       alert(`No longer outstanding, or nothing matched — nothing was sent.`);
     } else {
       btn.textContent = "Sent ✓";
-      // Drop this category from the in-memory directory so re-opening
-      // reflects it's done, without a full reload.
       const key = email.toLowerCase();
       if (directory[key]) {
         delete directory[key].cats[catKey];
         if (!Object.keys(directory[key].cats).length) delete directory[key];
       }
+      renderOverview();
       setTimeout(renderResults, 900);
     }
   } catch (err) {
@@ -325,6 +388,40 @@ async function sendOne(catKey, email, btn) {
     alert(`Couldn't send: ${err.message || err.code || "unknown error"}`);
     btn.disabled = false;
     btn.textContent = original;
+  }
+}
+
+async function sendAllInCategory(catKey) {
+  const count = categoryCount(catKey);
+  if (!count) return;
+  const label = CAT_LABELS[catKey].overview;
+  if (!confirm(`Send the "${label}" reminder to all ${count} people currently outstanding for it?\n\nThis cannot be undone — this emails everyone in that list at once, not just one person.`)) return;
+
+  const btns = document.querySelectorAll(`#overviewGrid .btn-send.bulk`);
+  btns.forEach(b => b.disabled = true);
+
+  try {
+    const call = fns.httpsCallable(CALLABLE_BY_CAT[catKey]);
+    const res = await call({ dryRun: false }); // no email filter — sends to everyone outstanding, same as the old bulk tool
+    const d = res.data || {};
+    const sent = d.sent || 0;
+    const failed = d.failed || (d.failedEmails || []).length || 0;
+
+    // Drop this category from everyone in the local directory so the
+    // overview and list reflect what's actually still outstanding,
+    // without a full reload.
+    for (const key of Object.keys(directory)) {
+      delete directory[key].cats[catKey];
+      if (!Object.keys(directory[key].cats).length) delete directory[key];
+    }
+
+    alert(`${label}: ${sent} sent${failed ? `, ${failed} failed — check the function logs` : ""}.`);
+    renderOverview();
+    renderResults();
+  } catch (err) {
+    console.error("sendAllInCategory failed:", err);
+    alert(`Couldn't send: ${err.message || err.code || "unknown error"}`);
+    renderOverview();
   }
 }
 

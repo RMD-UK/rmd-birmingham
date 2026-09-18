@@ -66,3 +66,24 @@ went live too — it didn't.
       `firebase deploy --only functions` command above, run separately.
 - [ ] If both, say both, clearly, as two separate steps — don't bundle them
       into one vague "push this" instruction.
+
+## Invite links — some pages are gated, check before handing out a bare URL
+
+Don't assume a page is reachable by its plain address just because it doesn't
+require sign-in. At least one page has a link gate that blocks the bare URL
+outright:
+
+**`faculty-form.html`** only opens for a URL carrying either `?code=IWBHAM`
+(the shared generic code) or `?email=<their address>` (a personalised link).
+A bare `rmd.uk.com/faculty-form.html` link shows a "this form needs your
+invitation link" message instead of the form — this caused a real problem on
+2026-09-18 when Petra was sent the bare link and got blocked.
+
+**Always use `?email=` when sending someone a direct link to this form** —
+e.g. `rmd.uk.com/faculty-form.html?email=name@example.com` — it also
+pre-fills their email and reloads any previous submission for them.
+
+Before telling Jon a link is safe to hand out directly, check the page's own
+source for a link-gate script (search for `REQUIRED_CODE`, `hasValidCode`,
+`hasEmailParam`, or similar) rather than assuming "no sign-in required" means
+"bare URL works."
