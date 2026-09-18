@@ -685,6 +685,7 @@ exports.mergePersonEmail = onCall({ region: "us-central1" }, async (request) => 
   const oldEmail = (request.data?.oldEmail || "").trim().toLowerCase();
   const newEmail = (request.data?.newEmail || "").trim().toLowerCase();
   const dryRun = !!request.data?.dryRun;
+  const adoptExisting = !!request.data?.adoptExisting;
 
   if (!oldEmail || !oldEmail.includes("@")) throw new HttpsError("invalid-argument", "oldEmail required.");
   if (!newEmail || !newEmail.includes("@")) throw new HttpsError("invalid-argument", "newEmail required.");
@@ -697,113 +698,154 @@ exports.mergePersonEmail = onCall({ region: "us-central1" }, async (request) => 
   if (peopleSnap.size > 1) {
     throw new HttpsError("failed-precondition", `${peopleSnap.docs.length} accounts found for ${oldEmail} — that's unexpected, sort that out manually first.`);
   }
-  const uid = peopleSnap.docs[0].id;
+  const oldUid = peopleSnap.docs[0].id;
+  const oldPeopleData = peopleSnap.docs[0].data();
 
   // Don't assume newEmail has no Auth account of its own — check, and if it
   // does, report on BOTH accounts rather than blindly erroring out. This
   // surfaced a real case (Cameron Parkes, 2026-09-18): bham.ac.uk already
-  // had its own empty Auth account with no people doc or any other record
-  // behind it — worth knowing about, not just a generic "collision" error.
+  // had its own Auth account, actively used, with no people doc or any
+  // other record behind it — not a stray shell to delete, but the account
+  // to keep. See the "adopt" branch below.
   let newEmailAuthUser = null;
   try {
     newEmailAuthUser = await admin.auth().getUserByEmail(newEmail);
-  } catch (e) { /* no existing Auth account under newEmail — the simple case */ }
+  } catch (e) { /* no existing Auth account under newEmail — the simple rename case */ }
+
+  // Migration steps shared by both branches below — identical whether we're
+  // renaming oldUid's own email onto a free address, or adopting an existing
+  // Auth account at newEmail. Only the people-doc/Auth-account handling differs.
+  const facRosterSnap = await db.collection("faculty_roster").where("email", "==", oldEmail).get();
+  const iwRegSnap = await db.collection("iw_registrations").where("email", "==", oldEmail).get();
+  const oldRespSnap = await db.collection("faculty_responses").doc(oldEmail).get();
+  const newRespSnap = oldRespSnap.exists ? await db.collection("faculty_responses").doc(newEmail).get() : null;
+  const oldMouSnap = await db.collection("mou_roster").doc(oldEmail).get();
+  const newMouSnap = await db.collection("mou_roster").doc(newEmail).get();
+  const oldMouRespSnap = await db.collection("mou_responses").doc(oldEmail).get();
+  const newMouRespSnap = oldMouRespSnap.exists ? await db.collection("mou_responses").doc(newEmail).get() : null;
+
+  function pushSharedSteps(steps) {
+    facRosterSnap.forEach(d => steps.push({ collection: "faculty_roster", docId: d.id, action: "update email field" }));
+    iwRegSnap.forEach(d => steps.push({ collection: "iw_registrations", docId: d.id, action: "update email field" }));
+    if (oldRespSnap.exists) {
+      steps.push(newRespSnap.exists
+        ? { collection: "faculty_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone, sort out manually which to keep` }
+        : { collection: "faculty_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+    }
+    if (oldMouSnap.exists && !newMouSnap.exists) {
+      steps.push({ collection: "mou_roster", action: `move doc from ${oldEmail} to ${newEmail}` });
+    } else if (oldMouSnap.exists && newMouSnap.exists) {
+      steps.push({ collection: "mou_roster", action: `${oldEmail} entry is now redundant (one already exists under ${newEmail}) — will be removed, the ${newEmail} entry is kept as-is` });
+    }
+    if (oldMouRespSnap.exists) {
+      steps.push(newMouRespSnap.exists
+        ? { collection: "mou_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone` }
+        : { collection: "mou_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+    }
+  }
+
+  async function executeSharedSteps() {
+    for (const d of facRosterSnap.docs) await d.ref.update({ email: newEmail });
+    for (const d of iwRegSnap.docs) await d.ref.update({ email: newEmail });
+
+    if (oldRespSnap.exists && !newRespSnap.exists) {
+      const data = oldRespSnap.data();
+      data.email = newEmail;
+      await db.collection("faculty_responses").doc(newEmail).set(data);
+      await db.collection("faculty_responses").doc(oldEmail).delete();
+    }
+
+    if (oldMouSnap.exists && !newMouSnap.exists) {
+      const data = oldMouSnap.data();
+      data.email = newEmail;
+      await db.collection("mou_roster").doc(newEmail).set(data);
+      await db.collection("mou_roster").doc(oldEmail).delete();
+    } else if (oldMouSnap.exists && newMouSnap.exists) {
+      await db.collection("mou_roster").doc(oldEmail).delete();
+    }
+
+    if (oldMouRespSnap.exists && !newMouRespSnap.exists) {
+      const data = oldMouRespSnap.data();
+      data.email = newEmail;
+      await db.collection("mou_responses").doc(newEmail).set(data);
+      await db.collection("mou_responses").doc(oldEmail).delete();
+    }
+  }
 
   if (newEmailAuthUser) {
     const newPeopleSnap = await db.collection("people").doc(newEmailAuthUser.uid).get();
-    const conflict = {
-      conflict: true,
-      newEmailAuthUid: newEmailAuthUser.uid,
-      newEmailCreatedAt: newEmailAuthUser.metadata.creationTime,
-      newEmailLastSignIn: newEmailAuthUser.metadata.lastSignInTime || null,
-      newEmailHasPeopleDoc: newPeopleSnap.exists,
-      newEmailPeopleDoc: newPeopleSnap.exists ? newPeopleSnap.data() : null,
-      note: newPeopleSnap.exists
-        ? `${newEmail} has its own account WITH a people doc — this is two real accounts, not a stray shell. Sort out manually which is correct before merging.`
-        : `${newEmail} has an Auth login but no people doc — looks like an empty/unused shell account. If so, the fix is deleting THAT Auth account first (see deleteEmptyAuthAccount), then re-running this merge.`
+
+    if (newPeopleSnap.exists) {
+      // Two real accounts, both with profiles — not something to auto-resolve.
+      return {
+        dryRun: true,
+        conflict: true,
+        oldEmail, newEmail, oldUid,
+        newEmailAuthUid: newEmailAuthUser.uid,
+        newEmailCreatedAt: newEmailAuthUser.metadata.creationTime,
+        newEmailLastSignIn: newEmailAuthUser.metadata.lastSignInTime || null,
+        newEmailHasPeopleDoc: true,
+        newEmailPeopleDoc: newPeopleSnap.data(),
+        note: `${newEmail} has its own account WITH a people doc — this is two real accounts, not a stray shell. Sort out manually which is correct before merging.`
+      };
+    }
+
+    // newEmail has an Auth login but no people doc — the "adopt" case.
+    // e.g. Cameron Parkes, 2026-09-18: bham.ac.uk is his real, actively-used
+    // login (people can't re-sign-in to a deleted account) but has no
+    // profile behind it, while the profile and history all sit under his
+    // old gmail account. Fix: keep the bham.ac.uk login, give it the
+    // profile, retire the old Auth account and its people doc.
+    const newUid = newEmailAuthUser.uid;
+    const plan = {
+      adopt: true,
+      oldEmail, newEmail, oldUid, newUid,
+      steps: [
+        { collection: "people", action: `create people/${newUid} from ${oldEmail}'s profile data, email set to ${newEmail}` },
+        { collection: "people", action: `delete old profile doc people/${oldUid}` },
+        { collection: "Auth", action: `delete old Auth account (uid ${oldUid}, ${oldEmail}) — surviving login is ${newEmail} (uid ${newUid})` }
+      ]
     };
-    return { dryRun: true, uid, oldEmail, newEmail, ...conflict };
-  }
+    pushSharedSteps(plan.steps);
 
-  const plan = { uid, oldEmail, newEmail, steps: [] };
-
-  // people/{uid} + Auth email
-  plan.steps.push({ collection: "people + Auth", action: `update email on account ${uid}` });
-
-  // faculty_roster — doc id is a slug, not necessarily the email, so match by field
-  const facRosterSnap = await db.collection("faculty_roster").where("email", "==", oldEmail).get();
-  facRosterSnap.forEach(d => plan.steps.push({ collection: "faculty_roster", docId: d.id, action: "update email field" }));
-
-  // iw_registrations — doc id is a random auto-id, match by field
-  const iwRegSnap = await db.collection("iw_registrations").where("email", "==", oldEmail).get();
-  iwRegSnap.forEach(d => plan.steps.push({ collection: "iw_registrations", docId: d.id, action: "update email field" }));
-
-  // faculty_responses — doc id IS the lowercased email
-  const oldRespSnap = await db.collection("faculty_responses").doc(oldEmail).get();
-  let newRespSnap = null;
-  if (oldRespSnap.exists) {
-    newRespSnap = await db.collection("faculty_responses").doc(newEmail).get();
-    if (newRespSnap.exists) {
-      plan.steps.push({ collection: "faculty_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone, sort out manually which to keep` });
-    } else {
-      plan.steps.push({ collection: "faculty_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+    if (dryRun) {
+      return {
+        dryRun: true,
+        ...plan,
+        newEmailCreatedAt: newEmailAuthUser.metadata.creationTime,
+        newEmailLastSignIn: newEmailAuthUser.metadata.lastSignInTime || null,
+        note: `${newEmail} is an active login with no profile — adopting it as the surviving account. Re-run with adoptExisting:true (and dryRun:false) to execute — this permanently deletes the ${oldEmail} Auth account.`
+      };
     }
-  }
 
-  // mou_roster — doc id is the lowercased email
-  const oldMouSnap = await db.collection("mou_roster").doc(oldEmail).get();
-  const newMouSnap = await db.collection("mou_roster").doc(newEmail).get();
-  if (oldMouSnap.exists && !newMouSnap.exists) {
-    plan.steps.push({ collection: "mou_roster", action: `move doc from ${oldEmail} to ${newEmail}` });
-  } else if (oldMouSnap.exists && newMouSnap.exists) {
-    plan.steps.push({ collection: "mou_roster", action: `${oldEmail} entry is now redundant (one already exists under ${newEmail}) — will be removed, the ${newEmail} entry is kept as-is` });
-  }
-
-  // mou_responses — doc id is the lowercased email
-  const oldMouRespSnap = await db.collection("mou_responses").doc(oldEmail).get();
-  let newMouRespSnap = null;
-  if (oldMouRespSnap.exists) {
-    newMouRespSnap = await db.collection("mou_responses").doc(newEmail).get();
-    if (newMouRespSnap.exists) {
-      plan.steps.push({ collection: "mou_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone` });
-    } else {
-      plan.steps.push({ collection: "mou_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+    if (!adoptExisting) {
+      throw new HttpsError("failed-precondition", `Adopting ${newEmail} as the surviving login permanently deletes the ${oldEmail} Auth account. Re-run with adoptExisting:true to confirm.`);
     }
+
+    const newPersonData = { ...oldPeopleData, email: newEmail };
+    await db.collection("people").doc(newUid).set(newPersonData);
+    await db.collection("people").doc(oldUid).delete();
+    await admin.auth().deleteUser(oldUid);
+
+    await executeSharedSteps();
+
+    return { dryRun: false, ...plan, done: true };
   }
+
+  // newEmail is completely free — simple rename of the existing account.
+  const plan = {
+    oldEmail, newEmail, uid: oldUid,
+    steps: [{ collection: "people + Auth", action: `update email on account ${oldUid}` }]
+  };
+  pushSharedSteps(plan.steps);
 
   if (dryRun) {
     return { dryRun: true, ...plan };
   }
 
-  // Execute, in the same order as planned above.
-  await admin.auth().updateUser(uid, { email: newEmail });
-  await db.collection("people").doc(uid).update({ email: newEmail });
-
-  for (const d of facRosterSnap.docs) await d.ref.update({ email: newEmail });
-  for (const d of iwRegSnap.docs) await d.ref.update({ email: newEmail });
-
-  if (oldRespSnap.exists && !(newRespSnap && newRespSnap.exists)) {
-    const data = oldRespSnap.data();
-    data.email = newEmail;
-    await db.collection("faculty_responses").doc(newEmail).set(data);
-    await db.collection("faculty_responses").doc(oldEmail).delete();
-  }
-
-  if (oldMouSnap.exists && !newMouSnap.exists) {
-    const data = oldMouSnap.data();
-    data.email = newEmail;
-    await db.collection("mou_roster").doc(newEmail).set(data);
-    await db.collection("mou_roster").doc(oldEmail).delete();
-  } else if (oldMouSnap.exists && newMouSnap.exists) {
-    await db.collection("mou_roster").doc(oldEmail).delete();
-  }
-
-  if (oldMouRespSnap.exists && !(newMouRespSnap && newMouRespSnap.exists)) {
-    const data = oldMouRespSnap.data();
-    data.email = newEmail;
-    await db.collection("mou_responses").doc(newEmail).set(data);
-    await db.collection("mou_responses").doc(oldEmail).delete();
-  }
+  await admin.auth().updateUser(oldUid, { email: newEmail });
+  await db.collection("people").doc(oldUid).update({ email: newEmail });
+  await executeSharedSteps();
 
   return { dryRun: false, ...plan, done: true };
 });
