@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reminder Hub — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+
+    .page { max-width: 820px; margin: 0 auto; }
+
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 12px 18px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size: 16px; font-weight: 700; }
+    .top-bar-sub   { font-size: 12px; opacity: 0.7; }
+
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .card-header {
+      background: var(--rmd-blue);
+      color: white;
+      padding: 11px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .card-body { padding: 16px; }
+
+    .director-note {
+      background: #fff3cd;
+      border: 1px solid #ffd700;
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #856404;
+      margin-bottom: 12px;
+    }
+    .hint { font-size: 12px; color: var(--rmd-muted); margin-top: 8px; line-height: 1.5; }
+
+    .search-box {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 15px;
+      font-family: var(--font);
+      border: 2px solid #ccd6dd;
+      border-radius: 8px;
+    }
+    .search-box:focus { outline: none; border-color: var(--rmd-blue); }
+
+    .load-status { font-size: 12px; color: var(--rmd-muted); margin-top: 8px; }
+
+    .person-row {
+      border: 1px solid #e8edf2;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .person-row:hover { border-color: var(--rmd-blue); }
+    .person-row.open { border-color: var(--rmd-blue); background: #f7fafc; }
+    .person-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+    .person-name { font-weight: 700; color: var(--rmd-navy); }
+    .person-email { font-size: 12px; color: var(--rmd-muted); font-family: monospace; }
+    .chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .chip {
+      display: inline-block; padding: 3px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .chip-account { background: #fde8e4; color: #b7410e; }
+    .chip-mou     { background: #eef2f6; color: var(--rmd-navy); }
+    .chip-sfr     { background: #f3e8fd; color: #6a1fc0; }
+    .chip-rsvp    { background: #e6f4ea; color: #1a6e31; }
+    .chip-form    { background: #fff3cd; color: #8a6d00; }
+    .chip-clean   { background: #e6f4ea; color: #1a6e31; }
+
+    .detail { display: none; margin-top: 12px; border-top: 1px solid #e8edf2; padding-top: 12px; }
+    .detail.open { display: block; }
+    .detail-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid #f0f3f6; flex-wrap: wrap;
+    }
+    .detail-item:last-child { border-bottom: none; }
+    .detail-label { font-size: 13px; color: var(--rmd-text, #222); }
+    .detail-label .sub { display: block; font-size: 11px; color: var(--rmd-muted); margin-top: 2px; }
+
+    .btn-send {
+      padding: 7px 14px; background: var(--rmd-blue); color: white; border: none;
+      border-radius: 6px; font-size: 12.5px; font-weight: 700; font-family: var(--font);
+      cursor: pointer; white-space: nowrap;
+    }
+    .btn-send:hover:not(:disabled) { background: var(--rmd-navy); }
+    .btn-send:disabled { background: #aab8c2; cursor: default; }
+    .btn-send.secondary { background: white; color: var(--rmd-navy); border: 2px solid #ccd6dd; }
+    .btn-send.secondary:hover:not(:disabled) { border-color: var(--rmd-blue); color: var(--rmd-blue); }
+
+    .empty-state { text-align: center; padding: 30px 10px; color: var(--rmd-muted); font-size: 14px; }
+    .link-box {
+      margin-top: 8px; font-size: 11px; font-family: monospace; word-break: break-all;
+      background: #f0f3f6; border-radius: 6px; padding: 8px 10px; color: var(--rmd-navy);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="timetable.html" title="Back to programme" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1"></a>
+    <div>
+      <div class="top-bar-title">Reminder Hub</div>
+      <div class="top-bar-sub">RMD Instructor Weekend 2026 · Director only</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Find a person</div>
+    <div class="card-body">
+      <div class="director-note">
+        Pulls live status from all five reminder types (account sign-in, MOU, senior faculty review, IW RSVP, faculty form) and shows what's actually outstanding for the person you pick. Nothing sends until you click a specific "Send" button and confirm — searching and browsing never emails anyone.
+      </div>
+      <input type="text" id="searchBox" class="search-box" placeholder="Search by name or email…" oninput="renderResults()" disabled>
+      <div class="load-status" id="loadStatus">Loading everyone's status…</div>
+      <div id="results"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+requireDirector("timetable.html");
+var fns = firebase.functions();
+
+// One directory, keyed by lowercased email, built once from the five
+// dry-run lists. Each entry: { name, email, cats: { account, mou, sfr, rsvp, form } }
+// cats.<key> holds that category's raw record (name/role/etc.) when
+// outstanding, or is absent when not.
+var directory = {};
+var openEmail = null; // which row is currently expanded
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function upsert(email, name, catKey, record) {
+  if (!email) return;
+  const key = email.toLowerCase();
+  if (!directory[key]) directory[key] = { name: name || email.split("@")[0], email, cats: {} };
+  if (name && !directory[key].name) directory[key].name = name;
+  directory[key].cats[catKey] = record || {};
+}
+
+async function loadAll() {
+  const calls = [
+    fns.httpsCallable("sendAccountCreationReminders")({ dryRun: true }).then(r => ({ key: "account", data: r.data })).catch(e => ({ key: "account", error: e })),
+    fns.httpsCallable("sendMouReminders")({ dryRun: true }).then(r => ({ key: "mou", data: r.data })).catch(e => ({ key: "mou", error: e })),
+    fns.httpsCallable("sendSeniorFacultyReminders")({ dryRun: true }).then(r => ({ key: "sfr", data: r.data })).catch(e => ({ key: "sfr", error: e })),
+    fns.httpsCallable("sendIwRsvpInvites")({ dryRun: true }).then(r => ({ key: "rsvp", data: r.data })).catch(e => ({ key: "rsvp", error: e })),
+    fns.httpsCallable("sendFacultyFormInvites")({ dryRun: true }).then(r => ({ key: "form", data: r.data })).catch(e => ({ key: "form", error: e }))
+  ];
+
+  const results = await Promise.all(calls);
+  const errors = [];
+
+  for (const r of results) {
+    if (r.error) { errors.push(`${r.key}: ${r.error.message || r.error.code || "failed"}`); continue; }
+    const d = r.data || {};
+    const list = d.eligible || d.outstanding || d.wouldSend || [];
+    for (const p of list) {
+      if (!p.email) continue;
+      upsert(p.email, p.name, r.key, p);
+    }
+  }
+
+  document.getElementById("searchBox").disabled = false;
+  document.getElementById("loadStatus").textContent = errors.length
+    ? `Loaded with errors: ${errors.join("; ")}`
+    : `Loaded. ${Object.keys(directory).length} people have at least one outstanding item.`;
+
+  renderResults();
+}
+
+const CAT_LABELS = {
+  account: { chip: "Account not signed in", cls: "chip-account" },
+  mou:     { chip: "MOU outstanding",        cls: "chip-mou" },
+  sfr:     { chip: "Senior faculty review",  cls: "chip-sfr" },
+  rsvp:    { chip: "IW RSVP outstanding",    cls: "chip-rsvp" },
+  form:    { chip: "Faculty form incomplete", cls: "chip-form" }
+};
+
+function renderResults() {
+  const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  const el = document.getElementById("results");
+
+  let people = Object.values(directory);
+  if (q) {
+    people = people.filter(p => p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q));
+  }
+  people.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!q) {
+    el.innerHTML = `<div class="empty-state">Type a name or email to look someone up — or search blank terms won't list everyone at once, this is a lookup, not a browse list.</div>`;
+    return;
+  }
+  if (!people.length) {
+    el.innerHTML = `<div class="empty-state">No match — or nobody by that name has anything outstanding right now.</div>`;
+    return;
+  }
+
+  el.innerHTML = people.map(p => {
+    const key = p.email.toLowerCase();
+    const catKeys = Object.keys(p.cats);
+    const chips = catKeys.map(c => `<span class="chip ${CAT_LABELS[c].cls}">${CAT_LABELS[c].chip}</span>`).join("");
+    const isOpen = openEmail === key;
+    return `
+      <div class="person-row ${isOpen ? "open" : ""}" data-email="${esc(key)}" onclick="toggleRow('${esc(key).replace(/'/g, "\\'")}')">
+        <div class="person-top">
+          <div>
+            <div class="person-name">${esc(p.name)}</div>
+            <div class="person-email">${esc(p.email)}</div>
+          </div>
+        </div>
+        <div class="chip-row">${chips}</div>
+        <div class="detail ${isOpen ? "open" : ""}" id="detail-${esc(key)}">
+          ${catKeys.map(c => detailRow(p, c)).join("")}
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function detailRow(person, catKey) {
+  const label = CAT_LABELS[catKey].chip;
+  if (catKey === "account") {
+    return `
+      <div class="detail-item">
+        <div class="detail-label">${label}<span class="sub">Never signed in since account creation</span></div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-send" onclick="event.stopPropagation(); sendOne('account', '${escJs(person.email)}', this)">Send reminder</button>
+          <button class="btn-send secondary" onclick="event.stopPropagation(); sendDirectLink('${escJs(person.email)}', this)">Send direct link</button>
+        </div>
+      </div>
+      <div class="link-box" id="link-${esc(person.email.toLowerCase())}"></div>`;
+  }
+  return `
+    <div class="detail-item">
+      <div class="detail-label">${label}</div>
+      <button class="btn-send" onclick="event.stopPropagation(); sendOne('${catKey}', '${escJs(person.email)}', this)">Send reminder</button>
+    </div>`;
+}
+
+function escJs(s) { return String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'"); }
+
+function toggleRow(key) {
+  openEmail = (openEmail === key) ? null : key;
+  renderResults();
+}
+
+const CALLABLE_BY_CAT = {
+  account: "sendAccountCreationReminders",
+  mou:     "sendMouReminders",
+  sfr:     "sendSeniorFacultyReminders",
+  rsvp:    "sendIwRsvpInvites",
+  form:    "sendFacultyFormInvites"
+};
+
+async function sendOne(catKey, email, btn) {
+  const label = CAT_LABELS[catKey].chip;
+  if (!confirm(`Send this reminder ("${label}") to ${email}?\n\nThis cannot be undone.`)) return;
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = "Sending…";
+
+  try {
+    const call = fns.httpsCallable(CALLABLE_BY_CAT[catKey]);
+    const res = await call({ dryRun: false, email });
+    const d = res.data || {};
+    if ((d.failedEmails || []).length || (d.failed || 0) > 0) {
+      btn.textContent = "Failed";
+      alert(`Send failed for ${email}. Check the function logs.`);
+    } else if ((d.sent || 0) === 0) {
+      btn.textContent = "Nothing sent";
+      alert(`No longer outstanding, or nothing matched — nothing was sent.`);
+    } else {
+      btn.textContent = "Sent ✓";
+      // Drop this category from the in-memory directory so re-opening
+      // reflects it's done, without a full reload.
+      const key = email.toLowerCase();
+      if (directory[key]) {
+        delete directory[key].cats[catKey];
+        if (!Object.keys(directory[key].cats).length) delete directory[key];
+      }
+      setTimeout(renderResults, 900);
+    }
+  } catch (err) {
+    console.error("sendOne failed:", err);
+    btn.textContent = "Error";
+    alert(`Couldn't send: ${err.message || err.code || "unknown error"}`);
+    btn.disabled = false;
+    btn.textContent = original;
+  }
+}
+
+async function sendDirectLink(email, btn) {
+  if (!confirm(`Generate and send a direct verified reset link to ${email} (via reminders@rmd.uk.com, not Firebase's own sender)?`)) return;
+
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = "Sending…";
+
+  try {
+    const call = fns.httpsCallable("sendDirectResetLink");
+    const res = await call({ email });
+    const d = res.data || {};
+    const box = document.getElementById(`link-${email.toLowerCase()}`);
+    if (box) {
+      box.style.display = "block";
+      box.textContent = d.link || "(no link returned)";
+    }
+    btn.textContent = d.emailSent ? "Sent ✓" : "Link generated (email failed — copy it below)";
+    if (!d.emailSent) alert(`The link was generated but the email itself failed to send. It's shown below the button — copy and paste it manually.`);
+  } catch (err) {
+    console.error("sendDirectLink failed:", err);
+    btn.textContent = "Error";
+    alert(`Couldn't generate a link: ${err.message || err.code || "unknown error"}`);
+  }
+  btn.disabled = false;
+  if (btn.textContent === "Sending…") btn.textContent = original;
+}
+
+loadAll();
+</script>
+</body>
+</html>

@@ -271,7 +271,15 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "
     .map(d => d.data())
     .filter(m => !responded.has((m.email || "").toLowerCase()));
   const skippedNoEmail = rosterOutstanding.filter(m => !m.email).length;
-  const outstanding = rosterOutstanding.filter(m => m.email);
+  let outstanding = rosterOutstanding.filter(m => m.email);
+
+  const targetEmailB = (request.data?.email || "").trim().toLowerCase();
+  if (targetEmailB) outstanding = outstanding.filter(m => (m.email || "").toLowerCase() === targetEmailB);
+
+  const dryRun = !!request.data?.dryRun;
+  if (dryRun) {
+    return { dryRun: true, outstanding, skipped: responsesSnap.size, skippedNoEmail, sent: 0, failed: 0, failedEmails: [] };
+  }
 
   if (!outstanding.length) {
     return { sent: 0, failed: 0, skipped: responsesSnap.size, skippedNoEmail, failedEmails: [] };
@@ -445,8 +453,11 @@ exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region:
     });
   }
 
-  if (dryRun || !eligible.length) {
-    return { checked: authUsers.length, eligible, sent: 0, failed: 0, failedEmails: [] };
+  const targetEmailA = (request.data?.email || "").trim().toLowerCase();
+  const filteredEligible = targetEmailA ? eligible.filter(p => p.email.toLowerCase() === targetEmailA) : eligible;
+
+  if (dryRun || !filteredEligible.length) {
+    return { checked: authUsers.length, eligible: filteredEligible, sent: 0, failed: 0, failedEmails: [] };
   }
 
   const resend = new Resend(resendApiKey.value());
@@ -454,7 +465,7 @@ exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region:
   let sent = 0;
   const failedEmails = [];
 
-  for (const person of eligible) {
+  for (const person of filteredEligible) {
     const firstName = (person.name || "").split(" ")[0] || "there";
     try {
       const { error } = await resend.emails.send({
@@ -490,7 +501,103 @@ RMD Birmingham`
     }
   }
 
-  return { checked: authUsers.length, eligible, sent, failed: failedEmails.length, failedEmails };
+  return { checked: authUsers.length, eligible: filteredEligible, sent, failed: failedEmails.length, failedEmails };
+});
+
+/**
+ * sendDirectResetLink -- director-only.
+ *
+ * Firebase Auth's own sendPasswordResetEmail() sends from a generic
+ * noreply@<project>.firebaseapp.com address, which several 2026-09
+ * registrants (gmail.com, icloud.com, a .nl ISP) never received --
+ * almost certainly spam-filtered, since the same people's Resend-sent
+ * invites elsewhere on this platform haven't had this problem. This
+ * function sidesteps Firebase's own send entirely: generatePasswordResetLink()
+ * mints the real reset URL via the Admin SDK (the client SDK/REST API has
+ * no equivalent -- it can only ask Firebase to email it, not hand back
+ * the link), and we deliver it ourselves through the same verified
+ * rmd.uk.com/Resend pipeline as every other platform email. The raw link
+ * is also returned in the response, so it can be pasted into an email by
+ * hand as a fallback if Resend fails too.
+ *
+ * Added 2026-09-17 at Jon's request, after Anne Sofie Besemer, Thijmen
+ * van den Berg and Petra Schuffelen all reported never receiving a
+ * Firebase reset email despite successful sendOobCode responses.
+ */
+exports.sendDirectResetLink = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const email = (request.data?.email || "").trim().toLowerCase();
+  if (!email) throw new HttpsError("invalid-argument", "Email required.");
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(email);
+  } catch (e) {
+    throw new HttpsError("not-found", `No Auth account for ${email}.`);
+  }
+
+  const link = await admin.auth().generatePasswordResetLink(email, {
+    url: "https://rmd.uk.com/index.html",
+    handleCodeInApp: false
+  });
+
+  // Name for the greeting -- same people/mou_roster lookup
+  // sendAccountCreationReminders uses.
+  const [personSnap, rosterSnap] = await Promise.all([
+    db.collection("people").doc(userRecord.uid).get(),
+    db.collection("mou_roster").where("email", "==", email).limit(1).get()
+  ]);
+  const name = (personSnap.exists && personSnap.data().name)
+    || (rosterSnap.docs[0] && rosterSnap.docs[0].data().name)
+    || "";
+  const firstName = name.split(" ")[0] || "there";
+
+  let emailSent = false;
+  let emailError = null;
+  try {
+    const resend = new Resend(resendApiKey.value());
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      bcc: JON_BCC,
+      replyTo: REPLY_TO,
+      subject: "RMD Birmingham -- sign in to your account",
+      text:
+`Hi ${firstName},
+
+Here's a fresh link to set your password and sign in to the RMD Birmingham platform:
+
+${link}
+
+This link is single-use and expires after a while -- if it's stopped working by the time you click it, just reply and we'll send another.
+
+Thanks,
+Jon`
+    });
+    if (error) throw new Error(error.message || JSON.stringify(error));
+    emailSent = true;
+  } catch (err) {
+    console.error(`sendDirectResetLink: Resend send failed for ${email}`, err.message);
+    emailError = err.message;
+  }
+
+  await db.collection("direct_reset_links_sent").add({
+    email,
+    uid: userRecord.uid,
+    name,
+    emailSent,
+    emailError,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    sentByUid: auth.uid,
+    sentByEmail: (auth.token.email || "").toLowerCase()
+  });
+
+  return { email, uid: userRecord.uid, link, emailSent, emailError };
 });
 
 /**
@@ -550,7 +657,7 @@ function isWithinMouReminderWindow(date) {
   return md >= start && md <= end;
 }
 
-async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder }) {
+async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder, email }) {
   const [rosterSnap, submissionsSnap, remindersSnap] = await Promise.all([
     db.collection("mou_roster").get(),
     db.collection("mou_responses").where("academicYear", "==", CURRENT_MOU_YEAR_SERVER).get(),
@@ -563,7 +670,8 @@ async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder }) {
   );
   const remindersByDocId = new Map(remindersSnap.docs.map(d => [d.id, d.data()]));
 
-  const outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
+  const targetEmailE = (email || "").trim().toLowerCase();
+  const outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()) && (!targetEmailE || m.email.toLowerCase() === targetEmailE));
 
   if (!outstanding.length) {
     return { checked: roster.length, eligible: [], sent: 0, failed: 0, failedEmails: [] };
@@ -642,7 +750,8 @@ exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central
   }
 
   const dryRun = !!(request.data && request.data.dryRun);
-  return runMouReminderBatch({ dryRun, minDaysSinceLastReminder: null });
+  const emailFilter = request.data?.email || null;
+  return runMouReminderBatch({ dryRun, minDaysSinceLastReminder: null, email: emailFilter });
 });
 
 exports.sendMouRemindersScheduled = onSchedule(
@@ -1191,8 +1300,16 @@ exports.sendIwRsvpInvites = onCall({ secrets: [resendApiKey], region: "us-centra
     .get();
 
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const outstanding = all.filter(p => p.email);
+  let outstanding = all.filter(p => p.email);
   const skippedNoEmail = all.length - outstanding.length;
+
+  const targetEmailC = (request.data?.email || "").trim().toLowerCase();
+  if (targetEmailC) outstanding = outstanding.filter(p => (p.email || "").toLowerCase() === targetEmailC);
+
+  const dryRun = !!request.data?.dryRun;
+  if (dryRun) {
+    return { dryRun: true, outstanding, skippedNoEmail, total: all.length };
+  }
 
   if (!outstanding.length) {
     return { sent: 0, failed: 0, failedEmails: [], skippedNoEmail, total: all.length };
@@ -1375,8 +1492,11 @@ exports.sendFacultyFormInvites = onCall({ secrets: [resendApiKey], region: "us-c
 
   const snap = await db.collection("mou_roster").get();
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => roles.includes(m.role));
-  const outstanding = all.filter(m => m.email);
+  let outstanding = all.filter(m => m.email);
   const skippedNoEmail = all.length - outstanding.length;
+
+  const targetEmailD = (request.data?.email || "").trim().toLowerCase();
+  if (targetEmailD) outstanding = outstanding.filter(m => (m.email || "").toLowerCase() === targetEmailD);
 
   if (dryRun) {
     return {
