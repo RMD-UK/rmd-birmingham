@@ -638,6 +638,43 @@ Jon`
  * re-run if something failed partway, since every step first checks
  * whether it's already done.
  */
+/**
+ * deleteEmptyAuthAccount — director-only.
+ *
+ * Companion to mergePersonEmail: deletes an Auth account ONLY when it's
+ * genuinely an empty shell — no people doc tied to it. Refuses to touch
+ * anything if a people doc exists for that uid, so this can't accidentally
+ * delete a real account. Built 2026-09-18 alongside mergePersonEmail for
+ * exactly the case it exists to unblock: an email that already has its own
+ * bare Auth login with nothing behind it, colliding with a real account
+ * that needs to move onto that same email address.
+ */
+exports.deleteEmptyAuthAccount = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const email = (request.data?.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) throw new HttpsError("invalid-argument", "email required.");
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(email);
+  } catch (e) {
+    throw new HttpsError("not-found", `No Auth account for ${email}.`);
+  }
+
+  const peopleSnap = await db.collection("people").doc(userRecord.uid).get();
+  if (peopleSnap.exists) {
+    throw new HttpsError("failed-precondition", `${email} (uid ${userRecord.uid}) has a people doc — this is not an empty shell, refusing to delete. Sort out manually which account should survive.`);
+  }
+
+  await admin.auth().deleteUser(userRecord.uid);
+  return { deleted: true, email, uid: userRecord.uid };
+});
+
 exports.mergePersonEmail = onCall({ region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -662,13 +699,30 @@ exports.mergePersonEmail = onCall({ region: "us-central1" }, async (request) => 
   }
   const uid = peopleSnap.docs[0].id;
 
-  let newEmailAlreadyHasAccount = false;
+  // Don't assume newEmail has no Auth account of its own — check, and if it
+  // does, report on BOTH accounts rather than blindly erroring out. This
+  // surfaced a real case (Cameron Parkes, 2026-09-18): bham.ac.uk already
+  // had its own empty Auth account with no people doc or any other record
+  // behind it — worth knowing about, not just a generic "collision" error.
+  let newEmailAuthUser = null;
   try {
-    await admin.auth().getUserByEmail(newEmail);
-    newEmailAlreadyHasAccount = true;
-  } catch (e) { /* good — no existing Auth account under newEmail, as expected */ }
-  if (newEmailAlreadyHasAccount) {
-    throw new HttpsError("failed-precondition", `${newEmail} already has its own Auth account — this would collide. Sort out which account is the real one first.`);
+    newEmailAuthUser = await admin.auth().getUserByEmail(newEmail);
+  } catch (e) { /* no existing Auth account under newEmail — the simple case */ }
+
+  if (newEmailAuthUser) {
+    const newPeopleSnap = await db.collection("people").doc(newEmailAuthUser.uid).get();
+    const conflict = {
+      conflict: true,
+      newEmailAuthUid: newEmailAuthUser.uid,
+      newEmailCreatedAt: newEmailAuthUser.metadata.creationTime,
+      newEmailLastSignIn: newEmailAuthUser.metadata.lastSignInTime || null,
+      newEmailHasPeopleDoc: newPeopleSnap.exists,
+      newEmailPeopleDoc: newPeopleSnap.exists ? newPeopleSnap.data() : null,
+      note: newPeopleSnap.exists
+        ? `${newEmail} has its own account WITH a people doc — this is two real accounts, not a stray shell. Sort out manually which is correct before merging.`
+        : `${newEmail} has an Auth login but no people doc — looks like an empty/unused shell account. If so, the fix is deleting THAT Auth account first (see deleteEmptyAuthAccount), then re-running this merge.`
+    };
+    return { dryRun: true, uid, oldEmail, newEmail, ...conflict };
   }
 
   const plan = { uid, oldEmail, newEmail, steps: [] };
