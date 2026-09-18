@@ -1860,6 +1860,61 @@ exports.iwRsvpRespond = onCall({ region: "us-central1" }, async (request) => {
 });
 
 /**
+ * iwJoinConfirm — public, no sign-in required.
+ *
+ * Backs iw-join.html: the self-service counterpart to sendIwRsvpInvites for
+ * everyone who ISN'T on the confirmed MOU roster — Instructor Trainers,
+ * Assessor Faculty, ITCs, Directors, one-off Faculty, RMD Student Faculty
+ * ("extras", Jon's term, 2026-09-18). Jon adds the person to iw_registrations
+ * from admin-iw-registrations.html's "Invite an extra" panel (status:
+ * "pending", source: "extra-invite"), picking their role himself from a
+ * fixed list (ASSIGNABLE_ROLES, same list admin-faculty-responses.html
+ * already uses) so there's no free-text drift — then sends them the
+ * resulting link himself. Landing on it and clicking Confirm sets status to
+ * "confirmed", exactly like a manual ✓ click, which fires
+ * syncIwRegistrationToPeople the same way and gives them a real account
+ * automatically. No new account-creation logic needed — this just flips
+ * the same status field the rest of the system already watches.
+ *
+ * Same trust model as iwRsvpRespond above: the registration doc's own ID is
+ * the only credential, fine for a low-stakes join action. Not gated to a
+ * particular source or role on purpose — confirming attendance is a
+ * harmless, idempotent action to allow on any registration doc someone has
+ * a link to.
+ *
+ * Called twice per visit, same pattern as iwRsvpRespond:
+ *   1. { id } only, on load — returns { name, role, status }.
+ *   2. { id, confirm: true } — sets status to "confirmed", returns the same
+ *      shape.
+ */
+exports.iwJoinConfirm = onCall({ region: "us-central1" }, async (request) => {
+  const id = request.data?.id;
+  if (!id || typeof id !== "string") {
+    throw new HttpsError("invalid-argument", "Missing invite id.");
+  }
+
+  const ref = db.collection(IW_COLL).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "This invite link is no longer valid — please contact Jon directly.");
+  }
+
+  const data = snap.data();
+
+  if (!request.data?.confirm) {
+    return { name: data.name || "", role: data.role || "", status: data.status || "pending" };
+  }
+
+  await ref.update({
+    status: "confirmed",
+    statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    statusSource: "join-link"
+  });
+
+  return { name: data.name || "", role: data.role || "", status: "confirmed" };
+});
+
+/**
  * sendFacultyFormInvites — director-only.
  *
  * Emails RMD Senior Faculty and/or RMD Student Faculty on mou_roster a

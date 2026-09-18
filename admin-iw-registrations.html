@@ -151,6 +151,15 @@
     .field-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
     @media (max-width: 560px) { .field-row { grid-template-columns: 1fr; } }
 
+    .role-btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+    .role-btn {
+      padding: 8px 14px; border: 2px solid #ccd6dd; border-radius: 20px; background: white;
+      font-size: 13px; font-weight: 600; font-family: var(--font); color: var(--rmd-navy);
+      cursor: pointer; transition: all 0.12s;
+    }
+    .role-btn:hover { border-color: var(--rmd-blue); }
+    .role-btn.selected { background: var(--rmd-navy); border-color: var(--rmd-navy); color: white; }
+
     .info-box {
       background: #e8f0fe; border-left: 4px solid var(--rmd-blue);
       border-radius: 0 6px 6px 0; padding: 10px 14px;
@@ -238,6 +247,7 @@
     <button class="btn-action secondary" onclick="togglePanel('missingPanel')" data-tooltip="Read-only check: everyone on this year's confirmed MOU roster as an Instructor Candidate or Assessor/Senior Instructor who is NOT yet on this list. Attendance is mandated for both groups. Doesn't add anyone — use Import course candidates for that.">🔍 Who's missing</button>
     <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" data-tooltip="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
     <button class="btn-action" onclick="togglePanel('addPanel')" data-tooltip="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
+    <button class="btn-action" onclick="togglePanel('inviteExtraPanel')" data-tooltip="For one person outside the confirmed MOU roster — Instructor Trainer, Assessor Faculty, ITC, Director, one-off Faculty, or RMD Student Faculty. Generates a direct link for them to confirm themselves onto this list.">✉ Invite an extra</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" data-tooltip="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
     <button class="btn-action secondary" onclick="copyAssessorEmails()" data-tooltip="Copies every Assessor/Senior Instructor's email to your clipboard, comma-separated — everyone in that role regardless of Pending/Confirmed/Declined status.">📧 Copy Assessor/Sr Instr. emails</button>
     <button class="btn-action secondary" onclick="copyFacultyEmails()" data-tooltip="Copies every Faculty member's email to your clipboard, comma-separated — everyone in that role regardless of Pending/Confirmed/Declined status.">📧 Copy Faculty emails</button>
@@ -276,6 +286,50 @@
       <div id="addActions" style="display:none;margin-top:12px;">
         <button class="btn-action" onclick="importAdd()">Add to list</button>
         <span id="addFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invite an extra panel — one person, fixed role list, generates a direct join link -->
+  <div class="panel" id="inviteExtraPanel" style="display:none;">
+    <div class="panel-header">Invite an extra
+      <button onclick="togglePanel('inviteExtraPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="info-box">
+        For anyone outside the confirmed MOU roster — Instructor Trainers, Assessor Faculty, ITCs, Directors,
+        one-off Faculty, or RMD Student Faculty. Pick their role, generate a link, and send it to them yourself.
+        They land Pending until they confirm; confirming creates their account automatically, same as everyone else.
+      </div>
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="extraName" placeholder="Jane Smith">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="extraEmail" placeholder="jane@example.com">
+      </div>
+      <div class="field">
+        <label>Role</label>
+        <div class="role-btn-group" id="extraRoleGroup">
+          <button type="button" class="role-btn" data-role="Faculty" onclick="selectExtraRole(this)">Faculty</button>
+          <button type="button" class="role-btn" data-role="Instructor Trainer" onclick="selectExtraRole(this)">Instructor Trainer</button>
+          <button type="button" class="role-btn" data-role="Assessor Faculty" onclick="selectExtraRole(this)">Assessor Faculty</button>
+          <button type="button" class="role-btn" data-role="Instructor Trainer Candidate" onclick="selectExtraRole(this)">Instructor Trainer Candidate</button>
+          <button type="button" class="role-btn" data-role="Director" onclick="selectExtraRole(this)">Director</button>
+          <button type="button" class="role-btn" data-role="RMD Student Faculty" onclick="selectExtraRole(this)">RMD Student Faculty</button>
+        </div>
+      </div>
+      <button class="btn-action" onclick="generateExtraInvite()">Generate invite link</button>
+      <div id="extraFeedback" style="font-size:12px;color:var(--rmd-muted);margin-top:10px;"></div>
+      <div id="extraLinkBox" style="display:none;margin-top:12px;">
+        <div class="field">
+          <label>Link to send</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="extraLinkOutput" readonly style="flex:1;font-size:12.5px;">
+            <button class="btn-action secondary" onclick="copyExtraLink()">Copy</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -926,6 +980,77 @@ async function importAdd() {
   } catch(err) {
     fb.textContent = "Error: " + err.message;
   }
+}
+
+// ── Invite an extra ─────────────────────────────────────────────────────────────
+// One person, fixed role list (same set admin-faculty-responses.html's
+// ASSIGNABLE_ROLES uses, so role names stay consistent year to year) — Jon
+// picks the role himself rather than typing it, so there's no free-text
+// drift. Writes directly to iw_registrations client-side, same as "Add
+// people" above (status: "pending", source: "extra-invite"); the resulting
+// doc id becomes the invite link's token. Confirming on iw-join.html goes
+// through the iwJoinConfirm Cloud Function (public writes to this
+// director-only collection have to go through Admin SDK, same reasoning as
+// the RSVP flow above).
+let selectedExtraRole = null;
+
+function selectExtraRole(btn) {
+  document.querySelectorAll('#extraRoleGroup .role-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedExtraRole = btn.dataset.role;
+}
+
+async function generateExtraInvite() {
+  const name  = document.getElementById('extraName').value.trim();
+  const email = document.getElementById('extraEmail').value.trim().toLowerCase();
+  const fb    = document.getElementById('extraFeedback');
+  document.getElementById('extraLinkBox').style.display = 'none';
+
+  if (!name)  { fb.textContent = 'Name required.'; return; }
+  if (!email || !email.includes('@')) { fb.textContent = 'Valid email required.'; return; }
+  if (!selectedExtraRole) { fb.textContent = 'Pick a role.'; return; }
+
+  const dup = allRegistrations.find(r => (r.email||'').toLowerCase() === email);
+  if (dup) {
+    fb.textContent = `${dup.name || email} is already on this list (${dup.status || 'pending'}) — no need to invite again.`;
+    return;
+  }
+
+  fb.textContent = 'Creating invite…';
+  try {
+    const ts  = firebase.firestore.FieldValue.serverTimestamp();
+    const doc = { name, email, role: selectedExtraRole, notes: '', source: 'extra-invite', status: 'pending', addedAt: ts };
+    const ref = await db.collection(IW_COLL).add(doc);
+
+    allRegistrations.push({ id: ref.id, ...doc });
+    allRegistrations.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    updateSummary();
+    renderTable();
+
+    const link = `https://rmd.uk.com/iw-join.html?id=${ref.id}`;
+    document.getElementById('extraLinkOutput').value = link;
+    document.getElementById('extraLinkBox').style.display = 'block';
+    fb.textContent = '✓ Created — copy the link below and send it to them.';
+
+    document.getElementById('extraName').value = '';
+    document.getElementById('extraEmail').value = '';
+    document.querySelectorAll('#extraRoleGroup .role-btn').forEach(b => b.classList.remove('selected'));
+    selectedExtraRole = null;
+  } catch(err) {
+    fb.textContent = 'Error: ' + err.message;
+  }
+}
+
+function copyExtraLink() {
+  const el = document.getElementById('extraLinkOutput');
+  el.select();
+  el.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(el.value).then(() => {
+    document.getElementById('extraFeedback').textContent = '✓ Link copied.';
+  }).catch(() => {
+    document.execCommand('copy');
+    document.getElementById('extraFeedback').textContent = '✓ Link copied.';
+  });
 }
 
 // ── Import from roster ────────────────────────────────────────────────────────
