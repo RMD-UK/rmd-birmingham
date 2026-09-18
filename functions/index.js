@@ -851,6 +851,172 @@ exports.mergePersonEmail = onCall({ region: "us-central1" }, async (request) => 
 });
 
 /**
+ * correctStaleRosterEmail — director-only.
+ *
+ * For the case found 2026-09-18 while cleaning up Cameron Parkes: a person's
+ * faculty_roster / mou_roster entry carries a university email that was
+ * never actually used (no Auth account, no people doc, no confirmed IW
+ * registration, no submitted response under it), while their real activity
+ * sits under a different address already recorded in faculty_roster's own
+ * aliasEmails field (Ellen Murgatroyd, Juliette Horobin, Rosie Lilwall,
+ * Theresa Brock). This is NOT an account merge (mergePersonEmail is for
+ * that) — oldEmail here has no account to merge, it's just wrong contact
+ * data. Refuses to run if oldEmail turns out to have a people doc or an
+ * Auth account of its own, since that would mean it's actually live.
+ */
+exports.correctStaleRosterEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const oldEmail = (request.data?.oldEmail || "").trim().toLowerCase();
+  const newEmail = (request.data?.newEmail || "").trim().toLowerCase();
+  const dryRun = !!request.data?.dryRun;
+
+  if (!oldEmail || !oldEmail.includes("@")) throw new HttpsError("invalid-argument", "oldEmail required.");
+  if (!newEmail || !newEmail.includes("@")) throw new HttpsError("invalid-argument", "newEmail required.");
+  if (oldEmail === newEmail) throw new HttpsError("invalid-argument", "oldEmail and newEmail are the same.");
+
+  // Safety: oldEmail must be genuinely dead — no people doc, no Auth account.
+  const oldPeopleSnap = await db.collection("people").where("email", "==", oldEmail).get();
+  if (!oldPeopleSnap.empty) {
+    throw new HttpsError("failed-precondition", `${oldEmail} has its own people doc — this is a real account, not stale data. Use mergePersonEmail instead.`);
+  }
+  let oldAuthUser = null;
+  try {
+    oldAuthUser = await admin.auth().getUserByEmail(oldEmail);
+  } catch (e) { /* good — no Auth account under oldEmail */ }
+  if (oldAuthUser) {
+    throw new HttpsError("failed-precondition", `${oldEmail} has an Auth login (uid ${oldAuthUser.uid}) — this is a real account, not stale data. Use mergePersonEmail or deleteEmptyAuthAccount instead.`);
+  }
+
+  const facRosterSnap = await db.collection("faculty_roster").where("email", "==", oldEmail).get();
+  const iwRegSnap = await db.collection("iw_registrations").where("email", "==", oldEmail).get();
+  const oldRespSnap = await db.collection("faculty_responses").doc(oldEmail).get();
+  const newRespSnap = oldRespSnap.exists ? await db.collection("faculty_responses").doc(newEmail).get() : null;
+  const oldMouSnap = await db.collection("mou_roster").doc(oldEmail).get();
+  const newMouSnap = await db.collection("mou_roster").doc(newEmail).get();
+  const oldMouRespSnap = await db.collection("mou_responses").doc(oldEmail).get();
+  const newMouRespSnap = oldMouRespSnap.exists ? await db.collection("mou_responses").doc(newEmail).get() : null;
+  const newIwSnap = await db.collection("iw_registrations").where("email", "==", newEmail).get();
+
+  const steps = [];
+  facRosterSnap.forEach(d => steps.push({ collection: "faculty_roster", docId: d.id, action: "update email field" }));
+
+  iwRegSnap.forEach(d => {
+    if (!newIwSnap.empty) {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: `SKIPPED — ${newEmail} already has a registration too; moving this would create a duplicate. Leaving both — sort out manually (see removeDuplicateRegistration).` });
+    } else {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: "update email field" });
+    }
+  });
+
+  if (oldRespSnap.exists) {
+    steps.push(newRespSnap.exists
+      ? { collection: "faculty_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone, sort out manually which to keep` }
+      : { collection: "faculty_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+  }
+
+  if (oldMouSnap.exists && !newMouSnap.exists) {
+    steps.push({ collection: "mou_roster", action: `move doc from ${oldEmail} to ${newEmail}` });
+  } else if (oldMouSnap.exists && newMouSnap.exists) {
+    steps.push({ collection: "mou_roster", action: `${oldEmail} entry is now redundant (one already exists under ${newEmail}) — will be removed, the ${newEmail} entry is kept as-is` });
+  }
+
+  if (oldMouRespSnap.exists) {
+    steps.push(newMouRespSnap.exists
+      ? { collection: "mou_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone` }
+      : { collection: "mou_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+  }
+
+  if (dryRun) {
+    return { dryRun: true, oldEmail, newEmail, steps };
+  }
+
+  for (const d of facRosterSnap.docs) await d.ref.update({ email: newEmail });
+
+  if (newIwSnap.empty) {
+    for (const d of iwRegSnap.docs) await d.ref.update({ email: newEmail });
+  }
+
+  if (oldRespSnap.exists && !newRespSnap.exists) {
+    const data = oldRespSnap.data();
+    data.email = newEmail;
+    await db.collection("faculty_responses").doc(newEmail).set(data);
+    await db.collection("faculty_responses").doc(oldEmail).delete();
+  }
+
+  if (oldMouSnap.exists && !newMouSnap.exists) {
+    const data = oldMouSnap.data();
+    data.email = newEmail;
+    await db.collection("mou_roster").doc(newEmail).set(data);
+    await db.collection("mou_roster").doc(oldEmail).delete();
+  } else if (oldMouSnap.exists && newMouSnap.exists) {
+    await db.collection("mou_roster").doc(oldEmail).delete();
+  }
+
+  if (oldMouRespSnap.exists && !newMouRespSnap.exists) {
+    const data = oldMouRespSnap.data();
+    data.email = newEmail;
+    await db.collection("mou_responses").doc(newEmail).set(data);
+    await db.collection("mou_responses").doc(oldEmail).delete();
+  }
+
+  return { dryRun: false, oldEmail, newEmail, steps, done: true };
+});
+
+/**
+ * removeDuplicateRegistration — director-only.
+ *
+ * Deletes one iw_registrations doc, but only after confirming it's a real
+ * duplicate: another confirmed registration under the same name must exist
+ * at a different email. Built for the Chesca Harper case, 2026-09-18: she
+ * registered for the Instructor Weekend twice, once under each of her two
+ * emails.
+ */
+exports.removeDuplicateRegistration = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const docId = (request.data?.docId || "").trim();
+  const dryRun = !!request.data?.dryRun;
+  if (!docId) throw new HttpsError("invalid-argument", "docId required.");
+
+  const targetSnap = await db.collection("iw_registrations").doc(docId).get();
+  if (!targetSnap.exists) {
+    throw new HttpsError("not-found", `No iw_registrations doc with id ${docId}.`);
+  }
+  const target = targetSnap.data();
+  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z]/g, "");
+  const targetName = norm(target.name);
+
+  const allSnap = await db.collection("iw_registrations").get();
+  const others = [];
+  allSnap.forEach(d => {
+    if (d.id === docId) return;
+    if (norm(d.data().name) === targetName) {
+      others.push({ docId: d.id, ...d.data() });
+    }
+  });
+
+  if (!others.length) {
+    throw new HttpsError("failed-precondition", `No other registration found under the name "${target.name}" — this doesn't look like a duplicate. Refusing to delete.`);
+  }
+
+  if (dryRun) {
+    return { dryRun: true, docId, toDelete: target, keeping: others };
+  }
+
+  await db.collection("iw_registrations").doc(docId).delete();
+  return { dryRun: false, docId, deleted: target, kept: others, done: true };
+});
+
+/**
  * sendMouReminders / sendMouRemindersScheduled — share one core batch
  * helper (runMouReminderBatch below). Both email everyone currently on
  * mou_roster who hasn't yet submitted this academic year's MOU — the same
