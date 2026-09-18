@@ -261,6 +261,19 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "
     throw new HttpsError("permission-denied", "Course Directors only.");
   }
 
+  const dryRun = !!request.data?.dryRun;
+
+  // Outside the annual review window (1 April – 1 July), nothing counts as
+  // outstanding at all — see isWithinSfrReminderWindow above. This is the
+  // fix for Jon's 2026-09-18 request: "do not consider senior faculty
+  // review missing at this time, this year's done."
+  if (!isWithinSfrReminderWindow(new Date())) {
+    if (dryRun) {
+      return { dryRun: true, outstanding: [], skipped: 0, skippedNoEmail: 0, sent: 0, failed: 0, failedEmails: [], outsideWindow: true };
+    }
+    return { sent: 0, failed: 0, skipped: 0, skippedNoEmail: 0, failedEmails: [], outsideWindow: true };
+  }
+
   const [rosterSnap, responsesSnap] = await Promise.all([
     db.collection(FACULTY_ROSTER_COLLECTION).where("group", "==", "senior").get(),
     db.collection(SFR_RESPONSES_COLLECTION).where("cycleYear", "==", SFR_CYCLE_YEAR).get()
@@ -276,7 +289,6 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "
   const targetEmailB = (request.data?.email || "").trim().toLowerCase();
   if (targetEmailB) outstanding = outstanding.filter(m => (m.email || "").toLowerCase() === targetEmailB);
 
-  const dryRun = !!request.data?.dryRun;
   if (dryRun) {
     return { dryRun: true, outstanding, skipped: responsesSnap.size, skippedNoEmail, sent: 0, failed: 0, failedEmails: [] };
   }
@@ -654,6 +666,21 @@ function isWithinMouReminderWindow(date) {
   const md    = (date.getUTCMonth() + 1) * 100 + date.getUTCDate();
   const start = 6 * 100 + 1;  // 1 June
   const end   = 10 * 100 + 1; // 1 October
+  return md >= start && md <= end;
+}
+
+// 1 April – 1 July inclusive, any year — the senior faculty review's actual
+// annual cycle, per Jon 2026-09-18: "want people to complete it after April
+// 1 each year & before July 1, after July 1 it's late." Outside this
+// window (e.g. right now, September, once that year's cycle is already
+// wrapped up) sendSeniorFacultyReminders should not show or send anything
+// — the roster shouldn't be nagged year-round just because SFR_CYCLE_YEAR
+// has already been bumped forward to next year's cycle. Same month*100+day
+// comparison style as isWithinMouReminderWindow above.
+function isWithinSfrReminderWindow(date) {
+  const md    = (date.getUTCMonth() + 1) * 100 + date.getUTCDate();
+  const start = 4 * 100 + 1; // 1 April
+  const end   = 7 * 100 + 1; // 1 July
   return md >= start && md <= end;
 }
 
@@ -1490,10 +1517,22 @@ exports.sendFacultyFormInvites = onCall({ secrets: [resendApiKey], region: "us-c
 
   const dryRun = !!request.data?.dryRun;
 
-  const snap = await db.collection("mou_roster").get();
+  // 2026-09-18 fix: this used to list everyone on the roster in scope,
+  // full stop — it never checked who had actually submitted, so the
+  // "outstanding" list (and the Reminder Hub's "Faculty form incomplete"
+  // chip) included plenty of people who'd already responded. Now it
+  // excludes anyone with a faculty_responses doc, same pattern as
+  // runMouReminderBatch's submittedEmails check above.
+  const [snap, responsesSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("faculty_responses").get()
+  ]);
+  const submittedEmails = new Set(
+    responsesSnap.docs.map(d => (d.data().email || "").toLowerCase()).filter(Boolean)
+  );
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => roles.includes(m.role));
-  let outstanding = all.filter(m => m.email);
-  const skippedNoEmail = all.length - outstanding.length;
+  let outstanding = all.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
+  const skippedNoEmail = all.filter(m => !m.email).length;
 
   const targetEmailD = (request.data?.email || "").trim().toLowerCase();
   if (targetEmailD) outstanding = outstanding.filter(m => (m.email || "").toLowerCase() === targetEmailD);
