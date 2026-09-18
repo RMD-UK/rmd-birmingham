@@ -141,7 +141,7 @@
     <div class="action-card-arrow">›</div>
   </a>
 
-  <a class="action-card" href="attendance.html">
+  <a class="action-card hidden" id="attendanceLink" href="attendance.html">
     <div class="action-card-icon">✅</div>
     <div class="action-card-text">
       <div class="action-card-title">Registration</div>
@@ -200,7 +200,7 @@
     <div class="action-card-arrow">›</div>
   </a>
 
-  <a class="action-card" id="sfrLink" href="senior-faculty-review.html">
+  <a class="action-card hidden" id="sfrLink" href="senior-faculty-review.html">
     <div class="action-card-icon">📝</div>
     <div class="action-card-text">
       <div class="action-card-title">Senior Faculty — Review &amp; Future Plans</div>
@@ -360,6 +360,16 @@
       document.getElementById("checkinPosterLink").classList.remove("hidden");
     }
 
+    // Registration (attendance.html) — was showing to every signed-in
+    // account with no role check at all. Restricted to the weekend
+    // operations/check-in team: director, faculty, assessor-faculty, and
+    // logistics (a real, separate role value — see
+    // INSTRUCTOR_STREAM_RECIPIENTS / ASSESSOR_STREAM_RECIPIENTS in
+    // js/firebase-config.js). 2026-09-18, per Jon.
+    if (role === "director" || role === "faculty" || role === "assessor-faculty" || role === "logistics") {
+      document.getElementById("attendanceLink").classList.remove("hidden");
+    }
+
     // Evening Course Rosters — Director, RMD Student Faculty, RMD Senior
     // Faculty (2026-09-08, per Jon: "They can have access too" — see
     // [[rmd_website_permissions_audit]]). studentFac/seniorFac come from
@@ -367,6 +377,17 @@
     if (role === "director" || studentFac || seniorFac) {
       document.getElementById("courseRostersSectionLabel").classList.remove("hidden");
       document.getElementById("courseRostersLink").classList.remove("hidden");
+    }
+
+    // Senior Faculty Review & Future Plans — was also showing to everyone.
+    // This is about permanent standing on the senior faculty roster
+    // (matches who sendSeniorFacultyReminders() in functions/index.js
+    // actually targets: faculty_roster where group == "senior"), not the
+    // weekend role field, so it follows seniorFac here, same as the
+    // Evening Course Rosters tile above, not the org-faculty block.
+    // 2026-09-18, per Jon.
+    if (role === "director" || seniorFac) {
+      document.getElementById("sfrLink").classList.remove("hidden");
     }
 
     if (role === "director") {
