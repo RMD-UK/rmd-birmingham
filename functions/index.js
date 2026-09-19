@@ -314,11 +314,13 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "
         text:
 `Hi ${firstName},
 
-Just a reminder — I haven't yet had your response to the RMD senior faculty annual review. It only takes a couple of minutes:
+You're getting this because we haven't had your response yet to this year's senior faculty review - the annual check-in on how the role's gone this year and whether you can realistically keep giving it what it needs next year. No pressure either way - stepping back or adjusting your involvement is a completely normal answer.
+
+It only takes a couple of minutes:
 
 ${FORM_URL}
 
-If you've already submitted this and are seeing this message anyway, sorry — let me know and I'll check what's happened.
+If you've already submitted this and are seeing this message anyway, sorry - reply and I'll check what's gone wrong on our end.
 
 Thanks,
 Jon`
@@ -488,9 +490,9 @@ exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region:
         text:
 `Hi ${firstName},
 
-An RMD Birmingham platform account was set up for you a little while ago, but it looks like you haven't signed in yet.
+You're getting this because an RMD Birmingham platform account was set up for you a little while ago, and it looks like you haven't signed in yet. You'll need it for the course platform - assessments, timetable, room info, and more.
 
-You'll need this account for the course platform (assessments, timetable, room info, and more). Sign in here — you'll be prompted to set a password the first time:
+Sign in here — you'll be prompted to set a password the first time:
 
 ${SIGNIN_URL}
 
@@ -582,11 +584,11 @@ exports.sendDirectResetLink = onCall({ secrets: [resendApiKey], region: "us-cent
       text:
 `Hi ${firstName},
 
-Here's a fresh link to set your password and sign in to the RMD Birmingham platform:
+You're getting this because you asked for (or we sent you) a fresh sign-in link for the RMD Birmingham platform. Use it to set your password and sign in:
 
 ${link}
 
-This link is single-use and expires after a while -- if it's stopped working by the time you click it, just reply and we'll send another.
+This link is single-use and expires about an hour after it's sent. If it's stopped working by the time you click it - you'll see an error saying the link is invalid or expired - just reply to this email and I'll send you a new one straight away.
 
 Thanks,
 Jon`
@@ -1398,7 +1400,9 @@ async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder, email }) 
         text:
 `Hi ${firstName},
 
-We don't yet have your Memorandum of Understanding on file for ${CURRENT_MOU_YEAR_SERVER}. Please take a few minutes to complete it, sign in with your existing RMD account first:
+You're getting this because we don't yet have your signed Memorandum of Understanding on file for ${CURRENT_MOU_YEAR_SERVER} - it's the yearly agreement confirming your role and commitments as RMD faculty, and we need it from everyone before the course runs.
+
+Please sign in with your existing RMD account and complete it here — it takes a few minutes:
 
 ${MOU_FORM_URL}
 
@@ -2015,9 +2019,9 @@ exports.sendIwRsvpInvites = onCall({ secrets: [resendApiKey], region: "us-centra
         text:
 `Hi ${firstName},
 
-The annual instructor weekend is a core part of the RMD year. As you are one of the more senior members of the RMD Birmingham team, and have a key role in maintaining the standards of the course, we hope to see you there.
+You're getting this because you're an Assessor or Senior Instructor, and attending the instructor weekend's assessor/senior instructor component is an expected part of that role. We haven't had your RSVP yet.
 
-Please let us know here:
+Please let us know here - it's a one-click yes/no:
 
 ${link}
 
@@ -2282,7 +2286,7 @@ exports.sendFacultyFormInvites = onCall({ secrets: [resendApiKey], region: "us-c
         text:
 `Hi ${firstName},
 
-Please confirm your attendance and details for the RMD Instructor Weekend using the link below — it already has your email address filled in, so you shouldn't need to retype it:
+You're getting this because we need your attendance and details confirmed for the RMD Instructor Weekend. Use the link below — it already has your email address filled in, so you shouldn't need to retype it:
 
 ${link}
 
