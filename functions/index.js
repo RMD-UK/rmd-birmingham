@@ -1129,6 +1129,141 @@ exports.mergeConflictingPeople = onCall({ region: "us-central1" }, async (reques
 
   return { dryRun: false, oldEmail, newEmail, oldUid, newUid, steps, done: true };
 });
+/**
+ * auditFacultyEmailMismatches — director-only, read-only.
+ *
+ * Sweep for the pattern found repeatedly 2026-09-19 (Tom Burton, Rosie
+ * Lilwall, Tess Brock, Zanita Volschenk, Becca Everitt): an RMD Senior/
+ * Student Faculty member's mou_roster entry sits under their university
+ * email, but the real Firebase Auth login they actually use — and the
+ * people doc, iw_registrations entry and faculty_responses submission
+ * that go with it — sit under a different (usually personal) email.
+ * mou_roster's email then points at either a dormant/never-used Auth
+ * account, or one with only a bare passport-details people doc, while
+ * their actual course role data quietly lives somewhere else.
+ *
+ * This never writes anything — it only surfaces candidates for a human
+ * to confirm, then mergePersonEmail (clean adopt) or mergeConflictingPeople
+ * (both sides have real data) does the actual fix, exactly as done for the
+ * five people above.
+ *
+ * Method, for every mou_roster doc with role "RMD Senior Faculty" or
+ * "RMD Student Faculty":
+ *   1. Does its email have a Firebase Auth account?
+ *      - No  -> "neverSignedIn" (not a mismatch — same bucket
+ *               sendAccountCreationReminders already tracks; just noted
+ *               here for completeness, not flagged as actionable).
+ *   2. If yes, does that uid have a people doc with a real `role` field
+ *      (i.e. actual course-role data, not just passport details)?
+ *      - Yes -> "ok", nothing to do.
+ *      - No  -> look for another people doc under a DIFFERENT email whose
+ *               name normalises to the same thing and DOES have real role
+ *               data. Found -> "mismatchCandidate" with both emails and a
+ *               suggested action (adopt vs conflict, based on whether the
+ *               roster email's own people doc has any fields at all).
+ *               Not found -> "shellNoCandidate" (roster email has an
+ *               account but no role data anywhere findable under that
+ *               name — needs a human look, not an automatic guess).
+ *
+ * Name matching is deliberately loose (lowercase, strip everything but
+ * a-z) since these are exactly the cases where the two records were
+ * entered independently and may differ in spacing/punctuation/nickname
+ * (e.g. "Tess Brock" vs "Theresa Brock" both normalise past the shared
+ * "brock" surname check plus a first-name-initial fallback below).
+ */
+exports.auditFacultyEmailMismatches = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z]/g, "");
+
+  const [mouRosterSnap, peopleSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("people").get(),
+  ]);
+
+  let authUsers = [];
+  let pageToken;
+  do {
+    const page = await admin.auth().listUsers(1000, pageToken);
+    authUsers = authUsers.concat(page.users);
+    pageToken = page.pageToken;
+  } while (pageToken);
+  const authByEmail = new Map(authUsers.map(u => [(u.email || "").toLowerCase(), u]));
+
+  const peopleByUid = new Map(peopleSnap.docs.map(d => [d.id, d.data()]));
+  // Index every people doc with real role data, by normalised name, for the
+  // "find the other account" lookup.
+  const peopleWithRoleByName = new Map(); // normName -> [{uid, email, role, stream}]
+  peopleSnap.forEach(d => {
+    const p = d.data();
+    if (!p.role || !p.name) return;
+    const key = norm(p.name);
+    if (!peopleWithRoleByName.has(key)) peopleWithRoleByName.set(key, []);
+    peopleWithRoleByName.get(key).push({ uid: d.id, email: p.email || "", role: p.role, stream: p.stream || "" });
+  });
+
+  const targetRoles = ["RMD Senior Faculty", "RMD Student Faculty"];
+  const results = { ok: [], mismatchCandidate: [], shellNoCandidate: [], neverSignedIn: [] };
+
+  for (const doc of mouRosterSnap.docs) {
+    const r = doc.data();
+    if (!targetRoles.includes(r.role)) continue;
+    const email = (r.email || "").toLowerCase();
+    const name = r.name || "";
+    if (!email) continue;
+
+    const authUser = authByEmail.get(email);
+    if (!authUser) {
+      results.neverSignedIn.push({ rosterDocId: doc.id, name, email });
+      continue;
+    }
+
+    const peopleDoc = peopleByUid.get(authUser.uid);
+    const hasRoleData = peopleDoc && peopleDoc.role;
+    if (hasRoleData) {
+      results.ok.push({ rosterDocId: doc.id, name, email });
+      continue;
+    }
+
+    const nameKey = norm(name);
+    const candidates = (peopleWithRoleByName.get(nameKey) || [])
+      .filter(c => c.email.toLowerCase() !== email);
+
+    if (candidates.length) {
+      results.mismatchCandidate.push({
+        rosterDocId: doc.id,
+        name,
+        rosterEmail: email,
+        rosterEmailHasPeopleDoc: !!peopleDoc,
+        rosterEmailPeopleDocFields: peopleDoc ? Object.keys(peopleDoc) : [],
+        candidates, // the "other" email(s) actually holding role data
+        suggestedTool: peopleDoc ? "mergeConflictingPeople" : "mergePersonEmail",
+      });
+    } else {
+      results.shellNoCandidate.push({
+        rosterDocId: doc.id, name, email,
+        hasPeopleDoc: !!peopleDoc,
+        peopleDocFields: peopleDoc ? Object.keys(peopleDoc) : [],
+      });
+    }
+  }
+
+  return {
+    checked: mouRosterSnap.docs.filter(d => targetRoles.includes(d.data().role)).length,
+    okCount: results.ok.length,
+    mismatchCount: results.mismatchCandidate.length,
+    shellNoCandidateCount: results.shellNoCandidate.length,
+    neverSignedInCount: results.neverSignedIn.length,
+    mismatchCandidate: results.mismatchCandidate,
+    shellNoCandidate: results.shellNoCandidate,
+    neverSignedIn: results.neverSignedIn,
+  };
+});
+
 
 
 /**
