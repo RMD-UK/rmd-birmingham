@@ -1015,6 +1015,121 @@ exports.removeDuplicateRegistration = onCall({ region: "us-central1" }, async (r
   await db.collection("iw_registrations").doc(docId).delete();
   return { dryRun: false, docId, deleted: target, kept: others, done: true };
 });
+/**
+ * mergeConflictingPeople — director-only.
+ *
+ * For the case found 2026-09-19 with Tess Brock: unlike mergePersonEmail's
+ * "adopt" branch (where newEmail's account is an empty shell with no
+ * people doc), here BOTH oldEmail and newEmail have real Auth accounts
+ * AND real people docs, each holding a different half of the person's
+ * data — e.g. txb385@student.bham.ac.uk had passport details only
+ * (passportFirstName/LastName/MiddleName, preferredName) while
+ * tessancbrock@outlook.com had her actual role/stream/name from the
+ * iw_registrations sync. mergePersonEmail correctly refuses this as a
+ * conflict rather than guessing which doc to keep.
+ *
+ * This merges by union: the surviving doc (at newEmail's uid) becomes
+ * { ...oldDoc, ...newDoc, email: newEmail } — oldDoc's fields (role,
+ * stream, name, createdAt, etc.) form the base, newDoc's fields are
+ * layered on top (so anything newDoc already had, e.g. its own
+ * preferredName or passport fields, wins), and email is forced to
+ * newEmail regardless of which side had it. Nothing is silently dropped
+ * unless the exact same field name exists on both sides, in which case
+ * newDoc's value wins — reasonable here since newEmail is the address the
+ * person told us they actually sign in with, but reviewed in the dry run
+ * before ever running for real.
+ *
+ * Always requires oldEmail and newEmail to both have an Auth account AND
+ * a people doc — if either condition doesn't hold this is the wrong tool
+ * (use mergePersonEmail for an empty-shell adopt, or correctStaleRosterEmail
+ * for a roster contact-detail fix where one side has no account at all).
+ *
+ * Same faculty_responses/iw_registrations migration as mergePersonEmail's
+ * shared steps, but written standalone here rather than reusing
+ * pushSharedSteps/executeSharedSteps since this only ever runs for a
+ * one-off manual conflict, not on a hot path.
+ */
+exports.mergeConflictingPeople = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const oldEmail = (request.data?.oldEmail || "").trim().toLowerCase();
+  const newEmail = (request.data?.newEmail || "").trim().toLowerCase();
+  const dryRun = !!request.data?.dryRun;
+  const confirmMerge = !!request.data?.confirmMerge;
+
+  if (!oldEmail || !oldEmail.includes("@")) throw new HttpsError("invalid-argument", "oldEmail required.");
+  if (!newEmail || !newEmail.includes("@")) throw new HttpsError("invalid-argument", "newEmail required.");
+  if (oldEmail === newEmail) throw new HttpsError("invalid-argument", "oldEmail and newEmail are the same.");
+
+  let oldAuthUser, newAuthUser;
+  try { oldAuthUser = await admin.auth().getUserByEmail(oldEmail); }
+  catch (e) { throw new HttpsError("failed-precondition", `${oldEmail} has no Auth account — this isn't a two-real-accounts conflict. Use mergePersonEmail or correctStaleRosterEmail instead.`); }
+  try { newAuthUser = await admin.auth().getUserByEmail(newEmail); }
+  catch (e) { throw new HttpsError("failed-precondition", `${newEmail} has no Auth account — this isn't a two-real-accounts conflict. Use mergePersonEmail instead (with newEmail/oldEmail possibly swapped).`); }
+
+  const oldUid = oldAuthUser.uid;
+  const newUid = newAuthUser.uid;
+
+  const oldPeopleSnap = await db.collection("people").doc(oldUid).get();
+  const newPeopleSnap = await db.collection("people").doc(newUid).get();
+  if (!oldPeopleSnap.exists) throw new HttpsError("failed-precondition", `${oldEmail} (uid ${oldUid}) has no people doc — nothing to merge from. Use mergePersonEmail instead.`);
+  if (!newPeopleSnap.exists) throw new HttpsError("failed-precondition", `${newEmail} (uid ${newUid}) has no people doc — that's mergePersonEmail's plain adopt case, not a conflict merge.`);
+
+  const oldPeopleData = oldPeopleSnap.data();
+  const newPeopleData = newPeopleSnap.data();
+  const mergedData = { ...oldPeopleData, ...newPeopleData, email: newEmail };
+
+  const iwRegSnap = await db.collection("iw_registrations").where("email", "==", oldEmail).get();
+  const newIwSnap = await db.collection("iw_registrations").where("email", "==", newEmail).get();
+  const oldRespSnap = await db.collection("faculty_responses").doc(oldEmail).get();
+  const newRespSnap = await db.collection("faculty_responses").doc(newEmail).get();
+
+  const steps = [
+    { collection: "people", action: `merge people/${oldUid} (${oldEmail}) into people/${newUid} (${newEmail}) — union of fields, newEmail's values win on overlap`, mergedPreview: mergedData },
+    { collection: "people", action: `delete old profile doc people/${oldUid}` },
+    { collection: "Auth", action: `delete old Auth account (uid ${oldUid}, ${oldEmail}) — surviving login is ${newEmail} (uid ${newUid})` },
+  ];
+  iwRegSnap.forEach(d => {
+    if (!newIwSnap.empty) {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: `SKIPPED — ${newEmail} already has a registration too; leaving both, sort out manually.` });
+    } else {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: "update email field" });
+    }
+  });
+  if (oldRespSnap.exists) {
+    steps.push(newRespSnap.exists
+      ? { collection: "faculty_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; leaving both, sort out manually which to keep` }
+      : { collection: "faculty_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+  }
+
+  if (dryRun) {
+    return { dryRun: true, oldEmail, newEmail, oldUid, newUid, steps };
+  }
+  if (!confirmMerge) {
+    throw new HttpsError("failed-precondition", "This merges two real accounts' data and deletes one Auth account. Re-run with confirmMerge:true to confirm.");
+  }
+
+  await db.collection("people").doc(newUid).set(mergedData);
+  await db.collection("people").doc(oldUid).delete();
+  await admin.auth().deleteUser(oldUid);
+
+  if (newIwSnap.empty) {
+    for (const d of iwRegSnap.docs) await d.ref.update({ email: newEmail });
+  }
+  if (oldRespSnap.exists && !newRespSnap.exists) {
+    const data = oldRespSnap.data();
+    data.email = newEmail;
+    await db.collection("faculty_responses").doc(newEmail).set(data);
+    await db.collection("faculty_responses").doc(oldEmail).delete();
+  }
+
+  return { dryRun: false, oldEmail, newEmail, oldUid, newUid, steps, done: true };
+});
+
 
 /**
  * sendMouReminders / sendMouRemindersScheduled — share one core batch
