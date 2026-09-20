@@ -1663,6 +1663,249 @@ exports.checkFacultyIdentityMatch = onCall({ region: "us-central1" }, async (req
   };
 });
 
+/**
+ * sendMouAccountSetupInvites — director-only.
+ *
+ * Replaces the old "Create accounts for X members" button's behaviour for
+ * brand-new mou_roster entries. That button used to silently create a
+ * Firebase Auth account at whatever email sat on the roster row, with a
+ * random password, then email a reset link — the person never got a say in
+ * which address became their permanent login, and nothing checked whether
+ * they already had a real account elsewhere under a different email. That
+ * exact mechanism is what produced every duplicate-account case fixed
+ * 2026-09-19/20 (Tom Burton, Rosie Lilwall, Tess Brock, Zanita Volschenk,
+ * Becca Everitt, Naveed Kordmahalleh).
+ *
+ * New behaviour, per mou_roster entry with no existing Auth account under
+ * its current email:
+ *   - If a DIFFERENT email already has real people/role data under a
+ *     matching surname, don't send anything — surface it as a
+ *     possibleDuplicate for a director to review by hand (same as this
+ *     week's manual fixes), since only a human should decide which of two
+ *     real-looking accounts is right.
+ *   - Otherwise, email the person a link to mou-account-setup.html, where
+ *     THEY choose the email (and password) they actually want to use —
+ *     see claimMouRosterEntry below for what happens when they do.
+ *
+ * Entries that already have an Auth account under their current roster
+ * email are left alone (skipped) — nothing to invite them to.
+ *
+ * dryRun: true previews everything below without sending any email.
+ */
+exports.sendMouAccountSetupInvites = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const dryRun = !!request.data?.dryRun;
+
+  const [mouRosterSnap, peopleSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("people").get()
+  ]);
+
+  let authUsers = [];
+  let pageToken;
+  do {
+    const page = await admin.auth().listUsers(1000, pageToken);
+    authUsers = authUsers.concat(page.users);
+    pageToken = page.pageToken;
+  } while (pageToken);
+  const authByEmail = new Map(authUsers.map(u => [(u.email || "").toLowerCase(), u]));
+
+  // Surname index of everyone with real role data, for the duplicate check —
+  // same matching approach as checkFacultyIdentityMatch above.
+  const byRoleSurname = new Map();
+  peopleSnap.forEach(d => {
+    const p = d.data();
+    if (!p.role) return;
+    const key = normSurname(candidateName(p));
+    if (!key) return;
+    if (!byRoleSurname.has(key)) byRoleSurname.set(key, []);
+    byRoleSurname.get(key).push({ name: candidateName(p), email: p.email || "" });
+  });
+
+  const alreadyHaveAccount = [];
+  const possibleDuplicates = [];
+  const toInvite = [];
+
+  for (const doc of mouRosterSnap.docs) {
+    const r = doc.data();
+    const email = (r.email || "").trim().toLowerCase();
+    const name = r.name || "";
+    if (!email) continue;
+
+    if (authByEmail.has(email)) {
+      alreadyHaveAccount.push({ rosterDocId: doc.id, name, email });
+      continue;
+    }
+
+    const surnameKey = normSurname(name);
+    const candidates = (byRoleSurname.get(surnameKey) || []).filter(c => c.email.toLowerCase() !== email);
+    if (candidates.length) {
+      possibleDuplicates.push({ rosterDocId: doc.id, name, rosterEmail: email, candidates });
+      continue;
+    }
+
+    toInvite.push({ rosterDocId: doc.id, name, email });
+  }
+
+  if (dryRun) {
+    return { dryRun: true, alreadyHaveAccount, possibleDuplicates, wouldInvite: toInvite };
+  }
+
+  const resend = new Resend(resendApiKey.value());
+  let sent = 0;
+  const failedEmails = [];
+
+  for (const person of toInvite) {
+    const firstName = (person.name || "").split(" ")[0] || "there";
+    const link = `https://rmd.uk.com/mou-account-setup.html?roster=${encodeURIComponent(person.rosterDocId)}`;
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
+        subject: "RMD Birmingham — set up your account",
+        text:
+`Hi ${firstName},
+
+You're getting this because you're joining RMD Birmingham's roster and don't have a platform account yet. Before you can complete your Memorandum of Understanding, set up your account here — you choose the email you actually want to sign in with, so pick whichever one you'll definitely still have next year:
+
+${link}
+
+If you already have an RMD account under a different email, don't create a new one — sign in with that one instead and let us know if anything looks wrong.
+
+Thanks,
+RMD Birmingham`
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+    } catch (err) {
+      console.error(`sendMouAccountSetupInvites: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  return { dryRun: false, alreadyHaveAccount, possibleDuplicates, sent, failedEmails };
+});
+
+/**
+ * claimMouRosterEntry — any signed-in member, self-service only.
+ *
+ * Called immediately after a brand-new person creates their own Firebase
+ * Auth account client-side (mou-account-setup.html), at whichever email
+ * THEY chose — never an email this function is told to use, always
+ * auth.token.email from their own freshly-verified sign-in. This is what
+ * makes it safe to expose without a director check, same reasoning as
+ * changeMyEmail above.
+ *
+ * Re-runs the same surname-based duplicate check sendMouAccountSetupInvites
+ * used before sending the invite, in case something changed in the
+ * meantime (another account created, another merge run). If it finds a
+ * likely match under a different email, it does NOT touch any data — it
+ * returns a warning so mou-account-setup.html can tell the person "is this
+ * you?" before they go any further. Pass overrideDuplicateWarning:true to
+ * proceed anyway once they've confirmed it isn't them.
+ *
+ * On success: moves the mou_roster entry from rosterDocId's stored email to
+ * the caller's real one (same "move" mechanics as correctStaleRosterEmail,
+ * just for mou_roster alone — there's nothing yet in faculty_roster,
+ * iw_registrations, faculty_responses or mou_responses for a brand-new
+ * person), and creates a minimal people/{uid} doc so the account isn't
+ * empty going forward.
+ *
+ * If someone abandons this halfway (told it's a duplicate, doesn't
+ * proceed), their freshly-created Auth account is left as an empty shell —
+ * deleteEmptyAuthAccount cleans those up safely, exactly as designed.
+ */
+/**
+ * getMouRosterName — public, no sign-in required.
+ *
+ * Tiny lookup for mou-account-setup.html to greet someone by name before
+ * they've created an account (so there's nothing to authenticate as yet).
+ * Deliberately returns only a first name — nothing else about the roster
+ * entry is exposed here, same minimal-disclosure principle as
+ * checkFacultyIdentityMatch's masked email above.
+ */
+exports.getMouRosterName = onCall({ region: "us-central1" }, async (request) => {
+  const rosterDocId = String(request.data?.rosterDocId || "").trim();
+  if (!rosterDocId) throw new HttpsError("invalid-argument", "rosterDocId required.");
+
+  const snap = await db.collection("mou_roster").doc(rosterDocId).get();
+  if (!snap.exists) throw new HttpsError("not-found", "That setup link doesn't match a roster entry.");
+
+  const name = snap.data().name || "";
+  return { firstName: name.split(" ")[0] || "there" };
+});
+
+exports.claimMouRosterEntry = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const callerEmail = (auth.token.email || "").trim().toLowerCase();
+  if (!callerEmail) throw new HttpsError("failed-precondition", "Your account has no email on file.");
+
+  const rosterDocId = String(request.data?.rosterDocId || "").trim();
+  const overrideDuplicateWarning = !!request.data?.overrideDuplicateWarning;
+  if (!rosterDocId) throw new HttpsError("invalid-argument", "rosterDocId required.");
+
+  const rosterSnap = await db.collection("mou_roster").doc(rosterDocId).get();
+  if (!rosterSnap.exists) throw new HttpsError("not-found", "That setup link doesn't match a roster entry — contact a director.");
+  const rosterData = rosterSnap.data();
+  const rosterEmail = (rosterData.email || "").trim().toLowerCase();
+
+  // Safety: someone else shouldn't already hold this exact roster row's
+  // current email under a different uid — if they do, this link is stale.
+  if (rosterEmail && rosterEmail !== callerEmail) {
+    try {
+      const existing = await admin.auth().getUserByEmail(rosterEmail);
+      if (existing.uid !== auth.uid) {
+        throw new HttpsError("failed-precondition", `${rosterEmail} already has its own account — this setup link is stale. Contact a director.`);
+      }
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      // no Auth account under rosterEmail — expected, fine to proceed.
+    }
+  }
+
+  if (!overrideDuplicateWarning) {
+    const peopleSnap = await db.collection("people").get();
+    const targetSurname = normSurname(rosterData.name || "");
+    if (targetSurname) {
+      const match = peopleSnap.docs
+        .map(d => d.data())
+        .find(p => {
+          const email = (p.email || "").trim().toLowerCase();
+          if (!p.role || !email || email === callerEmail) return false;
+          return normSurname(candidateName(p)) === targetSurname;
+        });
+      if (match) {
+        return { duplicateWarning: true, name: candidateName(match), maskedEmail: maskEmail(match.email) };
+      }
+    }
+  }
+
+  // Move the roster entry onto the caller's real email, if different.
+  if (rosterEmail !== callerEmail) {
+    const newRosterSnap = await db.collection("mou_roster").doc(callerEmail).get();
+    if (!newRosterSnap.exists) {
+      await db.collection("mou_roster").doc(callerEmail).set({ ...rosterData, email: callerEmail });
+    }
+    await db.collection("mou_roster").doc(rosterDocId).delete();
+  }
+
+  await db.collection("people").doc(auth.uid).set({
+    name: rosterData.name || "",
+    email: callerEmail,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: "mou-account-setup"
+  }, { merge: true });
+
+  return { duplicateWarning: false, done: true };
+});
+
 exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
