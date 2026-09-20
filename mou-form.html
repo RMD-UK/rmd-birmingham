@@ -279,6 +279,18 @@
       <input type="email" id="memberEmail" placeholder="your UoB email if you have one" autocomplete="email">
     </div>
 
+    <div class="field" id="emailStillGoodField">
+      <label>Will you still have access to this email for the whole of the coming academic year? <span class="req">*</span></label>
+      <div class="hint-text" style="margin-bottom:8px;">This is what we'll use to reach you — for reminders, RSVPs and next year's MoU. If you're graduating, changing job, or otherwise expect to lose access to this address, update it before submitting so nothing gets missed.</div>
+      <div class="option-group" id="emailStillGoodGroup">
+        <button type="button" class="option-btn" onclick="selectEmailStillGood(true,this)">✓ Yes, this will still work</button>
+        <button type="button" class="option-btn" onclick="selectEmailStillGood(false,this)">✗ No / not sure</button>
+      </div>
+      <div class="hint-text" id="emailChangeHint" style="display:none;margin-top:8px;">
+        Your MoU can't be submitted until this is sorted. <a href="my-account.html" target="_blank" rel="noopener">Update your email in My Account</a> first, then come back and refresh this page to submit under your new address.
+      </div>
+    </div>
+
     <div class="field">
       <label>Student ID <span style="color:var(--rmd-muted);font-weight:400;">(if applicable)</span></label>
       <input type="text" id="studentId" placeholder="optional">
@@ -489,6 +501,14 @@ async function sendMouForgotPasswordEmail() {
 
 let agreed = null;
 let cwConfirmed = null;
+let emailStillGood = null;
+
+function selectEmailStillGood(value, btn) {
+  emailStillGood = value;
+  document.querySelectorAll("#emailStillGoodGroup .option-btn").forEach(b => b.classList.remove("selected-yes","selected-no"));
+  btn.classList.add(value === true ? "selected-yes" : "selected-no");
+  document.getElementById("emailChangeHint").style.display = (value === false) ? "block" : "none";
+}
 
 document.getElementById("memberNationality").addEventListener("change", function () {
   document.getElementById("visaNotice").style.display = (this.value === "Other") ? "block" : "none";
@@ -537,6 +557,8 @@ async function submitForm() {
   if (!name) { alert("Please enter your full name as it appears on your passport."); return; }
   if (!nationality) { alert("Please enter your nationality."); return; }
   if (!email || !email.includes("@")) { alert("Please enter a valid email address."); return; }
+  if (emailStillGood === null) { alert("Please confirm whether you'll still have access to this email for the coming academic year."); return; }
+  if (emailStillGood === false) { alert("Your MoU can't be submitted until your email is sorted.\n\nUpdate it in My Account first, then come back and refresh this page:\nhttps://rmd.uk.com/my-account.html"); return; }
   if (!role) { alert("Please select your RMD role."); return; }
   if (role === "RMD Senior Faculty") {
     if (cwConfirmed === null) { alert("Please confirm your UoB Contingent Worker status."); return; }
