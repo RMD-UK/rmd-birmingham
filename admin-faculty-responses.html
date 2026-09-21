@@ -1117,9 +1117,13 @@ function renderAttendanceFilter(status, heading) {
     </tr>`;
   }).join("");
 
+  const exportBtn = status === "confirmed"
+    ? `<button class="btn-action secondary" style="float:right;" onclick="exportConfirmedRosterCSV()">⬇ Export confirmed list (name, role, email)</button>`
+    : "";
+
   document.getElementById("tabContent").innerHTML = `
     <div class="section-block">
-      <div class="section-heading" style="color:${colourMap[status]};">${heading} (${filtered.length})</div>
+      <div class="section-heading" style="color:${colourMap[status]};overflow:auto;">${heading} (${filtered.length})${exportBtn}</div>
       <table class="data-table">
         <thead><tr>
           <th>Name</th><th>Email</th><th>Role</th><th>Days</th><th>ERC qualification</th><th>Change</th>
@@ -1127,6 +1131,37 @@ function renderAttendanceFilter(status, heading) {
         <tbody>${rows}</tbody>
       </table>
     </div>`;
+}
+
+// Backup-friendly snapshot of the Confirmed list — just the three fields
+// that matter if the platform's data is ever unavailable and someone needs
+// a plain spreadsheet of who's confirmed, in what role, and how to reach
+// them. Deliberately separate from exportCSV() below, which dumps every
+// field for every response regardless of status — this one is scoped to
+// confirmed only and re-reads allResponses fresh each time, so it's always
+// the current confirmed list, not a stale one.
+function exportConfirmedRosterCSV() {
+  const confirmed = allResponses.filter(r => r.attendanceStatus === "confirmed");
+  if (!confirmed.length) { alert("No one is confirmed yet — nothing to export."); return; }
+
+  const headers = ["Name", "Role", "Email"];
+  const rows = confirmed
+    .slice()
+    .sort((a, b) => (a.lastName || "").localeCompare(b.lastName || ""))
+    .map(r => {
+      const name = [r.firstName, r.lastName].filter(Boolean).join(" ") || r.knownAs || "";
+      return [name, r.role || "", r.email || ""];
+    })
+    .map(v => v.map(x => `"${(x || "").toString().replace(/"/g, '""')}"`));
+
+  const csv   = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const blob  = new Blob([csv], { type: "text/csv" });
+  const url   = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `rmd-confirmed-faculty-${stamp}.csv`;
+  a.click();
 }
 
 function renderProvisional() {
