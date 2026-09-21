@@ -469,7 +469,7 @@ async function startCreation() {
   // Check for an existing People record by email BEFORE creating anything.
   // Without this, someone who already has a people/ doc (e.g. synced in
   // from iw_registrations) gets a second, duplicate doc the moment a login
-  // is created for them here — see Duplicate People Cleanup for the fix to
+  // is created for them here — see Duplicate People & Account Cleanup for the fix to
   // records that already exist from before this check was added.
   let existingPeopleByEmail = new Map();
   try {
@@ -577,7 +577,7 @@ async function startCreation() {
           await sendPasswordResetEmail(email);
           if (existing) {
             icon = "⚠️"; statusClass = "skip";
-            statusText = `Created — reset email sent, but a People record already existed (${existing.id}). Run Duplicate People Cleanup to remove the old one.`;
+            statusText = `Created — reset email sent, but a People record already existed (${existing.id}). Run Duplicate People & Account Cleanup to remove the old one.`;
           } else {
             icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
           }
@@ -624,7 +624,7 @@ async function startCreation() {
   checkForDuplicatesAfterImport();
 }
 
-// Runs the same email-or-name grouping Duplicate People Cleanup uses, but
+// Runs the same email-or-name grouping Duplicate People & Account Cleanup uses, but
 // read-only — it only ever reports a count and links to that page, it
 // never deletes anything itself. Catches cases the email-exists check
 // above can't, e.g. someone already in `people` under a different email
@@ -660,7 +660,7 @@ async function checkForDuplicatesAfterImport() {
       const removable = groups.reduce((n,g) => n + g.length - 1, 0);
       box.innerHTML = `<div class="director-note" style="margin-top:12px;">
         ⚠️ ${groups.length} duplicate people record(s) found (${removable} spare record(s) across the whole collection, not just this run) —
-        <a href="admin-dedupe-people.html">run Duplicate People Cleanup</a> to review and remove them.
+        <a href="admin-dedupe-people.html">run Duplicate People & Account Cleanup</a> to review and remove them.
       </div>`;
     }
   } catch (e) {

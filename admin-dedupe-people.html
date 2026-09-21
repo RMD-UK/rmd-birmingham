@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Duplicate People Cleanup — RMD 2026</title>
+  <title>Duplicate People &amp; Account Cleanup — RMD 2026</title>
   <link rel="stylesheet" href="css/rmd.css">
   <style>
     * { box-sizing: border-box; }
@@ -49,7 +49,7 @@
   <div class="top-bar">
     <a href="admin-global-tools.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
     <div style="flex:1;">
-      <div class="top-bar-title">Duplicate People Cleanup</div>
+      <div class="top-bar-title">Duplicate People &amp; Account Cleanup</div>
       <div class="top-bar-sub">RMD Instructor Weekend 2026 · Director only</div>
     </div>
   </div>
@@ -59,7 +59,8 @@
     <div class="card-body">
       <div class="director-note">
         ⚠️ Removes duplicate records from the <code>people</code> collection — the list attendance.html, room allocation and every other check-in tool reads from. A duplicate here usually means Bulk User Setup created a fresh login for someone who already had a record from the Instructor Weekend registration sync, without checking first.<br><br>
-        This tool only ever deletes the <strong>older, no-login record</strong> — never the record tied to someone's actual Firebase login (that one is always kept). Nothing is deleted until you tick it and confirm.
+        This tool only ever deletes the <strong>older, no-login record</strong> — never the record tied to someone's actual Firebase login (that one is always kept). Nothing is deleted until you tick it and confirm.<br><br>
+        Built 2026-09-21: deleting a record that <em>does</em> have a login attached (below, in "Remove a specific record", or a ticked "needs review" group) now also deletes that Firebase login, not just the data — so nothing is left behind as an orphaned empty account. Previously the login survived as an unused shell, which is the exact pattern behind this year's duplicate-account mix-ups.
       </div>
       <button class="btn-primary" id="scanBtn" onclick="scan()">🔍 Scan for duplicates</button>
       <div class="hint">Groups records that share an email address or a name (case/spacing-insensitive). Two records for the same person under a genuinely different name AND email won't be caught here — use "Remove a specific record" below for those.</div>
@@ -82,7 +83,7 @@
     <div class="card-header">Remove a specific record</div>
     <div class="card-body">
       <div class="hint" style="margin-bottom:10px;">
-        For duplicates the scan above can't group automatically — e.g. the same person under two different email addresses with different names. Search by email or name, review the matches, then delete the one(s) you don't want. <strong>Deleting a record removes that login's access</strong> if one is tied to it — make sure you're deleting the spare, not the one someone actually signs in with.
+        For duplicates the scan above can't group automatically — e.g. the same person under two different email addresses with different names. Search by email or name, review the matches, then delete the one(s) you don't want. <strong>Deleting a record with a login attached deletes that login entirely</strong>, not just their data — make sure you're deleting the spare, not the one someone actually signs in with. This can't be undone.
       </div>
       <input type="text" id="searchBox" placeholder="Search by name or email…">
       <button class="btn-secondary" onclick="manualSearch()">Search</button>
@@ -97,11 +98,13 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
 initFirebase();
 requireDirector("timetable.html");
+const fns = firebase.functions();
 
 let allPeople = [];
 let groups = []; // { kind: 'clean'|'review', keep: person|null, remove: [person] }
@@ -217,7 +220,18 @@ async function deleteSelected() {
   const bad = ids.filter(id => keepIds.has(id));
   if (bad.length) { alert("Refusing — one or more selected records is marked as the one to keep."); return; }
 
-  if (!confirm(`Delete ${ids.length} duplicate people record(s)? This cannot be undone.\n\nThis only removes the old duplicate record — it does not delete anyone's login.`)) return;
+  // A 28-character doc id is a Firebase Auth uid — that record has a real
+  // login behind it. Deleting it now deletes that login too, not just the
+  // data (see deleteLinkedAccounts below), so the confirm has to say so.
+  const loginRecords = ids
+    .map(id => allPeople.find(p => p.id === id))
+    .filter(p => p && p.id.length === 28);
+
+  const warnLogin = loginRecords.length
+    ? `\n\n${loginRecords.length} of these also have a working login attached — deleting them deletes that login entirely, not just the data. This can't be undone; they'd need a fresh invite to get back in.`
+    : `\n\nNone of these have a login attached — this only removes leftover data.`;
+
+  if (!confirm(`Delete ${ids.length} duplicate people record(s)?${warnLogin}`)) return;
 
   const btn = document.getElementById("deleteBtn");
   btn.disabled = true;
@@ -227,7 +241,8 @@ async function deleteSelected() {
   ids.forEach(id => batch.delete(db.collection(COLLECTIONS.people).doc(id)));
   try {
     await batch.commit();
-    alert(`Deleted ${ids.length} duplicate record(s).`);
+    const acctMsg = await deleteLinkedAccounts(loginRecords);
+    alert(`Deleted ${ids.length} duplicate record(s).${acctMsg}`);
     scan();
   } catch (err) {
     alert("Delete failed: " + err.message);
@@ -235,6 +250,29 @@ async function deleteSelected() {
     btn.disabled = false;
     btn.textContent = "🗑 Delete selected records";
   }
+}
+
+// Once a uid-linked people doc is gone, that uid's Firebase Auth account
+// is exactly the "empty shell" deleteEmptyAuthAccount exists to clean up
+// (it refuses unless the people doc is already gone) — same function used
+// by hand throughout September's account mix-ups, called automatically
+// here right after the doc that made it safe to call is deleted.
+async function deleteLinkedAccounts(records) {
+  if (!records.length) return "";
+  let deleted = 0;
+  const failed = [];
+  for (const p of records) {
+    if (!p.email) { failed.push(`${p.name || p.id} — no email on record, can't look up the login`); continue; }
+    try {
+      await fns.httpsCallable("deleteEmptyAuthAccount")({ email: p.email });
+      deleted++;
+    } catch (err) {
+      failed.push(`${p.name || p.email} — ${err.message || err.code || "unknown error"}`);
+    }
+  }
+  let msg = deleted ? `\n\n${deleted} login(s) also deleted.` : "";
+  if (failed.length) msg += `\n\n${failed.length} login(s) NOT deleted — sort out by hand:\n${failed.join("\n")}`;
+  return msg;
 }
 
 async function manualSearch() {
@@ -265,12 +303,21 @@ async function manualSearch() {
 async function manualDelete(id) {
   const p = allPeople.find(x => x.id === id);
   if (!p) return;
-  if (!confirm(`Delete this record?\n\n${p.name || "(no name)"} — ${p.email || "no email"} — ${p.role || "no role"}\nDoc ID: ${id}\n\nThis cannot be undone. If this person has a working login, deleting their record will remove their access until it's recreated.`)) return;
+
+  const hasLogin = p.id.length === 28;
+  const loginWarning = hasLogin
+    ? "\n\nThis record has a working login — deleting it deletes that login entirely, not just the data. This can't be undone; they'd need a fresh invite to get back in."
+    : "\n\nThis record has no login attached — only the data will be removed.";
+
+  if (!confirm(`Delete this record?\n\n${p.name || "(no name)"} — ${p.email || "no email"} — ${p.role || "no role"}\nDoc ID: ${id}${loginWarning}`)) return;
+
   try {
     await db.collection(COLLECTIONS.people).doc(id).delete();
     allPeople = allPeople.filter(x => x.id !== id);
+
+    const acctMsg = hasLogin ? await deleteLinkedAccounts([p]) : "";
     manualSearch();
-    alert("Deleted.");
+    alert("Deleted." + acctMsg);
   } catch (err) {
     alert("Delete failed: " + err.message);
   }
