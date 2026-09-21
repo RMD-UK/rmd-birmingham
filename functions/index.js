@@ -1690,6 +1690,16 @@ exports.checkFacultyIdentityMatch = onCall({ region: "us-central1" }, async (req
  * Entries that already have an Auth account under their current roster
  * email are left alone (skipped) — nothing to invite them to.
  *
+ * A dryRun preview returns four buckets: alreadyHaveAccount, possibleDuplicates,
+ * pendingSetup (already invited, no account yet — setupInviteSentAt/Count on
+ * the roster doc), and wouldInvite (never invited). Sending is never "invite
+ * everyone in a bucket" — the caller must pass rosterDocIds, the exact list
+ * a director ticked in admin-bulk-users.html, covering both first invites
+ * (wouldInvite) and resends (pendingSetup) in one call. Every id is
+ * reclassified fresh at send time rather than trusted from the preview, and
+ * anything that isn't wouldInvite/pendingSetup by then (now has an account,
+ * now flagged as a duplicate) is skipped rather than emailed.
+ *
  * dryRun: true previews everything below without sending any email.
  */
 exports.sendMouAccountSetupInvites = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
@@ -1700,6 +1710,14 @@ exports.sendMouAccountSetupInvites = onCall({ secrets: [resendApiKey], region: "
   }
 
   const dryRun = !!request.data?.dryRun;
+  const callerEmail = (auth.token.email || "").trim().toLowerCase();
+  const requestedIds = Array.isArray(request.data?.rosterDocIds)
+    ? request.data.rosterDocIds.map(id => String(id || "").trim()).filter(Boolean)
+    : null;
+
+  if (!dryRun && (!requestedIds || !requestedIds.length)) {
+    throw new HttpsError("invalid-argument", "rosterDocIds required — pass the specific roster entries to invite (from a dryRun preview).");
+  }
 
   const [mouRosterSnap, peopleSnap] = await Promise.all([
     db.collection("mou_roster").get(),
@@ -1727,40 +1745,80 @@ exports.sendMouAccountSetupInvites = onCall({ secrets: [resendApiKey], region: "
     byRoleSurname.get(key).push({ name: candidateName(p), email: p.email || "" });
   });
 
-  const alreadyHaveAccount = [];
-  const possibleDuplicates = [];
-  const toInvite = [];
-
-  for (const doc of mouRosterSnap.docs) {
+  // Classifies one mou_roster doc into exactly one bucket. Re-run per doc at
+  // send time too (not just at preview time) — state can move between the
+  // preview and the send (another invite going out, a fix being applied),
+  // so the server never trusts the client's snapshot for anything that
+  // sends an email.
+  function classify(doc) {
     const r = doc.data();
     const email = (r.email || "").trim().toLowerCase();
     const name = r.name || "";
-    if (!email) continue;
+    if (!email) return null;
 
     if (authByEmail.has(email)) {
-      alreadyHaveAccount.push({ rosterDocId: doc.id, name, email });
-      continue;
+      return { bucket: "alreadyHaveAccount", entry: { rosterDocId: doc.id, name, email } };
     }
 
     const surnameKey = normSurname(name);
     const candidates = (byRoleSurname.get(surnameKey) || []).filter(c => c.email.toLowerCase() !== email);
     if (candidates.length) {
-      possibleDuplicates.push({ rosterDocId: doc.id, name, rosterEmail: email, candidates });
-      continue;
+      return { bucket: "possibleDuplicates", entry: { rosterDocId: doc.id, name, rosterEmail: email, candidates } };
     }
 
-    toInvite.push({ rosterDocId: doc.id, name, email });
+    if (r.setupInviteSentAt) {
+      return {
+        bucket: "pendingSetup",
+        entry: {
+          rosterDocId: doc.id,
+          name,
+          email,
+          sentAt: r.setupInviteSentAt.toDate ? r.setupInviteSentAt.toDate().toISOString() : null,
+          sentCount: r.setupInviteCount || 1
+        }
+      };
+    }
+
+    return { bucket: "wouldInvite", entry: { rosterDocId: doc.id, name, email } };
   }
 
   if (dryRun) {
-    return { dryRun: true, alreadyHaveAccount, possibleDuplicates, wouldInvite: toInvite };
+    const alreadyHaveAccount = [];
+    const possibleDuplicates = [];
+    const pendingSetup = [];
+    const wouldInvite = [];
+    for (const doc of mouRosterSnap.docs) {
+      const c = classify(doc);
+      if (!c) continue;
+      ({ alreadyHaveAccount, possibleDuplicates, pendingSetup, wouldInvite })[c.bucket].push(c.entry);
+    }
+    return { dryRun: true, alreadyHaveAccount, possibleDuplicates, pendingSetup, wouldInvite };
   }
 
+  // Real send: only touch the exact rosterDocIds the director selected —
+  // never "everyone currently classified as invitable", so a checkbox left
+  // unticked in the UI is guaranteed to get no email.
+  const byId = new Map(mouRosterSnap.docs.map(d => [d.id, d]));
   const resend = new Resend(resendApiKey.value());
   let sent = 0;
   const failedEmails = [];
+  const skipped = [];
 
-  for (const person of toInvite) {
+  for (const id of requestedIds) {
+    const doc = byId.get(id);
+    if (!doc) { skipped.push({ rosterDocId: id, reason: "no longer on the roster" }); continue; }
+
+    const c = classify(doc);
+    const sendable = c && (c.bucket === "wouldInvite" || c.bucket === "pendingSetup");
+    if (!sendable) {
+      const reason = !c ? "no email on file"
+        : c.bucket === "alreadyHaveAccount" ? "already has an account"
+        : "flagged as a possible duplicate";
+      skipped.push({ rosterDocId: id, name: c?.entry?.name, reason });
+      continue;
+    }
+
+    const person = c.entry;
     const firstName = (person.name || "").split(" ")[0] || "there";
     const link = `https://rmd.uk.com/mou-account-setup.html?roster=${encodeURIComponent(person.rosterDocId)}`;
     try {
@@ -1783,13 +1841,18 @@ RMD Birmingham`
       });
       if (error) throw new Error(error.message || JSON.stringify(error));
       sent++;
+      await doc.ref.update({
+        setupInviteSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        setupInviteSentBy: callerEmail,
+        setupInviteCount: admin.firestore.FieldValue.increment(1)
+      });
     } catch (err) {
       console.error(`sendMouAccountSetupInvites: failed to send to ${person.email}`, err.message);
       failedEmails.push(person.email);
     }
   }
 
-  return { dryRun: false, alreadyHaveAccount, possibleDuplicates, sent, failedEmails };
+  return { dryRun: false, sent, failedEmails, skipped };
 });
 
 /**

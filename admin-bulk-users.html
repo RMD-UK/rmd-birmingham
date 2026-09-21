@@ -310,11 +310,11 @@ r.everitt@bham.ac.uk
     <div class="card-body">
 
       <div class="director-note">
-        ⚠️ Creates Firebase login accounts for everyone currently in the <code>mou_roster</code> collection (imported via the MOU dashboard's "Manage roster" tab), so they can sign in to <a href="mou-form.html">mou-form.html</a> and submit the MOU. <strong>Existing accounts are always left untouched</strong> — this only adds logins for people who don't have one yet, never resets or changes anyone already set up. This does <strong>not</strong> write to the <code>people</code> collection or touch any IW-specific data — it only creates the login.
+        ⚠️ Invites everyone currently in the <code>mou_roster</code> collection (imported via the MOU dashboard's "Manage roster" tab) who doesn't yet have a login to set one up themselves at <a href="mou-account-setup.html">mou-account-setup.html</a> — <strong>they choose their own sign-in email there</strong>, which doesn't have to match whatever address is on the roster. Built 2026-09-20 to replace the old behaviour of silently creating an account at the roster's listed email, which is what caused this year's run of duplicate-account mix-ups (same person, two different emails, two different accounts). <strong>Existing accounts are always left untouched.</strong>
       </div>
 
       <div class="hint" style="margin-bottom:12px;">
-        Same as above: each account gets a random one-time password nobody sees, and an immediate "set your password" email.
+        Before inviting anyone, this checks names against everyone who already has real account data under a different email. Anyone who looks like a possible match is held back — with a one-click check-then-apply fix right here, using the same tool that fixed this year's mix-ups by hand. Nothing is sent twice by accident either: everyone already invited but still not set up is tracked and shown separately, so you tick who to chase rather than re-invite the whole roster each time. You choose exactly who gets an email — nothing goes out until you tick names and confirm.
       </div>
 
       <button class="btn-secondary" id="loadRosterBtn" onclick="loadMouRosterPreview()">Full list of this year's RMD members</button>
@@ -332,8 +332,8 @@ r.everitt@bham.ac.uk
           <div class="progress-bar" id="mouProgressBar"></div>
         </div>
 
-        <div class="hint" style="margin-top:10px;margin-bottom:8px;">Safe to run any time — only people not yet in Firebase get a new login. Everyone who already has an account is skipped and left exactly as they are.</div>
-        <button class="btn-primary" id="mouCreateBtn" onclick="startMouRosterCreation()">Create accounts</button>
+        <div class="hint" style="margin-top:10px;margin-bottom:8px;">Safe to run any time — only people not yet in Firebase get invited, and possible duplicates are held back for your review rather than invited automatically.</div>
+        <button class="btn-primary" id="mouCreateBtn" onclick="startMouRosterCreation()">Preview account setup invites</button>
       </div>
 
     </div>
@@ -718,108 +718,160 @@ async function loadMouRosterPreview() {
 async function startMouRosterCreation() {
   if (!mouRosterEntries.length) return;
 
-  if (!confirm(`Create Firebase accounts for ${mouRosterEntries.length} roster member(s)?\n\nAccounts that already exist will be skipped automatically. This cannot easily be undone.`)) return;
-
   const btn = document.getElementById("mouCreateBtn");
-  btn.disabled    = true;
-  btn.textContent = `Creating ${mouRosterEntries.length} accounts…`;
+  btn.disabled = true;
+  btn.textContent = "Checking…";
 
-  document.getElementById("mouProgressWrap").style.display = "block";
   document.getElementById("mouResultsCard").style.display  = "block";
   document.getElementById("mouLogList").innerHTML = "";
   document.getElementById("mouSummaryBar").innerHTML = "";
 
-  let retiredEmails = new Map();
   try {
-    const retiredSnap = await db.collection("retired_emails").get();
-    retiredSnap.forEach(doc => retiredEmails.set(doc.id, doc.data()));
+    const res = await fns.httpsCallable("sendMouAccountSetupInvites")({ dryRun: true });
+    renderMouInvitePreview(res.data);
   } catch (e) {
-    // Non-fatal — see the same check in startCreation() above.
+    document.getElementById("mouLogList").innerHTML =
+      `<div class="director-note">❌ Couldn't check the roster: ${e.message || e.code || "unknown error"}</div>`;
   }
 
-  let ok = 0, err = 0, skip = 0;
-
-  for (let i = 0; i < mouRosterEntries.length; i++) {
-    const { email, name, role } = mouRosterEntries[i];
-    const pct = Math.round(((i + 1) / mouRosterEntries.length) * 100);
-    document.getElementById("mouProgressBar").style.width = pct + "%";
-
-    let icon, statusClass, statusText;
-
-    const retired = retiredEmails.get(email.toLowerCase());
-    if (retired) {
-      icon = "🚫"; statusClass = "skip";
-      statusText = `Skipped — this address was retired when someone's email was changed to ${retired.newEmail}. Use that address instead, or Change Someone's Account Email below if this really is meant for a new/different person.`;
-      skip++;
-      const entry = document.createElement("div");
-      entry.className = "log-entry";
-      entry.innerHTML = `
-        <div class="log-icon">${icon}</div>
-        <div class="log-email">${email}${name ? ` <span style="color:var(--rmd-muted)">(${name}${role ? " — " + role : ""})</span>` : ""}</div>
-        <div class="log-status ${statusClass}">${statusText}</div>`;
-      document.getElementById("mouLogList").appendChild(entry);
-      continue;
-    }
-
-    try {
-      const res = await fetch(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${FIREBASE_CONFIG.apiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password: randomPassword(), returnSecureToken: false })
-        }
-      );
-      const data = await res.json();
-
-      if (data.error) {
-        if (data.error.message === "EMAIL_EXISTS") {
-          icon = "⚠️"; statusClass = "skip"; statusText = "Already exists — skipped";
-          skip++;
-        } else {
-          throw new Error(data.error.message);
-        }
-      } else {
-        try {
-          await sendPasswordResetEmail(email);
-          icon = "✅"; statusClass = "ok"; statusText = "Created — reset email sent";
-        } catch (resetErr) {
-          icon = "⚠️"; statusClass = "skip";
-          statusText = "Created, but reset email failed to send: " + resetErr.message;
-        }
-        ok++;
-      }
-    } catch (e) {
-      icon = "❌"; statusClass = "err"; statusText = e.message || "Failed";
-      err++;
-    }
-
-    const entry = document.createElement("div");
-    entry.className = "log-entry";
-    entry.innerHTML = `
-      <div class="log-icon">${icon}</div>
-      <div class="log-email">${email}${name ? ` <span style="color:var(--rmd-muted)">(${name}${role ? " — " + role : ""})</span>` : ""}</div>
-      <div class="log-status ${statusClass}">${statusText}</div>`;
-    document.getElementById("mouLogList").appendChild(entry);
-
-    // Same abuse-protection rate limit as startCreation() above
-    // (TOO_MANY_ATTEMPTS_TRY_LATER) -- this loop was still at the old
-    // 300ms gap when that one was bumped to 1500ms on 2026-09-09, and this
-    // is the "for all active members" button Jon's report almost certainly
-    // meant. Matched to the same 1500ms here.
-    await new Promise(r => setTimeout(r, 1500));
-  }
-
-  document.getElementById("mouSummaryBar").innerHTML = `
-    ${ok   ? `<span class="sum sum-ok">✅ ${ok} created</span>` : ""}
-    ${skip ? `<span class="sum sum-skip">⚠️ ${skip} already existed</span>` : ""}
-    ${err  ? `<span class="sum sum-err">❌ ${err} failed</span>` : ""}
-  `;
-
-  btn.disabled    = false;
-  btn.textContent = `Create accounts for ${mouRosterEntries.length} member(s)`;
+  btn.disabled = false;
+  btn.textContent = "Preview account setup invites";
 }
 
+let mouInvitePreviewData = null;
+
+function relativeTime(iso) {
+  if (!iso) return "";
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  if (days <= 0) return "today";
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}
+
+function renderMouInvitePreview(d) {
+  mouInvitePreviewData = d;
+  const logEl = document.getElementById("mouLogList");
+  const parts = [];
+
+  if (d.possibleDuplicates && d.possibleDuplicates.length) {
+    parts.push(`<div class="director-note">
+      ⚠️ ${d.possibleDuplicates.length} possible duplicate(s) held back — someone with a matching surname already has real account data under a different email. Not invited.
+      <div style="margin-top:8px;">
+        ${d.possibleDuplicates.map((p, i) => `
+          <div style="border-top:1px solid rgba(0,0,0,0.12);padding:8px 0;">
+            <strong>${p.name || "(no name)"}</strong> — roster email <code>${p.rosterEmail}</code>, possible match: ${p.candidates.map(c => `${c.name || "?"} &lt;${c.email}&gt;`).join(", ")}
+            ${p.candidates.length === 1
+              ? `<div style="margin-top:6px;">
+                   <button class="btn-secondary" onclick="previewDuplicateFix('${p.rosterEmail}', '${p.candidates[0].email}', this)">Check the fix</button>
+                   <span id="dupeFixResult-${i}" style="display:block;margin-top:6px;"></span>
+                 </div>`
+              : `<div class="hint" style="margin-top:6px;">More than one possible match — sort out by hand (mergePersonEmail / mergeConflictingPeople).</div>`
+            }
+          </div>`).join("")}
+      </div>
+    </div>`);
+  }
+
+  if (d.alreadyHaveAccount && d.alreadyHaveAccount.length) {
+    parts.push(`<div class="hint" style="margin-bottom:10px;">${d.alreadyHaveAccount.length} already have an account under their current roster email — left untouched.</div>`);
+  }
+
+  const pending = d.pendingSetup || [];
+  const fresh   = d.wouldInvite  || [];
+
+  if (pending.length) {
+    parts.push(`<div class="hint" style="margin:14px 0 6px;"><strong>${pending.length}</strong> already invited, still waiting for them to finish setting up — tick to resend:</div>`);
+    parts.push(`<ul style="margin:0 0 14px 20px;list-style:none;padding-left:0;">${pending.map(p => `
+      <li style="margin-bottom:4px;">
+        <label><input type="checkbox" class="mou-send-cb" value="${p.rosterDocId}"> ${p.name || "(no name)"} — ${p.email}
+          <span class="hint">invited ${relativeTime(p.sentAt)}${p.sentCount > 1 ? `, ${p.sentCount}×` : ""}</span>
+        </label>
+      </li>`).join("")}</ul>`);
+  }
+
+  if (fresh.length) {
+    parts.push(`<div class="hint" style="margin:14px 0 6px;"><strong>${fresh.length}</strong> new — ready to invite:</div>`);
+    parts.push(`<ul style="margin:0 0 8px 20px;list-style:none;padding-left:0;">${fresh.map(p => `
+      <li style="margin-bottom:4px;">
+        <label><input type="checkbox" class="mou-send-cb" value="${p.rosterDocId}" checked> ${p.name || "(no name)"} — ${p.email}</label>
+      </li>`).join("")}</ul>`);
+  }
+
+  if (!pending.length && !fresh.length) {
+    parts.push(`<div class="hint">Nothing to invite right now.</div>`);
+  } else {
+    parts.push(`<div style="margin-top:6px;">
+      <button class="btn-secondary" onclick="toggleAllMouCheckboxes(true)" style="margin-right:8px;">Select all</button>
+      <button class="btn-secondary" onclick="toggleAllMouCheckboxes(false)" style="margin-right:8px;">Select none</button>
+      <button class="btn-primary" id="mouSendInvitesBtn" onclick="confirmSendMouInvites()">Send selected invite(s)</button>
+    </div>`);
+  }
+
+  logEl.innerHTML = parts.join("");
+}
+
+function toggleAllMouCheckboxes(checked) {
+  document.querySelectorAll(".mou-send-cb").forEach(cb => cb.checked = checked);
+}
+
+async function confirmSendMouInvites() {
+  const ids = Array.from(document.querySelectorAll(".mou-send-cb:checked")).map(cb => cb.value);
+  if (!ids.length) { alert("Tick at least one person to send to."); return; }
+  if (!confirm(`Send ${ids.length} account setup invite(s)? Each person will get an email letting them choose their own sign-in email and password.`)) return;
+
+  const btn = document.getElementById("mouSendInvitesBtn");
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+
+  try {
+    const res = await fns.httpsCallable("sendMouAccountSetupInvites")({ dryRun: false, rosterDocIds: ids });
+    document.getElementById("mouSummaryBar").innerHTML = `
+      <span class="sum sum-ok">✅ ${res.data.sent || 0} invite(s) sent</span>
+      ${(res.data.failedEmails || []).length ? `<span class="sum sum-err">❌ ${res.data.failedEmails.length} failed</span>` : ""}
+      ${(res.data.skipped || []).length ? `<span class="sum">⚠️ ${res.data.skipped.length} skipped — state changed since preview, re-run to see why</span>` : ""}
+    `;
+    // Re-run the whole preview so buckets (pendingSetup counts, etc.) reflect what just happened.
+    startMouRosterCreation();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = "Send selected invite(s)";
+    alert("Couldn't send invites: " + (e.message || e.code || "unknown error"));
+  }
+}
+
+async function previewDuplicateFix(oldEmail, newEmail, btn) {
+  btn.disabled = true;
+  btn.textContent = "Checking…";
+  const result = btn.nextElementSibling;
+  try {
+    const res = await fns.httpsCallable("correctStaleRosterEmail")({ oldEmail, newEmail, dryRun: true });
+    const steps = res.data.steps || [];
+    result.innerHTML = `
+      <div class="hint" style="margin-bottom:6px;">This would move <code>${oldEmail}</code>'s roster entry onto <code>${newEmail}</code>:</div>
+      <ul style="margin:0 0 8px 20px;">${steps.length ? steps.map(s => `<li>${s.collection}: ${s.action}</li>`).join("") : "<li>Just the roster entry itself — nothing else found under the old email.</li>"}</ul>
+      <button class="btn-primary" onclick="confirmDuplicateFix('${oldEmail}', '${newEmail}', this)">Confirm — move roster entry to ${newEmail}</button>
+    `;
+    btn.style.display = "none";
+  } catch (e) {
+    result.innerHTML = `<span style="color:#b00020;">Couldn't check: ${e.message || e.code || "unknown error"}</span>`;
+    btn.disabled = false;
+    btn.textContent = "Check the fix";
+  }
+}
+
+async function confirmDuplicateFix(oldEmail, newEmail, btn) {
+  if (!confirm(`Move the roster entry from ${oldEmail} to ${newEmail}? This isn't easily undone.`)) return;
+  btn.disabled = true;
+  btn.textContent = "Applying…";
+  try {
+    await fns.httpsCallable("correctStaleRosterEmail")({ oldEmail, newEmail, dryRun: false });
+    btn.parentElement.innerHTML = `<span style="color:#1a7a3c;">✅ Moved — re-run the preview above to refresh the list.</span>`;
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = "Confirm — move roster entry";
+    alert("Couldn't apply the fix: " + (e.message || e.code || "unknown error"));
+  }
+}
 // ── Force reset on existing (old-default-password) accounts ────────────────
 async function startForceReset() {
   const raw     = document.getElementById("resetEmailList").value;
