@@ -261,6 +261,19 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "
     throw new HttpsError("permission-denied", "Course Directors only.");
   }
 
+  const dryRun = !!request.data?.dryRun;
+
+  // Outside the annual review window (1 April – 1 July), nothing counts as
+  // outstanding at all — see isWithinSfrReminderWindow above. This is the
+  // fix for Jon's 2026-09-18 request: "do not consider senior faculty
+  // review missing at this time, this year's done."
+  if (!isWithinSfrReminderWindow(new Date())) {
+    if (dryRun) {
+      return { dryRun: true, outstanding: [], skipped: 0, skippedNoEmail: 0, sent: 0, failed: 0, failedEmails: [], outsideWindow: true };
+    }
+    return { sent: 0, failed: 0, skipped: 0, skippedNoEmail: 0, failedEmails: [], outsideWindow: true };
+  }
+
   const [rosterSnap, responsesSnap] = await Promise.all([
     db.collection(FACULTY_ROSTER_COLLECTION).where("group", "==", "senior").get(),
     db.collection(SFR_RESPONSES_COLLECTION).where("cycleYear", "==", SFR_CYCLE_YEAR).get()
@@ -271,7 +284,14 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "
     .map(d => d.data())
     .filter(m => !responded.has((m.email || "").toLowerCase()));
   const skippedNoEmail = rosterOutstanding.filter(m => !m.email).length;
-  const outstanding = rosterOutstanding.filter(m => m.email);
+  let outstanding = rosterOutstanding.filter(m => m.email);
+
+  const targetEmailB = (request.data?.email || "").trim().toLowerCase();
+  if (targetEmailB) outstanding = outstanding.filter(m => (m.email || "").toLowerCase() === targetEmailB);
+
+  if (dryRun) {
+    return { dryRun: true, outstanding, skipped: responsesSnap.size, skippedNoEmail, sent: 0, failed: 0, failedEmails: [] };
+  }
 
   if (!outstanding.length) {
     return { sent: 0, failed: 0, skipped: responsesSnap.size, skippedNoEmail, failedEmails: [] };
@@ -294,11 +314,13 @@ exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "
         text:
 `Hi ${firstName},
 
-Just a reminder — I haven't yet had your response to the RMD senior faculty annual review. It only takes a couple of minutes:
+You're getting this because we haven't had your response yet to this year's senior faculty review - the annual check-in on how the role's gone this year and whether you can realistically keep giving it what it needs next year. No pressure either way - stepping back or adjusting your involvement is a completely normal answer.
+
+It only takes a couple of minutes:
 
 ${FORM_URL}
 
-If you've already submitted this and are seeing this message anyway, sorry — let me know and I'll check what's happened.
+If you've already submitted this and are seeing this message anyway, sorry - reply and I'll check what's gone wrong on our end.
 
 Thanks,
 Jon`
@@ -445,8 +467,11 @@ exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region:
     });
   }
 
-  if (dryRun || !eligible.length) {
-    return { checked: authUsers.length, eligible, sent: 0, failed: 0, failedEmails: [] };
+  const targetEmailA = (request.data?.email || "").trim().toLowerCase();
+  const filteredEligible = targetEmailA ? eligible.filter(p => p.email.toLowerCase() === targetEmailA) : eligible;
+
+  if (dryRun || !filteredEligible.length) {
+    return { checked: authUsers.length, eligible: filteredEligible, sent: 0, failed: 0, failedEmails: [] };
   }
 
   const resend = new Resend(resendApiKey.value());
@@ -454,7 +479,7 @@ exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region:
   let sent = 0;
   const failedEmails = [];
 
-  for (const person of eligible) {
+  for (const person of filteredEligible) {
     const firstName = (person.name || "").split(" ")[0] || "there";
     try {
       const { error } = await resend.emails.send({
@@ -465,9 +490,9 @@ exports.sendAccountCreationReminders = onCall({ secrets: [resendApiKey], region:
         text:
 `Hi ${firstName},
 
-An RMD Birmingham platform account was set up for you a little while ago, but it looks like you haven't signed in yet.
+You're getting this because an RMD Birmingham platform account was set up for you a little while ago, and it looks like you haven't signed in yet. You'll need it for the course platform - assessments, timetable, room info, and more.
 
-You'll need this account for the course platform (assessments, timetable, room info, and more). Sign in here — you'll be prompted to set a password the first time:
+Sign in here — you'll be prompted to set a password the first time:
 
 ${SIGNIN_URL}
 
@@ -490,8 +515,758 @@ RMD Birmingham`
     }
   }
 
-  return { checked: authUsers.length, eligible, sent, failed: failedEmails.length, failedEmails };
+  return { checked: authUsers.length, eligible: filteredEligible, sent, failed: failedEmails.length, failedEmails };
 });
+
+/**
+ * sendDirectResetLink -- director-only.
+ *
+ * Firebase Auth's own sendPasswordResetEmail() sends from a generic
+ * noreply@<project>.firebaseapp.com address, which several 2026-09
+ * registrants (gmail.com, icloud.com, a .nl ISP) never received --
+ * almost certainly spam-filtered, since the same people's Resend-sent
+ * invites elsewhere on this platform haven't had this problem. This
+ * function sidesteps Firebase's own send entirely: generatePasswordResetLink()
+ * mints the real reset URL via the Admin SDK (the client SDK/REST API has
+ * no equivalent -- it can only ask Firebase to email it, not hand back
+ * the link), and we deliver it ourselves through the same verified
+ * rmd.uk.com/Resend pipeline as every other platform email. The raw link
+ * is also returned in the response, so it can be pasted into an email by
+ * hand as a fallback if Resend fails too.
+ *
+ * Added 2026-09-17 at Jon's request, after Anne Sofie Besemer, Thijmen
+ * van den Berg and Petra Schuffelen all reported never receiving a
+ * Firebase reset email despite successful sendOobCode responses.
+ */
+exports.sendDirectResetLink = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const email = (request.data?.email || "").trim().toLowerCase();
+  if (!email) throw new HttpsError("invalid-argument", "Email required.");
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(email);
+  } catch (e) {
+    throw new HttpsError("not-found", `No Auth account for ${email}.`);
+  }
+
+  const link = await admin.auth().generatePasswordResetLink(email, {
+    url: "https://rmd.uk.com/index.html",
+    handleCodeInApp: false
+  });
+
+  // Name for the greeting -- same people/mou_roster lookup
+  // sendAccountCreationReminders uses.
+  const [personSnap, rosterSnap] = await Promise.all([
+    db.collection("people").doc(userRecord.uid).get(),
+    db.collection("mou_roster").where("email", "==", email).limit(1).get()
+  ]);
+  const name = (personSnap.exists && personSnap.data().name)
+    || (rosterSnap.docs[0] && rosterSnap.docs[0].data().name)
+    || "";
+  const firstName = name.split(" ")[0] || "there";
+
+  let emailSent = false;
+  let emailError = null;
+  try {
+    const resend = new Resend(resendApiKey.value());
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      bcc: JON_BCC,
+      replyTo: REPLY_TO,
+      subject: "RMD Birmingham -- sign in to your account",
+      text:
+`Hi ${firstName},
+
+You're getting this because you asked for (or we sent you) a fresh sign-in link for the RMD Birmingham platform. Use it to set your password and sign in:
+
+${link}
+
+This link is single-use and expires about an hour after it's sent. If it's stopped working by the time you click it - you'll see an error saying the link is invalid or expired - just reply to this email and I'll send you a new one straight away.
+
+Thanks,
+Jon`
+    });
+    if (error) throw new Error(error.message || JSON.stringify(error));
+    emailSent = true;
+  } catch (err) {
+    console.error(`sendDirectResetLink: Resend send failed for ${email}`, err.message);
+    emailError = err.message;
+  }
+
+  await db.collection("direct_reset_links_sent").add({
+    email,
+    uid: userRecord.uid,
+    name,
+    emailSent,
+    emailError,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    sentByUid: auth.uid,
+    sentByEmail: (auth.token.email || "").toLowerCase()
+  });
+
+  return { email, uid: userRecord.uid, link, emailSent, emailError };
+});
+
+/**
+ * mergePersonEmail — director-only.
+ *
+ * Fixes the "same person under two email addresses" problem: one address
+ * has their real login (people/{uid}, Auth account) and history, the other
+ * is a stray entry elsewhere (mou_roster, faculty_roster, etc.) with no
+ * login of its own. Moves the REAL account (Auth email + every Firestore
+ * record keyed to it) onto the new address, rather than creating a second
+ * account or silently losing data on either side.
+ *
+ * Built 2026-09-18 for Cameron Parkes: his only real account/login was
+ * under parkesc17@gmail.com (people doc, faculty_roster, faculty_responses,
+ * iw_registrations), but c.d.parkes@bham.ac.uk already existed as a bare
+ * mou_roster line with no login. Jon wants Cameron's one real account
+ * moved onto the bham.ac.uk address, not deleted.
+ *
+ * oldEmail = the address with the real people/{uid} account (this is what
+ * moves). newEmail = the address to move it to. Requires a people doc to
+ * exist for oldEmail — if there's no account there, this is the wrong
+ * tool (that's just a roster edit on whichever page owns that record).
+ *
+ * Call with { dryRun: true } first — returns exactly what would change,
+ * per collection, without touching anything. Idempotent-ish: safe to
+ * re-run if something failed partway, since every step first checks
+ * whether it's already done.
+ */
+/**
+ * deleteEmptyAuthAccount — director-only.
+ *
+ * Companion to mergePersonEmail: deletes an Auth account ONLY when it's
+ * genuinely an empty shell — no people doc tied to it. Refuses to touch
+ * anything if a people doc exists for that uid, so this can't accidentally
+ * delete a real account. Built 2026-09-18 alongside mergePersonEmail for
+ * exactly the case it exists to unblock: an email that already has its own
+ * bare Auth login with nothing behind it, colliding with a real account
+ * that needs to move onto that same email address.
+ */
+exports.deleteEmptyAuthAccount = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const email = (request.data?.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) throw new HttpsError("invalid-argument", "email required.");
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(email);
+  } catch (e) {
+    throw new HttpsError("not-found", `No Auth account for ${email}.`);
+  }
+
+  const peopleSnap = await db.collection("people").doc(userRecord.uid).get();
+  if (peopleSnap.exists) {
+    throw new HttpsError("failed-precondition", `${email} (uid ${userRecord.uid}) has a people doc — this is not an empty shell, refusing to delete. Sort out manually which account should survive.`);
+  }
+
+  await admin.auth().deleteUser(userRecord.uid);
+  return { deleted: true, email, uid: userRecord.uid };
+});
+
+exports.mergePersonEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const oldEmail = (request.data?.oldEmail || "").trim().toLowerCase();
+  const newEmail = (request.data?.newEmail || "").trim().toLowerCase();
+  const dryRun = !!request.data?.dryRun;
+  const adoptExisting = !!request.data?.adoptExisting;
+
+  if (!oldEmail || !oldEmail.includes("@")) throw new HttpsError("invalid-argument", "oldEmail required.");
+  if (!newEmail || !newEmail.includes("@")) throw new HttpsError("invalid-argument", "newEmail required.");
+  if (oldEmail === newEmail) throw new HttpsError("invalid-argument", "oldEmail and newEmail are the same.");
+
+  const peopleSnap = await db.collection("people").where("email", "==", oldEmail).get();
+  if (peopleSnap.empty) {
+    throw new HttpsError("not-found", `No account (people doc) found for ${oldEmail} — nothing to move. If the account is actually under ${newEmail}, you don't need this tool.`);
+  }
+  if (peopleSnap.size > 1) {
+    throw new HttpsError("failed-precondition", `${peopleSnap.docs.length} accounts found for ${oldEmail} — that's unexpected, sort that out manually first.`);
+  }
+  const oldUid = peopleSnap.docs[0].id;
+  const oldPeopleData = peopleSnap.docs[0].data();
+
+  // Don't assume newEmail has no Auth account of its own — check, and if it
+  // does, report on BOTH accounts rather than blindly erroring out. This
+  // surfaced a real case (Cameron Parkes, 2026-09-18): bham.ac.uk already
+  // had its own Auth account, actively used, with no people doc or any
+  // other record behind it — not a stray shell to delete, but the account
+  // to keep. See the "adopt" branch below.
+  let newEmailAuthUser = null;
+  try {
+    newEmailAuthUser = await admin.auth().getUserByEmail(newEmail);
+  } catch (e) { /* no existing Auth account under newEmail — the simple rename case */ }
+
+  // Migration steps shared by both branches below — identical whether we're
+  // renaming oldUid's own email onto a free address, or adopting an existing
+  // Auth account at newEmail. Only the people-doc/Auth-account handling differs.
+  const facRosterSnap = await db.collection("faculty_roster").where("email", "==", oldEmail).get();
+  const iwRegSnap = await db.collection("iw_registrations").where("email", "==", oldEmail).get();
+  const oldRespSnap = await db.collection("faculty_responses").doc(oldEmail).get();
+  const newRespSnap = oldRespSnap.exists ? await db.collection("faculty_responses").doc(newEmail).get() : null;
+  const oldMouSnap = await db.collection("mou_roster").doc(oldEmail).get();
+  const newMouSnap = await db.collection("mou_roster").doc(newEmail).get();
+  const oldMouRespSnap = await db.collection("mou_responses").doc(oldEmail).get();
+  const newMouRespSnap = oldMouRespSnap.exists ? await db.collection("mou_responses").doc(newEmail).get() : null;
+
+  function pushSharedSteps(steps) {
+    facRosterSnap.forEach(d => steps.push({ collection: "faculty_roster", docId: d.id, action: "update email field" }));
+    iwRegSnap.forEach(d => steps.push({ collection: "iw_registrations", docId: d.id, action: "update email field" }));
+    if (oldRespSnap.exists) {
+      steps.push(newRespSnap.exists
+        ? { collection: "faculty_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone, sort out manually which to keep` }
+        : { collection: "faculty_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+    }
+    if (oldMouSnap.exists && !newMouSnap.exists) {
+      steps.push({ collection: "mou_roster", action: `move doc from ${oldEmail} to ${newEmail}` });
+    } else if (oldMouSnap.exists && newMouSnap.exists) {
+      steps.push({ collection: "mou_roster", action: `${oldEmail} entry is now redundant (one already exists under ${newEmail}) — will be removed, the ${newEmail} entry is kept as-is` });
+    }
+    if (oldMouRespSnap.exists) {
+      steps.push(newMouRespSnap.exists
+        ? { collection: "mou_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone` }
+        : { collection: "mou_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+    }
+  }
+
+  async function executeSharedSteps() {
+    for (const d of facRosterSnap.docs) await d.ref.update({ email: newEmail });
+    for (const d of iwRegSnap.docs) await d.ref.update({ email: newEmail });
+
+    if (oldRespSnap.exists && !newRespSnap.exists) {
+      const data = oldRespSnap.data();
+      data.email = newEmail;
+      await db.collection("faculty_responses").doc(newEmail).set(data);
+      await db.collection("faculty_responses").doc(oldEmail).delete();
+    }
+
+    if (oldMouSnap.exists && !newMouSnap.exists) {
+      const data = oldMouSnap.data();
+      data.email = newEmail;
+      await db.collection("mou_roster").doc(newEmail).set(data);
+      await db.collection("mou_roster").doc(oldEmail).delete();
+    } else if (oldMouSnap.exists && newMouSnap.exists) {
+      await db.collection("mou_roster").doc(oldEmail).delete();
+    }
+
+    if (oldMouRespSnap.exists && !newMouRespSnap.exists) {
+      const data = oldMouRespSnap.data();
+      data.email = newEmail;
+      await db.collection("mou_responses").doc(newEmail).set(data);
+      await db.collection("mou_responses").doc(oldEmail).delete();
+    }
+  }
+
+  if (newEmailAuthUser) {
+    const newPeopleSnap = await db.collection("people").doc(newEmailAuthUser.uid).get();
+
+    if (newPeopleSnap.exists) {
+      // Two real accounts, both with profiles — not something to auto-resolve.
+      return {
+        dryRun: true,
+        conflict: true,
+        oldEmail, newEmail, oldUid,
+        newEmailAuthUid: newEmailAuthUser.uid,
+        newEmailCreatedAt: newEmailAuthUser.metadata.creationTime,
+        newEmailLastSignIn: newEmailAuthUser.metadata.lastSignInTime || null,
+        newEmailHasPeopleDoc: true,
+        newEmailPeopleDoc: newPeopleSnap.data(),
+        note: `${newEmail} has its own account WITH a people doc — this is two real accounts, not a stray shell. Sort out manually which is correct before merging.`
+      };
+    }
+
+    // newEmail has an Auth login but no people doc — the "adopt" case.
+    // e.g. Cameron Parkes, 2026-09-18: bham.ac.uk is his real, actively-used
+    // login (people can't re-sign-in to a deleted account) but has no
+    // profile behind it, while the profile and history all sit under his
+    // old gmail account. Fix: keep the bham.ac.uk login, give it the
+    // profile, retire the old Auth account and its people doc.
+    const newUid = newEmailAuthUser.uid;
+    const plan = {
+      adopt: true,
+      oldEmail, newEmail, oldUid, newUid,
+      steps: [
+        { collection: "people", action: `create people/${newUid} from ${oldEmail}'s profile data, email set to ${newEmail}` },
+        { collection: "people", action: `delete old profile doc people/${oldUid}` },
+        { collection: "Auth", action: `delete old Auth account (uid ${oldUid}, ${oldEmail}) — surviving login is ${newEmail} (uid ${newUid})` }
+      ]
+    };
+    pushSharedSteps(plan.steps);
+
+    if (dryRun) {
+      return {
+        dryRun: true,
+        ...plan,
+        newEmailCreatedAt: newEmailAuthUser.metadata.creationTime,
+        newEmailLastSignIn: newEmailAuthUser.metadata.lastSignInTime || null,
+        note: `${newEmail} is an active login with no profile — adopting it as the surviving account. Re-run with adoptExisting:true (and dryRun:false) to execute — this permanently deletes the ${oldEmail} Auth account.`
+      };
+    }
+
+    if (!adoptExisting) {
+      throw new HttpsError("failed-precondition", `Adopting ${newEmail} as the surviving login permanently deletes the ${oldEmail} Auth account. Re-run with adoptExisting:true to confirm.`);
+    }
+
+    const newPersonData = { ...oldPeopleData, email: newEmail };
+    await db.collection("people").doc(newUid).set(newPersonData);
+    await db.collection("people").doc(oldUid).delete();
+    await admin.auth().deleteUser(oldUid);
+
+    await executeSharedSteps();
+
+    return { dryRun: false, ...plan, done: true };
+  }
+
+  // newEmail is completely free — simple rename of the existing account.
+  const plan = {
+    oldEmail, newEmail, uid: oldUid,
+    steps: [{ collection: "people + Auth", action: `update email on account ${oldUid}` }]
+  };
+  pushSharedSteps(plan.steps);
+
+  if (dryRun) {
+    return { dryRun: true, ...plan };
+  }
+
+  await admin.auth().updateUser(oldUid, { email: newEmail });
+  await db.collection("people").doc(oldUid).update({ email: newEmail });
+  await executeSharedSteps();
+
+  return { dryRun: false, ...plan, done: true };
+});
+
+/**
+ * correctStaleRosterEmail — director-only.
+ *
+ * For the case found 2026-09-18 while cleaning up Cameron Parkes: a person's
+ * faculty_roster / mou_roster entry carries a university email that was
+ * never actually used (no Auth account, no people doc, no confirmed IW
+ * registration, no submitted response under it), while their real activity
+ * sits under a different address already recorded in faculty_roster's own
+ * aliasEmails field (Ellen Murgatroyd, Juliette Horobin, Rosie Lilwall,
+ * Theresa Brock). This is NOT an account merge (mergePersonEmail is for
+ * that) — oldEmail here has no account to merge, it's just wrong contact
+ * data. Refuses to run if oldEmail turns out to have a people doc or an
+ * Auth account of its own, since that would mean it's actually live.
+ */
+exports.correctStaleRosterEmail = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const oldEmail = (request.data?.oldEmail || "").trim().toLowerCase();
+  const newEmail = (request.data?.newEmail || "").trim().toLowerCase();
+  const dryRun = !!request.data?.dryRun;
+
+  if (!oldEmail || !oldEmail.includes("@")) throw new HttpsError("invalid-argument", "oldEmail required.");
+  if (!newEmail || !newEmail.includes("@")) throw new HttpsError("invalid-argument", "newEmail required.");
+  if (oldEmail === newEmail) throw new HttpsError("invalid-argument", "oldEmail and newEmail are the same.");
+
+  // Safety: oldEmail must be genuinely dead — no people doc, no Auth account.
+  const oldPeopleSnap = await db.collection("people").where("email", "==", oldEmail).get();
+  if (!oldPeopleSnap.empty) {
+    throw new HttpsError("failed-precondition", `${oldEmail} has its own people doc — this is a real account, not stale data. Use mergePersonEmail instead.`);
+  }
+  let oldAuthUser = null;
+  try {
+    oldAuthUser = await admin.auth().getUserByEmail(oldEmail);
+  } catch (e) { /* good — no Auth account under oldEmail */ }
+  if (oldAuthUser) {
+    throw new HttpsError("failed-precondition", `${oldEmail} has an Auth login (uid ${oldAuthUser.uid}) — this is a real account, not stale data. Use mergePersonEmail or deleteEmptyAuthAccount instead.`);
+  }
+
+  const facRosterSnap = await db.collection("faculty_roster").where("email", "==", oldEmail).get();
+  const iwRegSnap = await db.collection("iw_registrations").where("email", "==", oldEmail).get();
+  const oldRespSnap = await db.collection("faculty_responses").doc(oldEmail).get();
+  const newRespSnap = oldRespSnap.exists ? await db.collection("faculty_responses").doc(newEmail).get() : null;
+  const oldMouSnap = await db.collection("mou_roster").doc(oldEmail).get();
+  const newMouSnap = await db.collection("mou_roster").doc(newEmail).get();
+  const oldMouRespSnap = await db.collection("mou_responses").doc(oldEmail).get();
+  const newMouRespSnap = oldMouRespSnap.exists ? await db.collection("mou_responses").doc(newEmail).get() : null;
+  const newIwSnap = await db.collection("iw_registrations").where("email", "==", newEmail).get();
+
+  const steps = [];
+  facRosterSnap.forEach(d => steps.push({ collection: "faculty_roster", docId: d.id, action: "update email field" }));
+
+  iwRegSnap.forEach(d => {
+    if (!newIwSnap.empty) {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: `SKIPPED — ${newEmail} already has a registration too; moving this would create a duplicate. Leaving both — sort out manually (see removeDuplicateRegistration).` });
+    } else {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: "update email field" });
+    }
+  });
+
+  if (oldRespSnap.exists) {
+    steps.push(newRespSnap.exists
+      ? { collection: "faculty_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone, sort out manually which to keep` }
+      : { collection: "faculty_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+  }
+
+  if (oldMouSnap.exists && !newMouSnap.exists) {
+    steps.push({ collection: "mou_roster", action: `move doc from ${oldEmail} to ${newEmail}` });
+  } else if (oldMouSnap.exists && newMouSnap.exists) {
+    steps.push({ collection: "mou_roster", action: `${oldEmail} entry is now redundant (one already exists under ${newEmail}) — will be removed, the ${newEmail} entry is kept as-is` });
+  }
+
+  if (oldMouRespSnap.exists) {
+    steps.push(newMouRespSnap.exists
+      ? { collection: "mou_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; the one under ${oldEmail} will be left alone` }
+      : { collection: "mou_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+  }
+
+  if (dryRun) {
+    return { dryRun: true, oldEmail, newEmail, steps };
+  }
+
+  for (const d of facRosterSnap.docs) await d.ref.update({ email: newEmail });
+
+  if (newIwSnap.empty) {
+    for (const d of iwRegSnap.docs) await d.ref.update({ email: newEmail });
+  }
+
+  if (oldRespSnap.exists && !newRespSnap.exists) {
+    const data = oldRespSnap.data();
+    data.email = newEmail;
+    await db.collection("faculty_responses").doc(newEmail).set(data);
+    await db.collection("faculty_responses").doc(oldEmail).delete();
+  }
+
+  if (oldMouSnap.exists && !newMouSnap.exists) {
+    const data = oldMouSnap.data();
+    data.email = newEmail;
+    await db.collection("mou_roster").doc(newEmail).set(data);
+    await db.collection("mou_roster").doc(oldEmail).delete();
+  } else if (oldMouSnap.exists && newMouSnap.exists) {
+    await db.collection("mou_roster").doc(oldEmail).delete();
+  }
+
+  if (oldMouRespSnap.exists && !newMouRespSnap.exists) {
+    const data = oldMouRespSnap.data();
+    data.email = newEmail;
+    await db.collection("mou_responses").doc(newEmail).set(data);
+    await db.collection("mou_responses").doc(oldEmail).delete();
+  }
+
+  return { dryRun: false, oldEmail, newEmail, steps, done: true };
+});
+
+/**
+ * removeDuplicateRegistration — director-only.
+ *
+ * Deletes one iw_registrations doc, but only after confirming it's a real
+ * duplicate: another confirmed registration under the same name must exist
+ * at a different email. Built for the Chesca Harper case, 2026-09-18: she
+ * registered for the Instructor Weekend twice, once under each of her two
+ * emails.
+ */
+exports.removeDuplicateRegistration = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const docId = (request.data?.docId || "").trim();
+  const dryRun = !!request.data?.dryRun;
+  if (!docId) throw new HttpsError("invalid-argument", "docId required.");
+
+  const targetSnap = await db.collection("iw_registrations").doc(docId).get();
+  if (!targetSnap.exists) {
+    throw new HttpsError("not-found", `No iw_registrations doc with id ${docId}.`);
+  }
+  const target = targetSnap.data();
+  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z]/g, "");
+  const targetName = norm(target.name);
+
+  const allSnap = await db.collection("iw_registrations").get();
+  const others = [];
+  allSnap.forEach(d => {
+    if (d.id === docId) return;
+    if (norm(d.data().name) === targetName) {
+      others.push({ docId: d.id, ...d.data() });
+    }
+  });
+
+  if (!others.length) {
+    throw new HttpsError("failed-precondition", `No other registration found under the name "${target.name}" — this doesn't look like a duplicate. Refusing to delete.`);
+  }
+
+  if (dryRun) {
+    return { dryRun: true, docId, toDelete: target, keeping: others };
+  }
+
+  await db.collection("iw_registrations").doc(docId).delete();
+  return { dryRun: false, docId, deleted: target, kept: others, done: true };
+});
+/**
+ * mergeConflictingPeople — director-only.
+ *
+ * For the case found 2026-09-19 with Tess Brock: unlike mergePersonEmail's
+ * "adopt" branch (where newEmail's account is an empty shell with no
+ * people doc), here BOTH oldEmail and newEmail have real Auth accounts
+ * AND real people docs, each holding a different half of the person's
+ * data — e.g. txb385@student.bham.ac.uk had passport details only
+ * (passportFirstName/LastName/MiddleName, preferredName) while
+ * tessancbrock@outlook.com had her actual role/stream/name from the
+ * iw_registrations sync. mergePersonEmail correctly refuses this as a
+ * conflict rather than guessing which doc to keep.
+ *
+ * This merges by union: the surviving doc (at newEmail's uid) becomes
+ * { ...oldDoc, ...newDoc, email: newEmail } — oldDoc's fields (role,
+ * stream, name, createdAt, etc.) form the base, newDoc's fields are
+ * layered on top (so anything newDoc already had, e.g. its own
+ * preferredName or passport fields, wins), and email is forced to
+ * newEmail regardless of which side had it. Nothing is silently dropped
+ * unless the exact same field name exists on both sides, in which case
+ * newDoc's value wins — reasonable here since newEmail is the address the
+ * person told us they actually sign in with, but reviewed in the dry run
+ * before ever running for real.
+ *
+ * Always requires oldEmail and newEmail to both have an Auth account AND
+ * a people doc — if either condition doesn't hold this is the wrong tool
+ * (use mergePersonEmail for an empty-shell adopt, or correctStaleRosterEmail
+ * for a roster contact-detail fix where one side has no account at all).
+ *
+ * Same faculty_responses/iw_registrations migration as mergePersonEmail's
+ * shared steps, but written standalone here rather than reusing
+ * pushSharedSteps/executeSharedSteps since this only ever runs for a
+ * one-off manual conflict, not on a hot path.
+ */
+exports.mergeConflictingPeople = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const oldEmail = (request.data?.oldEmail || "").trim().toLowerCase();
+  const newEmail = (request.data?.newEmail || "").trim().toLowerCase();
+  const dryRun = !!request.data?.dryRun;
+  const confirmMerge = !!request.data?.confirmMerge;
+
+  if (!oldEmail || !oldEmail.includes("@")) throw new HttpsError("invalid-argument", "oldEmail required.");
+  if (!newEmail || !newEmail.includes("@")) throw new HttpsError("invalid-argument", "newEmail required.");
+  if (oldEmail === newEmail) throw new HttpsError("invalid-argument", "oldEmail and newEmail are the same.");
+
+  let oldAuthUser, newAuthUser;
+  try { oldAuthUser = await admin.auth().getUserByEmail(oldEmail); }
+  catch (e) { throw new HttpsError("failed-precondition", `${oldEmail} has no Auth account — this isn't a two-real-accounts conflict. Use mergePersonEmail or correctStaleRosterEmail instead.`); }
+  try { newAuthUser = await admin.auth().getUserByEmail(newEmail); }
+  catch (e) { throw new HttpsError("failed-precondition", `${newEmail} has no Auth account — this isn't a two-real-accounts conflict. Use mergePersonEmail instead (with newEmail/oldEmail possibly swapped).`); }
+
+  const oldUid = oldAuthUser.uid;
+  const newUid = newAuthUser.uid;
+
+  const oldPeopleSnap = await db.collection("people").doc(oldUid).get();
+  const newPeopleSnap = await db.collection("people").doc(newUid).get();
+  if (!oldPeopleSnap.exists) throw new HttpsError("failed-precondition", `${oldEmail} (uid ${oldUid}) has no people doc — nothing to merge from. Use mergePersonEmail instead.`);
+  if (!newPeopleSnap.exists) throw new HttpsError("failed-precondition", `${newEmail} (uid ${newUid}) has no people doc — that's mergePersonEmail's plain adopt case, not a conflict merge.`);
+
+  const oldPeopleData = oldPeopleSnap.data();
+  const newPeopleData = newPeopleSnap.data();
+  const mergedData = { ...oldPeopleData, ...newPeopleData, email: newEmail };
+
+  const iwRegSnap = await db.collection("iw_registrations").where("email", "==", oldEmail).get();
+  const newIwSnap = await db.collection("iw_registrations").where("email", "==", newEmail).get();
+  const oldRespSnap = await db.collection("faculty_responses").doc(oldEmail).get();
+  const newRespSnap = await db.collection("faculty_responses").doc(newEmail).get();
+
+  const steps = [
+    { collection: "people", action: `merge people/${oldUid} (${oldEmail}) into people/${newUid} (${newEmail}) — union of fields, newEmail's values win on overlap`, mergedPreview: mergedData },
+    { collection: "people", action: `delete old profile doc people/${oldUid}` },
+    { collection: "Auth", action: `delete old Auth account (uid ${oldUid}, ${oldEmail}) — surviving login is ${newEmail} (uid ${newUid})` },
+  ];
+  iwRegSnap.forEach(d => {
+    if (!newIwSnap.empty) {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: `SKIPPED — ${newEmail} already has a registration too; leaving both, sort out manually.` });
+    } else {
+      steps.push({ collection: "iw_registrations", docId: d.id, action: "update email field" });
+    }
+  });
+  if (oldRespSnap.exists) {
+    steps.push(newRespSnap.exists
+      ? { collection: "faculty_responses", action: `CONFLICT — a submission already exists under ${newEmail} too; leaving both, sort out manually which to keep` }
+      : { collection: "faculty_responses", action: `move doc from ${oldEmail} to ${newEmail}` });
+  }
+
+  if (dryRun) {
+    return { dryRun: true, oldEmail, newEmail, oldUid, newUid, steps };
+  }
+  if (!confirmMerge) {
+    throw new HttpsError("failed-precondition", "This merges two real accounts' data and deletes one Auth account. Re-run with confirmMerge:true to confirm.");
+  }
+
+  await db.collection("people").doc(newUid).set(mergedData);
+  await db.collection("people").doc(oldUid).delete();
+  await admin.auth().deleteUser(oldUid);
+
+  if (newIwSnap.empty) {
+    for (const d of iwRegSnap.docs) await d.ref.update({ email: newEmail });
+  }
+  if (oldRespSnap.exists && !newRespSnap.exists) {
+    const data = oldRespSnap.data();
+    data.email = newEmail;
+    await db.collection("faculty_responses").doc(newEmail).set(data);
+    await db.collection("faculty_responses").doc(oldEmail).delete();
+  }
+
+  return { dryRun: false, oldEmail, newEmail, oldUid, newUid, steps, done: true };
+});
+/**
+ * auditFacultyEmailMismatches — director-only, read-only.
+ *
+ * Sweep for the pattern found repeatedly 2026-09-19 (Tom Burton, Rosie
+ * Lilwall, Tess Brock, Zanita Volschenk, Becca Everitt): an RMD Senior/
+ * Student Faculty member's mou_roster entry sits under their university
+ * email, but the real Firebase Auth login they actually use — and the
+ * people doc, iw_registrations entry and faculty_responses submission
+ * that go with it — sit under a different (usually personal) email.
+ * mou_roster's email then points at either a dormant/never-used Auth
+ * account, or one with only a bare passport-details people doc, while
+ * their actual course role data quietly lives somewhere else.
+ *
+ * This never writes anything — it only surfaces candidates for a human
+ * to confirm, then mergePersonEmail (clean adopt) or mergeConflictingPeople
+ * (both sides have real data) does the actual fix, exactly as done for the
+ * five people above.
+ *
+ * Method, for every mou_roster doc with role "RMD Senior Faculty" or
+ * "RMD Student Faculty":
+ *   1. Does its email have a Firebase Auth account?
+ *      - No  -> "neverSignedIn" (not a mismatch — same bucket
+ *               sendAccountCreationReminders already tracks; just noted
+ *               here for completeness, not flagged as actionable).
+ *   2. If yes, does that uid have a people doc with a real `role` field
+ *      (i.e. actual course-role data, not just passport details)?
+ *      - Yes -> "ok", nothing to do.
+ *      - No  -> look for another people doc under a DIFFERENT email whose
+ *               name normalises to the same thing and DOES have real role
+ *               data. Found -> "mismatchCandidate" with both emails and a
+ *               suggested action (adopt vs conflict, based on whether the
+ *               roster email's own people doc has any fields at all).
+ *               Not found -> "shellNoCandidate" (roster email has an
+ *               account but no role data anywhere findable under that
+ *               name — needs a human look, not an automatic guess).
+ *
+ * Name matching is deliberately loose (lowercase, strip everything but
+ * a-z) since these are exactly the cases where the two records were
+ * entered independently and may differ in spacing/punctuation/nickname
+ * (e.g. "Tess Brock" vs "Theresa Brock" both normalise past the shared
+ * "brock" surname check plus a first-name-initial fallback below).
+ */
+exports.auditFacultyEmailMismatches = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const norm = (s) => (s || "").toLowerCase().replace(/[^a-z]/g, "");
+
+  const [mouRosterSnap, peopleSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("people").get(),
+  ]);
+
+  let authUsers = [];
+  let pageToken;
+  do {
+    const page = await admin.auth().listUsers(1000, pageToken);
+    authUsers = authUsers.concat(page.users);
+    pageToken = page.pageToken;
+  } while (pageToken);
+  const authByEmail = new Map(authUsers.map(u => [(u.email || "").toLowerCase(), u]));
+
+  const peopleByUid = new Map(peopleSnap.docs.map(d => [d.id, d.data()]));
+  // Index every people doc with real role data, by normalised name, for the
+  // "find the other account" lookup.
+  const peopleWithRoleByName = new Map(); // normName -> [{uid, email, role, stream}]
+  peopleSnap.forEach(d => {
+    const p = d.data();
+    if (!p.role || !p.name) return;
+    const key = norm(p.name);
+    if (!peopleWithRoleByName.has(key)) peopleWithRoleByName.set(key, []);
+    peopleWithRoleByName.get(key).push({ uid: d.id, email: p.email || "", role: p.role, stream: p.stream || "" });
+  });
+
+  const targetRoles = ["RMD Senior Faculty", "RMD Student Faculty"];
+  const results = { ok: [], mismatchCandidate: [], shellNoCandidate: [], neverSignedIn: [] };
+
+  for (const doc of mouRosterSnap.docs) {
+    const r = doc.data();
+    if (!targetRoles.includes(r.role)) continue;
+    const email = (r.email || "").toLowerCase();
+    const name = r.name || "";
+    if (!email) continue;
+
+    const authUser = authByEmail.get(email);
+    if (!authUser) {
+      results.neverSignedIn.push({ rosterDocId: doc.id, name, email });
+      continue;
+    }
+
+    const peopleDoc = peopleByUid.get(authUser.uid);
+    const hasRoleData = peopleDoc && peopleDoc.role;
+    if (hasRoleData) {
+      results.ok.push({ rosterDocId: doc.id, name, email });
+      continue;
+    }
+
+    const nameKey = norm(name);
+    const candidates = (peopleWithRoleByName.get(nameKey) || [])
+      .filter(c => c.email.toLowerCase() !== email);
+
+    if (candidates.length) {
+      results.mismatchCandidate.push({
+        rosterDocId: doc.id,
+        name,
+        rosterEmail: email,
+        rosterEmailHasPeopleDoc: !!peopleDoc,
+        rosterEmailPeopleDocFields: peopleDoc ? Object.keys(peopleDoc) : [],
+        candidates, // the "other" email(s) actually holding role data
+        suggestedTool: peopleDoc ? "mergeConflictingPeople" : "mergePersonEmail",
+      });
+    } else {
+      results.shellNoCandidate.push({
+        rosterDocId: doc.id, name, email,
+        hasPeopleDoc: !!peopleDoc,
+        peopleDocFields: peopleDoc ? Object.keys(peopleDoc) : [],
+      });
+    }
+  }
+
+  return {
+    checked: mouRosterSnap.docs.filter(d => targetRoles.includes(d.data().role)).length,
+    okCount: results.ok.length,
+    mismatchCount: results.mismatchCandidate.length,
+    shellNoCandidateCount: results.shellNoCandidate.length,
+    neverSignedInCount: results.neverSignedIn.length,
+    mismatchCandidate: results.mismatchCandidate,
+    shellNoCandidate: results.shellNoCandidate,
+    neverSignedIn: results.neverSignedIn,
+  };
+});
+
+
 
 /**
  * sendMouReminders / sendMouRemindersScheduled — share one core batch
@@ -550,7 +1325,22 @@ function isWithinMouReminderWindow(date) {
   return md >= start && md <= end;
 }
 
-async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder }) {
+// 1 April – 1 July inclusive, any year — the senior faculty review's actual
+// annual cycle, per Jon 2026-09-18: "want people to complete it after April
+// 1 each year & before July 1, after July 1 it's late." Outside this
+// window (e.g. right now, September, once that year's cycle is already
+// wrapped up) sendSeniorFacultyReminders should not show or send anything
+// — the roster shouldn't be nagged year-round just because SFR_CYCLE_YEAR
+// has already been bumped forward to next year's cycle. Same month*100+day
+// comparison style as isWithinMouReminderWindow above.
+function isWithinSfrReminderWindow(date) {
+  const md    = (date.getUTCMonth() + 1) * 100 + date.getUTCDate();
+  const start = 4 * 100 + 1; // 1 April
+  const end   = 7 * 100 + 1; // 1 July
+  return md >= start && md <= end;
+}
+
+async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder, email }) {
   const [rosterSnap, submissionsSnap, remindersSnap] = await Promise.all([
     db.collection("mou_roster").get(),
     db.collection("mou_responses").where("academicYear", "==", CURRENT_MOU_YEAR_SERVER).get(),
@@ -563,7 +1353,8 @@ async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder }) {
   );
   const remindersByDocId = new Map(remindersSnap.docs.map(d => [d.id, d.data()]));
 
-  const outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
+  const targetEmailE = (email || "").trim().toLowerCase();
+  const outstanding = roster.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()) && (!targetEmailE || m.email.toLowerCase() === targetEmailE));
 
   if (!outstanding.length) {
     return { checked: roster.length, eligible: [], sent: 0, failed: 0, failedEmails: [] };
@@ -609,7 +1400,9 @@ async function runMouReminderBatch({ dryRun, minDaysSinceLastReminder }) {
         text:
 `Hi ${firstName},
 
-We don't yet have your Memorandum of Understanding on file for ${CURRENT_MOU_YEAR_SERVER}. Please take a few minutes to complete it, sign in with your existing RMD account first:
+You're getting this because we don't yet have your signed Memorandum of Understanding on file for ${CURRENT_MOU_YEAR_SERVER} - it's the yearly agreement confirming your role and commitments as RMD faculty, and we need it from everyone before the course runs.
+
+Please sign in with your existing RMD account and complete it here — it takes a few minutes:
 
 ${MOU_FORM_URL}
 
@@ -642,7 +1435,8 @@ exports.sendMouReminders = onCall({ secrets: [resendApiKey], region: "us-central
   }
 
   const dryRun = !!(request.data && request.data.dryRun);
-  return runMouReminderBatch({ dryRun, minDaysSinceLastReminder: null });
+  const emailFilter = request.data?.email || null;
+  return runMouReminderBatch({ dryRun, minDaysSinceLastReminder: null, email: emailFilter });
 });
 
 exports.sendMouRemindersScheduled = onSchedule(
@@ -867,6 +1661,312 @@ exports.checkFacultyIdentityMatch = onCall({ region: "us-central1" }, async (req
     name: candidateName(match),
     maskedEmail: maskEmail(match.email)
   };
+});
+
+/**
+ * sendMouAccountSetupInvites — director-only.
+ *
+ * Replaces the old "Create accounts for X members" button's behaviour for
+ * brand-new mou_roster entries. That button used to silently create a
+ * Firebase Auth account at whatever email sat on the roster row, with a
+ * random password, then email a reset link — the person never got a say in
+ * which address became their permanent login, and nothing checked whether
+ * they already had a real account elsewhere under a different email. That
+ * exact mechanism is what produced every duplicate-account case fixed
+ * 2026-09-19/20 (Tom Burton, Rosie Lilwall, Tess Brock, Zanita Volschenk,
+ * Becca Everitt, Naveed Kordmahalleh).
+ *
+ * New behaviour, per mou_roster entry with no existing Auth account under
+ * its current email:
+ *   - If a DIFFERENT email already has real people/role data under a
+ *     matching surname, don't send anything — surface it as a
+ *     possibleDuplicate for a director to review by hand (same as this
+ *     week's manual fixes), since only a human should decide which of two
+ *     real-looking accounts is right.
+ *   - Otherwise, email the person a link to mou-account-setup.html, where
+ *     THEY choose the email (and password) they actually want to use —
+ *     see claimMouRosterEntry below for what happens when they do.
+ *
+ * Entries that already have an Auth account under their current roster
+ * email are left alone (skipped) — nothing to invite them to.
+ *
+ * A dryRun preview returns four buckets: alreadyHaveAccount, possibleDuplicates,
+ * pendingSetup (already invited, no account yet — setupInviteSentAt/Count on
+ * the roster doc), and wouldInvite (never invited). Sending is never "invite
+ * everyone in a bucket" — the caller must pass rosterDocIds, the exact list
+ * a director ticked in admin-bulk-users.html, covering both first invites
+ * (wouldInvite) and resends (pendingSetup) in one call. Every id is
+ * reclassified fresh at send time rather than trusted from the preview, and
+ * anything that isn't wouldInvite/pendingSetup by then (now has an account,
+ * now flagged as a duplicate) is skipped rather than emailed.
+ *
+ * dryRun: true previews everything below without sending any email.
+ */
+exports.sendMouAccountSetupInvites = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const dryRun = !!request.data?.dryRun;
+  const callerEmail = (auth.token.email || "").trim().toLowerCase();
+  const requestedIds = Array.isArray(request.data?.rosterDocIds)
+    ? request.data.rosterDocIds.map(id => String(id || "").trim()).filter(Boolean)
+    : null;
+
+  if (!dryRun && (!requestedIds || !requestedIds.length)) {
+    throw new HttpsError("invalid-argument", "rosterDocIds required — pass the specific roster entries to invite (from a dryRun preview).");
+  }
+
+  const [mouRosterSnap, peopleSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("people").get()
+  ]);
+
+  let authUsers = [];
+  let pageToken;
+  do {
+    const page = await admin.auth().listUsers(1000, pageToken);
+    authUsers = authUsers.concat(page.users);
+    pageToken = page.pageToken;
+  } while (pageToken);
+  const authByEmail = new Map(authUsers.map(u => [(u.email || "").toLowerCase(), u]));
+
+  // Surname index of everyone with real role data, for the duplicate check —
+  // same matching approach as checkFacultyIdentityMatch above.
+  const byRoleSurname = new Map();
+  peopleSnap.forEach(d => {
+    const p = d.data();
+    if (!p.role) return;
+    const key = normSurname(candidateName(p));
+    if (!key) return;
+    if (!byRoleSurname.has(key)) byRoleSurname.set(key, []);
+    byRoleSurname.get(key).push({ name: candidateName(p), email: p.email || "" });
+  });
+
+  // Classifies one mou_roster doc into exactly one bucket. Re-run per doc at
+  // send time too (not just at preview time) — state can move between the
+  // preview and the send (another invite going out, a fix being applied),
+  // so the server never trusts the client's snapshot for anything that
+  // sends an email.
+  function classify(doc) {
+    const r = doc.data();
+    const email = (r.email || "").trim().toLowerCase();
+    const name = r.name || "";
+    if (!email) return null;
+
+    if (authByEmail.has(email)) {
+      return { bucket: "alreadyHaveAccount", entry: { rosterDocId: doc.id, name, email } };
+    }
+
+    const surnameKey = normSurname(name);
+    const candidates = (byRoleSurname.get(surnameKey) || []).filter(c => c.email.toLowerCase() !== email);
+    if (candidates.length) {
+      return { bucket: "possibleDuplicates", entry: { rosterDocId: doc.id, name, rosterEmail: email, candidates } };
+    }
+
+    if (r.setupInviteSentAt) {
+      return {
+        bucket: "pendingSetup",
+        entry: {
+          rosterDocId: doc.id,
+          name,
+          email,
+          sentAt: r.setupInviteSentAt.toDate ? r.setupInviteSentAt.toDate().toISOString() : null,
+          sentCount: r.setupInviteCount || 1
+        }
+      };
+    }
+
+    return { bucket: "wouldInvite", entry: { rosterDocId: doc.id, name, email } };
+  }
+
+  if (dryRun) {
+    const alreadyHaveAccount = [];
+    const possibleDuplicates = [];
+    const pendingSetup = [];
+    const wouldInvite = [];
+    for (const doc of mouRosterSnap.docs) {
+      const c = classify(doc);
+      if (!c) continue;
+      ({ alreadyHaveAccount, possibleDuplicates, pendingSetup, wouldInvite })[c.bucket].push(c.entry);
+    }
+    return { dryRun: true, alreadyHaveAccount, possibleDuplicates, pendingSetup, wouldInvite };
+  }
+
+  // Real send: only touch the exact rosterDocIds the director selected —
+  // never "everyone currently classified as invitable", so a checkbox left
+  // unticked in the UI is guaranteed to get no email.
+  const byId = new Map(mouRosterSnap.docs.map(d => [d.id, d]));
+  const resend = new Resend(resendApiKey.value());
+  let sent = 0;
+  const failedEmails = [];
+  const skipped = [];
+
+  for (const id of requestedIds) {
+    const doc = byId.get(id);
+    if (!doc) { skipped.push({ rosterDocId: id, reason: "no longer on the roster" }); continue; }
+
+    const c = classify(doc);
+    const sendable = c && (c.bucket === "wouldInvite" || c.bucket === "pendingSetup");
+    if (!sendable) {
+      const reason = !c ? "no email on file"
+        : c.bucket === "alreadyHaveAccount" ? "already has an account"
+        : "flagged as a possible duplicate";
+      skipped.push({ rosterDocId: id, name: c?.entry?.name, reason });
+      continue;
+    }
+
+    const person = c.entry;
+    const firstName = (person.name || "").split(" ")[0] || "there";
+    const link = `https://rmd.uk.com/mou-account-setup.html?roster=${encodeURIComponent(person.rosterDocId)}`;
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
+        subject: "RMD Birmingham — set up your account",
+        text:
+`Hi ${firstName},
+
+You're getting this because you're joining RMD Birmingham's roster and don't have a platform account yet. Before you can complete your Memorandum of Understanding, set up your account here — you choose the email you actually want to sign in with, so pick whichever one you'll definitely still have next year:
+
+${link}
+
+If you already have an RMD account under a different email, don't create a new one — sign in with that one instead and let us know if anything looks wrong.
+
+Thanks,
+RMD Birmingham`
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+      await doc.ref.update({
+        setupInviteSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        setupInviteSentBy: callerEmail,
+        setupInviteCount: admin.firestore.FieldValue.increment(1)
+      });
+    } catch (err) {
+      console.error(`sendMouAccountSetupInvites: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  return { dryRun: false, sent, failedEmails, skipped };
+});
+
+/**
+ * claimMouRosterEntry — any signed-in member, self-service only.
+ *
+ * Called immediately after a brand-new person creates their own Firebase
+ * Auth account client-side (mou-account-setup.html), at whichever email
+ * THEY chose — never an email this function is told to use, always
+ * auth.token.email from their own freshly-verified sign-in. This is what
+ * makes it safe to expose without a director check, same reasoning as
+ * changeMyEmail above.
+ *
+ * Re-runs the same surname-based duplicate check sendMouAccountSetupInvites
+ * used before sending the invite, in case something changed in the
+ * meantime (another account created, another merge run). If it finds a
+ * likely match under a different email, it does NOT touch any data — it
+ * returns a warning so mou-account-setup.html can tell the person "is this
+ * you?" before they go any further. Pass overrideDuplicateWarning:true to
+ * proceed anyway once they've confirmed it isn't them.
+ *
+ * On success: moves the mou_roster entry from rosterDocId's stored email to
+ * the caller's real one (same "move" mechanics as correctStaleRosterEmail,
+ * just for mou_roster alone — there's nothing yet in faculty_roster,
+ * iw_registrations, faculty_responses or mou_responses for a brand-new
+ * person), and creates a minimal people/{uid} doc so the account isn't
+ * empty going forward.
+ *
+ * If someone abandons this halfway (told it's a duplicate, doesn't
+ * proceed), their freshly-created Auth account is left as an empty shell —
+ * deleteEmptyAuthAccount cleans those up safely, exactly as designed.
+ */
+/**
+ * getMouRosterName — public, no sign-in required.
+ *
+ * Tiny lookup for mou-account-setup.html to greet someone by name before
+ * they've created an account (so there's nothing to authenticate as yet).
+ * Deliberately returns only a first name — nothing else about the roster
+ * entry is exposed here, same minimal-disclosure principle as
+ * checkFacultyIdentityMatch's masked email above.
+ */
+exports.getMouRosterName = onCall({ region: "us-central1" }, async (request) => {
+  const rosterDocId = String(request.data?.rosterDocId || "").trim();
+  if (!rosterDocId) throw new HttpsError("invalid-argument", "rosterDocId required.");
+
+  const snap = await db.collection("mou_roster").doc(rosterDocId).get();
+  if (!snap.exists) throw new HttpsError("not-found", "That setup link doesn't match a roster entry.");
+
+  const name = snap.data().name || "";
+  return { firstName: name.split(" ")[0] || "there" };
+});
+
+exports.claimMouRosterEntry = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const callerEmail = (auth.token.email || "").trim().toLowerCase();
+  if (!callerEmail) throw new HttpsError("failed-precondition", "Your account has no email on file.");
+
+  const rosterDocId = String(request.data?.rosterDocId || "").trim();
+  const overrideDuplicateWarning = !!request.data?.overrideDuplicateWarning;
+  if (!rosterDocId) throw new HttpsError("invalid-argument", "rosterDocId required.");
+
+  const rosterSnap = await db.collection("mou_roster").doc(rosterDocId).get();
+  if (!rosterSnap.exists) throw new HttpsError("not-found", "That setup link doesn't match a roster entry — contact a director.");
+  const rosterData = rosterSnap.data();
+  const rosterEmail = (rosterData.email || "").trim().toLowerCase();
+
+  // Safety: someone else shouldn't already hold this exact roster row's
+  // current email under a different uid — if they do, this link is stale.
+  if (rosterEmail && rosterEmail !== callerEmail) {
+    try {
+      const existing = await admin.auth().getUserByEmail(rosterEmail);
+      if (existing.uid !== auth.uid) {
+        throw new HttpsError("failed-precondition", `${rosterEmail} already has its own account — this setup link is stale. Contact a director.`);
+      }
+    } catch (e) {
+      if (e instanceof HttpsError) throw e;
+      // no Auth account under rosterEmail — expected, fine to proceed.
+    }
+  }
+
+  if (!overrideDuplicateWarning) {
+    const peopleSnap = await db.collection("people").get();
+    const targetSurname = normSurname(rosterData.name || "");
+    if (targetSurname) {
+      const match = peopleSnap.docs
+        .map(d => d.data())
+        .find(p => {
+          const email = (p.email || "").trim().toLowerCase();
+          if (!p.role || !email || email === callerEmail) return false;
+          return normSurname(candidateName(p)) === targetSurname;
+        });
+      if (match) {
+        return { duplicateWarning: true, name: candidateName(match), maskedEmail: maskEmail(match.email) };
+      }
+    }
+  }
+
+  // Move the roster entry onto the caller's real email, if different.
+  if (rosterEmail !== callerEmail) {
+    const newRosterSnap = await db.collection("mou_roster").doc(callerEmail).get();
+    if (!newRosterSnap.exists) {
+      await db.collection("mou_roster").doc(callerEmail).set({ ...rosterData, email: callerEmail });
+    }
+    await db.collection("mou_roster").doc(rosterDocId).delete();
+  }
+
+  await db.collection("people").doc(auth.uid).set({
+    name: rosterData.name || "",
+    email: callerEmail,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: "mou-account-setup"
+  }, { merge: true });
+
+  return { duplicateWarning: false, done: true };
 });
 
 exports.changePersonEmail = onCall({ region: "us-central1" }, async (request) => {
@@ -1191,8 +2291,16 @@ exports.sendIwRsvpInvites = onCall({ secrets: [resendApiKey], region: "us-centra
     .get();
 
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const outstanding = all.filter(p => p.email);
+  let outstanding = all.filter(p => p.email);
   const skippedNoEmail = all.length - outstanding.length;
+
+  const targetEmailC = (request.data?.email || "").trim().toLowerCase();
+  if (targetEmailC) outstanding = outstanding.filter(p => (p.email || "").toLowerCase() === targetEmailC);
+
+  const dryRun = !!request.data?.dryRun;
+  if (dryRun) {
+    return { dryRun: true, outstanding, skippedNoEmail, total: all.length };
+  }
 
   if (!outstanding.length) {
     return { sent: 0, failed: 0, failedEmails: [], skippedNoEmail, total: all.length };
@@ -1217,9 +2325,9 @@ exports.sendIwRsvpInvites = onCall({ secrets: [resendApiKey], region: "us-centra
         text:
 `Hi ${firstName},
 
-The annual instructor weekend is a core part of the RMD year. As you are one of the more senior members of the RMD Birmingham team, and have a key role in maintaining the standards of the course, we hope to see you there.
+You're getting this because you're an Assessor or Senior Instructor, and attending the instructor weekend's assessor/senior instructor component is an expected part of that role. We haven't had your RSVP yet.
 
-Please let us know here:
+Please let us know here - it's a one-click yes/no:
 
 ${link}
 
@@ -1312,6 +2420,61 @@ exports.iwRsvpRespond = onCall({ region: "us-central1" }, async (request) => {
 });
 
 /**
+ * iwJoinConfirm — public, no sign-in required.
+ *
+ * Backs iw-join.html: the self-service counterpart to sendIwRsvpInvites for
+ * everyone who ISN'T on the confirmed MOU roster — Instructor Trainers,
+ * Assessor Faculty, ITCs, Directors, one-off Faculty, RMD Student Faculty
+ * ("extras", Jon's term, 2026-09-18). Jon adds the person to iw_registrations
+ * from admin-iw-registrations.html's "Invite an extra" panel (status:
+ * "pending", source: "extra-invite"), picking their role himself from a
+ * fixed list (ASSIGNABLE_ROLES, same list admin-faculty-responses.html
+ * already uses) so there's no free-text drift — then sends them the
+ * resulting link himself. Landing on it and clicking Confirm sets status to
+ * "confirmed", exactly like a manual ✓ click, which fires
+ * syncIwRegistrationToPeople the same way and gives them a real account
+ * automatically. No new account-creation logic needed — this just flips
+ * the same status field the rest of the system already watches.
+ *
+ * Same trust model as iwRsvpRespond above: the registration doc's own ID is
+ * the only credential, fine for a low-stakes join action. Not gated to a
+ * particular source or role on purpose — confirming attendance is a
+ * harmless, idempotent action to allow on any registration doc someone has
+ * a link to.
+ *
+ * Called twice per visit, same pattern as iwRsvpRespond:
+ *   1. { id } only, on load — returns { name, role, status }.
+ *   2. { id, confirm: true } — sets status to "confirmed", returns the same
+ *      shape.
+ */
+exports.iwJoinConfirm = onCall({ region: "us-central1" }, async (request) => {
+  const id = request.data?.id;
+  if (!id || typeof id !== "string") {
+    throw new HttpsError("invalid-argument", "Missing invite id.");
+  }
+
+  const ref = db.collection(IW_COLL).doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError("not-found", "This invite link is no longer valid — please contact Jon directly.");
+  }
+
+  const data = snap.data();
+
+  if (!request.data?.confirm) {
+    return { name: data.name || "", role: data.role || "", status: data.status || "pending" };
+  }
+
+  await ref.update({
+    status: "confirmed",
+    statusUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    statusSource: "join-link"
+  });
+
+  return { name: data.name || "", role: data.role || "", status: "confirmed" };
+});
+
+/**
  * sendFacultyFormInvites — director-only.
  *
  * Emails RMD Senior Faculty and/or RMD Student Faculty on mou_roster a
@@ -1373,10 +2536,25 @@ exports.sendFacultyFormInvites = onCall({ secrets: [resendApiKey], region: "us-c
 
   const dryRun = !!request.data?.dryRun;
 
-  const snap = await db.collection("mou_roster").get();
+  // 2026-09-18 fix: this used to list everyone on the roster in scope,
+  // full stop — it never checked who had actually submitted, so the
+  // "outstanding" list (and the Reminder Hub's "Faculty form incomplete"
+  // chip) included plenty of people who'd already responded. Now it
+  // excludes anyone with a faculty_responses doc, same pattern as
+  // runMouReminderBatch's submittedEmails check above.
+  const [snap, responsesSnap] = await Promise.all([
+    db.collection("mou_roster").get(),
+    db.collection("faculty_responses").get()
+  ]);
+  const submittedEmails = new Set(
+    responsesSnap.docs.map(d => (d.data().email || "").toLowerCase()).filter(Boolean)
+  );
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => roles.includes(m.role));
-  const outstanding = all.filter(m => m.email);
-  const skippedNoEmail = all.length - outstanding.length;
+  let outstanding = all.filter(m => m.email && !submittedEmails.has(m.email.toLowerCase()));
+  const skippedNoEmail = all.filter(m => !m.email).length;
+
+  const targetEmailD = (request.data?.email || "").trim().toLowerCase();
+  if (targetEmailD) outstanding = outstanding.filter(m => (m.email || "").toLowerCase() === targetEmailD);
 
   if (dryRun) {
     return {
@@ -1414,7 +2592,7 @@ exports.sendFacultyFormInvites = onCall({ secrets: [resendApiKey], region: "us-c
         text:
 `Hi ${firstName},
 
-Please confirm your attendance and details for the RMD Instructor Weekend using the link below — it already has your email address filled in, so you shouldn't need to retype it:
+You're getting this because we need your attendance and details confirmed for the RMD Instructor Weekend. Use the link below — it already has your email address filled in, so you shouldn't need to retype it:
 
 ${link}
 

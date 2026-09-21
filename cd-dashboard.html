@@ -332,7 +332,13 @@
 
     @media (max-width: 600px) {
       .sidebar { width: 52px; }
-      .nav-item span { display: none; }
+      /* Each .nav-item has TWO <span>s -- .nav-icon (emoji) and a plain
+         one (the label). A bare ".nav-item span" selector hides both,
+         since it doesn't distinguish them and beats ".nav-icon" alone on
+         specificity -- so the icon-only mobile sidebar was rendering
+         completely blank (no icon, no text), not just text-less. Fixed
+         2026-09-18 after Jon reported unreadable nav on iOS. */
+      .nav-item span:not(.nav-icon) { display: none; }
       .nav-item { justify-content: center; }
       .nav-icon { width: auto; }
     }
