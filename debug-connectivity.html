@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connectivity Check — RMD</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #0e1620; color: #e6edf3; margin: 0; padding: 16px; font-size: 14px; line-height: 1.5; }
+    h1 { font-size: 17px; margin: 0 0 4px; }
+    .sub { color: #8b98a5; font-size: 12px; margin-bottom: 16px; }
+    .row { background: #161e2a; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; border-left: 4px solid #3a4658; word-break: break-word; }
+    .row.pending { border-left-color: #d4a72c; }
+    .row.ok { border-left-color: #3fb950; }
+    .row.fail { border-left-color: #f85149; }
+    .row .label { font-weight: 700; margin-bottom: 4px; }
+    .row .detail { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: #c9d1d9; white-space: pre-wrap; }
+    .instructions { margin-top: 20px; padding: 12px 14px; background: #1c2530; border-radius: 8px; font-size: 12.5px; color: #8b98a5; }
+  </style>
+</head>
+<body>
+  <h1>Connectivity Check</h1>
+  <div class="sub">Loads a few things one at a time and shows exactly what happens with each. Screenshot this page once it's finished.</div>
+  <div id="results"></div>
+  <div class="instructions">This is a temporary diagnostic page, not a normal part of the site — safe to ignore/delete once the issue's found.</div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script>
+    initFirebase();
+    const results = document.getElementById('results');
+
+    function addRow(label) {
+      const row = document.createElement('div');
+      row.className = 'row pending';
+      row.innerHTML = `<div class="label">${label}</div><div class="detail">running…</div>`;
+      results.appendChild(row);
+      return row;
+    }
+    function finish(row, ok, text) {
+      row.className = 'row ' + (ok ? 'ok' : 'fail');
+      row.querySelector('.detail').textContent = text;
+    }
+
+    async function run() {
+      // 1. Basic device/network state — no Firebase involved at all.
+      const r1 = addRow('1. Browser/network basics');
+      finish(r1, true, `navigator.onLine: ${navigator.onLine}\nUser agent: ${navigator.userAgent}\nTime: ${new Date().toString()}`);
+
+      // 2. Raw fetch to Google's infrastructure, bypassing the Firebase SDK
+      //    entirely — tells us if it's a general network block vs something
+      //    Firestore/Firebase-specific.
+      const r2 = addRow('2. Raw network reach to Google APIs (no Firebase SDK)');
+      try {
+        const start = Date.now();
+        await fetch('https://firestore.googleapis.com/', { mode: 'no-cors', cache: 'no-store' });
+        finish(r2, true, `Reached firestore.googleapis.com in ${Date.now() - start}ms (opaque response expected/normal with no-cors — reaching it at all is what matters here)`);
+      } catch (e) {
+        finish(r2, false, `FAILED: ${e.name}: ${e.message}`);
+      }
+
+      // 3. Auth state — do we have a signed-in user at all, and can we get
+      //    a fresh ID token (forces a round-trip to Google's auth servers,
+      //    not just reading the cached local object)?
+      const r3 = addRow('3. Auth state');
+      const user = await new Promise(resolve => {
+        const unsub = auth.onAuthStateChanged(u => { unsub(); resolve(u); });
+      });
+      if (!user) {
+        finish(r3, false, 'No signed-in user — auth.onAuthStateChanged returned null.');
+        return;
+      }
+      let tokenInfo = `uid: ${user.uid}\nemail: ${user.email}\n`;
+      try {
+        const start = Date.now();
+        const token = await user.getIdToken(true); // force refresh — real round trip
+        tokenInfo += `Fresh ID token obtained in ${Date.now() - start}ms (length ${token.length})`;
+        finish(r3, true, tokenInfo);
+      } catch (e) {
+        tokenInfo += `FAILED to refresh ID token: ${e.code || e.name}: ${e.message}`;
+        finish(r3, false, tokenInfo);
+      }
+
+      // 4. Public Firestore doc — no auth required at all (allow read: if
+      //    true). If THIS fails, it's not an auth problem, Firestore itself
+      //    is unreachable/blocked from this device.
+      const r4 = addRow('4. Public Firestore doc (no sign-in required)');
+      try {
+        const start = Date.now();
+        const snap = await db.collection('config').doc('candidate_access').get();
+        finish(r4, true, `OK in ${Date.now() - start}ms — exists: ${snap.exists}`);
+      } catch (e) {
+        finish(r4, false, `FAILED: ${e.code || e.name}: ${e.message}`);
+      }
+
+      // 5. The actual doc resolveRole() checks first.
+      const r5 = addRow('5. config/platform (director list — requires sign-in)');
+      try {
+        const start = Date.now();
+        const snap = await db.collection('config').doc('platform').get();
+        const d = snap.data() || {};
+        const dirs = (d.directors || []).map(x => String(x).toLowerCase());
+        finish(r5, true, `OK in ${Date.now() - start}ms\ndirectors: ${JSON.stringify(d.directors)}\nyour email listed: ${dirs.includes((user.email||"").toLowerCase())}`);
+      } catch (e) {
+        finish(r5, false, `FAILED: ${e.code || e.name}: ${e.message}`);
+      }
+
+      // 6. Your own people doc — should always be readable by you
+      //    (allow get: if isSignedIn() && request.auth.uid == docId).
+      const r6 = addRow('6. Your own people/{uid} doc (fallback source)');
+      try {
+        const start = Date.now();
+        const snap = await db.collection('people').doc(user.uid).get();
+        finish(r6, true, `OK in ${Date.now() - start}ms\nexists: ${snap.exists}\nrole: ${snap.exists ? snap.data().role : '(n/a)'}`);
+      } catch (e) {
+        finish(r6, false, `FAILED: ${e.code || e.name}: ${e.message}`);
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>
