@@ -559,30 +559,41 @@ function initFirebase() {
     return false;
   }
   firebase.initializeApp(FIREBASE_CONFIG);
-  // 2026-09-21: actually disabled now, not just documented as disabled.
-  // The 2026-08-05 comment below claimed activation was "disabled as a
-  // stopgap," but the activate() call underneath it still ran unconditionally
-  // on every page that loaded firebase-app-check-compat.js (my-account.html
-  // among them) — it was never really off. The broken reCAPTCHA v3 site key
-  // (domain list doesn't include rmd.uk.com, or is owned by an account
-  // nobody here can find) kept 400ing/throttling in the background on every
-  // such page, and on mobile Safari/WebKit specifically that cascaded into
-  // every Firestore read on the page failing with permission-denied — even
-  // reads on documents with "allow read: if true," since App Check rejects
-  // before Firestore's own rules ever get evaluated. Traced 2026-09-21 via
-  // Jon's own account showing "Course Director" on desktop and "not yet
-  // confirmed" on phone for the exact same login. Firestore App Check
-  // enforcement has been set back to Unenforced/Monitoring in the Firebase
-  // console (confirmed by Jon) specifically so this fix is safe — with
-  // enforcement off, not sending a token costs nothing, real access is
-  // still fully governed by firestore.rules regardless. Do not call
-  // firebase.appCheck().activate() again until the reCAPTCHA v3 site key's
-  // domain registration is actually fixed (Google reCAPTCHA admin console,
-  // not this file) AND confirmed working on mobile Safari specifically, not
-  // just desktop Chrome — see [[rmd-appcheck-recaptcha-stopgap]] for the
-  // original (also never-actually-fixed) incident this repeats.
+  // 2026-09-21: re-enabled after the 2026-09-21 mobile-account-status
+  // incident (see below) — Jon confirmed rmd.uk.com IS in the reCAPTCHA v3
+  // site key's domain list, so that specific theory from 2026-08-05 wasn't
+  // (or is no longer) the actual cause. Real cause still unconfirmed; could
+  // be reCAPTCHA v3's execution itself being unreliable on mobile
+  // Safari/WebKit (ITP, Private Relay, or similar), not the domain config.
+  // Firestore App Check enforcement is currently Unenforced/Monitoring in
+  // the Firebase console, so this activate() call is safe to have running
+  // again even if it's still flaky on some mobile browsers — a failed/slow
+  // token fetch costs nothing with enforcement off, unlike before, when
+  // this same code path was live WHILE enforcement was Enforced.
+  //
+  // DO NOT set Firestore App Check enforcement back to Enforced without
+  // first checking the Monitoring tab in Firebase Console → App Check and
+  // confirming mobile Safari/Chrome-iOS requests are actually coming
+  // through as verified, not just desktop — that's exactly the gap that
+  // caused this incident. See [[rmd-appcheck-recaptcha-stopgap]] for the
+  // original 2026-08-05 incident and 2026-09-21 for this one — both times
+  // the fix was written up as done without being verified on mobile first.
+  //
+  // History (2026-08-05 → 2026-09-21): activation was meant to be disabled
+  // as a stopgap back in August but the code never actually did that — it
+  // kept running, kept 400ing/throttling quietly, and on 2026-09-21 that
+  // cascaded into Jon's own account showing "Course Director" on desktop
+  // and "not yet confirmed" on phone for the identical login, because App
+  // Check rejected every Firestore read before firestore.rules ever got a
+  // chance to evaluate them (this happened even on documents with
+  // "allow read: if true"). Traced and fixed same day.
   if (firebase.appCheck) {
-    console.warn("Firebase App Check SDK loaded but activation is intentionally skipped — see initFirebase() comment.");
+    firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
+  } else {
+    // Page didn't load firebase-app-check-compat.js — requests from it won't
+    // carry an App Check token. Fine while enforcement is off; must be fixed
+    // on every page before enforcement is turned on.
+    console.warn("Firebase App Check SDK not loaded on this page.");
   }
   db      = firebase.firestore();
   // 2026-08-05: guarded the same way storage already was — pages like
