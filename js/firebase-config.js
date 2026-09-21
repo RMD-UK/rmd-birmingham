@@ -559,21 +559,30 @@ function initFirebase() {
     return false;
   }
   firebase.initializeApp(FIREBASE_CONFIG);
-  // 2026-08-05: App Check activation disabled as a stopgap — the reCAPTCHA
-  // v3 site key's domain list doesn't include rmd.uk.com (or is owned by an
-  // account we couldn't locate), so the token-fetch call was 400ing and
-  // throttling, which cascaded into breaking unrelated Firestore reads on
-  // pages like faculty.html. Firestore enforcement was already left in
-  // "monitor mode" (off) in the Firebase console, so this shouldn't change
-  // what's actually enforced — re-enable once the domain/account issue is
-  // fixed and confirmed working. See [[rmd-appcheck-recaptcha-stopgap]].
+  // 2026-09-21: actually disabled now, not just documented as disabled.
+  // The 2026-08-05 comment below claimed activation was "disabled as a
+  // stopgap," but the activate() call underneath it still ran unconditionally
+  // on every page that loaded firebase-app-check-compat.js (my-account.html
+  // among them) — it was never really off. The broken reCAPTCHA v3 site key
+  // (domain list doesn't include rmd.uk.com, or is owned by an account
+  // nobody here can find) kept 400ing/throttling in the background on every
+  // such page, and on mobile Safari/WebKit specifically that cascaded into
+  // every Firestore read on the page failing with permission-denied — even
+  // reads on documents with "allow read: if true," since App Check rejects
+  // before Firestore's own rules ever get evaluated. Traced 2026-09-21 via
+  // Jon's own account showing "Course Director" on desktop and "not yet
+  // confirmed" on phone for the exact same login. Firestore App Check
+  // enforcement has been set back to Unenforced/Monitoring in the Firebase
+  // console (confirmed by Jon) specifically so this fix is safe — with
+  // enforcement off, not sending a token costs nothing, real access is
+  // still fully governed by firestore.rules regardless. Do not call
+  // firebase.appCheck().activate() again until the reCAPTCHA v3 site key's
+  // domain registration is actually fixed (Google reCAPTCHA admin console,
+  // not this file) AND confirmed working on mobile Safari specifically, not
+  // just desktop Chrome — see [[rmd-appcheck-recaptcha-stopgap]] for the
+  // original (also never-actually-fixed) incident this repeats.
   if (firebase.appCheck) {
-    firebase.appCheck().activate(APP_CHECK_SITE_KEY, true);
-  } else {
-    // Page didn't load firebase-app-check-compat.js — requests from it won't
-    // carry an App Check token. Fine while enforcement is off; must be fixed
-    // on every page before enforcement is turned on.
-    console.warn("Firebase App Check SDK not loaded on this page.");
+    console.warn("Firebase App Check SDK loaded but activation is intentionally skipped — see initFirebase() comment.");
   }
   db      = firebase.firestore();
   // 2026-08-05: guarded the same way storage already was — pages like
