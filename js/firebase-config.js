@@ -10,7 +10,7 @@
  */
 
 const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyA-JnvJ3cwpIRs_JKnfCgN0CqC-qO7YisM",
+  apiKey:            "AIzaSyBlYZDtVNwB4qnzNTOkYN3soCaKTCF0v_k",
   authDomain:        "rmd-instructor-weekend.firebaseapp.com",
   projectId:         "rmd-instructor-weekend",
   storageBucket:     "rmd-instructor-weekend.firebasestorage.app",
