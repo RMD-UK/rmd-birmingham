@@ -689,5 +689,22 @@ service cloud.firestore {
       allow delete: if isSignedIn();
     }
 
+    // ── Instructor Expression of Interest ───────────────────────────────────
+    // Open all year, no login — see instructor-eoi.html. Document ID is the
+    // lowercased submitter email, same no-login edit-by-email pattern as
+    // summer_meeting_dietary/faculty_responses above.
+    // get:  public — caller must already know the exact email (= docId).
+    // list: director only — stops one unauthenticated request dumping every
+    //   submitter's name/email/course info.
+    // create/update: public — a resubmission from the same email overwrites
+    //   the previous one rather than creating a duplicate.
+    // delete: authenticated only.
+    match /instructor_eoi/{docId} {
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
   }
 }

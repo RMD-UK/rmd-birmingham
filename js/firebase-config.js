@@ -41,7 +41,8 @@ const COLLECTIONS = {
   stage1Candidates: "stage1_candidates",  // taught first-year candidate records, no login — see admin-stage1-candidates.html (Section 3.5)
   courseAllocations: "course_allocations", // per-course room + instructor-team allocation — see admin-course-room-allocation.html (Section 3.6)
   iwAssignments: "iw_assignments", // per-year Instructor Weekend function (Axis B) — see resolveIwFunction() below, and CURRENT_IW_YEAR
-  assessorFeedback: "assessor_feedback" // traffic-light feedback on Assessor/SI candidates — see assessor-feedback.html. Same principle as session_feedback, but not session-scoped (one shared cohort, not per-room groups) — doc id is `${candidateId}_${raterUid}`, not an auto id.
+  assessorFeedback: "assessor_feedback", // traffic-light feedback on Assessor/SI candidates — see assessor-feedback.html. Same principle as session_feedback, but not session-scoped (one shared cohort, not per-room groups) — doc id is `${candidateId}_${raterUid}`, not an auto id.
+  instructorEoi: "instructor_eoi" // no-login, open-all-year Expression of Interest submissions from past BLS course attendees wanting to train as Instructor — see instructor-eoi.html. Doc id is the lowercased submitter email (same no-login edit-by-email pattern as summer_meeting_dietary/faculty_responses); a resubmission overwrites the previous one. Reviewed manually at year end against pass/assessment records — no automated eligibility check on submission.
 };
 
 // ── Instructor Weekend per-year function (Axis B), layered-access build
