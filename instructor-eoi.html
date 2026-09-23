@@ -42,12 +42,21 @@
   .field { margin-bottom: 16px; }
   .field label { display: block; font-size: 13px; font-weight: 700; color: var(--rmd-navy); margin-bottom: 5px; }
   .field label .req { color: #b7410e; }
+<<<<<<< Updated upstream
   .field input, .field textarea {
     width: 100%; padding: 11px 12px; border: 2px solid #ccd6dd; border-radius: 6px;
     font-size: 15px; font-family: var(--font); color: var(--rmd-navy); background: white;
   }
   .field input:focus, .field textarea:focus { outline: none; border-color: var(--rmd-blue); }
   .field input.error, .field textarea.error { border-color: #b7410e; }
+=======
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 11px 12px; border: 2px solid #ccd6dd; border-radius: 6px;
+    font-size: 15px; font-family: var(--font); color: var(--rmd-navy); background: white;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--rmd-blue); }
+  .field input.error, .field select.error, .field textarea.error { border-color: #b7410e; }
+>>>>>>> Stashed changes
   .hint-text { font-size: 12px; color: var(--rmd-muted); margin-top: 4px; }
 
   .confirm-row {
@@ -127,9 +136,27 @@
     </div>
 
     <div class="field">
+<<<<<<< Updated upstream
       <label>Which course did you attend, and when? <span class="req">*</span></label>
       <input type="text" id="eoiCourse" placeholder="e.g. BLS Provider, Semester 1 2026, Tuesday evening group">
       <div class="hint-text">As specific as you can be — this is what we'll check your interest against.</div>
+=======
+      <label>Student number <span class="req">*</span></label>
+      <input type="text" id="eoiStudentNumber" placeholder="e.g. 2312345" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label>Degree programme <span class="req">*</span></label>
+      <select id="eoiDegree">
+        <option value="" disabled selected>Select…</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Date you passed your assessment <span class="req">*</span></label>
+      <input type="date" id="eoiPassDate">
+      <div class="hint-text">This is what we'll check your interest against at the end of the year.</div>
+>>>>>>> Stashed changes
     </div>
 
     <label class="confirm-row" id="confirmRow">
@@ -161,6 +188,7 @@
 
 initFirebase();
 
+<<<<<<< Updated upstream
 async function submitEoi() {
   const nameEl    = document.getElementById("eoiName");
   const emailEl   = document.getElementById("eoiEmail");
@@ -182,6 +210,49 @@ async function submitEoi() {
   if (!name)   { nameEl.classList.add("error");   firstError = firstError || nameEl; }
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailEl.classList.add("error"); firstError = firstError || emailEl; }
   if (!course) { courseEl.classList.add("error"); firstError = firstError || courseEl; }
+=======
+// Same 9 standard degree names used everywhere else on the platform (see
+// STAGE1_DEGREE_GROUPS in firebase-config.js) — reused here rather than a
+// second hand-typed list, so this page can't silently drift out of sync
+// with admin-stage1-candidates.html's own dropdown/validation.
+(function populateDegreeOptions() {
+  const degreeEl = document.getElementById("eoiDegree");
+  Object.keys(STAGE1_DEGREE_GROUPS).forEach(degree => {
+    const opt = document.createElement("option");
+    opt.value = degree;
+    opt.textContent = degree;
+    degreeEl.appendChild(opt);
+  });
+})();
+
+async function submitEoi() {
+  const nameEl      = document.getElementById("eoiName");
+  const emailEl     = document.getElementById("eoiEmail");
+  const studentIdEl = document.getElementById("eoiStudentNumber");
+  const degreeEl    = document.getElementById("eoiDegree");
+  const passDateEl  = document.getElementById("eoiPassDate");
+  const confirmEl   = document.getElementById("eoiConfirm");
+  const confirmRow  = document.getElementById("confirmRow");
+  const errorEl     = document.getElementById("errorMsg");
+  const submitBtn   = document.getElementById("submitBtn");
+
+  [nameEl, emailEl, studentIdEl, degreeEl, passDateEl].forEach(el => el.classList.remove("error"));
+  confirmRow.classList.remove("error");
+  errorEl.style.display = "none";
+
+  const name        = (nameEl.value || "").trim();
+  const email       = (emailEl.value || "").trim().toLowerCase();
+  const studentId   = (studentIdEl.value || "").trim();
+  const degree      = (degreeEl.value || "").trim();
+  const passDate    = (passDateEl.value || "").trim();
+
+  let firstError = null;
+  if (!name)      { nameEl.classList.add("error");      firstError = firstError || nameEl; }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailEl.classList.add("error"); firstError = firstError || emailEl; }
+  if (!studentId) { studentIdEl.classList.add("error"); firstError = firstError || studentIdEl; }
+  if (!degree)    { degreeEl.classList.add("error");    firstError = firstError || degreeEl; }
+  if (!passDate)  { passDateEl.classList.add("error");  firstError = firstError || passDateEl; }
+>>>>>>> Stashed changes
   if (!confirmEl.checked) { confirmRow.classList.add("error"); firstError = firstError || confirmRow; }
 
   if (firstError) {
@@ -198,7 +269,13 @@ async function submitEoi() {
     await db.collection(COLLECTIONS.instructorEoi).doc(email).set({
       name: name,
       email: email,
+<<<<<<< Updated upstream
       courseAttended: course,
+=======
+      studentNumber: studentId,
+      degree: degree,
+      assessmentPassDate: passDate,
+>>>>>>> Stashed changes
       acknowledgedNoGuarantee: true,
       submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
