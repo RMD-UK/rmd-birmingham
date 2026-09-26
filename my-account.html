@@ -159,6 +159,12 @@
       <div class="readonly-row"><span class="k">Standing</span><span class="v" id="acctRole">–</span></div>
     </div>
 
+    <div class="card" id="cpdCard">
+      <h2>CPD Certificate</h2>
+      <div class="card-sub" id="cpdSub">Checking availability…</div>
+      <button class="save-btn hidden" id="cpdDownloadBtn" onclick="downloadCpdCertificate()">Download certificate</button>
+    </div>
+
     <div class="card">
       <h2>Change email</h2>
       <div class="card-sub">Moving on from a university address, or just prefer a different one? Change it here and everything on RMD's platform moves with it — your login, your MOU, your responses, all of it. Nothing gets left behind on the old address.</div>
@@ -211,6 +217,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
   initFirebase();
@@ -223,6 +230,7 @@
   // shows resolveAxisAStanding() instead (see firebase-config.js for what
   // it can and can't resolve yet, and why).
   let currentUid = null;
+  function todayIso() { return new Date().toISOString().slice(0, 10); }
 
   auth.onAuthStateChanged(async function (user) {
     if (!user) {
@@ -243,6 +251,7 @@
       document.getElementById("passportFirstName").value  = data.passportFirstName  || "";
       document.getElementById("passportMiddleName").value = data.passportMiddleName || "";
       document.getElementById("passportLastName").value   = data.passportLastName   || "";
+      renderCpdCertificateStatus(data, user);
     } catch (err) {
       showStatus("Couldn't load your saved details — you can still enter them and save.", "err");
     }
@@ -255,6 +264,156 @@
     const el = document.getElementById("statusMsg");
     el.textContent = msg;
     el.className = "status-msg " + kind;
+  }
+
+  // ── CPD Certificate ─────────────────────────────────────────────────────
+  // Gated on two independent things: config/cpd_certificate (director-set,
+  // {year, open} — read-only to any signed-in member, write is superuser
+  // only per firestore.rules' existing config/{docId} wildcard rule, no
+  // rules change needed) and this person's own roleHistory (Section 0.3)
+  // actually covering that academic year. Jon's explicit call 2026-09-26:
+  // no separate per-person "disable" override — if someone left or didn't
+  // do the job, their account gets deleted outright, which already removes
+  // them from this check (no account = no roleHistory to read = not
+  // eligible), so there's nothing extra to build for that case.
+  //
+  // "Academic year" is stored as "YYYY/YY" (matches SFR_NEXT_ACADEMIC_YEAR's
+  // existing format) and read as 1 Aug (YYYY) – 31 Jul (YYYY+1). A role
+  // period counts as covering that year if it overlaps at all — an open
+  // period (to: null) is treated as running to today; a backfilled period
+  // with from: "unknown" is treated as starting before any possible year,
+  // since we genuinely don't know when it started and shouldn't guess it
+  // started after the year in question.
+  function academicYearBounds(yearStr) {
+    const startYear = parseInt(String(yearStr).split("/")[0], 10);
+    if (!startYear) return null;
+    return { start: `${startYear}-08-01`, end: `${startYear + 1}-07-31` };
+  }
+
+  function periodOverlapsYear(entry, bounds) {
+    const from = (entry.from && entry.from !== "unknown") ? entry.from : "0000-01-01";
+    const to = entry.to || todayIso();
+    return from <= bounds.end && to >= bounds.start;
+  }
+
+  function certificateDisplayName(data) {
+    const first = (data.preferredName || data.passportFirstName || "").trim();
+    const last  = (data.passportLastName || "").trim();
+    const full  = [first, last].filter(Boolean).join(" ");
+    return full || "RMD Member";
+  }
+
+  let cpdCertData = null; // set by renderCpdCertificateStatus when eligible+open
+
+  async function renderCpdCertificateStatus(personData, user) {
+    const subEl = document.getElementById("cpdSub");
+    const btnEl = document.getElementById("cpdDownloadBtn");
+    btnEl.classList.add("hidden");
+
+    let config;
+    try {
+      const snap = await db.collection("config").doc("cpd_certificate").get();
+      config = snap.exists ? snap.data() : null;
+    } catch (err) {
+      subEl.textContent = "Couldn't check certificate availability right now — try reloading this page.";
+      return;
+    }
+
+    if (!config || !config.open || !config.year) {
+      subEl.textContent = "Not open yet — the Course Director makes this available once each year's roles are confirmed.";
+      return;
+    }
+
+    const bounds = academicYearBounds(config.year);
+    const roleHistory = Array.isArray(personData.roleHistory) ? personData.roleHistory : [];
+    const coveringRoles = roleHistory.filter(e => e && e.role && periodOverlapsYear(e, bounds));
+
+    if (!coveringRoles.length) {
+      subEl.textContent = `No delivering role recorded for the ${config.year} academic year, so there's nothing to certify. If this looks wrong, contact the Course Director.`;
+      return;
+    }
+
+    const roleList = [...new Set(coveringRoles.map(e => e.role))].join(", ");
+    cpdCertData = { name: certificateDisplayName(personData), year: config.year, roles: roleList };
+    subEl.textContent = `Your ${config.year} CPD certificate is ready.`;
+    btnEl.classList.remove("hidden");
+  }
+
+  function downloadCpdCertificate() {
+    if (!cpdCertData) return;
+    const btn = document.getElementById("cpdDownloadBtn");
+    btn.disabled = true;
+    btn.textContent = "Preparing…";
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const cx = pageW / 2;
+
+      doc.setFillColor(20, 42, 74);
+      doc.rect(0, 0, pageW, 6, "F");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(22);
+      doc.setTextColor(20, 42, 74);
+      doc.text("RMD Birmingham", cx, 32, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      doc.setTextColor(100, 108, 118);
+      doc.text("Resuscitation · Mentorship · Development — University of Birmingham", cx, 40, { align: "center" });
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(17);
+      doc.setTextColor(20, 42, 74);
+      doc.text("Certificate of Continuing Professional Development", cx, 62, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(70, 78, 88);
+      doc.text("This is to certify that", cx, 78, { align: "center" });
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(21);
+      doc.setTextColor(20, 42, 74);
+      doc.text(cpdCertData.name, cx, 93, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(12);
+      doc.setTextColor(70, 78, 88);
+      doc.text([
+        "contributed to the delivery of RMD Birmingham's peer-led Basic Life Support training programme",
+        `during the ${cpdCertData.year} academic year, in the role of ${cpdCertData.roles}.`
+      ], cx, 108, { align: "center" });
+
+      doc.setFontSize(10);
+      doc.text([
+        "RMD is cited by the General Medical Council as an innovative teaching method and is one of the",
+        "largest peer-led life support courses in Europe."
+      ], cx, 128, { align: "center" });
+
+      doc.setFontSize(10);
+      doc.setTextColor(100, 108, 118);
+      doc.text(`Issued: ${todayIso()}`, cx, 152, { align: "center" });
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(20, 42, 74);
+      doc.text("Professor Jon Hulme", cx, 167, { align: "center" });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 108, 118);
+      doc.text("Course Director, RMD Birmingham — University of Birmingham", cx, 173, { align: "center" });
+
+      doc.save(`RMD-CPD-Certificate-${cpdCertData.year.replace("/", "-")}.pdf`);
+    } catch (err) {
+      alert("Something went wrong generating the certificate — please try again, or let the Course Director know if it keeps failing.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Download certificate";
+    }
   }
 
   // Writes only the four fields firestore.rules allows a member to touch on
