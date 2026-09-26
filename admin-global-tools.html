@@ -64,6 +64,14 @@
     .action-card-title { font-size: 15px; font-weight: 800; color: var(--rmd-navy); }
     .action-card-sub   { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
     .action-card-arrow { font-size: 20px; color: var(--rmd-muted); }
+
+    .card { background:white; border-radius:10px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:10px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin-top:8px; line-height:1.5; }
+    .btn-primary { padding:12px 20px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:disabled { background:#aab8c2; cursor:default; }
+    .btn-primary:hover:not(:disabled) { background:var(--rmd-navy); }
   </style>
 </head>
 <body>
@@ -135,7 +143,7 @@
     <div class="action-card-icon">🕰️</div>
     <div class="action-card-text">
       <div class="action-card-title">Role History</div>
-      <div class="action-card-sub">Dated role periods per person, feeding the eligibility shortlist and CPD certificate once those exist</div>
+      <div class="action-card-sub">Dated role periods per person, feeding the eligibility shortlist and CPD certificate eligibility</div>
     </div>
     <div class="action-card-arrow">›</div>
   </a>
@@ -178,6 +186,23 @@
     <div class="action-card-arrow">›</div>
   </a>
 
+  <div class="section-label">Certificates</div>
+
+  <div class="card">
+    <div class="card-header">CPD Certificate — master on/off</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">This is the one place the "Download your CPD certificate" link on everyone's My Account page is switched on or off. Set the academic year it's for, then tick Open once you're confident <a href="admin-role-history.html">Role History</a> is accurate for everyone who delivered that year — closing it again hides the download for everyone until you reopen it. There's no per-person override: if someone left or didn't do the job, delete their account instead, which already removes them from eligibility.</p>
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--rmd-navy);margin-bottom:4px;">Academic year</label>
+      <input type="text" id="cpdYearInput" placeholder="e.g. 2026/27" style="max-width:160px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0;">
+        <input type="checkbox" id="cpdOpenCheckbox" style="width:auto;">
+        Open — this year's certificates are downloadable now
+      </label>
+      <button class="btn-primary" onclick="saveCpdSettings()">Save</button>
+      <div class="hint" id="cpdAdminStatus" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
   <div class="section-label">Annual faculty processes</div>
 
   <a class="action-card" href="admin-senior-faculty-review.html">
@@ -218,6 +243,37 @@
 <script>
 initFirebase();
 requireDirector("member-menu.html");
+
+async function loadCpdSettings() {
+  try {
+    const snap = await db.collection("config").doc("cpd_certificate").get();
+    const d = snap.exists ? snap.data() : {};
+    document.getElementById("cpdYearInput").value = d.year || "";
+    document.getElementById("cpdOpenCheckbox").checked = !!d.open;
+  } catch (err) {
+    document.getElementById("cpdAdminStatus").textContent = "Couldn't load the current setting — reload and try again.";
+  }
+}
+
+async function saveCpdSettings() {
+  const year = (document.getElementById("cpdYearInput").value || "").trim();
+  const open = document.getElementById("cpdOpenCheckbox").checked;
+  const statusEl = document.getElementById("cpdAdminStatus");
+  if (!/^\d{4}\/\d{2}$/.test(year)) {
+    statusEl.textContent = 'Enter the year as "YYYY/YY", e.g. 2026/27.';
+    return;
+  }
+  try {
+    await db.collection("config").doc("cpd_certificate").set({ year, open });
+    statusEl.textContent = open
+      ? `Saved — ${year} certificates are downloadable now.`
+      : `Saved — ${year} certificates are hidden until you reopen this.`;
+  } catch (err) {
+    statusEl.textContent = "Couldn't save that — this needs super-user access, not just director, check with whoever set up your account if this keeps failing.";
+  }
+}
+
+loadCpdSettings();
 </script>
 </body>
 </html>

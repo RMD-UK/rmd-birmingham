@@ -60,22 +60,8 @@
 
   <div class="director-note">
     Every promotion, stand-down, or renewal gets recorded as a dated period against the person's own record, instead of just overwriting a single "current role" field. This is Section 0.3 of the platform workplan — the eligibility shortlist, CPD certificate and annual review are all meant to read from this once they're built, so this page exists to make the data real and checkable before those depend on it.<br><br>
-    Adding a role period never deletes or edits an earlier one — it closes whatever period was open and starts a new one. Nothing here is automatic yet: there's no annual review screen calling this, so use the actions below directly when a role actually changes.
-  </div>
-
-  <div class="card">
-    <div class="card-header">CPD Certificate</div>
-    <div class="card-body">
-      <p class="hint" style="margin-top:0;">Controls the "Download your CPD certificate" button on everyone's My Account page. Set the academic year it's for, then tick Open once you're confident role history is accurate for everyone who delivered that year — closing it again hides the download for everyone until you reopen it. There's no per-person override: if someone left or didn't do the job, delete their account instead, which already removes them from eligibility.</p>
-      <label style="display:block;font-size:12px;font-weight:700;color:var(--rmd-navy);margin-bottom:4px;">Academic year</label>
-      <input type="text" id="cpdYearInput" placeholder="e.g. 2026/27" style="max-width:160px;">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0;">
-        <input type="checkbox" id="cpdOpenCheckbox" style="width:auto;">
-        Open — this year's certificates are downloadable now
-      </label>
-      <button class="btn-primary" onclick="saveCpdSettings()">Save</button>
-      <div class="hint" id="cpdAdminStatus" style="margin-top:10px;"></div>
-    </div>
+    Adding a role period never deletes or edits an earlier one — it closes whatever period was open and starts a new one. Nothing here is automatic yet: there's no annual review screen calling this, so use the actions below directly when a role actually changes.<br><br>
+    The CPD certificate's year + open/closed master switch has moved to <a href="admin-global-tools.html">Global Admin Tools</a> — this page only feeds the role-history data it reads from.
   </div>
 
   <div class="card">
@@ -114,35 +100,6 @@ const SUGGESTED_ROLES = ["Instructor", "Assessor", "Senior Instructor", "Student
 let allPeople = [];
 
 function todayIso() { return new Date().toISOString().slice(0, 10); }
-
-async function loadCpdSettings() {
-  try {
-    const snap = await db.collection("config").doc("cpd_certificate").get();
-    const d = snap.exists ? snap.data() : {};
-    document.getElementById("cpdYearInput").value = d.year || "";
-    document.getElementById("cpdOpenCheckbox").checked = !!d.open;
-  } catch (err) {
-    document.getElementById("cpdAdminStatus").textContent = "Couldn't load the current setting — reload and try again.";
-  }
-}
-
-async function saveCpdSettings() {
-  const year = (document.getElementById("cpdYearInput").value || "").trim();
-  const open = document.getElementById("cpdOpenCheckbox").checked;
-  const statusEl = document.getElementById("cpdAdminStatus");
-  if (!/^\d{4}\/\d{2}$/.test(year)) {
-    statusEl.textContent = 'Enter the year as "YYYY/YY", e.g. 2026/27.';
-    return;
-  }
-  try {
-    await db.collection("config").doc("cpd_certificate").set({ year, open });
-    statusEl.textContent = open
-      ? `Saved — ${year} certificates are downloadable now.`
-      : `Saved — ${year} certificates are hidden until you reopen this.`;
-  } catch (err) {
-    statusEl.textContent = "Couldn't save that — this needs super-user access, not just director, check with whoever set up your account if this keeps failing.";
-  }
-}
 
 async function loadPeople() {
   const snap = await db.collection(COLLECTIONS.people).get();
@@ -299,7 +256,6 @@ async function confirmBackfill() {
 }
 
 loadPeople();
-loadCpdSettings();
 
 </script>
 </body>

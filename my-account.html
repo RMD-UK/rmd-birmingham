@@ -339,7 +339,23 @@
     btnEl.classList.remove("hidden");
   }
 
-  function downloadCpdCertificate() {
+  // Fetches an image asset and returns it as a data URL jsPDF's addImage()
+  // can use directly. Same-origin, so no CORS issue in production; either
+  // image failing to load just means that one graphic is skipped below —
+  // the certificate still generates with text alone.
+  async function loadImageDataUrl(url) {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("fetch failed: " + url);
+    const blob = await resp.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function downloadCpdCertificate() {
     if (!cpdCertData) return;
     const btn = document.getElementById("cpdDownloadBtn");
     btn.disabled = true;
@@ -349,35 +365,55 @@
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
       const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
       const cx = pageW / 2;
 
       doc.setFillColor(20, 42, 74);
       doc.rect(0, 0, pageW, 6, "F");
 
+      // RMD logo — a large, zoomed-in, faded copy centered behind everything
+      // as a watermark, then the same image again small and at full opacity
+      // in its normal spot above the title. Oversizing it past the page edges
+      // is deliberate: it crops off the ring of text around the emblem so the
+      // watermark reads as a mark, not a smaller repeat of the header logo.
+      try {
+        const logoDataUrl = await loadImageDataUrl("assets/rmd-logo-transparent.png");
+
+        const wmSize = 360;
+        const wmCx = cx + 25;
+        const wmCy = pageH / 2 - 12;
+        doc.saveGraphicsState();
+        doc.setGState(new doc.GState({ opacity: 0.06 }));
+        doc.addImage(logoDataUrl, "PNG", wmCx - wmSize / 2, wmCy - wmSize / 2, wmSize, wmSize);
+        doc.restoreGraphicsState();
+
+        doc.addImage(logoDataUrl, "PNG", 14, 10, 32, 32);
+      } catch (err) { /* no logo — carry on with the text-only layout */ }
+
       doc.setFont("helvetica", "bold");
       doc.setFontSize(22);
       doc.setTextColor(20, 42, 74);
-      doc.text("RMD Birmingham", cx, 32, { align: "center" });
+      doc.text("RMD Birmingham", cx, 42, { align: "center" });
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(11);
       doc.setTextColor(100, 108, 118);
-      doc.text("Resuscitation · Mentorship · Development — University of Birmingham", cx, 40, { align: "center" });
+      doc.text("Resuscitation · Mentorship · Development — University of Birmingham", cx, 50, { align: "center" });
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(17);
       doc.setTextColor(20, 42, 74);
-      doc.text("Certificate of Continuing Professional Development", cx, 62, { align: "center" });
+      doc.text("Certificate of Continuing Professional Development", cx, 72, { align: "center" });
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(12);
       doc.setTextColor(70, 78, 88);
-      doc.text("This is to certify that", cx, 78, { align: "center" });
+      doc.text("This is to certify that", cx, 88, { align: "center" });
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(21);
       doc.setTextColor(20, 42, 74);
-      doc.text(cpdCertData.name, cx, 93, { align: "center" });
+      doc.text(cpdCertData.name, cx, 103, { align: "center" });
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(12);
@@ -385,27 +421,34 @@
       doc.text([
         "contributed to the delivery of RMD Birmingham's peer-led Basic Life Support training programme",
         `during the ${cpdCertData.year} academic year, in the role of ${cpdCertData.roles}.`
-      ], cx, 108, { align: "center" });
+      ], cx, 118, { align: "center" });
 
       doc.setFontSize(10);
       doc.text([
         "RMD is cited by the General Medical Council as an innovative teaching method and is one of the",
         "largest peer-led life support courses in Europe."
-      ], cx, 128, { align: "center" });
+      ], cx, 138, { align: "center" });
 
-      doc.setFontSize(10);
-      doc.setTextColor(100, 108, 118);
-      doc.text(`Issued: ${todayIso()}`, cx, 152, { align: "center" });
+      // Signature, centered just above the printed name.
+      try {
+        const sigDataUrl = await loadImageDataUrl("assets/jon-signature.png");
+        doc.addImage(sigDataUrl, "PNG", cx - 18.6, 158, 37.2, 12);
+      } catch (err) { /* no signature image — the printed name below still stands */ }
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
       doc.setTextColor(20, 42, 74);
-      doc.text("Professor Jon Hulme", cx, 167, { align: "center" });
+      doc.text("Professor Jon Hulme", cx, 178, { align: "center" });
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(100, 108, 118);
-      doc.text("Course Director, RMD Birmingham — University of Birmingham", cx, 173, { align: "center" });
+      doc.text("Course Director, RMD Birmingham — University of Birmingham", cx, 184, { align: "center" });
+
+      // Issued date — footer, bottom-left, out of the way of the main block.
+      doc.setFontSize(9);
+      doc.setTextColor(100, 108, 118);
+      doc.text(`Issued: ${todayIso()}`, 14, pageH - 10, { align: "left" });
 
       doc.save(`RMD-CPD-Certificate-${cpdCertData.year.replace("/", "-")}.pdf`);
     } catch (err) {
