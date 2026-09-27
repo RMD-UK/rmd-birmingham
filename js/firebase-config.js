@@ -10,7 +10,7 @@
  */
 
 const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyBlYZDtVNwB4qnzNTOkYN3soCaKTCF0v_k",
+  apiKey:            "AIzaSyCalJWDweXvMdoTTJtTFTatfhNSuox1DE0", // RMD - web-config-2026-09-27 (previous key started returning "API key expired" 2026-09-27, ~6 days after creation, cause not established)
   authDomain:        "rmd-instructor-weekend.firebaseapp.com",
   projectId:         "rmd-instructor-weekend",
   storageBucket:     "rmd-instructor-weekend.firebasestorage.app",
