@@ -555,10 +555,21 @@ exports.sendDirectResetLink = onCall({ secrets: [resendApiKey], region: "us-cent
     throw new HttpsError("not-found", `No Auth account for ${email}.`);
   }
 
-  const link = await admin.auth().generatePasswordResetLink(email, {
-    url: "https://rmd.uk.com/index.html",
-    handleCodeInApp: false
+  // Was admin.auth().generatePasswordResetLink() -- confirmed 2026-09-27 to
+  // embed the same stuck, deleted default Web API Key as the client-side
+  // sendOobCode flow (re-tested against this exact function against
+  // Sharon Jones's account and got the identical dead key). Mint our own
+  // single-use token instead -- same mechanism requestSelfServiceResetLink
+  // uses below, verified/confirmed via reset-password.html.
+  const token = crypto.randomBytes(32).toString("hex");
+  await db.collection("password_reset_tokens").doc(token).set({
+    uid: userRecord.uid,
+    email,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAtMs: Date.now() + 60 * 60 * 1000,
+    used: false
   });
+  const link = `https://rmd.uk.com/reset-password.html?token=${token}`;
 
   // Name for the greeting -- same people/mou_roster lookup
   // sendAccountCreationReminders uses.
@@ -612,6 +623,141 @@ Jon`
   });
 
   return { email, uid: userRecord.uid, link, emailSent, emailError };
+});
+
+/**
+ * requestSelfServiceResetLink -- public, no sign-in required.
+ *
+ * Replaces the old client-side call to Firebase's own accounts:sendOobCode
+ * REST endpoint (see requestPasswordReset() in js/firebase-config.js, used
+ * by signin.html's "Forgot password?"). That endpoint's generated email
+ * links are baked with this project's "default" Web API Key -- a value
+ * stored on Firebase's own Identity Platform config, NOT the
+ * FIREBASE_CONFIG.apiKey this codebase actually rotates -- and it has been
+ * stuck pointing at a key deleted on 2026-09-21, with no edit control
+ * exposed anywhere in Firebase Console (confirmed 2026-09-27: Project
+ * Settings -> General "Web API Key" field has no edit affordance, and
+ * Authentication -> Templates -> Password reset -> Customize action URL
+ * fails to save with a generic error, across browsers, private and
+ * non-private). admin.auth().generatePasswordResetLink() -- used by
+ * sendDirectResetLink above -- hits the exact same wall: confirmed
+ * 2026-09-27 by re-sending Sharon Jones a direct link and finding the
+ * identical dead key embedded in it.
+ *
+ * This function sidesteps Firebase's reset-link system entirely: mints
+ * its own random single-use token, stores it in
+ * password_reset_tokens/{token} with a 1-hour expiry, and emails a link
+ * to reset-password.html?token=... via the same Resend pipeline as every
+ * other platform email. reset-password.html verifies/confirms via
+ * verifySelfServiceResetToken / confirmSelfServiceResetToken below --
+ * none of this touches Firebase's own oobCode mechanism at all.
+ *
+ * Deliberately does not reveal whether an email has an account -- always
+ * returns { ok: true }, same as the old sendOobCode-based flow's
+ * behaviour (silently succeeds on EMAIL_NOT_FOUND).
+ */
+const crypto = require("crypto");
+const RESET_TOKENS_COLLECTION = "password_reset_tokens";
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour, matches Firebase's own oobCode lifetime
+
+exports.requestSelfServiceResetLink = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const email = (request.data?.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) {
+    throw new HttpsError("invalid-argument", "Valid email required.");
+  }
+
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(email);
+  } catch (e) {
+    // No account for this email -- succeed silently, don't reveal that.
+    return { ok: true };
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const now = Date.now();
+  await db.collection(RESET_TOKENS_COLLECTION).doc(token).set({
+    uid: userRecord.uid,
+    email,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    expiresAtMs: now + RESET_TOKEN_TTL_MS,
+    used: false
+  });
+
+  const link = `https://rmd.uk.com/reset-password.html?token=${token}`;
+
+  try {
+    const resend = new Resend(resendApiKey.value());
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      replyTo: REPLY_TO,
+      subject: "RMD Birmingham -- reset your password",
+      text:
+`Hi,
+
+You (or someone) asked to reset the password on this RMD Birmingham account. Use this link to set a new one:
+
+${link}
+
+This link is single-use and expires about an hour after it's sent. If it's stopped working by the time you click it, go back to rmd.uk.com/signin.html, click "Forgot password?" again, and a new link will land in your inbox straight away. You can do this as many times as you need.
+
+If you didn't ask for this, you can safely ignore this email.
+
+Thanks,
+RMD Birmingham`
+    });
+    if (error) console.error(`requestSelfServiceResetLink: Resend send failed for ${email}`, error.message || error);
+  } catch (err) {
+    console.error(`requestSelfServiceResetLink: Resend send failed for ${email}`, err.message);
+  }
+
+  return { ok: true };
+});
+
+/**
+ * verifySelfServiceResetToken -- public. Looks up a
+ * password_reset_tokens/{token} doc and returns the associated email if
+ * it's valid, unused and unexpired -- without changing anything. Lets
+ * reset-password.html show "resetting password for X" before asking for
+ * a new password, and catch a dead link early with a clear message.
+ */
+exports.verifySelfServiceResetToken = onCall({ region: "us-central1" }, async (request) => {
+  const token = (request.data?.token || "").trim();
+  if (!token) throw new HttpsError("invalid-argument", "Token required.");
+
+  const snap = await db.collection(RESET_TOKENS_COLLECTION).doc(token).get();
+  if (!snap.exists) throw new HttpsError("not-found", "INVALID_TOKEN");
+  const data = snap.data();
+  if (data.used) throw new HttpsError("failed-precondition", "TOKEN_ALREADY_USED");
+  if (Date.now() > data.expiresAtMs) throw new HttpsError("deadline-exceeded", "TOKEN_EXPIRED");
+
+  return { email: data.email };
+});
+
+/**
+ * confirmSelfServiceResetToken -- public. Validates a
+ * password_reset_tokens/{token} doc the same way verifySelfServiceResetToken
+ * does, then actually sets the new password via the Admin SDK and marks
+ * the token used (single-use, same as Firebase's own oobCode).
+ */
+exports.confirmSelfServiceResetToken = onCall({ region: "us-central1" }, async (request) => {
+  const token       = (request.data?.token || "").trim();
+  const newPassword = request.data?.newPassword || "";
+  if (!token) throw new HttpsError("invalid-argument", "Token required.");
+  if (newPassword.length < 6) throw new HttpsError("invalid-argument", "Password must be at least 6 characters.");
+
+  const ref  = db.collection(RESET_TOKENS_COLLECTION).doc(token);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "INVALID_TOKEN");
+  const data = snap.data();
+  if (data.used) throw new HttpsError("failed-precondition", "TOKEN_ALREADY_USED");
+  if (Date.now() > data.expiresAtMs) throw new HttpsError("deadline-exceeded", "TOKEN_EXPIRED");
+
+  await admin.auth().updateUser(data.uid, { password: newPassword });
+  await ref.update({ used: true, usedAt: admin.firestore.FieldValue.serverTimestamp() });
+
+  return { ok: true, email: data.email };
 });
 
 /**
