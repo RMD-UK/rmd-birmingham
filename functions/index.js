@@ -588,7 +588,7 @@ You're getting this because you asked for (or we sent you) a fresh sign-in link 
 
 ${link}
 
-This link is single-use and expires about an hour after it's sent. If it's stopped working by the time you click it - you'll see an error saying the link is invalid or expired - just reply to this email and I'll send you a new one straight away.
+This link is single-use and expires about an hour after it's sent. If it's stopped working by the time you click it, you don't need to wait for me: go to rmd.uk.com/signin.html, click "Forgot password?", enter your email, and a new link will land in your inbox straight away. You can do this as many times as you need.
 
 Thanks,
 Jon`
