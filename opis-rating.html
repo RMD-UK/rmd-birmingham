@@ -25,6 +25,9 @@
     .no-course { padding:60px 20px; text-align:center; color:#8893b0; font-size:15px; }
 
     .section-caption { font-size:12px; font-weight:700; color:#8893b0; text-transform:uppercase; letter-spacing:.5px; margin:4px 0 8px; }
+    .search-row { margin-bottom:18px; }
+    .search-row input { width:100%; max-width:360px; padding:10px 12px; border:1.5px solid #d0d5e0; border-radius:7px; font-size:14px; font-family: var(--font); }
+    .search-row input:focus { outline:none; border-color:var(--rmd-blue); }
 
     .room-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
     .room-chip { background:#fff; border:1.5px solid #dde2ed; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
@@ -107,8 +110,18 @@
 <div class="wrap">
   <div id="noCourse" class="no-course">Choose a course above, then your teaching room, to see the candidates you can rate.</div>
 
+  <div id="searchWrap" style="display:none;">
+    <div class="section-caption">Search for a candidate by name</div>
+    <div class="search-row">
+      <input type="text" id="candidateSearch" placeholder="Start typing a name…" oninput="handleSearch(this.value)">
+    </div>
+    <div id="searchResultsWrap" style="display:none;margin-bottom:8px;">
+      <div class="roster-grid" id="searchResultsGrid"></div>
+    </div>
+  </div>
+
   <div id="roomPickerWrap" style="display:none;">
-    <div class="section-caption">Your teaching room</div>
+    <div class="section-caption">Or pick your teaching room</div>
     <div class="room-row" id="roomRow"></div>
   </div>
 
@@ -302,9 +315,12 @@ function selectCourse(course) {
   selectedRoom = null;
   selectedCandidateId = null;
   document.getElementById("noCourse").style.display = course ? "none" : "";
+  document.getElementById("searchWrap").style.display = course ? "" : "none";
   document.getElementById("roomPickerWrap").style.display = course ? "" : "none";
   document.getElementById("rosterWrap").style.display = "none";
   document.getElementById("detail").style.display = "none";
+  document.getElementById("candidateSearch").value = "";
+  document.getElementById("searchResultsWrap").style.display = "none";
   if (!course) return;
 
   const candidates = candidatesForCourse(course);
@@ -331,6 +347,46 @@ function selectRoom(room) {
   });
   renderRoster();
   document.getElementById("rosterWrap").style.display = "";
+}
+
+function handleSearch(query) {
+  const q = (query || "").trim().toLowerCase();
+  const wrap = document.getElementById("searchResultsWrap");
+  const grid = document.getElementById("searchResultsGrid");
+  if (!selectedCourse || q.length < 2) {
+    wrap.style.display = "none";
+    grid.innerHTML = "";
+    return;
+  }
+  const matches = candidatesForCourse(selectedCourse).filter(c => c.name.toLowerCase().includes(q));
+  wrap.style.display = "";
+  grid.innerHTML = matches.length ? matches.map(c => `
+    <button type="button" class="cand-card ${c.id === selectedCandidateId ? "active" : ""}" onclick="selectCandidateFromSearch('${esc(c.id)}')">
+      <div class="cand-head">
+        <div class="cand-name">${esc(c.name)}</div>
+        <div class="cand-meta">${esc(c.degree || "—")} · Room ${esc(c.room || "not yet assigned")}</div>
+      </div>
+      <div class="cand-foot">
+        <span class="pill ${scoredThisSession.has(c.id) ? "scored" : "pending"}">${scoredThisSession.has(c.id) ? "Scored just now" : "Not yet rated (this session)"}</span>
+      </div>
+    </button>
+  `).join("") : `<div class="no-course">No candidates on this course match "${esc(query)}".</div>`;
+}
+
+function selectCandidateFromSearch(candidateId) {
+  const candidate = candidatesForCourse(selectedCourse).find(c => c.id === candidateId);
+  if (!candidate) return;
+  selectedRoom = candidate.room || null;
+  document.querySelectorAll(".room-chip").forEach(el => {
+    el.classList.toggle("active", el.getAttribute("data-room") === selectedRoom);
+  });
+  if (selectedRoom) {
+    document.getElementById("rosterWrap").style.display = "";
+    renderRoster();
+  } else {
+    document.getElementById("rosterWrap").style.display = "none";
+  }
+  selectCandidate(candidateId);
 }
 
 function renderRoster() {
@@ -392,7 +448,7 @@ function renderDetail() {
   detail.innerHTML = `
     <div class="detail-head">
       <h3>${esc(candidate.name)}</h3>
-      <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom)} · ${esc(selectedCourse)}</div>
+      <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom || "not yet assigned")} · ${esc(selectedCourse)}</div>
     </div>
     <div class="criteria">${criteriaHtml}</div>
     <label class="credibility-row">
