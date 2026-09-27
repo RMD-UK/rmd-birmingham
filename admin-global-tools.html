@@ -203,6 +203,21 @@
     </div>
   </div>
 
+  <div class="section-label">Instructor pathway</div>
+
+  <div class="card">
+    <div class="card-header">Instructor Expression of Interest — master on/off</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">This is the one place the <a href="instructor-eoi.html">Instructor Expression of Interest</a> form is switched on or off for everyone — closing it shows visitors a "not accepting right now" message instead of the form, and stops new submissions being written even if someone bypasses that message. There's no per-person override.</p>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:12px 0;">
+        <input type="checkbox" id="eoiOpenCheckbox" style="width:auto;">
+        Open — accepting expressions of interest now
+      </label>
+      <button class="btn-primary" onclick="saveEoiSettings()">Save</button>
+      <div class="hint" id="eoiAdminStatus" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
   <div class="section-label">Annual faculty processes</div>
 
   <a class="action-card" href="admin-senior-faculty-review.html">
@@ -273,7 +288,31 @@ async function saveCpdSettings() {
   }
 }
 
+async function loadEoiSettings() {
+  try {
+    const snap = await db.collection("config").doc("instructor_eoi").get();
+    const d = snap.exists ? snap.data() : {};
+    document.getElementById("eoiOpenCheckbox").checked = d.open !== false;
+  } catch (err) {
+    document.getElementById("eoiAdminStatus").textContent = "Couldn't load the current setting — reload and try again.";
+  }
+}
+
+async function saveEoiSettings() {
+  const open = document.getElementById("eoiOpenCheckbox").checked;
+  const statusEl = document.getElementById("eoiAdminStatus");
+  try {
+    await db.collection("config").doc("instructor_eoi").set({ open: open }, { merge: true });
+    statusEl.textContent = open
+      ? "Saved — the Instructor Expression of Interest form is accepting submissions now."
+      : "Saved — the Instructor Expression of Interest form is showing a closed message until you reopen this.";
+  } catch (err) {
+    statusEl.textContent = "Couldn't save that — this needs super-user access, not just director, check with whoever set up your account if this keeps failing.";
+  }
+}
+
 loadCpdSettings();
+loadEoiSettings();
 </script>
 </body>
 </html>
