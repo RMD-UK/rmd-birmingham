@@ -657,6 +657,38 @@ service cloud.firestore {
       allow write: if isDirector();
     }
 
+    // ── OPIS candidate ratings (2026-09-27) ─────────────────────────────────
+    // One doc PER SUBMISSION (auto id) from a Stage 1 evening-course
+    // instructor rating a candidate against the 5 OPIS criteria — see
+    // opis-rating.html. Deliberately NOT keyed by candidateId: several
+    // instructors (or the same one more than once) can each submit their own
+    // rating for the same candidate, per Jon 2026-09-27.
+    // create: same population that can already see the evening-course roster
+    //   (director / RMD Student Faculty / RMD Senior Faculty) — this is who
+    //   actually teaches in the rooms. submittedByUid must match the caller
+    //   (stops one person's submission being attributed to someone else),
+    //   credibilityConfirmed must be true (the "spent enough time with this
+    //   person" checkbox on the form), and every OPIS score must be 1-3.
+    // read: director + RMD Senior Faculty only — this is the review-tool
+    //   audience deciding instructor potential, not the raters themselves.
+    // update: none — a submission is immutable once made.
+    // delete: director only (corrections/cleanup).
+    match /opis_ratings/{docId} {
+      allow read: if isDirector() || isSeniorFaculty();
+      allow create: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.submittedByUid == request.auth.uid
+        && request.resource.data.credibilityConfirmed == true
+        && request.resource.data.candidateId is string
+        && request.resource.data.candidateId.size() > 0
+        && request.resource.data.scores.communication in [1, 2, 3]
+        && request.resource.data.scores.attitudeEngagement in [1, 2, 3]
+        && request.resource.data.scores.takingFeedback in [1, 2, 3]
+        && request.resource.data.scores.givingFeedback in [1, 2, 3]
+        && request.resource.data.scores.punctuality in [1, 2, 3];
+      allow update: if false;
+      allow delete: if isDirector();
+    }
+
     // ── IW registrations ────────────────────────────────────────────────────
     // Director only — director-managed attendee list for Instructor Weekend
     match /iw_registrations/{docId} {

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPIS Candidate Rating — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 60px; }
+
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:100; box-shadow:0 2px 6px rgba(0,0,0,.3); flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar-sub { font-size:11px; font-weight:400; opacity:.65; display:block; }
+    .top-bar-back { color:rgba(255,255,255,.6); text-decoration:none; font-size:12px; }
+    .top-bar-back:hover { color:#fff; }
+
+    .picker-bar { background:#fff; border-bottom:2px solid #e0e4ee; padding:12px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .picker-bar label { font-size:13px; font-weight:700; color:var(--rmd-navy); }
+    .picker-bar select { padding:8px 12px; border:1.5px solid #d0d5e0; border-radius:7px; font-size:14px; font-family: var(--font); min-width:240px; }
+
+    .wrap { max-width: 900px; margin:0 auto; padding: 14px; }
+
+    .no-course { padding:60px 20px; text-align:center; color:#8893b0; font-size:15px; }
+
+    .section-caption { font-size:12px; font-weight:700; color:#8893b0; text-transform:uppercase; letter-spacing:.5px; margin:4px 0 8px; }
+
+    .room-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+    .room-chip { background:#fff; border:1.5px solid #dde2ed; border-radius:8px; padding:8px 14px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
+    .room-chip .n { font-weight:400; color:#8893b0; margin-left:4px; }
+    .room-chip.active { background:var(--rmd-navy); color:#fff; border-color:var(--rmd-navy); }
+    .room-chip.active .n { color:rgba(255,255,255,.7); }
+
+    .roster-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; margin-bottom:20px; }
+    .cand-card { background:#fff; border:1.5px solid #dde2ed; border-radius:10px; padding:0; cursor:pointer; text-align:left; font:inherit; overflow:hidden; }
+    .cand-card.active { border-color: var(--rmd-blue); box-shadow:0 0 0 2px var(--rmd-blue); }
+    .cand-head { padding:10px 12px; }
+    .cand-name { font-weight:700; color:var(--rmd-navy); font-size:14px; }
+    .cand-meta { font-size:11.5px; color:#8893b0; margin-top:2px; }
+    .cand-foot { padding:8px 12px; border-top:1px solid #eef1f8; display:flex; justify-content:space-between; align-items:center; }
+    .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; }
+    .pill.scored { background:#e6f4ea; color:#1a6e31; }
+    .pill.pending { background:#eef1f8; color:#8893b0; }
+
+    section.detail { background:#fff; border:1px solid #dde2ed; border-radius:12px; overflow:hidden; margin-top:8px; }
+    .detail-head { background:var(--rmd-navy); color:#fff; padding:16px 18px; }
+    .detail-head h3 { margin:0 0 3px; font-size:17px; }
+    .detail-head .sub { font-size:12.5px; color:rgba(255,255,255,.75); }
+
+    .criteria { padding:16px 18px 4px; }
+    .criterion { padding:14px 0; border-bottom:1px solid #eef1f8; display:grid; grid-template-columns:160px 1fr; gap:16px; }
+    .criterion:last-child { border-bottom:none; }
+    .crit-label { font-weight:700; font-size:13.5px; color:var(--rmd-navy); padding-top:4px; }
+    .crit-scale { display:flex; flex-direction:column; gap:7px; }
+    .scale-row { display:grid; grid-template-columns:108px 1fr; gap:10px; align-items:flex-start; border-radius:8px; padding:8px 10px; background:transparent; border:1px solid transparent; font:inherit; text-align:left; cursor:pointer; width:100%; }
+    .scale-row:hover { background:#f7f9fc; border-color:#eef1f8; }
+    .scale-row.selected { background:#e8f0fe; border-color:var(--rmd-blue); }
+    .score-badge { font-size:11px; font-weight:700; padding:4px 8px; border-radius:6px; text-align:center; }
+    .score-badge.s1 { background:#fbe3e6; color:#b0001a; }
+    .score-badge.s2 { background:#fbeedd; color:#c17a00; }
+    .score-badge.s3 { background:#e6f4ea; color:#1a6e31; }
+    .scale-text { font-size:12.5px; line-height:1.45; color:#5a6472; }
+    .scale-row.selected .scale-text { color:var(--rmd-navy); }
+
+    .credibility-row { display:flex; align-items:flex-start; gap:10px; background:#fff8e1; border-left:4px solid #b8860b; border-radius:0 6px 6px 0; padding:12px 14px; margin:16px 18px; font-size:13px; color:var(--rmd-navy); line-height:1.5; }
+    .credibility-row input { width:auto; margin-top:3px; flex-shrink:0; }
+
+    .total-row { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:#f7f9fc; border-top:1px solid #eef1f8; }
+    .total-row .label { font-size:12px; color:#8893b0; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+    .total-row .value { font-size:20px; font-weight:700; color:var(--rmd-navy); }
+
+    .submit-area { padding: 14px 18px 18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .btn-submit { padding:11px 20px; background:var(--rmd-blue); color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-submit:hover:not(:disabled) { background:var(--rmd-navy); }
+    .btn-submit:disabled { background:#aab8c2; cursor:default; }
+    .submit-msg { font-size:13.5px; font-weight:700; color:#1a6e31; background:#e6f4ea; border:1px solid #bfe0c9; padding:8px 12px; border-radius:8px; }
+    .submit-err { font-size:13px; color:#b7410e; }
+
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+    #authMsg { font-size:15px; opacity:.7; }
+  </style>
+</head>
+<body>
+
+<div id="authOverlay" class="auth-overlay">
+  <div style="font-size:36px">📝</div>
+  <div id="authMsg">Checking access…</div>
+</div>
+
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">
+    OPIS Candidate Rating
+    <span class="top-bar-sub">RMD Birmingham — Stage 1 Provider Courses</span>
+  </div>
+  <a class="top-bar-back" href="member-menu.html">← Menu</a>
+</div>
+
+<div class="picker-bar">
+  <label for="courseSelect">Course</label>
+  <select id="courseSelect" onchange="selectCourse(this.value)">
+    <option value="">— Choose a course —</option>
+  </select>
+</div>
+
+<div class="wrap">
+  <div id="noCourse" class="no-course">Choose a course above, then your teaching room, to see the candidates you can rate.</div>
+
+  <div id="roomPickerWrap" style="display:none;">
+    <div class="section-caption">Your teaching room</div>
+    <div class="room-row" id="roomRow"></div>
+  </div>
+
+  <div id="rosterWrap" style="display:none;">
+    <div class="section-caption">Candidates in this room — select one to rate</div>
+    <div class="roster-grid" id="rosterGrid"></div>
+  </div>
+
+  <section class="detail" id="detail" style="display:none;"></section>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// OPIS Candidate Rating — Stage 1 evening-course instructors score candidates
+// they've taught against the 5 OPIS criteria (Communication, Attitude and
+// Engagement, Taking on feedback, Giving feedback, Punctuality and
+// reliability), 1-3 each. Built 2026-09-27 per Jon. Same course/room/candidate
+// data as course-roster-view.html (stage1_candidates + course_allocations),
+// same access gate (director / RMD Student Faculty / RMD Senior Faculty).
+// Each submission is its own opis_ratings doc — deliberately not keyed by
+// candidate, so several instructors (or the same one more than once) can
+// each submit independently for the same candidate. See firestore.rules for
+// the matching server-side enforcement.
+// ─────────────────────────────────────────────────────────────────────────────
+const ROOMS = STAGE1_TEACHING_ROOMS;
+
+const CRITERIA = [
+  { key: "communication", label: "Communication", levels: {
+      1: "Difficulty communicating with fellow candidates",
+      2: "Good communication with fellow candidates",
+      3: "Excellent and clear confident communication"
+  }},
+  { key: "attitudeEngagement", label: "Attitude and Engagement", levels: {
+      1: "Minimal interest level",
+      2: "Good interest level",
+      3: "Excellent interest level"
+  }},
+  { key: "takingFeedback", label: "Taking on feedback", levels: {
+      1: "No response to teacher feedback",
+      2: "Some response to teacher feedback",
+      3: "Highly receptive to feedback"
+  }},
+  { key: "givingFeedback", label: "Giving feedback", levels: {
+      1: "No willingness to volunteer feedback",
+      2: "Will volunteer good feedback when asked",
+      3: "Provides excellent feedback when encouraged"
+  }},
+  { key: "punctuality", label: "Punctuality and reliability", levels: {
+      1: "Often late",
+      2: "Sometimes late",
+      3: "Always on time"
+  }}
+];
+
+let allCandidates   = [];
+let allInstructors  = [];
+let allAllocDocs    = [];
+let defaultAllocDoc = null;
+
+let currentUser = null;
+let myName = "";
+
+let selectedCourse = null;
+let selectedRoom = null;
+let selectedCandidateId = null;
+let currentScores = {};
+let credibilityChecked = false;
+let scoredThisSession = new Set(); // candidateId set, session-only, just for the UI pill
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+initFirebase();
+
+window.addEventListener("load", () => {
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "signin.html"; return; }
+    currentUser = user;
+
+    const email = user.email || "";
+    const [role, studentFac, seniorFac] = await Promise.all([
+      resolveRole(user.uid, email),
+      isStudentFaculty(email),
+      isSeniorFaculty(email)
+    ]);
+    if (role !== "director" && !studentFac && !seniorFac) {
+      const msg = document.getElementById("authMsg");
+      if (msg) msg.textContent = "RMD Senior/Student Faculty and Directors only.";
+      setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+      return;
+    }
+
+    try {
+      const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      const d = snap.exists ? snap.data() : {};
+      const surname = d.passportLastName || (d.name ? d.name.trim().split(/\s+/).pop() : "");
+      const first = d.preferredName ? d.preferredName.trim().split(/\s+/)[0] : null;
+      myName = first ? [first, surname].filter(Boolean).join(" ") : (d.name || email);
+    } catch (e) { myName = email; }
+
+    document.getElementById("authOverlay").style.display = "none";
+    await loadData();
+    populateCourseDropdown();
+  });
+});
+
+async function loadData() {
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn("stage1_candidates load failed:", e.message); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get();
+    allInstructors = snap.docs.map(d => {
+      const data = d.data();
+      const surname = data.passportLastName || (data.name ? data.name.trim().split(/\s+/).pop() : "");
+      const first = data.preferredName ? data.preferredName.trim().split(/\s+/)[0] : null;
+      const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
+      return { uid: d.id, name };
+    });
+  } catch (e) { console.warn("instructor load failed:", e.message); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.courseAllocations).get();
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    defaultAllocDoc = docs.find(d => d.id === "_default") || null;
+    allAllocDocs = docs.filter(d => d.id !== "_default");
+  } catch (e) { console.warn("course_allocations load failed:", e.message); }
+}
+
+function courseList() {
+  const set = new Set();
+  allCandidates.forEach(c => { if (c.course) set.add(c.course); });
+  return Array.from(set).sort();
+}
+
+function slugify(s) {
+  return (s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "course";
+}
+
+function populateCourseDropdown() {
+  const sel = document.getElementById("courseSelect");
+  const courses = courseList();
+  sel.innerHTML = `<option value="">— Choose a course —</option>` +
+    courses.map(c => {
+      const n = allCandidates.filter(x => x.course === c).length;
+      return `<option value="${esc(c)}">${esc(c)} (${n} candidate${n===1?"":"s"})</option>`;
+    }).join("");
+  if (!courses.length) {
+    document.getElementById("noCourse").textContent = "No Stage 1 courses have candidates imported yet.";
+  }
+}
+
+function instructorName(uid) {
+  const i = allInstructors.find(x => x.uid === uid);
+  return i ? i.name : uid;
+}
+
+function courseTeams(course) {
+  const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
+  const teams = {};
+  ROOMS.forEach(r => { teams[r] = []; });
+  if (own && own.instructorTeams) {
+    ROOMS.forEach(r => { teams[r] = (own.instructorTeams[r] || []).slice(); });
+  } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {
+    ROOMS.forEach(r => { teams[r] = (defaultAllocDoc.instructorTeams[r] || []).slice(); });
+  }
+  return teams;
+}
+
+function candidatesForCourse(course) {
+  return allCandidates.filter(c => c.course === course).map(c => ({
+    id: c.id,
+    name: c.name || "(no name)",
+    email: c.email || "",
+    degree: c.degree || "",
+    room: ROOMS.includes(c.room) ? c.room : null
+  }));
+}
+
+function selectCourse(course) {
+  selectedCourse = course || null;
+  selectedRoom = null;
+  selectedCandidateId = null;
+  document.getElementById("noCourse").style.display = course ? "none" : "";
+  document.getElementById("roomPickerWrap").style.display = course ? "" : "none";
+  document.getElementById("rosterWrap").style.display = "none";
+  document.getElementById("detail").style.display = "none";
+  if (!course) return;
+
+  const candidates = candidatesForCourse(course);
+  const teams = courseTeams(course);
+  const roomsWithContent = ROOMS.filter(rid =>
+    candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length)
+  );
+
+  document.getElementById("roomRow").innerHTML = roomsWithContent.length
+    ? roomsWithContent.map(rid => {
+        const n = candidates.filter(c => c.room === rid).length;
+        const names = (teams[rid] || []).map(instructorName).join(", ");
+        return `<button type="button" class="room-chip" data-room="${esc(rid)}" onclick="selectRoom('${esc(rid)}')" title="${esc(names || 'No instructors allocated yet')}">${esc(rid)}<span class="n">${n} cand.</span></button>`;
+      }).join("")
+    : `<div class="no-course">No rooms have been set up for this course yet.</div>`;
+}
+
+function selectRoom(room) {
+  selectedRoom = room;
+  selectedCandidateId = null;
+  document.getElementById("detail").style.display = "none";
+  document.querySelectorAll(".room-chip").forEach(el => {
+    el.classList.toggle("active", el.getAttribute("data-room") === room);
+  });
+  renderRoster();
+  document.getElementById("rosterWrap").style.display = "";
+}
+
+function renderRoster() {
+  const candidates = candidatesForCourse(selectedCourse).filter(c => c.room === selectedRoom);
+  const grid = document.getElementById("rosterGrid");
+  grid.innerHTML = candidates.length ? candidates.map(c => `
+    <button type="button" class="cand-card ${c.id === selectedCandidateId ? "active" : ""}" onclick="selectCandidate('${esc(c.id)}')">
+      <div class="cand-head">
+        <div class="cand-name">${esc(c.name)}</div>
+        <div class="cand-meta">${esc(c.degree || "—")}</div>
+      </div>
+      <div class="cand-foot">
+        <span class="pill ${scoredThisSession.has(c.id) ? "scored" : "pending"}">${scoredThisSession.has(c.id) ? "Scored just now" : "Not yet rated (this session)"}</span>
+      </div>
+    </button>
+  `).join("") : `<div class="no-course">No candidates assigned to this room yet.</div>`;
+}
+
+function selectCandidate(candidateId) {
+  selectedCandidateId = candidateId;
+  currentScores = {};
+  credibilityChecked = false;
+  renderRoster();
+  renderDetail();
+  document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function evaluate() {
+  const vals = CRITERIA.map(c => currentScores[c.key]);
+  const scoredCount = vals.filter(v => v !== undefined && v !== null).length;
+  const complete = scoredCount === CRITERIA.length;
+  const total = vals.reduce((a, b) => a + (b || 0), 0);
+  return { total, complete, scoredCount };
+}
+
+function renderDetail() {
+  const candidate = candidatesForCourse(selectedCourse).find(c => c.id === selectedCandidateId);
+  const detail = document.getElementById("detail");
+  if (!candidate) { detail.style.display = "none"; return; }
+  detail.style.display = "";
+
+  const { total, complete, scoredCount } = evaluate();
+  const ready = complete && credibilityChecked;
+
+  const criteriaHtml = CRITERIA.map(crit => {
+    const selected = currentScores[crit.key];
+    const rows = [1, 2, 3].map(level => {
+      const label = level === 1 ? "Unsatisfactory" : level === 2 ? "Adequate" : "Excellent";
+      return `
+        <button type="button" class="scale-row ${level === selected ? "selected" : ""}" onclick="setScore('${crit.key}', ${level})">
+          <span class="score-badge s${level}">${level} · ${label}</span>
+          <span class="scale-text">${esc(crit.levels[level])}</span>
+        </button>
+      `;
+    }).join("");
+    return `<div class="criterion"><div class="crit-label">${esc(crit.label)}</div><div class="crit-scale">${rows}</div></div>`;
+  }).join("");
+
+  detail.innerHTML = `
+    <div class="detail-head">
+      <h3>${esc(candidate.name)}</h3>
+      <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom)} · ${esc(selectedCourse)}</div>
+    </div>
+    <div class="criteria">${criteriaHtml}</div>
+    <label class="credibility-row">
+      <input type="checkbox" id="credibilityCheckbox" ${credibilityChecked ? "checked" : ""} onchange="setCredibility(this.checked)">
+      <span>I confirm I've spent enough time with this person to make a credible submission.</span>
+    </label>
+    <div class="total-row">
+      <span class="label">Total${complete ? "" : ` (${scoredCount} of 5 scored)`}</span>
+      <span class="value">${complete ? total : "–"} <span style="font-size:12px;color:#8893b0;font-weight:400;">/ 15</span></span>
+    </div>
+    <div class="submit-area">
+      <button type="button" class="btn-submit" id="submitBtn" ${ready ? "" : "disabled"} onclick="submitRating()">Submit rating</button>
+      <span id="submitHint" style="font-size:13px;color:#8893b0;${ready ? "display:none;" : ""}">Score all 5 criteria and confirm the checkbox to submit</span>
+      <span class="submit-msg" id="submitMsg" style="display:none;"></span>
+      <span class="submit-err" id="submitErr" style="display:none;"></span>
+    </div>
+  `;
+}
+
+function setScore(key, level) {
+  currentScores[key] = level;
+  renderDetail();
+}
+
+function setCredibility(checked) {
+  credibilityChecked = checked;
+  renderDetail();
+}
+
+async function submitRating() {
+  const candidate = candidatesForCourse(selectedCourse).find(c => c.id === selectedCandidateId);
+  const { total, complete } = evaluate();
+  const errEl = document.getElementById("submitErr");
+  const msgEl = document.getElementById("submitMsg");
+  const btn = document.getElementById("submitBtn");
+  errEl.style.display = "none";
+
+  if (!candidate || !complete || !credibilityChecked) return;
+
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+
+  try {
+    await db.collection(COLLECTIONS.opisRatings).add({
+      candidateId: candidate.id,
+      candidateName: candidate.name,
+      candidateEmail: candidate.email || null,
+      course: selectedCourse,
+      room: selectedRoom,
+      scores: { ...currentScores },
+      total: total,
+      credibilityConfirmed: true,
+      submittedByUid: currentUser.uid,
+      submittedByName: myName,
+      submittedByEmail: currentUser.email || null,
+      submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    scoredThisSession.add(candidate.id);
+    msgEl.textContent = "Rating submitted.";
+    msgEl.style.display = "";
+    btn.textContent = "Submitted";
+    renderRoster();
+  } catch (err) {
+    errEl.textContent = "Couldn't submit that just now — check your connection and try again.";
+    errEl.style.display = "";
+    btn.disabled = false;
+    btn.textContent = "Submit rating";
+  }
+}
+</script>
+</body>
+</html>
