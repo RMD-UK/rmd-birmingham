@@ -10,7 +10,7 @@
  */
 
 const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyBhkbVFATvRPhyShZkaJB8cbp8tlwkp7oQ", // RMD - web-config - debug (2026-09-27; repo was public, Google auto-revoked the two previous keys after detecting them in the public repo - repo now set to private)
+  apiKey:            "AIzaSyAHOnu0TwkiZANlObIO2kiAcD42rJN6BAc", // RMD - web-config - no nord (2026-09-27; the two previous "expired" keys were both created while NordVPN was connected on Jon's Mac - this one created with VPN off)
   authDomain:        "rmd-instructor-weekend.firebaseapp.com",
   projectId:         "rmd-instructor-weekend",
   storageBucket:     "rmd-instructor-weekend.firebasestorage.app",
