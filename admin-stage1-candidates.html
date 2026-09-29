@@ -61,6 +61,7 @@
       <div class="top-bar-title">Stage 1 Candidates</div>
       <div class="top-bar-sub">RMD Birmingham · Director only</div>
     </div>
+    <a href="admin-stage1-settings.html" class="top-bar-link">⚙️ Settings</a>
     <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation (3.6)</a>
   </div>
 
@@ -81,10 +82,20 @@
   <div class="card">
     <div class="card-header">Add candidates</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>first name, surname, email, degree, course</strong> — matches copying two separate name columns straight out of a spreadsheet. Email and a day/month of birth (e.g. <code>14/03</code>, added as a 6th field) are optional but help tell apart two candidates with a similar name on the same course. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
-      <textarea id="pasteBox" placeholder="Jane, Smith, j.smith@bham.ac.uk, Medicine, Course 1, 14/03&#10;Tom, Jones,, Medicine, Course 1"></textarea>
+      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>first name, surname, email, degree, course, DOB, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. Everything after degree is optional (leave blank between commas to skip): leave <strong>course</strong> blank and it's worked out automatically from the programme's deadline and this year's course dates (set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — shown with an "auto" badge in the preview so you can check it before importing; a day/month of birth (e.g. <code>14/03</code>) helps tell apart two candidates with a similar name; student ID and year of study aren't used anywhere yet but are captured now so they're already on file when they are. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
+      <textarea id="pasteBox" placeholder="Jane, Smith, j.smith@bham.ac.uk, Medicine, Course 1, 14/03, 10234567, 2&#10;Tom, Jones,, Medicine, Course 1,,, 1"></textarea>
       <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
       <div id="previewWrap"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Import assessment outcomes</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Paste rows from your outcomes sheet: <strong>email, pass/fail, more than 2 attempts</strong>. Matched by email against the candidates already imported above. Pass/fail accepts "pass", "fail", "passed", "failed", "exempt" (case doesn't matter) — anything else is flagged so it's not silently guessed. Attempts accepts a number (e.g. <code>3</code>) or yes/no. Nothing is saved until you confirm.</p>
+      <textarea id="outcomesPasteBox" placeholder="j.smith@bham.ac.uk, pass, no&#10;t.jones@bham.ac.uk, fail, 3"></textarea>
+      <button class="btn-primary" id="outcomesParseBtn" onclick="parseOutcomesPreview()">Parse &amp; preview</button>
+      <div id="outcomesPreviewWrap"></div>
     </div>
   </div>
 
@@ -116,6 +127,7 @@ requireDirector("timetable.html");
 
 let allCandidates = [];
 let parsedRows = null;
+loadAutoFitSettings();
 
 function normName(s) { return (s || "").trim().toLowerCase().replace(/\s+/g, " "); }
 function surnameOf(name) {
@@ -131,6 +143,44 @@ async function loadCandidates() {
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   populateCourseFilter();
   renderCandidates();
+}
+
+// ── Course auto-fit (2026-09-27, Jon) ──────────────────────────────────────
+// A candidate pasted with no course typed gets one worked out automatically:
+// the LATEST configured course session still on/before their programme's
+// assessment deadline (Jon's confirmed rule — most possible teaching time
+// before their deadline, over rushing them into the earliest slot). Both
+// inputs are director-maintained on admin-stage1-settings.html:
+//   config/stage1_programme_deadlines.deadlines  { "Nursing MSc": "2027-03-01", ... }
+//   config/stage1_course_dates.courses            [{ name, date }, ...]
+// A course typed explicitly in the paste is always respected as-is — this
+// only fills in when the course field was left blank. If no deadline is set
+// for that programme, or no session falls on/before the deadline, the
+// course is left blank and parsePreview() flags it rather than guessing.
+let programmeDeadlines = {};
+let courseSessions = [];
+
+async function loadAutoFitSettings() {
+  try {
+    const dSnap = await db.collection("config").doc("stage1_programme_deadlines").get();
+    programmeDeadlines = dSnap.exists ? (dSnap.data().deadlines || {}) : {};
+  } catch (err) { programmeDeadlines = {}; }
+  try {
+    const cSnap = await db.collection("config").doc("stage1_course_dates").get();
+    courseSessions = cSnap.exists ? (cSnap.data().courses || []) : [];
+  } catch (err) { courseSessions = []; }
+}
+
+// Returns { course, reason } — course is null if nothing could be fit, and
+// reason explains why (shown as a preview flag, never silently dropped).
+function autoFitCourse(degreeExact) {
+  if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for" };
+  const deadline = programmeDeadlines[degreeExact];
+  if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings` };
+  if (!courseSessions.length) return { course: null, reason: "no course sessions configured — add this year's dates on Stage 1 Settings" };
+  const eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? 1 : -1);
+  if (!eligible.length) return { course: null, reason: `no course session falls on or before the ${deadline} deadline` };
+  return { course: eligible[0].name, reason: null };
 }
 
 function populateCourseFilter() {
@@ -209,12 +259,14 @@ function parseLine(line) {
   // reads it — findDuplicates()/surnameOf() below, admin-course-room-
   // allocation.html, promotion to people/{uid} — is unchanged and doesn't
   // need to know the paste format changed.
-  const [firstName, surname, email, degree, course, dob] = parts;
+  const [firstName, surname, email, degree, course, dob, studentId, yearOfStudy] = parts;
   const name = [firstName, surname].filter(Boolean).join(" ");
   // Room is deliberately not collected here (2026-09-07, Jon) — it's set on
   // Course Room & Instructor Allocation (3.6) instead, once a course's real
   // roster is confirmed. Every imported candidate starts unassigned.
-  return { name: name || "", email: email || "", degree: degree || "", course: course || "", dob: dob || "" };
+  // studentId / yearOfStudy added 2026-09-27 (Jon) — captured going forward
+  // for future matching/reporting use, not read by anything yet.
+  return { name: name || "", email: email || "", degree: degree || "", course: course || "", dob: dob || "", studentId: (studentId || "").trim(), yearOfStudy: (yearOfStudy || "").trim() };
 }
 
 function parsePreview() {
@@ -226,7 +278,6 @@ function parsePreview() {
   lines.forEach((line, i) => {
     const r = parseLine(line);
     if (!r.name) { errors.push(`Line ${i + 1}: no name — skipped ("${esc(line)}").`); return; }
-    if (!r.course) { errors.push(`Line ${i + 1} ("${esc(r.name)}"): missing course — kept, but check it before importing.`); }
     // Degree standardisation (2026-09-08, Jon: 9 standard names, work plan
     // item now built) — checked against STAGE1_DEGREE_GROUPS in
     // js/firebase-config.js, the single source of truth shared with
@@ -235,6 +286,11 @@ function parsePreview() {
     // (see confirmImport()) so a real but not-yet-listed degree can still
     // be pushed through deliberately rather than silently rejected.
     r.degreeMatch = resolveStage1Degree(r.degree);
+    if (!r.course) {
+      const fit = autoFitCourse(r.degreeMatch ? r.degreeMatch.exact : null);
+      if (fit.course) { r.course = fit.course; r.courseAutoFit = true; }
+      else { errors.push(`Line ${i + 1} ("${esc(r.name)}"): no course typed and none could be auto-fit (${fit.reason}) — kept, but set a course before or after importing.`); }
+    }
     rows.push(r);
   });
 
@@ -258,8 +314,10 @@ function parsePreview() {
       <td class="name-cell">${esc(r.name)}</td>
       <td>${esc(r.email) || "<em>none</em>"}</td>
       <td>${degreeCell}</td>
-      <td>${esc(r.course)}</td>
+      <td>${esc(r.course) || "<em>none</em>"}${r.courseAutoFit ? ` <span class="link-badge" title="Auto-fit from programme deadline + course settings">auto</span>` : ""}</td>
       <td>${esc(r.dob) || "–"}</td>
+      <td>${esc(r.studentId) || "–"}</td>
+      <td>${esc(r.yearOfStudy) || "–"}</td>
       <td>${warn}</td>
     </tr>`;
   }).join("");
@@ -268,7 +326,7 @@ function parsePreview() {
     ${errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : ""}
     ${unrecognizedCount ? `<div class="error-list">⚠ ${unrecognizedCount} row${unrecognizedCount === 1 ? "" : "s"} ${unrecognizedCount === 1 ? "has" : "have"} a degree that isn't one of the 9 standard names — you'll be asked to confirm these specifically before import.</div>` : ""}
     <table class="preview-table">
-      <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>DOB (day/mth)</th><th>Flags</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>DOB (day/mth)</th><th>ID</th><th>Year</th><th>Flags</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
     <div style="margin-top:12px;">
@@ -301,6 +359,7 @@ async function confirmImport() {
         const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
         batch.set(ref, {
           name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: r.course, room: null, dob: r.dob,
+          studentId: r.studentId || "", yearOfStudy: r.yearOfStudy || "",
           promotedToUid: null, promotedAt: null,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -310,6 +369,143 @@ async function confirmImport() {
     document.getElementById("pasteBox").value = "";
     document.getElementById("previewWrap").innerHTML = `<div class="empty-state">Imported ${parsedRows.length} candidate(s).</div>`;
     parsedRows = null;
+    await loadCandidates();
+  } catch (err) {
+    alert("Import failed: " + err.message);
+  }
+}
+
+// ── Import assessment outcomes (2026-09-27, Jon) ───────────────────────────
+// Pass/fail + attempts, pasted from whichever Google Sheet holds the year's
+// BLS assessment outcomes (a manual paste, deliberately — the source sheets
+// are inconsistent per-degree spreadsheets, not one clean live feed, see
+// Jon's "paste-import" instruction). Matched onto EXISTING stage1_candidates
+// records by email; nothing here creates a new candidate record. First cut
+// of the paste format (email, pass/fail, attempts) — easy to change once
+// Jon pastes a real example and it doesn't line up.
+const OUTCOME_MAP = {
+  pass: "Passed", passed: "Passed", p: "Passed",
+  fail: "Failed", failed: "Failed", f: "Failed",
+  exempt: "Exempt", exemption: "Exempt",
+};
+function normOutcome(raw) {
+  const key = (raw || "").trim().toLowerCase();
+  if (!key) return { value: "Unknown", recognized: false };
+  if (OUTCOME_MAP[key]) return { value: OUTCOME_MAP[key], recognized: true };
+  return { value: "Unknown", recognized: false };
+}
+// Accepts a bare number ("3" -> >2 attempts) or yes/no text. Returns null
+// (unclear) rather than guessing when the text doesn't parse as either.
+function normAttempts(raw) {
+  const key = (raw || "").trim().toLowerCase();
+  if (!key) return { value: null, recognized: false };
+  if (/^\d+$/.test(key)) return { value: Number(key) > 2, recognized: true };
+  if (["y", "yes", "true"].includes(key)) return { value: true, recognized: true };
+  if (["n", "no", "false"].includes(key)) return { value: false, recognized: true };
+  return { value: null, recognized: false };
+}
+
+let parsedOutcomeRows = null;
+
+function parseOutcomesPreview() {
+  const raw = document.getElementById("outcomesPasteBox").value;
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const wrap = document.getElementById("outcomesPreviewWrap");
+  if (!lines.length) {
+    wrap.innerHTML = `<div class="empty-state">Nothing to preview — paste some rows above.</div>`;
+    parsedOutcomeRows = null;
+    return;
+  }
+
+  const rows = lines.map((line, i) => {
+    const parts = line.split(/\t|,/).map(s => s.trim());
+    const [email, outcomeRaw, attemptsRaw] = parts;
+    const outcome = normOutcome(outcomeRaw);
+    const attempts = normAttempts(attemptsRaw);
+    const matches = email ? allCandidates.filter(c => (c.email || "").toLowerCase() === email.toLowerCase()) : [];
+    return { lineNo: i + 1, email: email || "", outcomeRaw: outcomeRaw || "", outcome, attemptsRaw: attemptsRaw || "", attempts, matches, chosenId: matches.length === 1 ? matches[0].id : null };
+  });
+  parsedOutcomeRows = rows;
+
+  const unmatched = rows.filter(r => !r.email || r.matches.length === 0);
+  const ambiguous = rows.filter(r => r.matches.length > 1);
+  const ready = rows.filter(r => r.matches.length === 1);
+
+  const rowHtml = r => {
+    let matchCell;
+    if (!r.email) {
+      matchCell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no email — can't match</span>`;
+    } else if (r.matches.length === 0) {
+      matchCell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no candidate found with this email</span>`;
+    } else if (r.matches.length === 1) {
+      matchCell = `${esc(r.matches[0].name)} <span class="hint" style="margin:0;">(${esc(r.matches[0].course) || "no course"})</span>`;
+    } else {
+      matchCell = `<span class="dup-warning" style="display:inline;">⚠ ${r.matches.length} candidates share this email — pick one:</span><br>
+        <select data-line="${r.lineNo}" onchange="chooseOutcomeMatch(${r.lineNo}, this.value)">
+          <option value="">Choose…</option>
+          ${r.matches.map(m => `<option value="${esc(m.id)}">${esc(m.name)} — ${esc(m.course) || "no course"}</option>`).join("")}
+        </select>`;
+    }
+    const outcomeCell = r.outcome.recognized ? esc(r.outcome.value) : `<span class="dup-warning dup-exact" style="display:inline;">⚠ "${esc(r.outcomeRaw)}" not recognized</span>`;
+    const attemptsCell = r.attempts.recognized ? (r.attempts.value ? "Yes" : "No") : (r.attemptsRaw ? `<span class="dup-warning" style="display:inline;">⚠ "${esc(r.attemptsRaw)}" not recognized</span>` : "<em>not given</em>");
+    return `<tr>
+      <td>${esc(r.email) || "<em>none</em>"}</td>
+      <td>${outcomeCell}</td>
+      <td>${attemptsCell}</td>
+      <td>${matchCell}</td>
+    </tr>`;
+  };
+
+  wrap.innerHTML = `
+    ${unmatched.length ? `<div class="error-list">⚠ ${unmatched.length} row${unmatched.length === 1 ? "" : "s"} couldn't be matched to a candidate — these are shown below but will be skipped on import. Check the email against the candidate list, or that they've been imported yet.</div>` : ""}
+    ${ambiguous.length ? `<div class="error-list">⚠ ${ambiguous.length} row${ambiguous.length === 1 ? "" : "s"} matched more than one candidate record (likely a repeat attempt) — pick which record each outcome applies to before importing.</div>` : ""}
+    <table class="preview-table">
+      <thead><tr><th>Email</th><th>Outcome</th><th>&gt;2 attempts</th><th>Match</th></tr></thead>
+      <tbody>${rows.map(rowHtml).join("")}</tbody>
+    </table>
+    <div style="margin-top:12px;">
+      <button class="btn-primary" id="outcomesImportBtn" onclick="confirmOutcomesImport()">Apply outcomes to ${ready.length + ambiguous.length} candidate${(ready.length + ambiguous.length) === 1 ? "" : "s"}</button>
+      ${unmatched.length ? `<span class="hint" style="margin-left:10px;">${unmatched.length} unmatched row${unmatched.length === 1 ? "" : "s"} will be left out.</span>` : ""}
+    </div>`;
+}
+
+function chooseOutcomeMatch(lineNo, candidateId) {
+  const r = parsedOutcomeRows.find(x => x.lineNo === lineNo);
+  if (r) r.chosenId = candidateId || null;
+}
+
+async function confirmOutcomesImport() {
+  if (!parsedOutcomeRows) return;
+  const applicable = parsedOutcomeRows.filter(r => r.matches.length === 1 || (r.matches.length > 1 && r.chosenId));
+  const stillAmbiguous = parsedOutcomeRows.filter(r => r.matches.length > 1 && !r.chosenId);
+  if (stillAmbiguous.length) { alert(`${stillAmbiguous.length} row(s) with multiple matches still need a record chosen before you can import.`); return; }
+  if (!applicable.length) { alert("Nothing to apply — every row is unmatched."); return; }
+
+  const unrecognizedOutcomes = applicable.filter(r => !r.outcome.recognized);
+  if (unrecognizedOutcomes.length) {
+    if (!confirm(`${unrecognizedOutcomes.length} row(s) have a pass/fail value that wasn't recognized and will be saved as "Unknown". Continue anyway?`)) return;
+  }
+
+  if (!confirm(`Apply outcomes to ${applicable.length} candidate${applicable.length === 1 ? "" : "s"}? This updates their existing record — it doesn't create new ones.`)) return;
+
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < applicable.length; start += CHUNK) {
+      const batch = db.batch();
+      applicable.slice(start, start + CHUNK).forEach(r => {
+        const id = r.matches.length === 1 ? r.matches[0].id : r.chosenId;
+        const ref = db.collection(COLLECTIONS.stage1Candidates).doc(id);
+        batch.update(ref, {
+          outcome: r.outcome.value,
+          neededMoreThanTwoAttempts: r.attempts.value,
+          outcomeImportedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      await batch.commit();
+    }
+    document.getElementById("outcomesPasteBox").value = "";
+    document.getElementById("outcomesPreviewWrap").innerHTML = `<div class="empty-state">Applied outcomes to ${applicable.length} candidate(s).</div>`;
+    parsedOutcomeRows = null;
     await loadCandidates();
   } catch (err) {
     alert("Import failed: " + err.message);

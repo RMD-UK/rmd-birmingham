@@ -10,7 +10,7 @@
  */
 
 const FIREBASE_CONFIG = {
-  apiKey:            "AIzaSyBlYZDtVNwB4qnzNTOkYN3soCaKTCF0v_k",
+  apiKey:            "AIzaSyAHOnu0TwkiZANlObIO2kiAcD42rJN6BAc", // RMD - web-config - no nord (2026-09-27; the two previous "expired" keys were both created while NordVPN was connected on Jon's Mac - this one created with VPN off)
   authDomain:        "rmd-instructor-weekend.firebaseapp.com",
   projectId:         "rmd-instructor-weekend",
   storageBucket:     "rmd-instructor-weekend.firebasestorage.app",
@@ -42,7 +42,8 @@ const COLLECTIONS = {
   courseAllocations: "course_allocations", // per-course room + instructor-team allocation — see admin-course-room-allocation.html (Section 3.6)
   iwAssignments: "iw_assignments", // per-year Instructor Weekend function (Axis B) — see resolveIwFunction() below, and CURRENT_IW_YEAR
   assessorFeedback: "assessor_feedback", // traffic-light feedback on Assessor/SI candidates — see assessor-feedback.html. Same principle as session_feedback, but not session-scoped (one shared cohort, not per-room groups) — doc id is `${candidateId}_${raterUid}`, not an auto id.
-  instructorEoi: "instructor_eoi" // no-login, open-all-year Expression of Interest submissions from past BLS course attendees wanting to train as Instructor — see instructor-eoi.html. Doc id is the lowercased submitter email (same no-login edit-by-email pattern as summer_meeting_dietary/faculty_responses); a resubmission overwrites the previous one. Reviewed manually at year end against pass/assessment records — no automated eligibility check on submission.
+  instructorEoi: "instructor_eoi", // no-login, open-all-year Expression of Interest submissions from past BLS course attendees wanting to train as Instructor — see instructor-eoi.html. Doc id is the lowercased submitter email (same no-login edit-by-email pattern as summer_meeting_dietary/faculty_responses); a resubmission overwrites the previous one. Reviewed manually at year end against pass/assessment records — no automated eligibility check on submission.
+  opisRatings: "opis_ratings" // per-candidate OPIS scoring submissions from Stage 1 evening-course instructors — see opis-rating.html. One doc PER SUBMISSION (auto id), not per candidate — deliberately allows multiple instructors (or the same instructor more than once) to each submit their own rating for the same candidateId. Feeds the instructor-potential review, alongside instructor_eoi.
 };
 
 // ── Instructor Weekend per-year function (Axis B), layered-access build

@@ -42,21 +42,12 @@
   .field { margin-bottom: 16px; }
   .field label { display: block; font-size: 13px; font-weight: 700; color: var(--rmd-navy); margin-bottom: 5px; }
   .field label .req { color: #b7410e; }
-<<<<<<< Updated upstream
-  .field input, .field textarea {
-    width: 100%; padding: 11px 12px; border: 2px solid #ccd6dd; border-radius: 6px;
-    font-size: 15px; font-family: var(--font); color: var(--rmd-navy); background: white;
-  }
-  .field input:focus, .field textarea:focus { outline: none; border-color: var(--rmd-blue); }
-  .field input.error, .field textarea.error { border-color: #b7410e; }
-=======
   .field input, .field select, .field textarea {
     width: 100%; padding: 11px 12px; border: 2px solid #ccd6dd; border-radius: 6px;
     font-size: 15px; font-family: var(--font); color: var(--rmd-navy); background: white;
   }
   .field input:focus, .field select:focus, .field textarea:focus { outline: none; border-color: var(--rmd-blue); }
   .field input.error, .field select.error, .field textarea.error { border-color: #b7410e; }
->>>>>>> Stashed changes
   .hint-text { font-size: 12px; color: var(--rmd-muted); margin-top: 4px; }
 
   .confirm-row {
@@ -81,6 +72,11 @@
   .success-page h2 { color: var(--rmd-navy); margin-bottom: 8px; }
   .success-page p { color: var(--rmd-muted); font-size: 14px; line-height: 1.6; max-width: 440px; margin: 0 auto; }
 
+  .closed-page { display: none; text-align: center; padding: 60px 20px; }
+  .closed-page .icon { font-size: 48px; margin-bottom: 16px; }
+  .closed-page h2 { color: var(--rmd-navy); margin-bottom: 8px; }
+  .closed-page p { color: var(--rmd-muted); font-size: 14px; line-height: 1.6; max-width: 440px; margin: 0 auto; }
+
   .hidden { display: none !important; }
 </style>
 </head>
@@ -92,7 +88,7 @@
   <p>RMD Birmingham — Resuscitation · Mentorship · Development</p>
 </div>
 
-<div class="wrap" id="formWrap">
+<div class="wrap" id="formWrap" style="display:none;">
 
   <div class="intro-box">
     <p><strong>This is for people who have attended and passed one of RMD Birmingham's BLS courses</strong> and want to be considered for training as an Instructor.</p>
@@ -136,11 +132,6 @@
     </div>
 
     <div class="field">
-<<<<<<< Updated upstream
-      <label>Which course did you attend, and when? <span class="req">*</span></label>
-      <input type="text" id="eoiCourse" placeholder="e.g. BLS Provider, Semester 1 2026, Tuesday evening group">
-      <div class="hint-text">As specific as you can be — this is what we'll check your interest against.</div>
-=======
       <label>Student number <span class="req">*</span></label>
       <input type="text" id="eoiStudentNumber" placeholder="e.g. 2312345" autocomplete="off">
     </div>
@@ -156,7 +147,6 @@
       <label>Date you passed your assessment <span class="req">*</span></label>
       <input type="date" id="eoiPassDate">
       <div class="hint-text">This is what we'll check your interest against at the end of the year.</div>
->>>>>>> Stashed changes
     </div>
 
     <label class="confirm-row" id="confirmRow">
@@ -177,6 +167,12 @@
   <p>Your expression of interest has been recorded. We'll be in touch once places are confirmed at the end of the year — until then, there's nothing more you need to do.</p>
 </div>
 
+<div class="wrap closed-page" id="closedPage">
+  <div class="icon">⏸️</div>
+  <h2>Not accepting expressions of interest right now</h2>
+  <p>RMD isn't taking new instructor expressions of interest at the moment — check back later, or contact RMD directly if you think this is wrong.</p>
+</div>
+
 <!-- Firebase SDK — same minimal, no-login set as candidate-resources.html:
      Firestore only, no auth-compat.js. initFirebase() already guards
      against calling firebase.auth() when it isn't loaded. -->
@@ -188,34 +184,11 @@
 
 initFirebase();
 
-<<<<<<< Updated upstream
-async function submitEoi() {
-  const nameEl    = document.getElementById("eoiName");
-  const emailEl   = document.getElementById("eoiEmail");
-  const courseEl  = document.getElementById("eoiCourse");
-  const confirmEl = document.getElementById("eoiConfirm");
-  const confirmRow = document.getElementById("confirmRow");
-  const errorEl   = document.getElementById("errorMsg");
-  const submitBtn = document.getElementById("submitBtn");
-
-  [nameEl, emailEl, courseEl].forEach(el => el.classList.remove("error"));
-  confirmRow.classList.remove("error");
-  errorEl.style.display = "none";
-
-  const name   = (nameEl.value || "").trim();
-  const email  = (emailEl.value || "").trim().toLowerCase();
-  const course = (courseEl.value || "").trim();
-
-  let firstError = null;
-  if (!name)   { nameEl.classList.add("error");   firstError = firstError || nameEl; }
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { emailEl.classList.add("error"); firstError = firstError || emailEl; }
-  if (!course) { courseEl.classList.add("error"); firstError = firstError || courseEl; }
-=======
 // Same 9 standard degree names used everywhere else on the platform (see
 // STAGE1_DEGREE_GROUPS in firebase-config.js) — reused here rather than a
 // second hand-typed list, so this page can't silently drift out of sync
 // with admin-stage1-candidates.html's own dropdown/validation.
-(function populateDegreeOptions() {
+function populateDegreeOptions() {
   const degreeEl = document.getElementById("eoiDegree");
   Object.keys(STAGE1_DEGREE_GROUPS).forEach(degree => {
     const opt = document.createElement("option");
@@ -223,7 +196,28 @@ async function submitEoi() {
     opt.textContent = degree;
     degreeEl.appendChild(opt);
   });
-})();
+}
+
+// Master on/off switch, set by the course director in admin-global-tools.html
+// (config/instructor_eoi, { open: bool }). Missing doc = treated as open, so
+// this page keeps working as before until a director actively closes it.
+// Firestore rules enforce the same gate server-side on the instructor_eoi
+// collection itself (2026-09-27), so this isn't just cosmetic.
+async function checkEoiOpenThenInit() {
+  let open = true;
+  try {
+    const snap = await db.collection("config").doc("instructor_eoi").get();
+    if (snap.exists && snap.data().open === false) open = false;
+  } catch (err) {
+    // Can't check — default to open rather than blocking everyone on a read error.
+  }
+  if (open) {
+    populateDegreeOptions();
+    document.getElementById("formWrap").style.display = "block";
+  } else {
+    document.getElementById("closedPage").style.display = "block";
+  }
+}
 
 async function submitEoi() {
   const nameEl      = document.getElementById("eoiName");
@@ -252,7 +246,6 @@ async function submitEoi() {
   if (!studentId) { studentIdEl.classList.add("error"); firstError = firstError || studentIdEl; }
   if (!degree)    { degreeEl.classList.add("error");    firstError = firstError || degreeEl; }
   if (!passDate)  { passDateEl.classList.add("error");  firstError = firstError || passDateEl; }
->>>>>>> Stashed changes
   if (!confirmEl.checked) { confirmRow.classList.add("error"); firstError = firstError || confirmRow; }
 
   if (firstError) {
@@ -269,13 +262,9 @@ async function submitEoi() {
     await db.collection(COLLECTIONS.instructorEoi).doc(email).set({
       name: name,
       email: email,
-<<<<<<< Updated upstream
-      courseAttended: course,
-=======
       studentNumber: studentId,
       degree: degree,
       assessmentPassDate: passDate,
->>>>>>> Stashed changes
       acknowledgedNoGuarantee: true,
       submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -288,6 +277,8 @@ async function submitEoi() {
     submitBtn.textContent = "Submit expression of interest";
   }
 }
+
+checkEoiOpenThenInit();
 
 </script>
 </body>
