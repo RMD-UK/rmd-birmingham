@@ -744,7 +744,12 @@ service cloud.firestore {
     // delete: authenticated only.
     match /instructor_eoi/{docId} {
       allow get: if true;
-      allow list: if isDirector();
+      // list widened 2026-09-27 to isSeniorFaculty() alongside
+      // admin-instructor-review.html (the EOI+OPIS+outcome review tool) —
+      // Jon: "Faculty review the score & expression of interest details".
+      // Deliberately NOT isStudentFaculty() — the review tool is
+      // Director/Senior Faculty only, same gate as opis_ratings below.
+      allow list: if isDirector() || isSeniorFaculty();
       // create/update additionally gated on config/instructor_eoi.open (added
       // 2026-09-27, the master on/off in admin-global-tools.html) — a missing
       // config doc still counts as open, so this doesn't retroactively lock

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructor Potential Review — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 1100px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    #authMsg { color:#fff3cd; font-size:12px; }
+    .toolbar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
+    .toolbar input[type=text] { flex:1; min-width:200px; padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:14px; font-family:var(--font); }
+    .toolbar select { padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:13px; font-family:var(--font); }
+    .summary-line { font-size:13px; color:var(--rmd-muted); margin-bottom:12px; }
+    .empty-state { padding:30px; text-align:center; color:var(--rmd-muted); font-size:13px; background:white; border-radius:8px; }
+    .candidate-card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:14px; overflow:hidden; }
+    .candidate-head { padding:14px 16px; display:flex; align-items:center; gap:12px; cursor:pointer; }
+    .candidate-head:hover { background:#f7f9fb; }
+    .candidate-name { font-weight:700; color:var(--rmd-navy); font-size:15px; }
+    .candidate-sub { font-size:12px; color:var(--rmd-muted); margin-top:2px; }
+    .pill { display:inline-block; font-size:10px; font-weight:700; padding:3px 9px; border-radius:10px; text-transform:uppercase; letter-spacing:0.4px; margin-left:6px; }
+    .pill-pass { background:#e1efe3; color:#1a6e31; }
+    .pill-fail { background:#fce8e6; color:#b7410e; }
+    .pill-unknown { background:#eef2f6; color:var(--rmd-muted); }
+    .pill-attempts { background:#fff3cd; color:#856404; }
+    .pill-count { background:#e8f0fe; color:var(--rmd-blue); }
+    .candidate-arrow { margin-left:auto; color:var(--rmd-muted); font-size:14px; transition:transform 0.15s; }
+    .candidate-card.open .candidate-arrow { transform:rotate(90deg); }
+    .candidate-detail { display:none; border-top:1px solid #eef2f6; padding:16px; }
+    .candidate-card.open .candidate-detail { display:block; }
+    .detail-section { margin-bottom:16px; }
+    .detail-section:last-child { margin-bottom:0; }
+    .detail-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); margin-bottom:8px; }
+    .kv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px 16px; font-size:13px; }
+    .kv-grid div span { color:var(--rmd-muted); display:block; font-size:11px; }
+    .rating-card { border:1px solid #eef2f6; border-radius:6px; padding:10px 12px; margin-bottom:8px; font-size:12px; }
+    .rating-card-head { display:flex; justify-content:space-between; font-weight:700; color:var(--rmd-navy); margin-bottom:6px; }
+    .rating-scores { display:flex; gap:14px; flex-wrap:wrap; color:var(--rmd-muted); }
+    .rating-scores b { color:var(--rmd-navy); }
+    .no-ratings { font-size:12px; color:var(--rmd-muted); font-style:italic; }
+    .hint { font-size:12px; color:var(--rmd-muted); line-height:1.5; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Instructor Potential Review</div>
+      <div class="top-bar-sub">RMD Birmingham · Director &amp; Senior Faculty only</div>
+      <div id="authMsg"></div>
+    </div>
+  </div>
+
+  <p class="hint">Everyone who's submitted an Instructor Expression of Interest, with their OPIS scores (from every instructor who's rated them) and Stage 1 assessment outcome alongside it. OPIS ratings and this page are never visible to candidates. Click a row to expand it.</p>
+
+  <div class="toolbar">
+    <input type="text" id="searchBox" placeholder="Search by name or email…" oninput="render()">
+    <select id="filterSelect" onchange="render()">
+      <option value="">All EOI submissions</option>
+      <option value="unrated">No OPIS ratings yet</option>
+      <option value="fail">Failed assessment</option>
+      <option value="attempts">Needed &gt;2 attempts</option>
+    </select>
+  </div>
+
+  <div class="summary-line" id="summaryLine"></div>
+  <div id="wrap"><div class="empty-state">Loading…</div></div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+// ── Access gate (2026-09-27) ────────────────────────────────────────────
+// Director or RMD Senior Faculty only — deliberately narrower than the
+// Evening Course Rosters / OPIS rating tiles (which also admit Student
+// Faculty, since they're the raters). This matches the opis_ratings read
+// rule in firestore.rules exactly (isDirector() || isSeniorFaculty()) and
+// the instructor_eoi `list` rule widened alongside this page — OPIS scores
+// must not be visible to Student Faculty either, only Director/Senior
+// Faculty doing the actual review, and never to candidates (who have no
+// login at all until promoted).
+auth.onAuthStateChanged(async function(user) {
+  if (!user) { window.location.href = "signin.html"; return; }
+  const role = await resolveRole(user.uid, user.email || "");
+  const seniorFac = await isSeniorFaculty(user.email || "");
+  if (role !== ROLES.DIRECTOR && !seniorFac) {
+    document.getElementById("authMsg").textContent = "Course Directors and RMD Senior Faculty only — redirecting…";
+    setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+    return;
+  }
+  init();
+});
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function fmtDate(v) {
+  if (!v) return "–";
+  if (v.toDate) v = v.toDate();
+  if (v instanceof Date) return v.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  return String(v);
+}
+
+let eoiList = [];
+let candidatesByEmail = {}; // email -> [stage1_candidates records]
+let ratingsByEmail = {};    // email -> [opis_ratings]
+
+async function init() {
+  const [eoiSnap, candSnap, ratingSnap] = await Promise.all([
+    db.collection(COLLECTIONS.instructorEoi).get(),
+    db.collection(COLLECTIONS.stage1Candidates).get(),
+    db.collection(COLLECTIONS.opisRatings).get()
+  ]);
+
+  eoiList = eoiSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  candidatesByEmail = {};
+  candSnap.docs.forEach(d => {
+    const c = { id: d.id, ...d.data() };
+    const email = (c.email || "").toLowerCase();
+    if (!email) return;
+    (candidatesByEmail[email] = candidatesByEmail[email] || []).push(c);
+  });
+
+  ratingsByEmail = {};
+  ratingSnap.docs.forEach(d => {
+    const r = { id: d.id, ...d.data() };
+    const email = (r.candidateEmail || "").toLowerCase();
+    if (!email) return;
+    (ratingsByEmail[email] = ratingsByEmail[email] || []).push(r);
+  });
+  Object.values(ratingsByEmail).forEach(list => list.sort((a, b) => {
+    const at = a.submittedAt && a.submittedAt.toMillis ? a.submittedAt.toMillis() : 0;
+    const bt = b.submittedAt && b.submittedAt.toMillis ? b.submittedAt.toMillis() : 0;
+    return bt - at;
+  }));
+
+  render();
+}
+
+// Combines multiple stage1_candidates records for one email into a single
+// outcome view — most Stage 1 candidates only have one record; someone who
+// repeated a course may have more, so this surfaces the most conclusive
+// outcome (a Passed/Failed beats an Unknown) rather than guessing which
+// record is "the" one.
+function combinedOutcome(records) {
+  const withOutcome = records.filter(r => r.outcome && r.outcome !== "Unknown");
+  const pick = withOutcome.length ? withOutcome[withOutcome.length - 1] : (records[0] || {});
+  return {
+    outcome: pick.outcome || "Unknown",
+    neededMoreThanTwoAttempts: pick.neededMoreThanTwoAttempts ?? null
+  };
+}
+
+function render() {
+  const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  const filter = document.getElementById("filterSelect").value;
+
+  let rows = eoiList.map(eoi => {
+    const email = (eoi.email || "").toLowerCase();
+    const records = candidatesByEmail[email] || [];
+    const ratings = ratingsByEmail[email] || [];
+    const outcome = combinedOutcome(records);
+    return { eoi, email, records, ratings, outcome };
+  });
+
+  if (q) rows = rows.filter(r => (r.eoi.name || "").toLowerCase().includes(q) || r.email.includes(q));
+  if (filter === "unrated") rows = rows.filter(r => !r.ratings.length);
+  if (filter === "fail") rows = rows.filter(r => r.outcome.outcome === "Failed");
+  if (filter === "attempts") rows = rows.filter(r => r.outcome.neededMoreThanTwoAttempts === true);
+
+  document.getElementById("summaryLine").textContent = `${rows.length} of ${eoiList.length} expression${eoiList.length === 1 ? "" : "s"} of interest`;
+
+  const wrap = document.getElementById("wrap");
+  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No expressions of interest match.</div>`; return; }
+
+  wrap.innerHTML = rows.map((r, i) => candidateCardHtml(r, i)).join("");
+}
+
+function outcomePill(outcome) {
+  if (outcome.outcome === "Passed") return `<span class="pill pill-pass">Passed</span>`;
+  if (outcome.outcome === "Failed") return `<span class="pill pill-fail">Failed</span>`;
+  return `<span class="pill pill-unknown">Outcome unknown</span>`;
+}
+
+function candidateCardHtml(r, i) {
+  const eoi = r.eoi;
+  const ratingCount = r.ratings.length;
+  const avgTotal = ratingCount ? (r.ratings.reduce((s, x) => s + (x.total || 0), 0) / ratingCount).toFixed(1) : null;
+
+  const recordsHtml = r.records.length
+    ? r.records.map(c => `<div>${esc(c.course) || "no course"} <span style="color:var(--rmd-muted);">— ${esc(c.degree) || "no degree"}${c.room ? ", Room " + esc(c.room) : ""}</span></div>`).join("")
+    : `<div class="no-ratings">No matching Stage 1 candidate record found for this email.</div>`;
+
+  const ratingsHtml = ratingCount
+    ? r.ratings.map(rt => `
+      <div class="rating-card">
+        <div class="rating-card-head">
+          <span>${esc(rt.submittedByName) || "Unknown submitter"}</span>
+          <span style="color:var(--rmd-muted);font-weight:400;">${fmtDate(rt.submittedAt)} · ${esc(rt.course) || ""}${rt.room ? " / " + esc(rt.room) : ""}</span>
+        </div>
+        <div class="rating-scores">
+          <span>Communication: <b>${rt.scores?.communication ?? "–"}</b></span>
+          <span>Attitude: <b>${rt.scores?.attitudeEngagement ?? "–"}</b></span>
+          <span>Taking feedback: <b>${rt.scores?.takingFeedback ?? "–"}</b></span>
+          <span>Giving feedback: <b>${rt.scores?.givingFeedback ?? "–"}</b></span>
+          <span>Punctuality: <b>${rt.scores?.punctuality ?? "–"}</b></span>
+          <span>Total: <b>${rt.total ?? "–"}/15</b></span>
+        </div>
+      </div>`).join("")
+    : `<div class="no-ratings">No OPIS ratings submitted yet.</div>`;
+
+  return `
+    <div class="candidate-card" id="card-${i}">
+      <div class="candidate-head" onclick="toggleCard(${i})">
+        <div style="flex:1;">
+          <div class="candidate-name">${esc(eoi.name)}${outcomePill(r.outcome)}${r.outcome.neededMoreThanTwoAttempts === true ? `<span class="pill pill-attempts">&gt;2 attempts</span>` : ""}${ratingCount ? `<span class="pill pill-count">${ratingCount} OPIS rating${ratingCount === 1 ? "" : "s"} · avg ${avgTotal}/15</span>` : `<span class="pill pill-unknown">No ratings yet</span>`}</div>
+          <div class="candidate-sub">${esc(eoi.email)} · ${esc(eoi.degree) || "no degree on EOI"}</div>
+        </div>
+        <div class="candidate-arrow">▶</div>
+      </div>
+      <div class="candidate-detail">
+        <div class="detail-section">
+          <div class="detail-label">Expression of interest</div>
+          <div class="kv-grid">
+            <div><span>Student number</span>${esc(eoi.studentNumber) || "–"}</div>
+            <div><span>Degree (as submitted)</span>${esc(eoi.degree) || "–"}</div>
+            <div><span>Assessment pass date</span>${esc(eoi.assessmentPassDate) || "–"}</div>
+            <div><span>Submitted</span>${fmtDate(eoi.submittedAt)}</div>
+          </div>
+        </div>
+        <div class="detail-section">
+          <div class="detail-label">Stage 1 record${r.records.length === 1 ? "" : "s"}</div>
+          ${recordsHtml}
+        </div>
+        <div class="detail-section">
+          <div class="detail-label">OPIS ratings</div>
+          ${ratingsHtml}
+        </div>
+      </div>
+    </div>`;
+}
+
+function toggleCard(i) {
+  document.getElementById(`card-${i}`).classList.toggle("open");
+}
+
+</script>
+</body>
+</html>

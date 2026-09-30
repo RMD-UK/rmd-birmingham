@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stage 1 Settings — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 900px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .top-bar-link { color:white; background:rgba(255,255,255,0.12); border:2px solid rgba(255,255,255,0.4); border-radius:8px; padding:8px 14px; font-size:12px; font-weight:700; text-decoration:none; white-space:nowrap; }
+    .top-bar-link:hover { background:rgba(255,255,255,0.22); border-color:white; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin-top:8px; line-height:1.5; }
+    .btn-primary { padding:12px 20px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:hover { background:var(--rmd-navy); }
+    .btn-secondary { padding:8px 14px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-secondary:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
+    .btn-danger-sm { padding:6px 12px; background:white; color:#b7410e; border:2px solid #f5b8b0; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger-sm:hover { background:#fce8e6; }
+    table.settings-table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px; }
+    table.settings-table th { text-align:left; background:#eef2f6; padding:8px 10px; font-size:11px; text-transform:uppercase; letter-spacing:0.4px; color:var(--rmd-muted); }
+    table.settings-table td { padding:6px 10px; border-top:1px solid #f0f3f6; vertical-align:middle; }
+    input[type=text], input[type=date] { padding:9px; border:2px solid #ccd6dd; border-radius:6px; font-size:13px; font-family:var(--font); width:100%; }
+    .status-line { font-size:12px; margin-top:10px; color:var(--rmd-muted); }
+    .status-line.ok { color:#1a6e31; }
+    .status-line.err { color:#b7410e; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="admin-global-tools.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Stage 1 Settings</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only</div>
+    </div>
+    <a href="admin-stage1-candidates.html" class="top-bar-link">👤 Stage 1 Candidates</a>
+    <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation (3.6)</a>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Programme assessment deadlines</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">The date each programme needs its students' Stage 1 assessment completed by, for this academic year. Used to work out which course session a newly imported candidate should be put on — see "This year's course sessions" below. Leave a programme blank if it has no deadline yet; candidates on it just won't get auto-assigned until you set one.</p>
+      <table class="settings-table" id="deadlinesTable">
+        <thead><tr><th>Programme</th><th style="width:220px;">Deadline</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button class="btn-primary" onclick="saveDeadlines()">Save deadlines</button>
+      <div class="status-line" id="deadlinesStatus"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">This year's course sessions</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">The Stage 1 evening courses running this year, in the order they happen. <strong>Name</strong> is exactly what will appear as the candidate's "course" — keep it consistent with what you've used before (e.g. "Course 1") so old and new records line up. <strong>Date</strong> is when that course's assessment evening falls, used to auto-fit candidates against the deadlines above.</p>
+      <table class="settings-table" id="coursesTable">
+        <thead><tr><th>Name</th><th style="width:200px;">Date</th><th style="width:50px;"></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button class="btn-secondary" onclick="addCourseRow()">+ Add course session</button>
+      <button class="btn-primary" onclick="saveCourses()" style="margin-left:10px;">Save course sessions</button>
+      <div class="status-line" id="coursesStatus"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+requireDirector("timetable.html");
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ── Programme deadlines (config/stage1_programme_deadlines) ───────────────
+// One deadline per one of the 9 standard programme names (STAGE1_DEGREE_GROUPS,
+// js/firebase-config.js) — per-programme, not per-candidate, per Jon
+// 2026-09-27. Stored as a flat map keyed by the exact programme name so it
+// stays in lockstep with STAGE1_DEGREE_GROUPS without needing its own schema.
+async function loadDeadlines() {
+  const tbody = document.querySelector("#deadlinesTable tbody");
+  const programmes = Object.keys(STAGE1_DEGREE_GROUPS);
+  let deadlines = {};
+  try {
+    const snap = await db.collection("config").doc("stage1_programme_deadlines").get();
+    deadlines = snap.exists ? (snap.data().deadlines || {}) : {};
+  } catch (err) {
+    document.getElementById("deadlinesStatus").textContent = "Couldn't load saved deadlines — reload and try again.";
+    document.getElementById("deadlinesStatus").className = "status-line err";
+  }
+  tbody.innerHTML = programmes.map(p => `
+    <tr>
+      <td>${esc(p)}</td>
+      <td><input type="date" data-programme="${esc(p)}" value="${esc(deadlines[p] || "")}"></td>
+    </tr>`).join("");
+}
+
+async function saveDeadlines() {
+  const statusEl = document.getElementById("deadlinesStatus");
+  const deadlines = {};
+  document.querySelectorAll("#deadlinesTable input[data-programme]").forEach(inp => {
+    if (inp.value) deadlines[inp.dataset.programme] = inp.value;
+  });
+  try {
+    await db.collection("config").doc("stage1_programme_deadlines").set({ deadlines }, { merge: true });
+    statusEl.textContent = "Saved.";
+    statusEl.className = "status-line ok";
+  } catch (err) {
+    statusEl.textContent = "Couldn't save — this needs super-user access, not just director. Check with whoever set up your account if this keeps failing.";
+    statusEl.className = "status-line err";
+  }
+}
+
+// ── Course sessions (config/stage1_course_dates) ──────────────────────────
+// A maintained list of {name, date} for the year's Stage 1 evening courses,
+// replacing free-typed course names as the source of truth for the auto-fit
+// logic on admin-stage1-candidates.html. The "name" here is what actually
+// gets written onto stage1_candidates.course, so it must match what's
+// already in use for existing records — Jon's call, not validated here.
+let courseRows = [];
+
+async function loadCourses() {
+  try {
+    const snap = await db.collection("config").doc("stage1_course_dates").get();
+    courseRows = snap.exists ? (snap.data().courses || []) : [];
+  } catch (err) {
+    document.getElementById("coursesStatus").textContent = "Couldn't load saved course sessions — reload and try again.";
+    document.getElementById("coursesStatus").className = "status-line err";
+    courseRows = [];
+  }
+  if (!courseRows.length) courseRows = [{ name: "", date: "" }];
+  renderCourses();
+}
+
+function renderCourses() {
+  const tbody = document.querySelector("#coursesTable tbody");
+  tbody.innerHTML = courseRows.map((c, i) => `
+    <tr>
+      <td><input type="text" data-idx="${i}" data-field="name" value="${esc(c.name)}" placeholder="e.g. Course 1"></td>
+      <td><input type="date" data-idx="${i}" data-field="date" value="${esc(c.date)}"></td>
+      <td><button class="btn-danger-sm" onclick="removeCourseRow(${i})">✕</button></td>
+    </tr>`).join("");
+  tbody.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("change", () => {
+      courseRows[Number(inp.dataset.idx)][inp.dataset.field] = inp.value;
+    });
+  });
+}
+
+function addCourseRow() {
+  courseRows.push({ name: "", date: "" });
+  renderCourses();
+}
+
+function removeCourseRow(i) {
+  courseRows.splice(i, 1);
+  if (!courseRows.length) courseRows = [{ name: "", date: "" }];
+  renderCourses();
+}
+
+async function saveCourses() {
+  const statusEl = document.getElementById("coursesStatus");
+  const clean = courseRows.filter(c => c.name && c.date);
+  try {
+    await db.collection("config").doc("stage1_course_dates").set({ courses: clean }, { merge: true });
+    courseRows = clean.length ? clean : [{ name: "", date: "" }];
+    renderCourses();
+    statusEl.textContent = "Saved.";
+    statusEl.className = "status-line ok";
+  } catch (err) {
+    statusEl.textContent = "Couldn't save — this needs super-user access, not just director. Check with whoever set up your account if this keeps failing.";
+    statusEl.className = "status-line err";
+  }
+}
+
+loadDeadlines();
+loadCourses();
+
+</script>
+</body>
+</html>
