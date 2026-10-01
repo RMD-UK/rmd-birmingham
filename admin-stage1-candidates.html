@@ -82,8 +82,8 @@
   <div class="card">
     <div class="card-header">Add candidates</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>last name, first name, email, degree, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. Everything after degree is optional (leave blank between commas to skip). Course is no longer typed in here at all — it's always worked out automatically from the programme's deadline and this year's course dates (set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>), shown with an "auto" badge in the preview so you can check it before importing; student ID and year of study aren't used anywhere yet but are captured now so they're already on file when they are. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
-      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, , 1"></textarea>
+      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>last name, first name, email, degree, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. <strong>Student ID is required</strong> — a row with no student ID is skipped, same as a row with no name. Email, degree and year of study are optional (leave blank between commas to skip). Course is no longer typed in here at all — it's always worked out automatically from the programme's deadline and this year's course dates (set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>), shown with an "auto" badge in the preview so you can check it before importing; year of study isn't used anywhere yet but is captured now so it's already on file when it is. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
+      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, 10234999, 1"></textarea>
       <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
       <div id="previewWrap"></div>
     </div>
@@ -277,6 +277,9 @@ function parsePreview() {
   lines.forEach((line, i) => {
     const r = parseLine(line);
     if (!r.name) { errors.push(`Line ${i + 1}: no name — skipped ("${esc(line)}").`); return; }
+    // Student ID made required 2026-10-01 (Jon) — same hard skip as a
+    // missing name, not a soft warning.
+    if (!r.studentId) { errors.push(`Line ${i + 1} ("${esc(r.name)}"): no student ID — skipped.`); return; }
     // Degree standardisation (2026-09-08, Jon: 9 standard names, work plan
     // item now built) — checked against STAGE1_DEGREE_GROUPS in
     // js/firebase-config.js, the single source of truth shared with
