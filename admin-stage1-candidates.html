@@ -94,9 +94,9 @@
   </div>
 
   <div class="card">
-    <div class="card-header">Step 2 — Check placement dates (e.g. Pharmacy)</div>
+    <div class="card-header">Step 2 — Check placement dates (Pharmacy only)</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste rows straight from a placement lead's sheet — accepts either <strong>Student ID, last name, first name, email, start date, end date</strong> (the real Pharmacy export) or the older <strong>first name, last name, email, start date, end date</strong>, dates as DD/MM/YYYY. A pasted header row is dropped automatically. Matched to candidates already added in Step 1 by email — this also clears them for allocation in Step 3. A student can have several rows (several separate placement blocks); each one is added to their file, so re-pasting the same sheet again won't create duplicates. A course runs on 3 consecutive Mondays (worked out from the date set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — if any of those 3 Mondays falls inside one of a candidate's placement blocks, that's a clash, flagged here and in All candidates below. Nothing is saved until you confirm.</p>
+      <p class="hint" style="margin-top:0;">Pharmacy MPharm is the only programme that actually has placement dates, so this step only matters for them, since every other programme is checked automatically the moment they're added in Step 1. Paste rows straight from a placement lead's sheet — accepts either <strong>Student ID, last name, first name, email, start date, end date</strong> (the real Pharmacy export) or the older <strong>first name, last name, email, start date, end date</strong>, dates as DD/MM/YYYY. A pasted header row is dropped automatically. Matched to candidates already added in Step 1 by email — this also clears them for allocation in Step 3. A student can have several rows (several separate placement blocks); each one is added to their file, so re-pasting the same sheet again won't create duplicates. A course runs on 3 consecutive Mondays (worked out from the date set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — if any of those 3 Mondays falls inside one of a candidate's placement blocks, that's a clash, flagged here and in All candidates below. Nothing is saved until you confirm.</p>
       <textarea id="placementPasteBox" placeholder="Dave, Smith, abc123@student.bham.ac.uk, 02/11/2026, 02/11/2026&#10;Dave, Smith, abc123@student.bham.ac.uk, 15/03/2027, 19/03/2027"></textarea>
       <button class="btn-primary" id="placementParseBtn" onclick="parsePlacementPreview()">Parse &amp; preview</button>
       <div id="placementPreviewWrap"></div>
@@ -586,10 +586,17 @@ async function confirmImport() {
       const batch = db.batch();
       parsedRows.slice(start, start + CHUNK).forEach(r => {
         const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
+        // Pharmacy MPharm is the only programme that actually has placement
+        // dates (Jon, 2026-10-01) — every other programme is auto-checked
+        // as "no placement dates" right at import, so only Pharmacy needs
+        // the real Step 2 check from here on. Already-imported candidates
+        // from before this change still get caught up by "Mark all
+        // unchecked" in Step 2.
+        const isPharmacy = (resolveStage1Degree(r.degree) || {}).exact === "Pharmacy MPharm";
         batch.set(ref, {
           name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: "", room: null,
           studentId: r.studentId || "", yearOfStudy: r.yearOfStudy || "",
-          placementChecked: false, placementBlocks: [],
+          placementChecked: !isPharmacy, placementBlocks: [],
           promotedToUid: null, promotedAt: null,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -1016,6 +1023,9 @@ function placementClashBadgeHtml(c) {
 function placementCheckBadgeHtml(c) {
   if (c.course) return ""; // already allocated — the check already did its job
   if (c.placementChecked) return ` <span class="link-badge" title="Checked for placement dates — ready for Allocate now">✓ checked</span>`;
+  if ((resolveStage1Degree(c.degree) || {}).exact === "Pharmacy MPharm") {
+    return ` <span class="dup-warning" style="display:inline;">⚠ needs placement check (Pharmacy — import dates above)</span>`;
+  }
   return ` <span class="dup-warning" style="display:inline;">⚠ needs placement check <button class="btn-link-sm" onclick="markNoPlacementDates('${c.id}')">No placement dates</button></span>`;
 }
 
@@ -1058,7 +1068,11 @@ function updateAllocateButtonState() {
 async function markNoPlacementDates(id) {
   const c = allCandidates.find(x => x.id === id);
   if (!c || c.placementChecked) return;
-  if (!confirm(`Mark ${c.name} as checked, with no placement dates on file?\n\nOnly do this if you're sure they have none — this is what clears them for "Allocate now". If they're Pharmacy, use the placement-dates import above instead so their real dates get recorded.`)) return;
+  if ((resolveStage1Degree(c.degree) || {}).exact === "Pharmacy MPharm") {
+    alert(`${c.name} is Pharmacy MPharm — Pharmacy candidates always have placement dates, so this can't be used for them. Use the placement-dates import above to record their real dates instead.`);
+    return;
+  }
+  if (!confirm(`Mark ${c.name} as checked, with no placement dates on file?\n\nOnly do this if you're sure they have none — this is what clears them for "Allocate now".`)) return;
   try {
     await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ placementChecked: true });
     c.placementChecked = true;
