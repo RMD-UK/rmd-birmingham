@@ -318,6 +318,32 @@ function requireSuperUser(redirectTo) {
   });
 }
 
+// requireDirectorOrFaculty() — same pattern as requireDirector(), widened to
+// also admit RMD Student Faculty and RMD Senior Faculty (2026-10-01, Jon:
+// "anyone on RMD student faculty & RMD senior faculty" should be able to
+// use Course Room & Instructor Allocation, not just directors). Checks
+// director status via resolveRole() first since that's already the
+// authoritative check elsewhere, then falls back to the faculty_roster
+// lookup used by isStudentFaculty()/isSeniorFaculty(). Matching
+// firestore.rules change needed wherever this gate is used for a page that
+// writes data, not just reads it — see course_allocations/stage1_candidates
+// in firestore.rules.
+function requireDirectorOrFaculty(redirectTo) {
+  redirectTo = redirectTo || "timetable.html";
+  return new Promise(function(resolve) {
+    auth.onAuthStateChanged(async function(user) {
+      if (!user) { window.location.href = "signin.html"; return; }
+      const role = await resolveRole(user.uid, user.email || "");
+      if (role === ROLES.DIRECTOR) { resolve(user); return; }
+      const group = await myFacultyRosterGroup(user.email || "");
+      if (group === "student" || group === "senior") { resolve(user); return; }
+      var msg = document.getElementById("authMsg");
+      if (msg) msg.textContent = "Course Directors, RMD Student Faculty or RMD Senior Faculty only.";
+      setTimeout(function() { window.location.href = redirectTo; }, 1500);
+    });
+  });
+}
+
 // myFacultyRosterGroup(email) → "student" | "senior" | null
 // Client-side mirror of myFacultyRosterGroup() in firestore.rules: looks up
 // the signed-in user's own faculty_roster doc (keyed by lowercased email —

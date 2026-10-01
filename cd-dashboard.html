@@ -957,6 +957,58 @@ async function loadFeedback() {
   feedbackData = [...sessionFeedback, ...assessorFeedback];
 }
 
+// ── Instructor Weekend rating score (2026-10-01, Jon) ──────────────────────
+// Turns each individual traffic-light entry (green/amber/red, plus an
+// optional "notably strong"/"notably weak" flag) into a number, then
+// averages across every entry for that person. The small dots in the
+// Status column show the PLAIN traffic-light colour for each session; the
+// one larger dot alongside them (reusing the existing .tl-dot) shows the
+// computed average, banded back onto the same three colours.
+//
+// green=2, amber=1, red=0, with +1 for a "notably strong" flag and -1 for
+// "notably weak" on top of whichever base it was paired with. Averaged
+// (not summed) so someone with 3 ratings isn't penalised or boosted next
+// to someone with 10. strong >= 1.5, weak < 0.5, otherwise standard.
+//
+// This same formula is duplicated server-side in functions/index.js
+// (recomputeInstructorIwScore) for Course Room & Instructor Allocation,
+// which can't read raw feedback at all (kept blind on purpose, 2026-10-01
+// — see that function's comment) and only ever sees the finished average.
+// Keep the two in sync if this changes.
+const IW_RATING_BASE = { green: 2, amber: 1, red: 0 };
+function iwEntryScore(f) {
+  const base = IW_RATING_BASE[f.rating];
+  if (base === undefined) return null;
+  return base + (f.strong ? 1 : 0) - (f.weak ? 1 : 0);
+}
+function iwTierFromAverage(average) {
+  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+}
+function iwTierDotClass(tier) {
+  return tier === "strong" ? "green" : tier === "weak" ? "red" : tier === "standard" ? "amber" : "grey";
+}
+function candidateIwScore(candidateId) {
+  const entries = feedbackData
+    .filter(f => f.candidateId === candidateId)
+    .slice()
+    .sort((a, b) => (a.savedAt?.seconds || 0) - (b.savedAt?.seconds || 0))
+    .map(f => ({ ...f, score: iwEntryScore(f) }))
+    .filter(f => f.score !== null);
+  if (!entries.length) return { entries: [], average: null, tier: "unrated" };
+  const average = entries.reduce((sum, f) => sum + f.score, 0) / entries.length;
+  return { entries, average, tier: iwTierFromAverage(average) };
+}
+function statusDotsHtml(candidateId) {
+  const { entries, average, tier } = candidateIwScore(candidateId);
+  if (!entries.length) return `<span class="tl-badge none">Not yet rated</span>`;
+  const small = entries.map(f => {
+    const flagNote = f.strong ? " — notably strong" : f.weak ? " — notably weak" : "";
+    const sessionNote = f.isAssessorFeedback ? "Assessor/SI feedback" : esc(f.sessionId || "Session");
+    return `<span class="tl-dot-sm ${f.rating}" title="${sessionNote}${flagNote}"></span>`;
+  }).join("");
+  return `<span class="status-dots">${small}<span class="tl-dot ${iwTierDotClass(tier)}" title="Average ${average.toFixed(2)} — ${tier}" style="width:14px;height:14px;margin-left:4px;"></span></span>`;
+}
+
 async function loadDecisions() {
   try {
     const snap = await db.collection("decisions").get();
@@ -1035,7 +1087,6 @@ function renderOverview() {
           onchange="saveDecision('${f.candidateId}', this.value, this)">
           <option value="">– Decision –</option>
           <option value="pass"  ${decisions[f.candidateId]==="pass"  ?"selected":""}>Pass</option>
-          <option value="defer" ${decisions[f.candidateId]==="defer" ?"selected":""}>Defer</option>
           <option value="fail"  ${decisions[f.candidateId]==="fail"  ?"selected":""}>Fail</option>
         </select>
       </div>`).join("");
@@ -1112,29 +1163,18 @@ function renderCandidates(filter) {
   const tbody = document.getElementById("candTableBody");
   if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">No candidates found.</td></tr>`; return; }
 
-  // Latest rating per candidate
-  const latestRating = {};
-  feedbackData.forEach(f => {
-    const existing = latestRating[f.candidateId];
-    if (!existing || (f.savedAt && (!existing.savedAt || f.savedAt.seconds > existing.savedAt.seconds)))
-      latestRating[f.candidateId] = f;
-  });
-
   tbody.innerHTML = filtered.map(c => {
-    const latest  = latestRating[c.id];
-    const rating  = latest?.rating || "none";
-    const dec     = decisions[c.id] || "";
+    const dec = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
       <td>${esc(c.roleLabel || c.stream || ROLE_LABELS[effectiveRole(c)] || effectiveRole(c))}</td>
       <td>${esc(c.group || "–")}</td>
-      <td><span class="tl-badge ${rating}">${rating === "none" ? "Not yet rated" : rating.charAt(0).toUpperCase() + rating.slice(1)}</span></td>
+      <td>${statusDotsHtml(c.id)}</td>
       <td>
         <select class="decision-select ${decisionClass(dec)}"
           onchange="saveDecision('${c.id}', this.value, this)">
           <option value="">– –</option>
           <option value="pass"  ${dec==="pass"  ?"selected":""}>Pass</option>
-          <option value="defer" ${dec==="defer" ?"selected":""}>Defer</option>
           <option value="fail"  ${dec==="fail"  ?"selected":""}>Fail</option>
         </select>
       </td>
@@ -1156,23 +1196,11 @@ function renderAssessors(filter) {
   const tbody = document.getElementById("assessorTableBody");
   if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-msg">No Assessor / Senior Instructor candidates found.</td></tr>`; return; }
 
-  // Latest rating per candidate — feedbackData already includes
-  // assessor_feedback (merged in loadFeedback()), so this is the same
-  // lookup renderCandidates() does for the instructor stream.
-  const latestRating = {};
-  feedbackData.forEach(f => {
-    const existing = latestRating[f.candidateId];
-    if (!existing || (f.savedAt && (!existing.savedAt || f.savedAt.seconds > existing.savedAt.seconds)))
-      latestRating[f.candidateId] = f;
-  });
-
   tbody.innerHTML = filtered.map(c => {
-    const latest  = latestRating[c.id];
-    const rating  = latest?.rating || "none";
-    const dec     = decisions[c.id] || "";
+    const dec = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
-      <td><span class="tl-badge ${rating}">${rating === "none" ? "Not yet rated" : rating.charAt(0).toUpperCase() + rating.slice(1)}</span></td>
+      <td>${statusDotsHtml(c.id)}</td>
       <td>
         <select class="decision-select ${decisionClass(dec)}"
           onchange="saveDecision('${c.id}', this.value, this)">
@@ -1557,7 +1585,6 @@ function renderFeedback(day) {
           onchange="saveDecision('${candidate.id}', this.value, this)">
           <option value="">– Decision –</option>
           <option value="pass"  ${decisions[candidate.id]==="pass"  ?"selected":""}>Pass</option>
-          <option value="defer" ${decisions[candidate.id]==="defer" ?"selected":""}>Defer</option>
           <option value="fail"  ${decisions[candidate.id]==="fail"  ?"selected":""}>Fail</option>
         </select>
       </div>`).join("");

@@ -2468,6 +2468,105 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
 );
 
 /**
+ * recomputeInstructorIwScore: Firestore trigger (v2, onDocumentWritten) on
+ * BOTH session_feedback/{docId} and assessor_feedback/{docId}. Whenever a
+ * traffic-light rating is submitted, edited, or removed, recomputes the
+ * rated person's Instructor Weekend average score and writes ONLY the
+ * finished result, never the raw ratings, to people/{candidateId}
+ * .iwRatingSummary.
+ *
+ * Why this exists server-side at all (2026-10-01, Jon): session_feedback
+ * and assessor_feedback are deliberately blind — readable only by the
+ * director and whoever submitted a given rating (see firestore.rules) — so
+ * faculty can rate honestly without a comeback. Course Room & Instructor
+ * Allocation needs a strong/standard/weak read on each instructor to avoid
+ * pairing up two weak instructors, but its users (director, RMD
+ * Student/Senior Faculty, widened 2026-10-01) must never see the raw
+ * ratings behind that read. Running the aggregation here, with the
+ * function's own admin privileges, is what makes that possible — it can
+ * read everything, but only ever writes out the averaged summary, never
+ * the source rows.
+ *
+ * Scoring (kept in sync with cd-dashboard.html's identical client-side
+ * copy — iwEntryScore()/candidateIwScore() there, which computes this live
+ * for the director, who already has full access to the raw feed and so
+ * doesn't need to wait on this function):
+ *   green=2, amber=1, red=0, +1 for a "notably strong" flag, -1 for
+ *   "notably weak", on top of whichever base it was paired with. Averaged
+ *   (not summed) across every entry for that person, so someone with 3
+ *   ratings isn't penalised or boosted next to someone with 10.
+ *   average >= 1.5 -> "strong", average < 0.5 -> "weak", else "standard".
+ * A person with zero ratings never gets this field at all (or has it
+ * removed if their last rating is deleted) — read a missing field as "not
+ * yet rated", same as the dashboard does.
+ */
+const IW_RATING_BASE = { green: 2, amber: 1, red: 0 };
+function iwEntryScore(data) {
+  const base = IW_RATING_BASE[data.rating];
+  if (base === undefined) return null;
+  return base + (data.strong ? 1 : 0) - (data.weak ? 1 : 0);
+}
+function iwTierFromAverage(average) {
+  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+}
+
+async function recomputeAndWriteIwScore(candidateId) {
+  if (!candidateId) return;
+  const [sessionSnap, assessorSnap] = await Promise.all([
+    db.collection("session_feedback").where("candidateId", "==", candidateId).get(),
+    db.collection("assessor_feedback").where("candidateId", "==", candidateId).get()
+  ]);
+  const scores = [...sessionSnap.docs, ...assessorSnap.docs]
+    .map((d) => iwEntryScore(d.data()))
+    .filter((s) => s !== null);
+
+  const peopleRef = db.collection("people").doc(candidateId);
+  if (!scores.length) {
+    // Nothing left to rate them on (last entry removed, or never rated) —
+    // clear the field rather than leaving a stale summary behind. update()
+    // rejects if the person doc is somehow already gone; that's fine, there
+    // is nothing to clean up in that case either.
+    await peopleRef.update({ iwRatingSummary: admin.firestore.FieldValue.delete() }).catch(() => {});
+    return;
+  }
+  const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  await peopleRef.set({
+    iwRatingSummary: {
+      average: Math.round(average * 100) / 100,
+      tier: iwTierFromAverage(average),
+      count: scores.length,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+}
+
+exports.recomputeIwScoreOnSessionFeedback = onDocumentWritten(
+  { document: "session_feedback/{docId}", region: "us-central1" },
+  async (event) => {
+    const data = event.data?.after?.exists ? event.data.after.data() : event.data?.before?.data();
+    const candidateId = data?.candidateId;
+    try {
+      await recomputeAndWriteIwScore(candidateId);
+    } catch (err) {
+      console.error(`recomputeIwScoreOnSessionFeedback: failed for ${candidateId}`, err.message);
+    }
+  }
+);
+
+exports.recomputeIwScoreOnAssessorFeedback = onDocumentWritten(
+  { document: "assessor_feedback/{docId}", region: "us-central1" },
+  async (event) => {
+    const data = event.data?.after?.exists ? event.data.after.data() : event.data?.before?.data();
+    const candidateId = data?.candidateId;
+    try {
+      await recomputeAndWriteIwScore(candidateId);
+    } catch (err) {
+      console.error(`recomputeIwScoreOnAssessorFeedback: failed for ${candidateId}`, err.message);
+    }
+  }
+);
+
+/**
  * sendIwRsvpInvites — director-only.
  *
  * Emails every Assessor/Senior Instructor on iw_registrations who is still

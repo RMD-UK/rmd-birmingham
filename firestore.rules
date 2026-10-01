@@ -635,10 +635,21 @@ service cloud.firestore {
       // Read widened 2026-09-08 to match the people-collection decision:
       // Jon confirmed RMD Student/Senior Faculty can see full candidate
       // detail (name, email, DOB, degree, room) for evening-course
-      // candidates, same as they already can for people. Write stays
-      // director-only - no change there.
+      // candidates, same as they already can for people.
       allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      // Full write (add/edit/delete a candidate, change course, etc.)
+      // stays director-only — admin-stage1-candidates.html is unaffected.
       allow write: if isDirector();
+      // Write widened 2026-10-01 (Jon: "anyone on RMD student faculty &
+      // RMD senior faculty" should be able to use the room-allocation
+      // page) but deliberately scoped to ONLY the room field — this is
+      // what Course Room & Instructor Allocation (3.6) actually needs to
+      // write, and nothing more. affectedKeys().hasOnly(['room']) means a
+      // write touching any other field (course, degree, email, a delete,
+      // ...) is rejected even from this role, so this can't be used as a
+      // side door into full candidate editing.
+      allow update: if (isStudentFaculty() || isSeniorFaculty()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room']);
     }
 
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────
@@ -647,14 +658,16 @@ service cloud.firestore {
     // .room instead, reusing that existing field rather than duplicating it
     // here). Director only — see admin-course-room-allocation.html.
     match /course_allocations/{docId} {
-      // Read-only oversight for RMD Student/Senior Faculty added 2026-09-07
-      // (Jon: view all evening-course allocations, edits director-only).
-      // stage1_candidates (candidate personal details, incl. email) is
-      // deliberately NOT opened up alongside this yet — pending a decision
-      // on whether Student/Senior Faculty should see candidate emails or a
-      // redacted view (see [[rmd_website_permissions_audit]]).
+      // Read for RMD Student/Senior Faculty added 2026-09-07 (Jon: view all
+      // evening-course allocations). Write widened to the same two roles
+      // 2026-10-01 (Jon: "anyone on RMD student faculty & RMD senior
+      // faculty" should be able to use Course Room & Instructor Allocation
+      // itself, not just look at the result) — this collection exists
+      // entirely for that page's own per-room instructor teams, so unlike
+      // stage1_candidates there's no need to scope the write to specific
+      // fields; the whole collection is already that page's business.
       allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
-      allow write: if isDirector();
+      allow write: if isDirector() || isStudentFaculty() || isSeniorFaculty();
     }
 
     // ── OPIS candidate ratings (2026-09-27) ─────────────────────────────────
