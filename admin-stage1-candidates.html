@@ -188,30 +188,32 @@ async function loadAutoFitSettings() {
 // ── Placement-date clash checking (2026-10-01, Jon) ────────────────────────
 // Some candidates — currently Pharmacy, via their placement leads — have
 // dates during the year they're on clinical placement and can't be on an
-// RMD course at all. A course runs from its first teaching Monday through
-// its week-3 assessment evening; if any part of a candidate's placement
-// overlaps that whole span, that course is off the table for them. Course
-// start is derived from the assessment date (2 weeks earlier, Monday of
-// that week) rather than typed in separately on Stage 1 Settings — one date
-// to keep current, not two, and it can't drift out of sync with the
-// assessment date it's derived from.
-function mondayOnOrBefore(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  const day = d.getDay(); // 0 = Sunday .. 6 = Saturday
-  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
-  return d.toISOString().slice(0, 10);
+// RMD course at all. A course only actually runs on 3 Monday evenings — two
+// teaching sessions and the week-3 assessment evening — so a clash means
+// one of THOSE THREE DATES falls inside a placement block, not any day in
+// the three-week span between them (2026-10-01, Jon: corrected from an
+// earlier whole-span overlap check, which over-flagged a placement day that
+// fell between two Mondays with no real session that day). The assessment
+// date on Stage 1 Settings is itself always a Monday (Jon confirmed every
+// course session is scheduled that way), so the other two Mondays are just
+// 7 and 14 days earlier — no day-of-week rounding needed.
+function courseMondays(assessmentDate) {
+  const d = new Date(assessmentDate + "T00:00:00");
+  const mondays = [];
+  for (let weeksBack = 2; weeksBack >= 0; weeksBack--) {
+    const m = new Date(d);
+    m.setDate(m.getDate() - weeksBack * 7);
+    mondays.push(m.toISOString().slice(0, 10));
+  }
+  return mondays; // [first session, second session, assessment evening]
 }
-function courseStartDate(assessmentDate) {
-  const d = new Date(mondayOnOrBefore(assessmentDate) + "T00:00:00");
-  d.setDate(d.getDate() - 14);
-  return d.toISOString().slice(0, 10);
-}
-// Overlap test between a candidate's placement blocks and one course's
-// [start-of-course, assessment-evening] span — inclusive both ends.
+// True if any of a course's 3 Monday sessions falls inside one of a
+// candidate's placement blocks — inclusive both ends.
 function placementClashesWithCourse(placementBlocks, assessmentDate) {
   if (!placementBlocks || !placementBlocks.length || !assessmentDate) return false;
-  const start = courseStartDate(assessmentDate);
-  return placementBlocks.some(b => b.start && b.end && b.start <= assessmentDate && b.end >= start);
+  const mondays = courseMondays(assessmentDate);
+  return placementBlocks.some(b =>
+    b.start && b.end && mondays.some(m => m >= b.start && m <= b.end));
 }
 
 // Returns { course, reason } — course is null if nothing could be fit, and
