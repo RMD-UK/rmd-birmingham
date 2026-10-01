@@ -102,7 +102,7 @@
   <div class="card">
     <div class="card-header">Import placement dates</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste rows straight from a placement lead's sheet (Pharmacy, or any other programme this comes up for): <strong>first name, last name, email, start date, end date</strong> — dates as DD/MM/YYYY. Matched to candidates already imported above by email. A student can have several rows (several separate placement blocks); each one is added to their file, so re-pasting the same sheet again won't create duplicates. A course runs from its first teaching Monday through its week-3 assessment evening (worked out from the date set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — if any of a candidate's placement dates overlap that whole span for their assigned course, they're flagged here and on the Candidates list below so you can move them by hand. Nothing is saved until you confirm.</p>
+      <p class="hint" style="margin-top:0;">Paste rows straight from a placement lead's sheet — accepts either <strong>Student ID, last name, first name, email, start date, end date</strong> (the real Pharmacy export) or the older <strong>first name, last name, email, start date, end date</strong>, dates as DD/MM/YYYY. A pasted header row is dropped automatically. Matched to candidates already imported above by email — this also clears them for allocation (see the Candidates list below). A student can have several rows (several separate placement blocks); each one is added to their file, so re-pasting the same sheet again won't create duplicates. A course runs on 3 consecutive Mondays (worked out from the date set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — if any of those 3 Mondays falls inside one of a candidate's placement blocks, that's a clash, flagged here and on the Candidates list. Nothing is saved until you confirm.</p>
       <textarea id="placementPasteBox" placeholder="Dave, Smith, nxa966@student.bham.ac.uk, 02/11/2026, 02/11/2026&#10;Dave, Smith, nxa966@student.bham.ac.uk, 15/03/2027, 19/03/2027"></textarea>
       <button class="btn-primary" id="placementParseBtn" onclick="parsePlacementPreview()">Parse &amp; preview</button>
       <div id="placementPreviewWrap"></div>
@@ -117,6 +117,11 @@
         <input type="text" id="searchBox" placeholder="Search by name, email or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
       </div>
       <p class="hint" style="margin-top:0;">Someone repeating (absence, need to redo) gets a fresh record on the new course rather than editing their old one in place — paste them in above as normal, then use <strong>Link repeat</strong> on either their old or new row to connect the two records for reference. Nothing else changes; it just stops an old attempt reading as still-pending once you can see it led to a later one.</p>
+      <p class="hint" style="margin-top:0;">Every candidate starts unallocated. <strong>Allocate now</strong> fits everyone who's been checked for placement dates onto a course (respecting degree deadlines, placement clashes and course capacity) and skips anyone not yet checked. A Pharmacy candidate gets checked automatically by the placement-dates import above; everyone else needs "No placement dates" ticked, individually or in bulk below, before they can be allocated. Manual course override is coming next — for now, anyone auto-fit can't place is flagged for you to sort by hand later.</p>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+        <button class="btn-primary" onclick="allocateAllNow()">Allocate now</button>
+        <button class="btn-secondary" onclick="markAllNoPlacementDates()">Mark all unchecked as "no placement dates" (excludes Pharmacy)</button>
+      </div>
       <div class="summary-line" id="summaryLine"></div>
       <div id="candidatesWrap"></div>
     </div>
@@ -350,11 +355,10 @@ function parsePreview() {
     // (see confirmImport()) so a real but not-yet-listed degree can still
     // be pushed through deliberately rather than silently rejected.
     r.degreeMatch = resolveStage1Degree(r.degree);
-    if (!r.course) {
-      const fit = autoFitCourse(r.degreeMatch ? r.degreeMatch.exact : null, []);
-      if (fit.course) { r.course = fit.course; r.courseAutoFit = true; }
-      else { errors.push(`Line ${i + 1} ("${esc(r.name)}"): no course typed and none could be auto-fit (${fit.reason}) — kept, but set a course before or after importing.`); }
-    }
+    // Course is never set at import (2026-10-01, Jon) — every candidate
+    // starts unallocated. Allocation is a separate, deliberate step (the
+    // "Allocate now" button below), so placement dates get a chance to be
+    // checked first. See autoFitCourse() and allocateAllNow().
     rows.push(r);
   });
 
@@ -378,7 +382,7 @@ function parsePreview() {
       <td class="name-cell">${esc(r.name)}</td>
       <td>${esc(r.email) || "<em>none</em>"}</td>
       <td>${degreeCell}</td>
-      <td>${esc(r.course) || "<em>none</em>"}${r.courseAutoFit ? ` <span class="link-badge" title="Auto-fit from programme deadline + course settings">auto</span>` : ""}</td>
+      <td><em>unallocated</em></td>
       <td>${esc(r.studentId) || "–"}</td>
       <td>${esc(r.yearOfStudy) || "–"}</td>
       <td>${warn}</td>
@@ -421,8 +425,9 @@ async function confirmImport() {
       parsedRows.slice(start, start + CHUNK).forEach(r => {
         const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
         batch.set(ref, {
-          name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: r.course, room: null,
+          name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: "", room: null,
           studentId: r.studentId || "", yearOfStudy: r.yearOfStudy || "",
+          placementChecked: false, placementBlocks: [],
           promotedToUid: null, promotedAt: null,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -733,7 +738,7 @@ async function confirmPlacementImport() {
           if (!seen.has(key)) { seen.add(key); merged.push(b); }
         });
         const ref = db.collection(COLLECTIONS.stage1Candidates).doc(id);
-        batch.update(ref, { placementBlocks: merged });
+        batch.update(ref, { placementBlocks: merged, placementChecked: true });
       });
       await batch.commit();
     }
@@ -797,7 +802,7 @@ function renderCandidates() {
         <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th><th></th></tr></thead>
         <tbody>${filtered.map(c => `
           <tr>
-            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}</td>
+            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
@@ -836,6 +841,109 @@ function placementClashBadgeHtml(c) {
   const session = courseSessions.find(s => s.name === c.course);
   if (!session || !session.date || !placementClashesWithCourse(c.placementBlocks, session.date)) return "";
   return ` <span class="dup-warning dup-exact" style="display:inline;">⚠ Placement clash on ${esc(c.course)}</span>`;
+}
+
+// ── Allocation gate (2026-10-01, Jon) ──────────────────────────────────────
+// Course is never set at import any more (see parsePreview()) — a candidate
+// only gets a course once "Allocate now" runs for them, and only once
+// they've been "checked" for placement dates: either they matched a row in
+// the placement-dates import above (placementChecked gets set there), or
+// someone explicitly ticked "No placement dates" for them (markNoPlacement-
+// Dates() / markAllNoPlacementDates() below). This is what makes the
+// add → check → allocate order unskippable rather than just documented.
+function placementCheckBadgeHtml(c) {
+  if (c.course) return ""; // already allocated — the check already did its job
+  if (c.placementChecked) return ` <span class="link-badge" title="Checked for placement dates — ready for Allocate now">✓ checked</span>`;
+  return ` <span class="dup-warning" style="display:inline;">⚠ needs placement check <button class="btn-link-sm" onclick="markNoPlacementDates('${c.id}')">No placement dates</button></span>`;
+}
+
+async function markNoPlacementDates(id) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c || c.placementChecked) return;
+  if (!confirm(`Mark ${c.name} as checked, with no placement dates on file?\n\nOnly do this if you're sure they have none — this is what clears them for "Allocate now". If they're Pharmacy, use the placement-dates import above instead so their real dates get recorded.`)) return;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ placementChecked: true });
+    c.placementChecked = true;
+    renderCandidates();
+  } catch (err) {
+    alert("Failed: " + err.message);
+  }
+}
+
+async function markAllNoPlacementDates() {
+  const unchecked = allCandidates.filter(c =>
+    !c.course && !c.placementChecked &&
+    (resolveStage1Degree(c.degree) || {}).exact !== "Pharmacy MPharm");
+  if (!unchecked.length) { alert("Nothing to mark — everyone unallocated is either already checked or Pharmacy (use the placement-dates import for them)."); return; }
+  if (!confirm(`Mark all ${unchecked.length} unallocated, unchecked candidate(s) as "no placement dates"?\n\nPharmacy candidates are excluded automatically — import their real dates above instead. Only confirm this for a batch you're sure has no placement risk.`)) return;
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < unchecked.length; start += CHUNK) {
+      const batch = db.batch();
+      unchecked.slice(start, start + CHUNK).forEach(c => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { placementChecked: true });
+      });
+      await batch.commit();
+    }
+    unchecked.forEach(c => { c.placementChecked = true; });
+    renderCandidates();
+    alert(`Marked ${unchecked.length} candidate(s) as checked.`);
+  } catch (err) {
+    alert("Failed: " + err.message);
+  }
+}
+
+// The only place a candidate's course gets set, now that import no longer
+// does it. Only ever acts on candidates already marked placementChecked —
+// anyone not yet checked is skipped and listed, not guessed at.
+async function allocateAllNow() {
+  const unallocated = allCandidates.filter(c => !c.course);
+  if (!unallocated.length) { alert("No unallocated candidates — everyone already has a course."); return; }
+
+  const notChecked = unallocated.filter(c => !c.placementChecked);
+  const ready = unallocated.filter(c => c.placementChecked);
+
+  if (!ready.length) {
+    alert(`${notChecked.length} unallocated candidate(s), but none have been checked for placement dates yet. Import placement dates above, or mark them "No placement dates", before allocating.`);
+    return;
+  }
+
+  let confirmMsg = `Allocate ${ready.length} checked candidate(s) to courses now?`;
+  if (notChecked.length) confirmMsg += `\n\n${notChecked.length} unallocated candidate(s) will be skipped — not yet checked for placement dates.`;
+  if (!confirm(confirmMsg)) return;
+
+  const toWrite = [];
+  const flagged = [];
+  ready.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || []);
+    if (fit.course) toWrite.push({ c, course: fit.course });
+    else flagged.push({ c, reason: fit.reason });
+  });
+
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < toWrite.length; start += CHUNK) {
+      const batch = db.batch();
+      toWrite.slice(start, start + CHUNK).forEach(({ c, course }) => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course });
+      });
+      await batch.commit();
+    }
+    toWrite.forEach(({ c, course }) => { c.course = course; });
+
+    let report = `Allocated ${toWrite.length} candidate(s).`;
+    if (flagged.length) {
+      report += `\n\n${flagged.length} couldn't be auto-fit — pick a course for these by hand:\n` +
+        flagged.map(f => `- ${f.c.name}: ${f.reason}`).join("\n");
+    }
+    if (notChecked.length) report += `\n\n${notChecked.length} skipped — not yet checked for placement dates.`;
+    alert(report);
+    renderCandidates();
+    populateCourseFilter();
+  } catch (err) {
+    alert("Allocation failed: " + err.message);
+  }
 }
 
 async function linkRepeat(candidateId) {
