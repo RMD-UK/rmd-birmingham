@@ -3026,3 +3026,78 @@ exports.syncIwRegistrationsToPeople = onCall({ region: "us-central1" }, async (r
 
   return { dryRun, ...results };
 });
+
+/**
+ * sendBulkComms — director-only.
+ *
+ * Generic bulk-email tool for admin-comms.html (2026-10-02, Jon: "bulk email
+ * all candidates allocated to a particular course... could be separate comms
+ * page & have button for bulk email of several groups... eg candidates per
+ * course, all assessors, all instructors, etc"). Deliberately generic: the
+ * caller works out WHO the recipients are (Stage 1 candidates by course, IW
+ * roster by role, etc — see admin-comms.html) and this function just sends
+ * to whatever { name, email } list it's given, same Resend/FROM_EMAIL
+ * pipeline as every other platform email. Supports {{first_name}} / {{name}}
+ * merge fields in the message body. dryRun returns the recipient count with
+ * nothing sent, for admin-comms.html's preview-before-send step.
+ */
+exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+
+  const recipients  = Array.isArray(request.data?.recipients) ? request.data.recipients : [];
+  const subject     = (request.data?.subject || "").trim();
+  const message     = (request.data?.message || "").trim();
+  const groupLabel  = (request.data?.groupLabel || "").trim();
+  const dryRun      = !!request.data?.dryRun;
+
+  const valid = recipients.filter(r => r && r.email);
+  if (!subject) throw new HttpsError("invalid-argument", "Subject is required.");
+  if (!message) throw new HttpsError("invalid-argument", "Message is required.");
+  if (!valid.length) throw new HttpsError("invalid-argument", "No recipients with an email address.");
+
+  if (dryRun) {
+    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [] };
+  }
+
+  const resend = new Resend(resendApiKey.value());
+  let sent = 0;
+  const failedEmails = [];
+  const sentTo = [];
+
+  for (const person of valid) {
+    const firstName = (person.name || "").trim().split(" ")[0] || "there";
+    const personalised = message
+      .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
+      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        replyTo: REPLY_TO,
+        subject,
+        text: personalised
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+      sentTo.push(person.email);
+    } catch (err) {
+      console.error(`sendBulkComms: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  await db.collection("comms_log").add({
+    groupLabel, subject, message,
+    recipientCount: valid.length, sent, failedEmails, sentTo,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    sentByUid: auth.uid,
+    sentByEmail: (auth.token.email || "").toLowerCase()
+  });
+
+  return { sent, failed: failedEmails.length, failedEmails };
+});
+
