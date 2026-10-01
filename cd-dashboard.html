@@ -236,6 +236,17 @@
     .itc-cb { width: 24px; height: 24px; border-radius: 4px; border: 2px solid #dce3ea; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.12s; }
     .itc-cb.done { background: #1a6e31; border-color: #145727; color: white; }
 
+    /* ── ITC completion (2026-10-01, per Jon) ── */
+    .itc-outcome-select {
+      padding: 5px 8px; border-radius: 6px; border: 1px solid #ccd6dd;
+      font-size: 12px; font-family: var(--font); color: var(--rmd-navy); background: white;
+    }
+    .itc-already-badge {
+      font-size: 11px; color: #856404; background: #fff3cd;
+      padding: 3px 10px; border-radius: 10px; font-weight: 700; white-space: nowrap;
+    }
+    .itc-rounds-note { font-size: 11px; color: var(--rmd-muted); }
+
     /* ── Faculty meeting slides (presentation mode) ── */
     .meeting-slide {
       background: var(--rmd-navy);
@@ -591,6 +602,18 @@
           <div class="empty-msg">Observation records will appear here as ITCs are assessed.</div>
         </div>
       </div>
+      <div class="card">
+        <div class="card-header">ITC Completion
+          <div class="card-actions">
+            <label style="font-size:11px;font-weight:400;opacity:0.85;margin-right:4px;">Date</label>
+            <input type="date" id="itcCompletionDate" value="2026-10-11"
+              style="padding:4px 6px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;font-family:var(--font);font-size:12px;background:rgba(255,255,255,0.1);color:white;">
+          </div>
+        </div>
+        <p class="text-sm text-muted" style="margin:10px 14px 0;">Record each ITC's outcome for this Instructor Weekend. The usual expectation is two completed rounds as ITC before upgrading to Instructor Trainer — the suggested outcome below reflects that, but you can change it per person.</p>
+        <div class="card-body" id="itcCompletionBody"><div class="loading">Loading…</div></div>
+        <div class="card-body" id="itcCompletionReview" style="display:none;padding-top:0;"></div>
+      </div>
     </section>
 
     <!-- ── ROOMS ── -->
@@ -810,6 +833,7 @@ let notesSaveTimer;
 // ITC observation + AI summary state (config/itc_schedule, itc_observations, itc_summaries)
 let itcSchedule  = {};    // { itcs:[{name,email}], assignments:{email:{sat_group,...}} }
 let itcSummaries = {};    // { itcEmail: {summary, observationCount, generatedAt, ...} }
+let itcOutcomeChoices = {}; // { uid: "upgraded"|"completed"|"failed" } — pending ITC Completion picks, 2026-10-01
 let fns; // firebase.functions() — set in boot, after initFirebase()
 
 // Room rosters (groups collection, one doc per room) + which session block
@@ -867,6 +891,7 @@ window.addEventListener("load", () => {
     renderMeetingSlides("saturday");
     renderITCs();
     renderItcSummaries();
+    renderItcCompletion();
     renderRooms();
     loadMeetingNotes();
     loadReport();
@@ -1294,6 +1319,156 @@ async function generateItcSummary(itcEmail, docId) {
     alert(`Couldn't generate summary: ${err.message || err.code || "unknown error"}`);
     if (btn) { btn.disabled = false; btn.textContent = "✨ Generate summary"; }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ITC COMPLETION (2026-10-01, per Jon) — end-of-weekend outcome per ITC:
+// upgrade to Instructor Trainer (role history entry, same mechanism as
+// admin-iw-pass-confirmation.html uses for Instructor Candidates), complete
+// another round as ITC (no role change, just logged), or fail (no role
+// change, logged). itcRoundHistory on people/{uid} accumulates one entry
+// per Instructor Weekend year so the "usual two rounds before upgrading"
+// expectation can be suggested as a default, never enforced — the director
+// always has the final call per person.
+// ─────────────────────────────────────────────────────────────────────────────
+function setItcOutcome(id, val) { itcOutcomeChoices[id] = val; }
+
+function itcAlreadyRecorded(c) {
+  return (Array.isArray(c.itcRoundHistory) ? c.itcRoundHistory : [])
+    .find(h => h.year === CURRENT_IW_YEAR);
+}
+
+function itcRoundsCompleted(c) {
+  return (Array.isArray(c.itcRoundHistory) ? c.itcRoundHistory : [])
+    .filter(h => h.outcome === "upgraded" || h.outcome === "completed").length;
+}
+
+function renderItcCompletion() {
+  const body = document.getElementById("itcCompletionBody");
+  const reviewEl = document.getElementById("itcCompletionReview");
+  if (reviewEl) { reviewEl.style.display = "none"; reviewEl.innerHTML = ""; }
+
+  const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!itcs.length) {
+    body.innerHTML = `<div class="empty-msg">No ITCs assigned for Instructor Weekend ${CURRENT_IW_YEAR} yet.</div>`;
+    return;
+  }
+
+  let pendingCount = 0;
+  body.innerHTML = itcs.map(c => {
+    const already = itcAlreadyRecorded(c);
+    if (already) {
+      const label = already.outcome === "upgraded" ? "Upgraded to Instructor Trainer"
+        : already.outcome === "failed" ? "Did not pass this round"
+        : "Completed this round as ITC";
+      return `
+      <div class="itc-row">
+        <div class="itc-name">${esc(c.name)}</div>
+        <div class="itc-already-badge">Recorded ${CURRENT_IW_YEAR}: ${label}</div>
+      </div>`;
+    }
+
+    pendingCount++;
+    const roundsDone = itcRoundsCompleted(c);
+    const defaultOutcome = roundsDone >= 2 ? "upgraded" : "completed";
+    if (!(c.id in itcOutcomeChoices)) itcOutcomeChoices[c.id] = defaultOutcome;
+
+    return `
+    <div class="itc-row">
+      <div>
+        <div class="itc-name">${esc(c.name)}</div>
+        <div class="itc-rounds-note">${roundsDone} round${roundsDone === 1 ? "" : "s"} completed so far${roundsDone >= 2 ? " — meets the usual 2-round expectation" : ""}</div>
+      </div>
+      <select class="itc-outcome-select" onchange="setItcOutcome('${c.id}', this.value)">
+        <option value="completed" ${itcOutcomeChoices[c.id] === "completed" ? "selected" : ""}>Complete another course as ITC</option>
+        <option value="upgraded"  ${itcOutcomeChoices[c.id] === "upgraded"  ? "selected" : ""}>Upgrade to Instructor Trainer</option>
+        <option value="failed"    ${itcOutcomeChoices[c.id] === "failed"    ? "selected" : ""}>Fail</option>
+      </select>
+    </div>`;
+  }).join("");
+
+  if (pendingCount) {
+    body.insertAdjacentHTML("beforeend",
+      `<button class="btn-sm btn-primary" style="margin-top:12px;" onclick="reviewItcCompletion()">Review &amp; Confirm →</button>`);
+  }
+}
+
+function reviewItcCompletion() {
+  const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC);
+  const pending = itcs.filter(c => !itcAlreadyRecorded(c));
+  const chosen = pending.filter(c => itcOutcomeChoices[c.id]);
+  const upgrades  = chosen.filter(c => itcOutcomeChoices[c.id] === "upgraded");
+  const completes = chosen.filter(c => itcOutcomeChoices[c.id] === "completed");
+  const fails     = chosen.filter(c => itcOutcomeChoices[c.id] === "failed");
+
+  const reviewEl = document.getElementById("itcCompletionReview");
+  reviewEl.style.display = "block";
+
+  if (!chosen.length) {
+    reviewEl.innerHTML = `<div class="empty-msg">Set an outcome for at least one ITC before confirming.</div>`;
+    return;
+  }
+
+  const lines = [];
+  if (upgrades.length)  lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${upgrades.length}</strong> upgraded to Instructor Trainer: ${upgrades.map(c => esc(c.name)).join(", ")}</div>`);
+  if (completes.length) lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${completes.length}</strong> completing another course as ITC: ${completes.map(c => esc(c.name)).join(", ")}</div>`);
+
+  let failBlock = "";
+  if (fails.length) {
+    failBlock = `
+      <div style="background:#fde8e4;border:1px solid #f4bfb6;border-radius:8px;padding:12px 14px;margin-top:10px;">
+        <div style="font-weight:700;color:#8f3309;margin-bottom:6px;">⚠️ ${fails.length} marked Fail</div>
+        <div style="font-size:13px;color:#8f3309;">${fails.map(c => esc(c.name)).join(", ")}</div>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#8f3309;margin-top:10px;cursor:pointer;">
+          <input type="checkbox" id="itcFailCheck" onchange="document.getElementById('itcConfirmBtn').disabled = !this.checked">
+          I've checked this list and confirm these ${fails.length} ITC(s) genuinely did not pass this round.
+        </label>
+      </div>`;
+  }
+
+  reviewEl.innerHTML = `
+    ${lines.join("")}
+    ${failBlock}
+    <button class="btn-sm btn-primary" style="margin-top:12px;" id="itcConfirmBtn" ${fails.length ? "disabled" : ""} onclick="submitItcCompletion(this)">
+      Save — record ${chosen.length} outcome${chosen.length === 1 ? "" : "s"}
+    </button>`;
+}
+
+async function submitItcCompletion(btn) {
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+
+  const dateVal = document.getElementById("itcCompletionDate").value || null;
+  const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC);
+  const pending = itcs.filter(c => !itcAlreadyRecorded(c) && itcOutcomeChoices[c.id]);
+
+  let ok = 0, failedCount = 0;
+  for (const c of pending) {
+    const outcome = itcOutcomeChoices[c.id];
+    try {
+      if (outcome === "upgraded") {
+        await addRoleHistoryEntry(c.id, "Instructor Trainer", dateVal, "itc-completion",
+          "Upgraded from ITC after Instructor Weekend " + CURRENT_IW_YEAR);
+      }
+      await db.collection(COLLECTIONS.people).doc(c.id).update({
+        itcRoundHistory: firebase.firestore.FieldValue.arrayUnion({
+          year: CURRENT_IW_YEAR, outcome, date: dateVal, source: "itc-completion"
+        })
+      });
+      ok++;
+    } catch (e) {
+      failedCount++;
+      console.warn("ITC completion failed for", c.name, e.message);
+    }
+  }
+
+  await loadPeople();
+  renderItcCompletion();
+
+  const reviewEl = document.getElementById("itcCompletionReview");
+  reviewEl.innerHTML = `<div class="success-msg" style="font-size:13px;color:#1a6e31;">Done — recorded ${ok} outcome${ok === 1 ? "" : "s"}.${failedCount ? ` ${failedCount} failed to save — check your connection and try those again.` : ""}</div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1803,6 +1978,7 @@ async function refreshDashboardData(linkEl) {
     renderAssessors();
     renderITCs();
     renderItcSummaries();
+    renderItcCompletion();
     renderRooms();
     if (currentSection === "faculty") { await loadFacultyResponses(); renderFacultyList(); }
   } catch (e) {
