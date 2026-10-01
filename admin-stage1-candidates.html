@@ -162,6 +162,12 @@ requireDirector("timetable.html");
 
 let allCandidates = [];
 let parsedRows = null;
+// Room-splitting, folded into Allocate now (2026-10-02, Jon — "I want it as
+// 1-click as possible so that they are allocated to a course and then
+// split to rooms in 1 go"). STAGE1_TEACHING_ROOMS is declared once in
+// js/firebase-config.js — do not duplicate the list here, same rule
+// admin-course-room-allocation.html follows.
+const ROOMS = STAGE1_TEACHING_ROOMS;
 loadAutoFitSettings();
 
 function normName(s) { return (s || "").trim().toLowerCase().replace(/\s+/g, " "); }
@@ -1081,9 +1087,26 @@ async function markAllNoPlacementDates() {
   }
 }
 
-// The only place a candidate's course gets set, now that import no longer
-// does it. Only ever acts on candidates already marked placementChecked —
-// anyone not yet checked is skipped and listed, not guessed at.
+// Same degree-balancing key admin-course-room-allocation.html's room
+// randomizer uses (kept in sync deliberately, not shared via import, since
+// the two pages don't share a module system) — groups by the 9 standard
+// programme names where a candidate's degree resolves to one, otherwise by
+// the raw text typed, so an unrecognised degree still balances consistently
+// across rooms instead of being ignored.
+function degreeKey(c) {
+  const match = resolveStage1Degree(c.degree);
+  return match ? ("group:" + match.group) : ("raw:" + (c.degree || "").trim().toLowerCase());
+}
+
+// The only place a candidate's course AND room get set, now that import
+// does neither. Only ever acts on candidates already marked
+// placementChecked — anyone not yet checked is skipped and listed, not
+// guessed at. Room-splitting folded in here (2026-10-02, Jon — "allocated
+// to a course and then split to rooms in 1 go") using the same balancing
+// heuristic as the room randomizer on Course Room & Instructor Allocation —
+// that page's own "Allocate all candidates to rooms" button still exists
+// for anyone who ends up unrouted afterwards (added or checked late,
+// reset back to unallocated, etc.), it just isn't the main path any more.
 async function allocateAllNow() {
   const confirmCb = document.getElementById("confirmAllAddedCheckbox");
   if (!confirmCb || !confirmCb.checked) {
@@ -1101,8 +1124,9 @@ async function allocateAllNow() {
     return;
   }
 
-  let confirmMsg = `Allocate ${ready.length} checked candidate(s) to courses now?`;
+  let confirmMsg = `Allocate ${ready.length} checked candidate(s) to courses AND rooms now?`;
   if (notChecked.length) confirmMsg += `\n\n${notChecked.length} unallocated candidate(s) will be skipped — not yet checked for placement dates.`;
+  confirmMsg += `\n\nThis is a single step now — anyone who gets a course also gets a room in the same pass, split to balance degree mix and room numbers. There's no review screen in between; check the result on Course Room & Instructor Allocation afterwards.`;
   if (!confirm(confirmMsg)) return;
 
   const toWrite = [];
@@ -1114,18 +1138,44 @@ async function allocateAllNow() {
     else flagged.push({ c, reason: fit.reason });
   });
 
+  // Room-split, course by course, against everyone already ON that course
+  // (including anyone already roomed there from an earlier run) so numbers
+  // stay balanced rather than restarting from zero each time this runs.
+  const byCourse = {};
+  toWrite.forEach(({ c, course }) => { (byCourse[course] = byCourse[course] || []).push(c); });
+  const roomFor = new Map(); // candidate id -> room, this run only
+  Object.keys(byCourse).forEach(course => {
+    const existingOnCourse = allCandidates.filter(x => x.course === course);
+    const roomOf = {};
+    existingOnCourse.forEach(x => { if (ROOMS.includes(x.room)) roomOf[x.id] = x.room; });
+    byCourse[course].sort(() => Math.random() - .5).forEach(c => {
+      const dk = degreeKey(c);
+      const best = ROOMS.slice().sort((a, b) => {
+        const aSame = existingOnCourse.filter(x => roomOf[x.id] === a && degreeKey(x) === dk).length;
+        const bSame = existingOnCourse.filter(x => roomOf[x.id] === b && degreeKey(x) === dk).length;
+        if (aSame !== bSame) return aSame - bSame;
+        const aTotal = existingOnCourse.filter(x => roomOf[x.id] === a).length;
+        const bTotal = existingOnCourse.filter(x => roomOf[x.id] === b).length;
+        if (aTotal !== bTotal) return aTotal - bTotal;
+        return Math.random() - .5;
+      })[0];
+      roomOf[c.id] = best;
+      roomFor.set(c.id, best);
+    });
+  });
+
   try {
     const CHUNK = 400;
     for (let start = 0; start < toWrite.length; start += CHUNK) {
       const batch = db.batch();
       toWrite.slice(start, start + CHUNK).forEach(({ c, course }) => {
-        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course });
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null });
       });
       await batch.commit();
     }
-    toWrite.forEach(({ c, course }) => { c.course = course; });
+    toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; });
 
-    let report = `Allocated ${toWrite.length} candidate(s).`;
+    let report = `Allocated ${toWrite.length} candidate(s) to a course and a room.`;
     if (flagged.length) {
       report += `\n\n${flagged.length} couldn't be auto-fit — pick a course for these by hand:\n` +
         flagged.map(f => `- ${f.c.name}: ${f.reason}`).join("\n");
