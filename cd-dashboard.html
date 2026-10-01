@@ -1133,6 +1133,21 @@ function renderCandidates(filter) {
     ? candidates.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()))
     : candidates;
 
+  // 2026-10-01, per Jon: sort by room Group first, then alphabetically by
+  // name within each group, so the table reads as grouped blocks rather
+  // than whatever order Firestore happened to return. Candidates with no
+  // group assigned yet sort to the end, alphabetically among themselves.
+  filtered.sort((a, b) => {
+    const groupA = a.group || "";
+    const groupB = b.group || "";
+    if (groupA !== groupB) {
+      if (!groupA) return 1;
+      if (!groupB) return -1;
+      return groupA.localeCompare(groupB, undefined, { numeric: true });
+    }
+    return a.name.localeCompare(b.name);
+  });
+
   const tbody = document.getElementById("candTableBody");
   if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-msg">No candidates found.</td></tr>`; return; }
 
