@@ -133,6 +133,8 @@
       <div style="margin-top:16px;border-top:1px solid #f0f3f6;padding-top:14px;">
         <p class="hint" style="margin-top:0;">For clearing out a prepped-but-not-yet-allocated batch — test rows, or a real batch you've decided not to run with — before it's been through Step 3. Anyone already allocated (has a course) is never touched by this, allocated or not doesn't matter once Delete all unallocated runs, it only ever looks at who's still unallocated.</p>
         <button class="btn-danger" id="deleteUnallocatedBtn" onclick="deleteAllUnallocated()">🗑 Delete all unallocated</button>
+        <p class="hint" style="margin:14px 0 6px;">For clearing out practice data regardless of allocation status — matches anyone whose email contains <code>.test@</code>, which is how every test batch generated for this site has been addressed. Real candidates never match this, so it's safe to run even once some test rows have been allocated.</p>
+        <button class="btn-danger" id="deleteTestBtn" onclick="deleteTestCandidates()">🧪 Delete test candidates</button>
       </div>
     </div>
   </div>
@@ -1332,6 +1334,45 @@ async function deleteAllUnallocated() {
     populateCourseFilter();
     renderCandidates();
     alert(`Deleted ${targets.length} unallocated candidate(s).`);
+  } catch (err) {
+    alert("Bulk delete failed: " + err.message);
+  }
+}
+
+// Same mechanism as deleteAllUnallocated() above, but scoped by email
+// instead of allocation status (2026-10-02, Jon) — every test batch
+// generated for this site has used a ".test@" email, so this is how
+// practice data gets cleared out even after it's already been through
+// Step 3 and has a course/room, which deleteAllUnallocated() won't touch.
+async function deleteTestCandidates() {
+  const targets = allCandidates.filter(c => (c.email || "").toLowerCase().includes(".test@"));
+  if (!targets.length) { alert("Nothing to delete — no candidate's email contains \".test@\"."); return; }
+  const targetIds = new Set(targets.map(c => c.id));
+  const PREVIEW_CAP = 25;
+  const names = targets.slice(0, PREVIEW_CAP).map(c => `${c.name} (${c.email})`).join("\n");
+  const more = targets.length > PREVIEW_CAP ? `\n…and ${targets.length - PREVIEW_CAP} more` : "";
+  if (!confirm(`Delete ${targets.length} test candidate(s)? Matched by ".test@" in their email:\n\n${names}${more}\n\nThis includes anyone already allocated a course/room. This cannot be undone.`)) return;
+  if (!confirm(`Really delete ${targets.length} record(s)? Last chance to back out.`)) return;
+  try {
+    const CHUNK = 400; // Firestore batch write limit is 500; leave headroom
+    for (let start = 0; start < targets.length; start += CHUNK) {
+      const batch = db.batch();
+      targets.slice(start, start + CHUNK).forEach(c => {
+        batch.delete(db.collection(COLLECTIONS.stage1Candidates).doc(c.id));
+        if (c.linkedCandidateId && !targetIds.has(c.linkedCandidateId)) {
+          batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.linkedCandidateId), { linkedCandidateId: null, linkedAt: null });
+        }
+      });
+      await batch.commit();
+    }
+    allCandidates = allCandidates.filter(c => !targetIds.has(c.id));
+    allCandidates.forEach(c => {
+      if (c.linkedCandidateId && targetIds.has(c.linkedCandidateId)) c.linkedCandidateId = null;
+    });
+    computeDuplicateColors();
+    populateCourseFilter();
+    renderCandidates();
+    alert(`Deleted ${targets.length} test candidate(s).`);
   } catch (err) {
     alert("Bulk delete failed: " + err.message);
   }
