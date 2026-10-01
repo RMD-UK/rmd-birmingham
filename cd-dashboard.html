@@ -210,17 +210,6 @@
     .cand-table tr:last-child td { border-bottom: none; }
     .cand-table tr:hover td { background: #fafbfc; }
 
-    /* ── Decision dropdown ── */
-    .decision-select {
-      padding: 4px 8px; border-radius: 4px;
-      border: 1px solid #ccd6dd; font-size: 12px;
-      font-family: var(--font); color: var(--rmd-navy);
-      background: white; cursor: pointer;
-    }
-    .decision-select.pass   { border-color: #1a6e31; color: #1a6e31; background: #e6f4ea; }
-    .decision-select.fail   { border-color: #b7410e; color: #b7410e; background: #fde8e4; }
-    .decision-select.defer  { border-color: #c17a00; color: #c17a00; background: #fff3cd; }
-
     /* ── Programme timeline ── */
     .prog-row {
       display: flex; gap: 10px; align-items: flex-start;
@@ -377,18 +366,18 @@
     <!-- Manual refresh — added 2026-09-12. Everything on this page except the
          red-flag alert strip (watchAlerts()'s live listener) is a one-time
          .get() at page load: room/group assignments, candidate lists,
-         decisions, ITC schedule, faculty responses. If someone changes any
-         of that elsewhere while this tab is open, it goes stale until either
-         a full page reload or this button re-runs the same loads in place. -->
+         ITC schedule, faculty responses. If someone changes any of that
+         elsewhere while this tab is open, it goes stale until either a full
+         page reload or this button re-runs the same loads in place. -->
     <a href="#" onclick="refreshDashboardData(this)" class="dash-signout" id="refreshBtn">🔄 Refresh</a>
     <a href="member-menu.html" class="dash-signout">‹ Menu</a>
     <a href="timetable.html" class="dash-signout">← Timetable</a>
     <!-- Reset practice data — director-only rehearsal tool, added 2026-09-12.
-         Clears session_feedback + decisions so a rehearsal run of the
-         Overview/Feedback tabs doesn't leave fake ratings/decisions sitting
-         on the real dashboard. Only rendered before the actual event starts
-         (see resetPracticeData()'s caller in boot) so nobody can wipe genuine
-         candidate feedback once the weekend is under way. -->
+         Clears session_feedback so a rehearsal run of the Overview/Feedback
+         tabs doesn't leave fake ratings sitting on the real dashboard. Only
+         rendered before the actual event starts (see resetPracticeData()'s
+         caller in boot) so nobody can wipe genuine candidate feedback once
+         the weekend is under way. -->
     <a href="#" onclick="resetPracticeData()" class="dash-signout" id="resetPracticeBtn" style="display:none;color:#ffb4a0;">🗑 Reset practice data</a>
     <a href="#" onclick="signOut()" class="dash-signout">Sign out</a>
   </div>
@@ -552,9 +541,8 @@
               <th>Stream</th>
               <th>Group</th>
               <th>Status</th>
-              <th>Decision</th>
             </tr></thead>
-            <tbody id="candTableBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+            <tbody id="candTableBody"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -583,9 +571,8 @@
             <thead><tr>
               <th>Name</th>
               <th>Status</th>
-              <th>Decision</th>
             </tr></thead>
-            <tbody id="assessorTableBody"><tr><td colspan="3" class="loading">Loading…</td></tr></tbody>
+            <tbody id="assessorTableBody"><tr><td colspan="2" class="loading">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -811,7 +798,6 @@ let currentUser  = null;
 let allPeople    = [];    // all people docs
 let iwAssignments = {};   // { uid: function } -- this year's IW job, from iw_assignments; falls back to people.role when absent
 let feedbackData = [];    // session_feedback docs
-let decisions    = {};    // { candidateId: decision }
 let currentSection = "overview";
 let currentProgDay    = "saturday";
 let currentFeedbackDay = "saturday";
@@ -873,7 +859,7 @@ window.addEventListener("load", () => {
   requireDirector("timetable.html").then(async user => {
     currentUser = user;
 
-    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
     renderAssessors();
     renderProgramme("saturday");
@@ -1009,13 +995,6 @@ function statusDotsHtml(candidateId) {
   return `<span class="status-dots">${small}<span class="tl-dot ${iwTierDotClass(tier)}" title="Average ${average.toFixed(2)} — ${tier}" style="width:14px;height:14px;margin-left:4px;"></span></span>`;
 }
 
-async function loadDecisions() {
-  try {
-    const snap = await db.collection("decisions").get();
-    snap.docs.forEach(d => { decisions[d.id] = d.data().decision; });
-  } catch (e) { decisions = {}; }
-}
-
 async function loadItcSchedule() {
   try {
     const doc = await db.collection("config").doc("itc_schedule").get();
@@ -1083,12 +1062,6 @@ function renderOverview() {
             ${f.comment ? `<div class="comment-detail">${esc(f.comment)}</div>` : ""}
           </div>
         </div>
-        <select class="decision-select ${decisionClass(decisions[f.candidateId])}"
-          onchange="saveDecision('${f.candidateId}', this.value, this)">
-          <option value="">– Decision –</option>
-          <option value="pass"  ${decisions[f.candidateId]==="pass"  ?"selected":""}>Pass</option>
-          <option value="fail"  ${decisions[f.candidateId]==="fail"  ?"selected":""}>Fail</option>
-        </select>
       </div>`).join("");
   }
 
@@ -1161,23 +1134,14 @@ function renderCandidates(filter) {
     : candidates;
 
   const tbody = document.getElementById("candTableBody");
-  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">No candidates found.</td></tr>`; return; }
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-msg">No candidates found.</td></tr>`; return; }
 
   tbody.innerHTML = filtered.map(c => {
-    const dec = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
       <td>${esc(c.roleLabel || c.stream || ROLE_LABELS[effectiveRole(c)] || effectiveRole(c))}</td>
       <td>${esc(c.group || "–")}</td>
       <td>${statusDotsHtml(c.id)}</td>
-      <td>
-        <select class="decision-select ${decisionClass(dec)}"
-          onchange="saveDecision('${c.id}', this.value, this)">
-          <option value="">– –</option>
-          <option value="pass"  ${dec==="pass"  ?"selected":""}>Pass</option>
-          <option value="fail"  ${dec==="fail"  ?"selected":""}>Fail</option>
-        </select>
-      </td>
     </tr>`;
   }).join("");
 }
@@ -1194,21 +1158,12 @@ function renderAssessors(filter) {
     : assessors;
 
   const tbody = document.getElementById("assessorTableBody");
-  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-msg">No Assessor / Senior Instructor candidates found.</td></tr>`; return; }
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="2" class="empty-msg">No Assessor / Senior Instructor candidates found.</td></tr>`; return; }
 
   tbody.innerHTML = filtered.map(c => {
-    const dec = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
       <td>${statusDotsHtml(c.id)}</td>
-      <td>
-        <select class="decision-select ${decisionClass(dec)}"
-          onchange="saveDecision('${c.id}', this.value, this)">
-          <option value="">– –</option>
-          <option value="pass" ${dec==="pass" ?"selected":""}>Pass</option>
-          <option value="fail" ${dec==="fail" ?"selected":""}>Fail</option>
-        </select>
-      </td>
     </tr>`;
   }).join("");
 }
@@ -1581,12 +1536,6 @@ function renderFeedback(day) {
           <div class="text-sm text-muted">${esc(feedback.sessionId)} · Group ${esc(candidate.group || "–")}</div>
           ${feedback.comment ? `<div class="comment-detail">${esc(feedback.comment)}</div>` : `<div class="text-sm text-muted mt-8">No comment provided.</div>`}
         </div>
-        <select class="decision-select ${decisionClass(decisions[candidate.id])}"
-          onchange="saveDecision('${candidate.id}', this.value, this)">
-          <option value="">– Decision –</option>
-          <option value="pass"  ${decisions[candidate.id]==="pass"  ?"selected":""}>Pass</option>
-          <option value="fail"  ${decisions[candidate.id]==="fail"  ?"selected":""}>Fail</option>
-        </select>
       </div>`).join("");
   } else {
     redCard.style.display = "none";
@@ -1659,28 +1608,6 @@ function dismissAlerts() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DECISIONS
-// ─────────────────────────────────────────────────────────────────────────────
-async function saveDecision(candidateId, decision, selectEl) {
-  decisions[candidateId] = decision;
-  selectEl.className = `decision-select ${decisionClass(decision)}`;
-  try {
-    await db.collection("decisions").doc(candidateId).set({
-      decision,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedByUid: currentUser?.uid
-    }, { merge: true });
-  } catch (e) { console.warn("Decision save failed:", e.message); }
-}
-
-function decisionClass(dec) {
-  if (dec === "pass")  return "pass";
-  if (dec === "fail")  return "fail";
-  if (dec === "defer") return "defer";
-  return "";
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // BROADCAST MESSAGE
 // ─────────────────────────────────────────────────────────────────────────────
 async function sendBroadcast() {
@@ -1737,15 +1664,8 @@ function exportReport() {
     "Actions":          document.getElementById("rep-actions").value
   };
 
-  // Candidate summary
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
-  const decisionLines = candidates.map(c =>
-    `  - ${c.name}: ${decisions[c.id] ? decisions[c.id].toUpperCase() : "No decision recorded"}`
-  ).join("\n");
-
   let text = `RMD INSTRUCTOR WEEKEND 2026 — COURSE REPORT\nBirmingham Medical School\n`;
   text += `Generated: ${new Date().toLocaleString("en-GB")}\n\n`;
-  text += `CANDIDATE DECISIONS:\n${decisionLines || "  None recorded."}\n\n`;
   Object.entries(fields).forEach(([label, val]) => {
     if (val.trim()) text += `\n${label.toUpperCase()}\n${"─".repeat(label.length)}\n${val}\n`;
   });
@@ -1860,7 +1780,7 @@ async function refreshDashboardData(linkEl) {
   const original = linkEl ? linkEl.textContent : null;
   if (linkEl) { linkEl.textContent = "⏳ Refreshing…"; linkEl.style.pointerEvents = "none"; }
   try {
-    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
     renderProgramme(currentProgDay);
     renderFeedback(currentFeedbackDay);
@@ -1880,30 +1800,26 @@ async function refreshDashboardData(linkEl) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RESET PRACTICE DATA — director-only rehearsal tool, added 2026-09-12.
 // Clears session_feedback (candidate ratings/red-flags/strong-weak flags)
-// and decisions (Pass/Defer/Fail calls) so a rehearsal of this dashboard
-// doesn't leave fake data sitting on top of the real thing later. The
-// button that calls this is only shown before the event start date (see
-// boot, above) as a second safeguard against wiping genuine feedback.
-// Does NOT touch session_quality, participant_feedback, itc_summaries, or
-// any other collection — only the two this page's Overview/Feedback tabs
-// actually populate from rated candidates and CD decisions.
+// so a rehearsal of this dashboard doesn't leave fake data sitting on top
+// of the real thing later. The button that calls this is only shown
+// before the event start date (see boot, above) as a second safeguard
+// against wiping genuine feedback. Does NOT touch session_quality,
+// participant_feedback, itc_summaries, or any other collection — only
+// the one this page's Overview/Feedback tabs actually populate from rated
+// candidates.
 // ─────────────────────────────────────────────────────────────────────────────
 async function resetPracticeData() {
-  let feedbackSnap, decisionsSnap;
+  let feedbackSnap;
   try {
-    [feedbackSnap, decisionsSnap] = await Promise.all([
-      db.collection("session_feedback").get(),
-      db.collection("decisions").get()
-    ]);
+    feedbackSnap = await db.collection("session_feedback").get();
   } catch (e) {
     alert(`Couldn't check what's there to reset: ${e.message}`);
     return;
   }
 
-  const fbCount  = feedbackSnap.size;
-  const decCount = decisionsSnap.size;
-  if (!fbCount && !decCount) {
-    alert("Nothing to reset — no candidate ratings or decisions recorded yet.");
+  const fbCount = feedbackSnap.size;
+  if (!fbCount) {
+    alert("Nothing to reset — no candidate ratings recorded yet.");
     return;
   }
 
@@ -1911,14 +1827,13 @@ async function resetPracticeData() {
   const preview = names.slice(0, 8).join(", ") + (names.length > 8 ? `, +${names.length - 8} more` : "");
   const ok = confirm(
     `Delete ALL practice data from this dashboard?\n\n` +
-    `${fbCount} candidate rating${fbCount === 1 ? "" : "s"} (${preview || "none"})\n` +
-    `${decCount} Pass/Defer/Fail decision${decCount === 1 ? "" : "s"}\n\n` +
+    `${fbCount} candidate rating${fbCount === 1 ? "" : "s"} (${preview || "none"})\n\n` +
     `This cannot be undone. Only do this between rehearsals — never once the real weekend has started.`
   );
   if (!ok) return;
 
   try {
-    const allDocs = [...feedbackSnap.docs, ...decisionsSnap.docs];
+    const allDocs = feedbackSnap.docs;
     // Firestore batches cap at 500 writes — chunk defensively even though
     // today's practice runs are nowhere near that.
     for (let i = 0; i < allDocs.length; i += 400) {
@@ -1927,13 +1842,13 @@ async function resetPracticeData() {
       await batch.commit();
     }
   } catch (e) {
-    alert(`Reset failed partway through: ${e.message}. Check the session_feedback and decisions collections directly before trying again.`);
+    alert(`Reset failed partway through: ${e.message}. Check the session_feedback collection directly before trying again.`);
   }
 
-  await Promise.all([loadFeedback(), loadDecisions()]);
+  await loadFeedback();
   renderOverview();
   renderFeedback(currentFeedbackDay || "saturday");
-  alert(`Done — cleared ${fbCount} rating${fbCount === 1 ? "" : "s"} and ${decCount} decision${decCount === 1 ? "" : "s"}.`);
+  alert(`Done — cleared ${fbCount} rating${fbCount === 1 ? "" : "s"}.`);
 }
 
 function esc(s) {
