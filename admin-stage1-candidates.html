@@ -29,6 +29,9 @@
     .btn-promote:hover { background:#1a6e31; color:white; }
     .btn-danger-sm { padding:6px 12px; background:white; color:#b7410e; border:2px solid #f5b8b0; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--font); cursor:pointer; }
     .btn-danger-sm:hover { background:#fce8e6; }
+    .btn-danger { padding:12px 20px; background:#b7410e; color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger:disabled { background:#aab8c2; cursor:default; }
+    .btn-danger:hover:not(:disabled) { background:#8f3209; }
     .summary-line { font-size:13px; color:var(--rmd-muted); margin-bottom:12px; }
     .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
     textarea { width:100%; min-height:120px; padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:13px; font-family:monospace; margin-bottom:8px; }
@@ -43,6 +46,7 @@
     .promoted-badge { background:#e1efe3; color:#1a6e31; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; }
     .dup-warning { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:6px 10px; font-size:11px; color:#856404; margin-top:4px; }
     .dup-exact { background:#fce8e6; border-color:#f5b8b0; color:#b7410e; }
+    .dup-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; cursor:help; border:1px solid rgba(0,0,0,0.15); }
     .preview-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
     .preview-table th { text-align:left; background:#eef2f6; padding:6px 8px; font-size:10px; text-transform:uppercase; color:var(--rmd-muted); }
     .preview-table td { padding:6px 8px; border-top:1px solid #f0f3f6; }
@@ -118,6 +122,7 @@
   <div class="card">
     <div class="card-header">All candidates</div>
     <div class="card-body">
+      <p class="hint" style="margin-top:0;">A coloured dot before a name means that candidate shares a surname and course with at least one other candidate below — matching colours mark the same group. Hover a dot to see who it matches. Same soft "check, don't auto-exclude" flag as the Add candidates preview above, just kept visible once records are saved.</p>
       <div class="filters">
         <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
         <input type="text" id="searchBox" placeholder="Search by name, email or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
@@ -125,6 +130,10 @@
       <p class="hint" style="margin-top:0;">Someone repeating (absence, need to redo) gets a fresh record on the new course rather than editing their old one in place — paste them in above as normal, then use <strong>Link repeat</strong> on either their old or new row to connect the two records for reference. Nothing else changes; it just stops an old attempt reading as still-pending once you can see it led to a later one.</p>
       <div class="summary-line" id="summaryLine"></div>
       <div id="candidatesWrap"></div>
+      <div style="margin-top:16px;border-top:1px solid #f0f3f6;padding-top:14px;">
+        <p class="hint" style="margin-top:0;">For clearing out a prepped-but-not-yet-allocated batch — test rows, or a real batch you've decided not to run with — before it's been through Step 3. Anyone already allocated (has a course) is never touched by this, allocated or not doesn't matter once Delete all unallocated runs, it only ever looks at who's still unallocated.</p>
+        <button class="btn-danger" id="deleteUnallocatedBtn" onclick="deleteAllUnallocated()">🗑 Delete all unallocated</button>
+      </div>
     </div>
   </div>
 
@@ -167,6 +176,7 @@ async function loadCandidates() {
   const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
   allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  computeDuplicateColors();
   // Never let "everyone's added" carry over a reload or a fresh import —
   // Jon has to re-confirm every time the candidate list changes underneath
   // it, so Allocate now can't fire on a stale tick (2026-10-01, Jon).
@@ -331,6 +341,49 @@ function duplicateWarningHtml(dupes, candidate) {
     parts.push(`<div class="dup-warning">⚠ Possible match — same surname and course: ${names}. Check before assuming these are different people.</div>`);
   }
   return parts.join("");
+}
+
+// ── Duplicate colour-coding for the saved Candidates list (2026-10-02, Jon
+// — "helpful to have the possible same people to check in the overall
+// candidate list, when pasted, as colour coded so it's obvious when you're
+// flagging") ──────────────────────────────────────────────────────────────
+// Same match rule as the paste preview (findDuplicates — same surname and
+// course), but run across every SAVED candidate, not just a fresh paste, so
+// the colour-coding stays live once records are sitting in the system
+// rather than only showing up at import time. Connected clusters (A
+// matches B, B matches C, ...) share one colour via the same DFS approach
+// used to group the paste preview. Colours cycle if there are more
+// clusters than the palette — distinct within what's visible is the goal,
+// not a globally unique colour per cluster.
+const DUP_COLORS = ["#e6194b","#3cb44b","#4363d8","#f58231","#911eb4","#008080","#9a6324","#f032e6","#808000","#46f0f0"];
+
+function computeDuplicateColors() {
+  allCandidates.forEach(c => { c._dupColor = null; c._dupPeers = []; });
+  const seen = new Set();
+  let colorIdx = 0;
+  allCandidates.forEach(start => {
+    if (seen.has(start)) return;
+    const startDupes = findDuplicates(start, allCandidates);
+    if (!startDupes.exact.length && !startDupes.near.length) return;
+    const cluster = [];
+    const stack = [start];
+    const localSeen = new Set();
+    while (stack.length) {
+      const cur = stack.pop();
+      if (localSeen.has(cur)) continue;
+      localSeen.add(cur);
+      cluster.push(cur);
+      const d = findDuplicates(cur, allCandidates);
+      [...d.exact, ...d.near].forEach(o => { if (!localSeen.has(o)) stack.push(o); });
+    }
+    const color = DUP_COLORS[colorIdx % DUP_COLORS.length];
+    colorIdx++;
+    cluster.forEach(c => {
+      seen.add(c);
+      c._dupColor = color;
+      c._dupPeers = cluster.filter(o => o !== c).map(o => `${o.name} (${o.course || "no course"})`);
+    });
+  });
 }
 
 // ── Add candidates (paste, parse, preview, import) ──────────────────────
@@ -862,7 +915,7 @@ function renderCandidates() {
         <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th><th></th></tr></thead>
         <tbody>${filtered.map(c => `
           <tr>
-            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}</td>
+            <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
@@ -1125,10 +1178,55 @@ async function deleteCandidate(id) {
       const other = allCandidates.find(x => x.id === c.linkedCandidateId);
       if (other) other.linkedCandidateId = null;
     }
+    computeDuplicateColors();
     populateCourseFilter();
     renderCandidates();
   } catch (err) {
     alert("Delete failed: " + err.message);
+  }
+}
+
+// Bulk version of deleteCandidate() above, scoped to everyone still
+// unallocated (2026-10-02, Jon — clearing out a prepped test batch, or a
+// real batch abandoned before Step 3, without picking through one by one).
+// Deliberately only ever touches c.course === "" / falsy — once "Allocate
+// now" has given someone a course they're excluded, same as every other
+// unallocated-only action on this page (Mark all "no placement dates",
+// autoFitCourse). Linked-repeat pointers are cleared the same way single
+// delete does, so nothing is left pointing at a record that no longer
+// exists.
+async function deleteAllUnallocated() {
+  const targets = allCandidates.filter(c => !c.course);
+  if (!targets.length) { alert("Nothing to delete — everyone on this list already has a course."); return; }
+  const targetIds = new Set(targets.map(c => c.id));
+  if (!confirm(`Delete all ${targets.length} unallocated candidate(s)?\n\nAnyone already allocated a course is left untouched. This cannot be undone.`)) return;
+  if (!confirm(`Really delete ${targets.length} record(s)? Last chance to back out.`)) return;
+  try {
+    const CHUNK = 400; // Firestore batch write limit is 500; leave headroom
+    for (let start = 0; start < targets.length; start += CHUNK) {
+      const batch = db.batch();
+      targets.slice(start, start + CHUNK).forEach(c => {
+        batch.delete(db.collection(COLLECTIONS.stage1Candidates).doc(c.id));
+        // Clear a dangling link pointer on anyone linked to a deleted
+        // record, same as single delete — including a link to ANOTHER
+        // target in this same batch, which still needs clearing on
+        // whichever side isn't itself being deleted.
+        if (c.linkedCandidateId && !targetIds.has(c.linkedCandidateId)) {
+          batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.linkedCandidateId), { linkedCandidateId: null, linkedAt: null });
+        }
+      });
+      await batch.commit();
+    }
+    allCandidates = allCandidates.filter(c => !targetIds.has(c.id));
+    allCandidates.forEach(c => {
+      if (c.linkedCandidateId && targetIds.has(c.linkedCandidateId)) c.linkedCandidateId = null;
+    });
+    computeDuplicateColors();
+    populateCourseFilter();
+    renderCandidates();
+    alert(`Deleted ${targets.length} unallocated candidate(s).`);
+  } catch (err) {
+    alert("Bulk delete failed: " + err.message);
   }
 }
 
