@@ -578,14 +578,22 @@ async function confirmOutcomesImport() {
 // ── Import placement dates (2026-10-01, Jon) ────────────────────────────────
 // Some candidates — currently Pharmacy, via their placement leads — have
 // dates during the year they're on clinical placement and can't be on an
-// RMD course. Pasted here as (name, email, start, end) rows straight off
-// whatever sheet the lead sends, matched onto EXISTING stage1_candidates
-// records by email — same pattern as the outcomes importer above, and
-// deliberately separate from the main candidate paste since this data comes
-// from a different source on a different schedule (often after candidates
-// are already imported and auto-fit onto a course). A candidate can have
-// several placement blocks; each row adds one, deduped exactly on
-// start+end so re-pasting the same sheet twice is harmless.
+// RMD course. Pasted here straight off whatever sheet the lead sends,
+// matched onto EXISTING stage1_candidates records by email — same pattern
+// as the outcomes importer above, and deliberately separate from the main
+// candidate paste since this data comes from a different source on a
+// different schedule (often after candidates are already imported and
+// auto-fit onto a course). A candidate can have several placement blocks;
+// each row adds one, deduped exactly on start+end so re-pasting the same
+// sheet twice is harmless.
+//
+// Accepts two row shapes, picked by column count (2026-10-01, matched to
+// the real Pharmacy placement export):
+//   6+ columns: Student ID, Last Name, First Name, Email, Start, End
+//   5 columns:  First name, Last name, Email, Start, End (legacy/manual paste)
+// Student ID itself isn't used — matching is always by email — so it's
+// just skipped over in the 6-column shape. A header row (first line,
+// containing both "email" and "date") is dropped automatically.
 function parseUkDate(raw) {
   const m = (raw || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
@@ -600,7 +608,11 @@ let parsedPlacementRows = null;
 
 function parsePlacementPreview() {
   const raw = document.getElementById("placementPasteBox").value;
-  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean).filter((l, i) => {
+    if (i !== 0) return true;
+    const low = l.toLowerCase();
+    return !(low.includes("email") && low.includes("date")); // drop a pasted header row
+  });
   const wrap = document.getElementById("placementPreviewWrap");
   if (!lines.length) {
     wrap.innerHTML = `<div class="empty-state">Nothing to preview — paste some rows above.</div>`;
@@ -610,7 +622,14 @@ function parsePlacementPreview() {
 
   const rows = lines.map((line, i) => {
     const parts = line.split(/\t|,/).map(s => s.trim());
-    const [firstName, lastName, email, startRaw, endRaw] = parts;
+    let firstName, lastName, email, startRaw, endRaw;
+    if (parts.length >= 6) {
+      // Real export: Student ID, Last Name, First Name, Email, Start, End
+      [, lastName, firstName, email, startRaw, endRaw] = parts;
+    } else {
+      // Legacy 5-column paste: First name, Last name, Email, Start, End
+      [firstName, lastName, email, startRaw, endRaw] = parts;
+    }
     const start = parseUkDate(startRaw);
     const end = parseUkDate(endRaw);
     const name = [firstName, lastName].filter(Boolean).join(" ");
