@@ -392,9 +392,40 @@ function parsePreview() {
 
   const unrecognizedCount = rows.filter(r => r.degree && !r.degreeMatch).length;
 
-  const rowsHtml = rows.map((r, i) => {
+  const rowSet = new Set(rows);
+  // Compute each row's duplicate warning once, and record which OTHER
+  // PASTED rows (not existing system records) it matched against, so
+  // matched rows can be grouped next to each other below instead of
+  // scattered in whatever order they were pasted (2026-10-01, Jon —
+  // reviewing a flag is much easier when both halves of a possible match
+  // sit on adjacent lines with course and email visible side by side).
+  rows.forEach((r, i) => {
     const dupes = findDuplicates(r, [...rows.slice(0, i), ...rows.slice(i + 1), ...allCandidates]);
-    const warn = duplicateWarningHtml(dupes, r);
+    r._warn = duplicateWarningHtml(dupes, r);
+    r._flagged = !!(dupes.exact.length || dupes.near.length);
+    r._matchedPastedRows = [...dupes.exact, ...dupes.near].filter(o => rowSet.has(o));
+  });
+
+  // Cluster flagged rows into connected groups (A matches B, B matches C,
+  // etc. all land in one group) with a depth-first walk, so a whole matched
+  // set renders as consecutive rows instead of needing to be hunted down
+  // across the full paste.
+  const seen = new Set();
+  const groupedFlagged = [];
+  rows.filter(r => r._flagged).forEach(start => {
+    if (seen.has(start)) return;
+    const stack = [start];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      groupedFlagged.push(cur);
+      cur._matchedPastedRows.forEach(o => { if (!seen.has(o)) stack.push(o); });
+    }
+  });
+  const clear = rows.filter(r => !r._flagged);
+
+  const renderRow = r => {
     const degreeCell = (r.degree && !r.degreeMatch)
       ? `${esc(r.degree)} <span class="dup-warning" style="display:inline;">⚠ not one of the 9 standard names</span>`
       : esc(r.degree);
@@ -405,22 +436,30 @@ function parsePreview() {
       <td><em>unallocated</em></td>
       <td>${esc(r.studentId) || "–"}</td>
       <td>${esc(r.yearOfStudy) || "–"}</td>
-      <td>${warn}</td>
+      <td>${r._warn}</td>
     </tr>`;
-  }).join("");
+  };
+  const tableHead = `<thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>ID</th><th>Year</th><th>Flags</th></tr></thead>`;
+
+  const flaggedSection = groupedFlagged.length
+    ? `<div class="hint" style="margin-top:14px;"><strong>${groupedFlagged.length} row${groupedFlagged.length === 1 ? "" : "s"} need a check</strong> — matched pairs/sets are grouped together so you can compare course and email directly.</div>
+       <table class="preview-table">${tableHead}<tbody>${groupedFlagged.map(renderRow).join("")}</tbody></table>`
+    : "";
+
+  const clearSection = clear.length
+    ? `<div class="hint" style="margin-top:14px;">${clear.length} row${clear.length === 1 ? "" : "s"} — no flags</div>
+       <table class="preview-table">${tableHead}<tbody>${clear.map(renderRow).join("")}</tbody></table>`
+    : "";
 
   wrap.innerHTML = `
     ${errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : ""}
     ${unrecognizedCount ? `<div class="error-list">⚠ ${unrecognizedCount} row${unrecognizedCount === 1 ? "" : "s"} ${unrecognizedCount === 1 ? "has" : "have"} a degree that isn't one of the 9 standard names — you'll be asked to confirm these specifically before import.</div>` : ""}
-    <table class="preview-table">
-      <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>ID</th><th>Year</th><th>Flags</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
+    ${flaggedSection}
+    ${clearSection}
     <div style="margin-top:12px;">
       <button class="btn-primary" onclick="confirmImport()">Import ${rows.length} candidate${rows.length === 1 ? "" : "s"}</button>
     </div>`;
 }
-
 async function confirmImport() {
   if (!parsedRows || !parsedRows.length) return;
 
