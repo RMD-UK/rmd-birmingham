@@ -82,8 +82,8 @@
   <div class="card">
     <div class="card-header">Add candidates</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>first name, surname, email, degree, course, DOB, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. Everything after degree is optional (leave blank between commas to skip): leave <strong>course</strong> blank and it's worked out automatically from the programme's deadline and this year's course dates (set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — shown with an "auto" badge in the preview so you can check it before importing; a day/month of birth (e.g. <code>14/03</code>) helps tell apart two candidates with a similar name; student ID and year of study aren't used anywhere yet but are captured now so they're already on file when they are. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
-      <textarea id="pasteBox" placeholder="Jane, Smith, j.smith@bham.ac.uk, Medicine, Course 1, 14/03, 10234567, 2&#10;Tom, Jones,, Medicine, Course 1,,, 1"></textarea>
+      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>last name, first name, email, degree, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. Everything after degree is optional (leave blank between commas to skip). Course is no longer typed in here at all — it's always worked out automatically from the programme's deadline and this year's course dates (set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>), shown with an "auto" badge in the preview so you can check it before importing; student ID and year of study aren't used anywhere yet but are captured now so they're already on file when they are. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
+      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, , 1"></textarea>
       <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
       <div id="previewWrap"></div>
     </div>
@@ -203,13 +203,12 @@ function populateCourseFilter() {
 // candidate starts unassigned, so comparing on it here would never match
 // anything and, worse, would silently miss a genuine repeat/re-add whose
 // old record already has a room from a previous course.
-// A day/month-of-birth match/mismatch between two near-matches is surfaced
-// as extra evidence, not used to auto-resolve anything — a director always
-// makes the final call. This is also what catches someone genuinely being
-// added to a later/repeat course: same name+surname+degree but a different
-// course value won't trigger these at all (by design — a new course means a
-// new attempt, not a duplicate), so a repeat only gets flagged if the SAME
-// course is pasted twice.
+// This is also what catches someone genuinely being added to a later/repeat
+// course: same name+surname+degree but a different course value won't
+// trigger these at all (by design — a new course means a new attempt, not a
+// duplicate), so a repeat only gets flagged if the SAME course is pasted
+// twice. DOB used to be surfaced here as extra evidence on a near-match;
+// dropped 2026-10-01 along with DOB leaving the pasted format entirely.
 function findDuplicates(candidate, against) {
   const name = normName(candidate.name);
   const surname = surnameOf(candidate.name);
@@ -238,12 +237,8 @@ function duplicateWarningHtml(dupes, candidate) {
     parts.push(`<div class="dup-warning dup-exact">⚠ Exact match on name, degree and course against: ${dupes.exact.map(o => esc(o.name)).join(", ")}. Likely the same person entered twice.</div>`);
   }
   if (dupes.near.length) {
-    const dobNote = candidate.dob
-      ? dupes.near.map(o => o.dob
-          ? (o.dob === candidate.dob ? `${esc(o.name)} (same DOB — likely the same person)` : `${esc(o.name)} (different DOB — likely a different person)`)
-          : `${esc(o.name)} (no DOB on file to compare)`).join("; ")
-      : dupes.near.map(o => esc(o.name)).join(", ");
-    parts.push(`<div class="dup-warning">⚠ Possible match — same surname and course: ${dobNote}. Check before assuming these are different people.</div>`);
+    const names = dupes.near.map(o => esc(o.name)).join(", ");
+    parts.push(`<div class="dup-warning">⚠ Possible match — same surname and course: ${names}. Check before assuming these are different people.</div>`);
   }
   return parts.join("");
 }
@@ -259,14 +254,18 @@ function parseLine(line) {
   // reads it — findDuplicates()/surnameOf() below, admin-course-room-
   // allocation.html, promotion to people/{uid} — is unchanged and doesn't
   // need to know the paste format changed.
-  const [firstName, surname, email, degree, course, dob, studentId, yearOfStudy] = parts;
+  // 2026-10-01 (Jon): column order changed to surname before first name, and
+  // Course/DOB dropped from the pasted format entirely — course is always
+  // auto-fit now (see parsePreview()), never typed in here, and DOB is no
+  // longer collected at all.
+  const [surname, firstName, email, degree, studentId, yearOfStudy] = parts;
   const name = [firstName, surname].filter(Boolean).join(" ");
   // Room is deliberately not collected here (2026-09-07, Jon) — it's set on
   // Course Room & Instructor Allocation (3.6) instead, once a course's real
   // roster is confirmed. Every imported candidate starts unassigned.
   // studentId / yearOfStudy added 2026-09-27 (Jon) — captured going forward
   // for future matching/reporting use, not read by anything yet.
-  return { name: name || "", email: email || "", degree: degree || "", course: course || "", dob: dob || "", studentId: (studentId || "").trim(), yearOfStudy: (yearOfStudy || "").trim() };
+  return { name: name || "", email: email || "", degree: degree || "", course: "", studentId: (studentId || "").trim(), yearOfStudy: (yearOfStudy || "").trim() };
 }
 
 function parsePreview() {
@@ -315,7 +314,6 @@ function parsePreview() {
       <td>${esc(r.email) || "<em>none</em>"}</td>
       <td>${degreeCell}</td>
       <td>${esc(r.course) || "<em>none</em>"}${r.courseAutoFit ? ` <span class="link-badge" title="Auto-fit from programme deadline + course settings">auto</span>` : ""}</td>
-      <td>${esc(r.dob) || "–"}</td>
       <td>${esc(r.studentId) || "–"}</td>
       <td>${esc(r.yearOfStudy) || "–"}</td>
       <td>${warn}</td>
@@ -326,7 +324,7 @@ function parsePreview() {
     ${errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : ""}
     ${unrecognizedCount ? `<div class="error-list">⚠ ${unrecognizedCount} row${unrecognizedCount === 1 ? "" : "s"} ${unrecognizedCount === 1 ? "has" : "have"} a degree that isn't one of the 9 standard names — you'll be asked to confirm these specifically before import.</div>` : ""}
     <table class="preview-table">
-      <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>DOB (day/mth)</th><th>ID</th><th>Year</th><th>Flags</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>ID</th><th>Year</th><th>Flags</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>
     <div style="margin-top:12px;">
@@ -358,7 +356,7 @@ async function confirmImport() {
       parsedRows.slice(start, start + CHUNK).forEach(r => {
         const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
         batch.set(ref, {
-          name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: r.course, room: null, dob: r.dob,
+          name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: r.course, room: null,
           studentId: r.studentId || "", yearOfStudy: r.yearOfStudy || "",
           promotedToUid: null, promotedAt: null,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
