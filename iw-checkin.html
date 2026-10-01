@@ -59,6 +59,15 @@
 
     .kiosk-footer { text-align: center; padding: 10px; }
     .kiosk-footer a { color: rgba(255,255,255,0.4); font-size: 11px; text-decoration: none; }
+
+    .closed-wrap {
+      width: 100%; max-width: 420px; background: white; border-radius: 16px;
+      padding: 26px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); text-align: center;
+    }
+    .closed-wrap .closed-icon { font-size: 34px; margin-bottom: 8px; }
+    .closed-wrap h2 { font-size: 17px; color: var(--rmd-navy); margin: 0 0 6px; }
+    .closed-wrap p { font-size: 13px; color: var(--rmd-muted); margin: 0; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -70,10 +79,16 @@
 </div>
 
 <div class="kiosk-body">
-  <div class="search-wrap">
+  <div class="search-wrap" id="searchWrap">
     <input type="text" id="searchInput" placeholder="Type your name…" autocomplete="off" autofocus oninput="runSearch(this.value)">
     <div id="searchResults"></div>
     <div class="search-hint" id="searchHint">Start typing to find your name.</div>
+  </div>
+
+  <div class="closed-wrap hidden" id="closedWrap">
+    <div class="closed-icon">🕒</div>
+    <h2 id="closedTitle">Check-in isn't open yet</h2>
+    <p id="closedSub"></p>
   </div>
 
   <div class="status-box" id="statusBox">
@@ -96,6 +111,33 @@
 <script>
 
 initFirebase();
+
+// Check-in only opens on the actual Instructor Weekend days (2026-10-02,
+// Jon: don't let anyone check in before the date). Saturday 10 Oct / Sunday
+// 11 Oct 2026, same dates timetable.html's getDefaultDay() uses. Outside
+// those two calendar days the search box is hidden entirely and replaced
+// with an explanatory message — nobody can self-check-in early (or late).
+function currentIwDay() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+  if (y === 2026 && m === 10 && d === 10) return "saturday";
+  if (y === 2026 && m === 10 && d === 11) return "sunday";
+  return null;
+}
+const IW_DAY = currentIwDay();
+const IW_DAY_LABEL = { saturday: "Saturday", sunday: "Sunday" };
+
+(function gateCheckIn() {
+  if (IW_DAY) return; // open as normal
+  document.getElementById("searchWrap").classList.add("hidden");
+  const closedWrap = document.getElementById("closedWrap");
+  closedWrap.classList.remove("hidden");
+  const before = new Date() < new Date(2026, 9, 10);
+  document.getElementById("closedTitle").textContent = before ? "Check-in isn't open yet" : "Check-in has closed";
+  document.getElementById("closedSub").textContent = before
+    ? "Check-in opens Saturday 10 October 2026, on the day. See a member of staff if you need help before then."
+    : "Instructor Weekend 2026 has finished. See a member of staff if you still need to be marked present.";
+})();
 
 let processing = false;
 let allPeopleCache = null;
@@ -164,6 +206,7 @@ async function runSearch(val) {
 
 async function confirmCheckIn(personId) {
   if (processing) return;
+  if (!IW_DAY) { setStatus("error", "🕒", "Check-in isn't open", "See a member of staff."); resetAfter(3000); return; }
   processing = true;
 
   try {
@@ -176,11 +219,11 @@ async function confirmCheckIn(personId) {
     }
     const person = doc.data();
     await db.collection(COLLECTIONS.attendance).doc(personId).set({
-      arrived: firebase.firestore.FieldValue.serverTimestamp(),
-      checkedInBy: "self-service-search"
+      ["arrived_" + IW_DAY]: firebase.firestore.FieldValue.serverTimestamp(),
+      ["checkedInBy_" + IW_DAY]: "self-service-search"
     }, { merge: true });
 
-    setStatus("success", "✅", `Welcome, ${(person.name || "there").split(" ")[0]}!`, "You're checked in — have a great weekend.");
+    setStatus("success", "✅", `Welcome, ${(person.name || "there").split(" ")[0]}!`, `You're checked in for ${IW_DAY_LABEL[IW_DAY]} — have a great weekend.`);
   } catch (err) {
     setStatus("error", "⚠️", "Check-in failed", "Please try again or see a member of staff.");
   }

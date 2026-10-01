@@ -1069,9 +1069,16 @@ function renderOverview() {
   document.getElementById("statAmber").textContent      = amber;
   document.getElementById("statRed").textContent        = red.length;
 
-  // Arrived — from attendance collection (best effort)
+  // Arrived — from attendance collection (best effort). Counts anyone
+  // arrived on EITHER day (2026-10-02: attendance.html split into separate
+  // Saturday/Sunday fields) rather than just counting docs, which is also
+  // more accurate than before — a doc can exist purely for a "not expected"
+  // flag with nobody actually arrived.
   db.collection(COLLECTIONS.attendance).get()
-    .then(s => document.getElementById("statArrived").textContent = s.size)
+    .then(s => {
+      const arrived = s.docs.filter(d => { const x = d.data(); return !!x.arrived_saturday || !!x.arrived_sunday; }).length;
+      document.getElementById("statArrived").textContent = arrived;
+    })
     .catch(() => document.getElementById("statArrived").textContent = "–");
 
   // Active concerns (red flags)

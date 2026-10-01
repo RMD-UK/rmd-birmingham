@@ -190,6 +190,19 @@
     }
 
     .hidden { display: none !important; }
+
+    .day-switch {
+      display: flex; gap: 8px; padding: 10px 14px 0;
+    }
+    .day-btn {
+      flex: 1; text-align: center; padding: 9px 10px; border-radius: 8px;
+      border: 2px solid #dce3ea; background: white; color: var(--rmd-navy);
+      font-family: var(--font); font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .day-btn.active { background: var(--rmd-navy); border-color: var(--rmd-navy); color: white; }
+    .day-closed-note {
+      font-size: 11px; color: var(--rmd-muted); text-align: center; padding: 4px 14px 0;
+    }
   </style>
 </head>
 <body>
@@ -203,6 +216,13 @@
   </div>
   <span class="top-bar-time" id="topBarTime">--:--</span>
 </div>
+
+<!-- Day -->
+<div class="day-switch">
+  <button class="day-btn active" id="day-saturday" onclick="switchDay('saturday')">Saturday</button>
+  <button class="day-btn" id="day-sunday" onclick="switchDay('sunday')">Sunday</button>
+</div>
+<div class="day-closed-note hidden" id="dayClosedNote"></div>
 
 <!-- Stats -->
 <div class="stats-strip">
@@ -285,13 +305,35 @@
 // State
 // ─────────────────────────────────────────────────────────────────────────────
 let allPeople    = [];
-let attendance   = {};   // { personId: { arrivedAt (timestamp) } }
+let attendance   = {};   // { personId: { arrived_saturday, checkedInBy_saturday, notExpected_saturday, ...same _sunday } }
 let iwAssignments = {};  // { uid: function }  -- this year's IW job, from iw_assignments; falls back to people.role when absent
 let currentTab   = "all";
 let currentFilter = "";
 let currentCourseType = "all"; // "all" | "instructor" | "assessor" — 2026-09-14, per Jon
 let currentUser  = null;
 let canEdit      = false;  // Director / RMD Student Faculty / RMD Senior Faculty — see boot, below
+
+// Saturday/Sunday split (2026-10-02, Jon: confirmed these need separate
+// registrations, and check-in shouldn't be possible before each day's real
+// date) — one attendance doc per person as before, but every field is now
+// suffixed _saturday/_sunday so each day's arrival is tracked independently
+// and neither can be set early. Same two calendar dates timetable.html's
+// getDefaultDay() and iw-checkin.html's currentIwDay() use.
+const IW_DATES = { saturday: new Date(2026, 9, 10), sunday: new Date(2026, 9, 11) };
+const IW_DAY_LABELS = { saturday: "Saturday 10 Oct", sunday: "Sunday 11 Oct" };
+function getDefaultDay() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+  if (y === 2026 && m === 10 && d === 10) return "saturday";
+  if (y === 2026 && m === 10 && d === 11) return "sunday";
+  return "saturday";
+}
+function dayIsOpen(day) {
+  const now = new Date(), target = IW_DATES[day];
+  const ymd = x => x.getFullYear() * 10000 + (x.getMonth() + 1) * 100 + x.getDate();
+  return ymd(now) >= ymd(target);
+}
+let currentDay = getDefaultDay();
 
 const ROLE_LABELS = {
   "instructor":       "Instructor Candidate",
@@ -339,6 +381,15 @@ window.addEventListener("load", () => {
     document.getElementById("tab-add").classList.toggle("hidden", !canEdit);
 
     await Promise.all([loadPeople(), loadAttendance(), loadIwAssignments()]);
+    // Sync the day switcher's active state + closed-note to whatever
+    // getDefaultDay() picked, since the markup always starts on "Saturday".
+    document.getElementById("day-saturday").classList.toggle("active", currentDay === "saturday");
+    document.getElementById("day-sunday").classList.toggle("active", currentDay === "sunday");
+    if (!dayIsOpen(currentDay)) {
+      const note = document.getElementById("dayClosedNote");
+      note.textContent = `Check-in for ${IW_DAY_LABELS[currentDay]} hasn't opened yet — nobody can be checked in for this day until then.`;
+      note.classList.remove("hidden");
+    }
     renderList();
     subscribeAttendance();
   });
@@ -411,22 +462,23 @@ function subscribeAttendance() {
 // ─────────────────────────────────────────────────────────────────────────────
 async function checkIn(personId) {
   if (!canEdit) return;
+  if (!dayIsOpen(currentDay)) { showToast(`Check-in for ${IW_DAY_LABELS[currentDay]} hasn't opened yet`, ""); return; }
   const now = firebase.firestore.FieldValue.serverTimestamp();
   try {
-    // Clear any earlier "not expected today" flag — they've clearly shown
-    // up after all. Same merged doc as before, just with arrived set.
+    // Clear any earlier "not expected" flag for THIS day only — they've
+    // clearly shown up after all. The other day's fields are untouched.
     await db.collection(COLLECTIONS.attendance).doc(personId).set({
-      arrived: now,
-      checkedInBy: currentUser?.uid || "manual",
-      notExpected: firebase.firestore.FieldValue.delete(),
-      markedNotExpectedBy: firebase.firestore.FieldValue.delete(),
-      markedNotExpectedAt: firebase.firestore.FieldValue.delete()
+      ["arrived_" + currentDay]: now,
+      ["checkedInBy_" + currentDay]: currentUser?.uid || "manual",
+      ["notExpected_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["markedNotExpectedBy_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["markedNotExpectedAt_" + currentDay]: firebase.firestore.FieldValue.delete()
     }, { merge: true });
     const person = allPeople.find(p => p.id === personId);
-    showToast(`${person?.name || "Attendee"} checked in ✓`, "green");
+    showToast(`${person?.name || "Attendee"} checked in for ${IW_DAY_LABELS[currentDay]} ✓`, "green");
   } catch (e) {
     // Offline: update locally
-    attendance[personId] = { arrived: new Date() };
+    attendance[personId] = { ...(attendance[personId] || {}), ["arrived_" + currentDay]: new Date() };
     renderList();
     showToast("Checked in (pending sync)", "");
   }
@@ -435,11 +487,16 @@ async function checkIn(personId) {
 async function undoCheckIn(personId) {
   if (!canEdit) return;
   try {
-    await db.collection(COLLECTIONS.attendance).doc(personId).delete();
-    delete attendance[personId];
+    // Field-level delete, never the whole doc — the OTHER day's arrival
+    // (if any) must survive this.
+    await db.collection(COLLECTIONS.attendance).doc(personId).set({
+      ["arrived_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["checkedInBy_" + currentDay]: firebase.firestore.FieldValue.delete()
+    }, { merge: true });
+    if (attendance[personId]) { delete attendance[personId]["arrived_" + currentDay]; delete attendance[personId]["checkedInBy_" + currentDay]; }
     renderList();
   } catch (e) {
-    delete attendance[personId];
+    if (attendance[personId]) delete attendance[personId]["arrived_" + currentDay];
     renderList();
   }
 }
@@ -455,14 +512,14 @@ async function markNotExpected(personId) {
   if (!canEdit) return;
   try {
     await db.collection(COLLECTIONS.attendance).doc(personId).set({
-      notExpected: true,
-      markedNotExpectedBy: currentUser?.uid || "manual",
-      markedNotExpectedAt: firebase.firestore.FieldValue.serverTimestamp()
+      ["notExpected_" + currentDay]: true,
+      ["markedNotExpectedBy_" + currentDay]: currentUser?.uid || "manual",
+      ["markedNotExpectedAt_" + currentDay]: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     const person = allPeople.find(p => p.id === personId);
-    showToast(`${person?.name || "Attendee"} marked not expected today`, "");
+    showToast(`${person?.name || "Attendee"} marked not expected ${IW_DAY_LABELS[currentDay]}`, "");
   } catch (e) {
-    attendance[personId] = { ...(attendance[personId] || {}), notExpected: true };
+    attendance[personId] = { ...(attendance[personId] || {}), ["notExpected_" + currentDay]: true };
     renderList();
   }
 }
@@ -470,22 +527,17 @@ async function markNotExpected(personId) {
 async function undoNotExpected(personId) {
   if (!canEdit) return;
   try {
-    const rec = attendance[personId];
-    if (rec && rec.arrived) {
-      // Doc still needed for the real arrival record — just clear the flag.
-      await db.collection(COLLECTIONS.attendance).doc(personId).set({
-        notExpected: firebase.firestore.FieldValue.delete(),
-        markedNotExpectedBy: firebase.firestore.FieldValue.delete(),
-        markedNotExpectedAt: firebase.firestore.FieldValue.delete()
-      }, { merge: true });
-    } else {
-      // Doc only existed for the notExpected flag — remove it entirely so
-      // they go back to a normal "not yet arrived" state.
-      await db.collection(COLLECTIONS.attendance).doc(personId).delete();
-    }
+    // Field-level delete only, same reasoning as undoCheckIn — the other
+    // day's data (arrival or its own notExpected flag) must stay intact.
+    await db.collection(COLLECTIONS.attendance).doc(personId).set({
+      ["notExpected_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["markedNotExpectedBy_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["markedNotExpectedAt_" + currentDay]: firebase.firestore.FieldValue.delete()
+    }, { merge: true });
+    if (attendance[personId]) delete attendance[personId]["notExpected_" + currentDay];
     renderList();
   } catch (e) {
-    if (attendance[personId]) delete attendance[personId].notExpected;
+    if (attendance[personId]) delete attendance[personId]["notExpected_" + currentDay];
     renderList();
   }
 }
@@ -502,12 +554,13 @@ async function addWalkIn() {
   if (!name) { msg.textContent = "Enter a name first."; return; }
 
   msg.textContent = "Adding…";
+  if (!dayIsOpen(currentDay)) { msg.textContent = `Check-in for ${IW_DAY_LABELS[currentDay]} hasn't opened yet.`; return; }
   try {
     const ref = db.collection(COLLECTIONS.people).doc();
     await ref.set({ name, role, group, addedAt: firebase.firestore.FieldValue.serverTimestamp(), walkin: true });
     await db.collection(COLLECTIONS.attendance).doc(ref.id).set({
-      arrived: firebase.firestore.FieldValue.serverTimestamp(),
-      checkedInBy: currentUser?.uid || "manual"
+      ["arrived_" + currentDay]: firebase.firestore.FieldValue.serverTimestamp(),
+      ["checkedInBy_" + currentDay]: currentUser?.uid || "manual"
     });
     await db.collection(COLLECTIONS.iwAssignments).doc(`${CURRENT_IW_YEAR}_${ref.id}`).set({
       year: CURRENT_IW_YEAR,
@@ -519,7 +572,7 @@ async function addWalkIn() {
     }, { merge: true }).catch(() => {});
     allPeople.push({ id: ref.id, name, role, group });
     iwAssignments[ref.id] = role;
-    attendance[ref.id] = { arrived: new Date() };
+    attendance[ref.id] = { ["arrived_" + currentDay]: new Date() };
     document.getElementById("addName").value  = "";
     document.getElementById("addGroup").value = "";
     msg.textContent = `${name} registered and checked in.`;
@@ -546,8 +599,8 @@ function renderList() {
   const search = currentFilter.toLowerCase();
   let people = allPeople.filter(p => !search || p.name.toLowerCase().includes(search));
 
-  if (currentTab === "arrived")     people = people.filter(p => !!attendance[p.id]?.arrived);
-  if (currentTab === "outstanding") people = people.filter(p => !attendance[p.id]?.arrived && !attendance[p.id]?.notExpected);
+  if (currentTab === "arrived")     people = people.filter(p => !!attendance[p.id]?.["arrived_" + currentDay]);
+  if (currentTab === "outstanding") people = people.filter(p => !attendance[p.id]?.["arrived_" + currentDay] && !attendance[p.id]?.["notExpected_" + currentDay]);
 
   if (currentCourseType === "instructor") people = people.filter(p => effectiveRole(p) === "instructor");
   if (currentCourseType === "assessor")   people = people.filter(p => effectiveRole(p) === "assessor");
@@ -584,8 +637,8 @@ function renderList() {
 
 function personRow(p) {
   const rec         = attendance[p.id];
-  const arrived     = !!rec?.arrived;
-  const notExpected = !arrived && !!rec?.notExpected;
+  const arrived     = !!rec?.["arrived_" + currentDay];
+  const notExpected = !arrived && !!rec?.["notExpected_" + currentDay];
   const initials = (p.name || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
   const role    = effectiveRole(p);
   const colour  = arrived ? "avatar-green" : (ROLE_COLOURS[role] || "avatar-muted");
@@ -594,29 +647,34 @@ function personRow(p) {
 
   let timeStr = "";
   if (arrived) {
-    const d = rec.arrived.toDate ? rec.arrived.toDate() : new Date(rec.arrived);
+    const raw = rec["arrived_" + currentDay];
+    const d = raw.toDate ? raw.toDate() : new Date(raw);
     timeStr = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
   }
 
   const rowClass = arrived ? "arrived" : (notExpected ? "not-expected" : "not-here");
 
+  const dayOpen = dayIsOpen(currentDay);
   let statusHtml;
   if (canEdit) {
     if (arrived) {
       statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>
                  <button class="btn-undo" onclick="undoCheckIn('${esc(p.id)}')">Undo</button>`;
     } else if (notExpected) {
-      statusHtml = `<div class="not-expected-label">Not expected today</div>
+      statusHtml = `<div class="not-expected-label">Not expected</div>
                  <button class="btn-undo" onclick="undoNotExpected('${esc(p.id)}')">Undo</button>`;
+    } else if (!dayOpen) {
+      statusHtml = `<div class="arrived-time" style="opacity:.5;">Opens ${IW_DAY_LABELS[currentDay]}</div>
+                 <button class="btn-not-expected" onclick="markNotExpected('${esc(p.id)}')">Not expected</button>`;
     } else {
       statusHtml = `<button class="btn-checkin" onclick="checkIn('${esc(p.id)}')">Check in</button>
-                 <button class="btn-not-expected" onclick="markNotExpected('${esc(p.id)}')">Not expected today</button>`;
+                 <button class="btn-not-expected" onclick="markNotExpected('${esc(p.id)}')">Not expected</button>`;
     }
   } else {
     if (arrived) {
       statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>`;
     } else if (notExpected) {
-      statusHtml = `<div class="not-expected-label">Not expected today</div>`;
+      statusHtml = `<div class="not-expected-label">Not expected</div>`;
     } else {
       statusHtml = `<div class="arrived-time" style="opacity:.5;">Not yet arrived</div>`;
     }
@@ -637,8 +695,8 @@ function personRow(p) {
 
 function updateStats() {
   const total       = allPeople.length;
-  const arrived     = Object.values(attendance).filter(a => a?.arrived).length;
-  const notExpected = Object.values(attendance).filter(a => !a?.arrived && a?.notExpected).length;
+  const arrived     = Object.values(attendance).filter(a => a?.["arrived_" + currentDay]).length;
+  const notExpected = Object.values(attendance).filter(a => !a?.["arrived_" + currentDay] && a?.["notExpected_" + currentDay]).length;
   const outstand    = Math.max(0, total - arrived - notExpected);
   const pct         = total ? Math.round(arrived / total * 100) : 0;
 
@@ -651,6 +709,20 @@ function updateStats() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Tabs + filter
 // ─────────────────────────────────────────────────────────────────────────────
+function switchDay(day) {
+  currentDay = day;
+  document.getElementById("day-saturday").classList.toggle("active", day === "saturday");
+  document.getElementById("day-sunday").classList.toggle("active", day === "sunday");
+  const note = document.getElementById("dayClosedNote");
+  if (!dayIsOpen(day)) {
+    note.textContent = `Check-in for ${IW_DAY_LABELS[day]} hasn't opened yet — nobody can be checked in for this day until then.`;
+    note.classList.remove("hidden");
+  } else {
+    note.classList.add("hidden");
+  }
+  renderList();
+}
+
 function switchTab(tab) {
   currentTab = tab;
   ["all","outstanding","arrived","add"].forEach(t => {

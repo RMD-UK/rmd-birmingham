@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IW September Test Data Cleanup — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 820px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .director-note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:16px; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin-top:8px; line-height:1.5; }
+    .btn-primary { padding:12px 20px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:disabled { background:#aab8c2; cursor:default; }
+    .btn-danger { padding:12px 20px; background:#b7410e; color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger:disabled { background:#aab8c2; cursor:default; }
+    .group { border:1px solid #e8edf2; border-radius:6px; margin-bottom:10px; overflow:hidden; }
+    .group-title { background:#eef2f6; padding:8px 12px; font-size:13px; font-weight:700; color:var(--rmd-navy); }
+    .row { padding:7px 12px; border-top:1px solid #f0f3f6; font-size:13px; }
+    .row .name { font-weight:700; color:var(--rmd-navy); }
+    .row .meta { color:var(--rmd-muted); font-family:monospace; font-size:11px; margin-left:8px; }
+    .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
+    .confirm-box { display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:12px 0; }
+    .log-line { font-size:12px; font-family:monospace; padding:3px 0; border-bottom:1px solid #f4f6fa; }
+    .log-line.err { color:#b7410e; }
+    .log-line.ok  { color:#1a6e31; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="cd-dashboard.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">IW September Test Data Cleanup</div>
+      <div class="top-bar-sub">RMD Instructor Weekend 2026 · Director only</div>
+    </div>
+  </div>
+
+  <div class="director-note">
+    One-off tool (2026-10-02) to remove the "IW Test…" practice data built 12&ndash;13 September while testing the registration/room/ITC workflow end to end &mdash; it was never cleaned up and is currently showing in the live Room Rosters and Registration pages. Matches by name ("IW Test…", "Instructor Trainer Test", "Instructor Trainer Candidate Test") across every collection it touched. Jaimy Sajit is deliberately NOT matched or touched &mdash; flagged elsewhere as unconfirmed, not something to delete blind.
+  </div>
+
+  <div class="card">
+    <div class="card-header">Scan</div>
+    <div class="card-body">
+      <div id="scanSummary" class="hint">Scanning…</div>
+      <div id="scanResults"></div>
+
+      <label class="confirm-box">
+        <input type="checkbox" id="confirmBox" onchange="document.getElementById('runBtn').disabled = !this.checked">
+        I've reviewed the list above and want to delete all of it. This cannot be undone.
+      </label>
+      <button class="btn-danger" id="runBtn" onclick="runCleanup()" disabled>🗑 Run cleanup</button>
+
+      <div id="log" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const fns = firebase.functions();
+
+function isTestName(name) {
+  const n = (name || "").trim().toLowerCase();
+  return n.startsWith("iw test") || n === "instructor trainer test" || n === "instructor trainer candidate test";
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+function logLine(msg, cls) {
+  const el = document.createElement("div");
+  el.className = "log-line" + (cls ? " " + cls : "");
+  el.textContent = msg;
+  document.getElementById("log").appendChild(el);
+}
+
+let scan = {
+  people: [], facultyResponses: [], mouRoster: [], attendance: [],
+  groupsByRoom: {}, // roomId -> { candidates:[removed], instructors:[removed] }
+  teachingFacultyRemoved: [], itcRemoved: []
+};
+
+async function runScan() {
+  const summaryEl = document.getElementById("scanSummary");
+  const resultsEl = document.getElementById("scanResults");
+
+  const [peopleSnap, facSnap, rosterSnap, groupsSnap, tfDoc, itcDoc] = await Promise.all([
+    db.collection(COLLECTIONS.people).get(),
+    db.collection("faculty_responses").get(),
+    db.collection(COLLECTIONS.mouRoster).get(),
+    db.collection(COLLECTIONS.groups).get(),
+    db.collection("config").doc("teaching_faculty").get(),
+    db.collection("config").doc("itc_schedule").get()
+  ]);
+
+  scan.people           = peopleSnap.docs.filter(d => isTestName(d.data().name)).map(d => ({ id: d.id, ...d.data() }));
+  scan.facultyResponses = facSnap.docs.filter(d => isTestName(d.data().name)).map(d => ({ id: d.id, ...d.data() }));
+  scan.mouRoster        = rosterSnap.docs.filter(d => isTestName(d.data().name)).map(d => ({ id: d.id, ...d.data() }));
+
+  const testPeopleIds = new Set(scan.people.map(p => p.id));
+  const attSnap = await db.collection(COLLECTIONS.attendance).get();
+  scan.attendance = attSnap.docs.filter(d => testPeopleIds.has(d.id)).map(d => ({ id: d.id, ...d.data() }));
+
+  scan.groupsByRoom = {};
+  groupsSnap.docs.forEach(d => {
+    const data = d.data();
+    const removedCandidates  = (data.candidates  || []).filter(p => isTestName(p.name));
+    const removedInstructors = (data.instructors || []).filter(p => isTestName(p.name));
+    if (removedCandidates.length || removedInstructors.length) {
+      scan.groupsByRoom[d.id] = { removedCandidates, removedInstructors, raw: data };
+    }
+  });
+
+  scan.teachingFacultyRemoved = tfDoc.exists ? (tfDoc.data().members || []).filter(p => isTestName(p.name)) : [];
+  const itcData = itcDoc.exists ? itcDoc.data() : {};
+  scan.itcRemoved = (itcData.itcs || []).filter(p => isTestName(p.name));
+  scan.itcDataRaw = itcData;
+
+  const totalRecords = scan.people.length + scan.facultyResponses.length + scan.mouRoster.length +
+    scan.attendance.length + Object.keys(scan.groupsByRoom).length + scan.teachingFacultyRemoved.length + scan.itcRemoved.length;
+
+  if (!totalRecords) {
+    summaryEl.textContent = "Nothing found — no record anywhere matches the test-data naming. Looks already clean.";
+    resultsEl.innerHTML = "";
+    return;
+  }
+
+  summaryEl.textContent = `Found test data in ${[
+    scan.people.length ? "people" : null,
+    scan.facultyResponses.length ? "faculty_responses" : null,
+    scan.mouRoster.length ? "mou_roster" : null,
+    scan.attendance.length ? "attendance" : null,
+    Object.keys(scan.groupsByRoom).length ? "groups" : null,
+    scan.teachingFacultyRemoved.length ? "config/teaching_faculty" : null,
+    scan.itcRemoved.length ? "config/itc_schedule" : null
+  ].filter(Boolean).join(", ")}.`;
+
+  const section = (title, items, renderItem) => !items || !items.length ? "" : `
+    <div class="group">
+      <div class="group-title">${esc(title)} (${items.length})</div>
+      ${items.map(renderItem).join("")}
+    </div>`;
+
+  let html = "";
+  html += section(`people`, scan.people, p => `<div class="row"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.email || p.id)}</span></div>`);
+  html += section(`faculty_responses`, scan.facultyResponses, p => `<div class="row"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.email || p.id)}</span></div>`);
+  html += section(`mou_roster`, scan.mouRoster, p => `<div class="row"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.email || p.id)}</span></div>`);
+  html += section(`attendance (stray check-ins)`, scan.attendance, a => `<div class="row"><span class="name">${esc((scan.people.find(p=>p.id===a.id)||{}).name || a.id)}</span></div>`);
+  const roomEntries = Object.keys(scan.groupsByRoom).map(rid => ({ rid, ...scan.groupsByRoom[rid] }));
+  html += section(`groups (room entries)`, roomEntries, g => `<div class="row"><span class="name">${esc(g.rid)}</span><span class="meta">${[...g.removedCandidates, ...g.removedInstructors].map(p=>p.name).join(", ")}</span></div>`);
+  html += section(`config/teaching_faculty.members`, scan.teachingFacultyRemoved, p => `<div class="row"><span class="name">${esc(p.name)}</span></div>`);
+  html += section(`config/itc_schedule.itcs`, scan.itcRemoved, p => `<div class="row"><span class="name">${esc(p.name)}</span></div>`);
+  resultsEl.innerHTML = html;
+}
+
+async function runCleanup() {
+  const btn = document.getElementById("runBtn");
+  btn.disabled = true;
+  btn.textContent = "Running…";
+  document.getElementById("log").innerHTML = "";
+
+  try {
+    // 1. people, faculty_responses, mou_roster, attendance — straightforward doc deletes
+    const toDelete = [
+      ...scan.people.map(p => db.collection(COLLECTIONS.people).doc(p.id)),
+      ...scan.facultyResponses.map(p => db.collection("faculty_responses").doc(p.id)),
+      ...scan.mouRoster.map(p => db.collection(COLLECTIONS.mouRoster).doc(p.id)),
+      ...scan.attendance.map(a => db.collection(COLLECTIONS.attendance).doc(a.id))
+    ];
+    let batch = db.batch(), n = 0;
+    for (const ref of toDelete) {
+      batch.delete(ref);
+      n++;
+      if (n >= 400) { await batch.commit(); batch = db.batch(); n = 0; }
+    }
+    if (n > 0) await batch.commit();
+    logLine(`Deleted ${scan.people.length} people, ${scan.facultyResponses.length} faculty_responses, ${scan.mouRoster.length} mou_roster, ${scan.attendance.length} attendance doc(s).`, "ok");
+
+    // 2. groups — filter the candidates/instructors arrays per room, write back
+    const roomIds = Object.keys(scan.groupsByRoom);
+    if (roomIds.length) {
+      const groupsBatch = db.batch();
+      roomIds.forEach(rid => {
+        const g = scan.groupsByRoom[rid];
+        const keepCandidates  = (g.raw.candidates  || []).filter(p => !isTestName(p.name));
+        const keepInstructors = (g.raw.instructors || []).filter(p => !isTestName(p.name));
+        groupsBatch.update(db.collection(COLLECTIONS.groups).doc(rid), { candidates: keepCandidates, instructors: keepInstructors });
+      });
+      await groupsBatch.commit();
+      logLine(`Cleared test entries from ${roomIds.length} room(s) in groups: ${roomIds.join(", ")}.`, "ok");
+    }
+
+    // 3. config/teaching_faculty.members
+    if (scan.teachingFacultyRemoved.length) {
+      const tfDoc = await db.collection("config").doc("teaching_faculty").get();
+      const keep = (tfDoc.data().members || []).filter(p => !isTestName(p.name));
+      await db.collection("config").doc("teaching_faculty").update({ members: keep });
+      logLine(`Removed ${scan.teachingFacultyRemoved.length} test entr${scan.teachingFacultyRemoved.length===1?"y":"ies"} from config/teaching_faculty.members.`, "ok");
+    }
+
+    // 4. config/itc_schedule — itcs list + matching assignment keys
+    if (scan.itcRemoved.length) {
+      const removedEmails = new Set(scan.itcRemoved.map(p => p.email));
+      const keepItcs = (scan.itcDataRaw.itcs || []).filter(p => !isTestName(p.name));
+      const assignments = { ...(scan.itcDataRaw.assignments || {}) };
+      removedEmails.forEach(em => { delete assignments[em]; });
+      await db.collection("config").doc("itc_schedule").update({ itcs: keepItcs, assignments });
+      logLine(`Removed ${scan.itcRemoved.length} test ITC(s) from config/itc_schedule.`, "ok");
+    }
+
+    // 5. Firebase Auth logins — attempt for every matched person's email;
+    // deleteEmptyAuthAccount no-ops/fails harmlessly if there's no login
+    // for that email, so it's safe to try all of them rather than guessing
+    // which ones actually have a real account.
+    let authDeleted = 0, authFailed = [];
+    for (const p of scan.people) {
+      if (!p.email) continue;
+      try {
+        await fns.httpsCallable("deleteEmptyAuthAccount")({ email: p.email });
+        authDeleted++;
+      } catch (e) {
+        authFailed.push(`${p.name} (${p.email}) — ${e.message || e.code || "no login, or already clean"}`);
+      }
+    }
+    if (authDeleted) logLine(`Deleted ${authDeleted} Firebase Auth login(s).`, "ok");
+    authFailed.forEach(f => logLine(f, "err"));
+
+    logLine("Cleanup complete.", "ok");
+    btn.textContent = "✅ Done";
+    document.getElementById("scanSummary").textContent = "Cleanup complete — re-run the scan to confirm nothing's left.";
+    document.getElementById("scanResults").innerHTML = "";
+    document.getElementById("confirmBox").checked = false;
+  } catch (err) {
+    logLine("Cleanup failed: " + err.message, "err");
+    btn.disabled = false;
+    btn.textContent = "🗑 Run cleanup";
+  }
+}
+
+requireDirector("timetable.html").then(() => runScan());
+</script>
+</body>
+</html>
