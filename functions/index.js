@@ -141,6 +141,21 @@ async function callerIsDirector(auth) {
   return false;
 }
 
+// callerFacultyRosterGroup(auth) -> "student" | "senior" | null
+// Server-side mirror of myFacultyRosterGroup() in firestore.rules /
+// js/firebase-config.js: looks up the caller's own faculty_roster doc
+// (keyed by lowercased email) and returns its group field. Added
+// 2026-10-01 for sendBulkComms, the first callable that non-directors
+// need to pass.
+async function callerFacultyRosterGroup(auth) {
+  const email = (auth.token.email || "").toLowerCase();
+  if (!email) return null;
+  try {
+    const snap = await db.collection("faculty_roster").doc(email).get();
+    return snap.exists ? (snap.data().group || null) : null;
+  } catch (e) { return null; }
+}
+
 
 exports.generateItcSummary = onCall({ secrets: [anthropicApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
@@ -3028,14 +3043,19 @@ exports.syncIwRegistrationsToPeople = onCall({ region: "us-central1" }, async (r
 });
 
 /**
- * sendBulkComms — director-only.
+ * sendBulkComms - director, RMD Student Faculty or RMD Senior Faculty
+ * (widened 2026-10-01, Jon: "I want all RMD student faculty & RMD senior
+ * faculty to be able to use this") - same faculty_roster.group check as
+ * requireDirectorOrFaculty() in js/firebase-config.js / myFacultyRosterGroup()
+ * in firestore.rules, done server-side here since this is a callable, not a
+ * direct Firestore write.
  *
  * Generic bulk-email tool for admin-comms.html (2026-10-02, Jon: "bulk email
  * all candidates allocated to a particular course... could be separate comms
  * page & have button for bulk email of several groups... eg candidates per
  * course, all assessors, all instructors, etc"). Deliberately generic: the
  * caller works out WHO the recipients are (Stage 1 candidates by course, IW
- * roster by role, etc — see admin-comms.html) and this function just sends
+ * roster by role, etc, see admin-comms.html) and this function just sends
  * to whatever { name, email } list it's given, same Resend/FROM_EMAIL
  * pipeline as every other platform email. Supports {{first_name}} / {{name}}
  * merge fields in the message body. dryRun returns the recipient count with
@@ -3044,8 +3064,10 @@ exports.syncIwRegistrationsToPeople = onCall({ region: "us-central1" }, async (r
 exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
-  if (!(await callerIsDirector(auth))) {
-    throw new HttpsError("permission-denied", "Course Directors only.");
+  const isDirector = await callerIsDirector(auth);
+  const rosterGroup = isDirector ? null : await callerFacultyRosterGroup(auth);
+  if (!isDirector && rosterGroup !== "student" && rosterGroup !== "senior") {
+    throw new HttpsError("permission-denied", "Course Directors, RMD Student Faculty or RMD Senior Faculty only.");
   }
 
   const recipients  = Array.isArray(request.data?.recipients) ? request.data.recipients : [];
