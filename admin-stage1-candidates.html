@@ -232,7 +232,20 @@ function autoFitCourse(degreeExact, placementBlocks) {
     if (!clashFree.length) return { course: null, reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead` };
     eligible = clashFree;
   }
-  return { course: eligible[0].name, reason: null };
+  const best = eligible[0];
+  // Capacity is a soft cap on auto-fit only (2026-10-01, Jon) — hitting it
+  // never bumps a candidate onto a different, earlier session automatically;
+  // they go unassigned with a flag instead, same as any other "couldn't
+  // auto-fit" case, so a director places them by hand. That manual
+  // placement is explicitly allowed to go over the cap. A session with no
+  // capacity set (blank on Stage 1 Settings) has no limit.
+  if (best.capacity) {
+    const onIt = allCandidates.filter(c => c.course === best.name).length;
+    if (onIt >= best.capacity) {
+      return { course: null, reason: `"${best.name}" is already at its cap of ${best.capacity} — pick a course manually (this can go over the cap)` };
+    }
+  }
+  return { course: best.name, reason: null };
 }
 
 function populateCourseFilter() {

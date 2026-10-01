@@ -63,9 +63,9 @@
   <div class="card">
     <div class="card-header">This year's assessment evenings</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">The Stage 1 evening courses running this year, in the order they happen. <strong>Name</strong> is exactly what will appear as the candidate's "course" — keep it consistent with what you've used before (e.g. "Course 1") so old and new records line up. <strong>Date</strong> is when that course's assessment evening falls, used to auto-fit candidates against the deadlines above.</p>
+      <p class="hint" style="margin-top:0;">The Stage 1 evening courses running this year, in the order they happen. <strong>Name</strong> is exactly what will appear as the candidate's "course" — keep it consistent with what you've used before (e.g. "Course 1") so old and new records line up. <strong>Date</strong> is when that course's assessment evening falls, used to auto-fit candidates against the deadlines above. <strong>Capacity</strong> caps how many candidates auto-fit will place on that session — once it's full, new candidates are flagged for you to place by hand instead (manual placement can still go over the cap). Leave capacity blank for no cap.</p>
       <table class="settings-table" id="coursesTable">
-        <thead><tr><th>Name</th><th style="width:200px;">Date</th><th style="width:50px;"></th></tr></thead>
+        <thead><tr><th>Name</th><th style="width:200px;">Date</th><th style="width:110px;">Capacity</th><th style="width:50px;"></th></tr></thead>
         <tbody></tbody>
       </table>
       <button class="btn-secondary" onclick="addCourseRow()">+ Add course session</button>
@@ -148,7 +148,11 @@ async function loadCourses() {
   if (!courseRows.length) {
     // Brand new year, nothing saved yet — Jon always wants six named
     // Course 1..6 to start from rather than one blank row (2026-10-01).
-    courseRows = Array.from({ length: 6 }, (_, i) => ({ name: `Course ${i + 1}`, date: "" }));
+    // Course 1 defaults to a capacity of 12, courses 2-6 to 10 — leaves
+    // room on the later courses for resits/absences to be reshuffled in
+    // (2026-10-01, Jon). Still just a starting point; edit and save as
+    // needed.
+    courseRows = Array.from({ length: 6 }, (_, i) => ({ name: `Course ${i + 1}`, date: "", capacity: i === 0 ? 12 : 10 }));
   }
   renderCourses();
 }
@@ -159,32 +163,41 @@ function renderCourses() {
     <tr>
       <td><input type="text" data-idx="${i}" data-field="name" value="${esc(c.name)}" placeholder="e.g. Course 1"></td>
       <td><input type="date" data-idx="${i}" data-field="date" value="${esc(c.date)}"></td>
+      <td><input type="number" min="0" step="1" data-idx="${i}" data-field="capacity" value="${c.capacity || c.capacity === 0 ? esc(String(c.capacity)) : ""}" placeholder="no cap"></td>
       <td><button class="btn-danger-sm" onclick="removeCourseRow(${i})">✕</button></td>
     </tr>`).join("");
   tbody.querySelectorAll("input").forEach(inp => {
     inp.addEventListener("change", () => {
-      courseRows[Number(inp.dataset.idx)][inp.dataset.field] = inp.value;
+      const val = inp.dataset.field === "capacity" ? (inp.value === "" ? "" : Number(inp.value)) : inp.value;
+      courseRows[Number(inp.dataset.idx)][inp.dataset.field] = val;
     });
   });
 }
 
 function addCourseRow() {
-  courseRows.push({ name: "", date: "" });
+  courseRows.push({ name: "", date: "", capacity: "" });
   renderCourses();
 }
 
 function removeCourseRow(i) {
   courseRows.splice(i, 1);
-  if (!courseRows.length) courseRows = [{ name: "", date: "" }];
+  if (!courseRows.length) courseRows = [{ name: "", date: "", capacity: "" }];
   renderCourses();
 }
 
 async function saveCourses() {
   const statusEl = document.getElementById("coursesStatus");
-  const clean = courseRows.filter(c => c.name && c.date);
+  // Capacity is optional — a row with no capacity typed just omits the
+  // field, which autoFitCourse() on admin-stage1-candidates.html treats as
+  // no cap at all, not zero.
+  const clean = courseRows.filter(c => c.name && c.date).map(c => {
+    const row = { name: c.name, date: c.date };
+    if (c.capacity || c.capacity === 0) row.capacity = Number(c.capacity);
+    return row;
+  });
   try {
     await db.collection("config").doc("stage1_course_dates").set({ courses: clean }, { merge: true });
-    courseRows = clean.length ? clean : [{ name: "", date: "" }];
+    courseRows = clean.length ? clean : [{ name: "", date: "", capacity: "" }];
     renderCourses();
     statusEl.textContent = "Saved.";
     statusEl.className = "status-line ok";
