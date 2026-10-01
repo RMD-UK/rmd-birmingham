@@ -193,7 +193,12 @@ function setPoolView(view) {
 
 initFirebase();
 
-requireDirector("admin-stage1-candidates.html").then(async () => {
+// Widened 2026-10-01 (Jon: "anyone on RMD student faculty & RMD senior
+// faculty" should be able to do this, not just directors) — matching
+// firestore.rules change on stage1_candidates (room field only) and
+// course_allocations (full) is what actually lets a write from this role
+// succeed; this gate alone only controls who gets past the loading screen.
+requireDirectorOrFaculty("admin-stage1-candidates.html").then(async () => {
   document.getElementById("authOverlay").style.display = "none";
   await loadData();
 });
@@ -215,7 +220,13 @@ async function loadData() {
       const surname = data.passportLastName || (data.name ? data.name.trim().split(/\s+/).pop() : "");
       const first = data.preferredName ? data.preferredName.trim().split(/\s+/)[0] : null;
       const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
-      return { uid: d.id, name };
+      // Instructor Weekend strength rating (2026-10-01) — computed server
+      // side from blind session/assessor feedback (see functions/index.js:
+      // recomputeInstructorIwScore), never raw ratings. "unrated" when the
+      // field hasn't been written yet (nobody's rated them, or this is from
+      // before the feature existed).
+      const iwTier = data.iwRatingSummary ? data.iwRatingSummary.tier : "unrated";
+      return { uid: d.id, name, iwTier };
     }).sort((a,b) => a.name.localeCompare(b.name));
   } catch(e) { console.warn("Instructor load failed:", e.message); }
 
@@ -420,13 +431,22 @@ function renderInstructorPool() {
     : `<div class="pool-empty">${allInstructors.length ? "All assigned ✓" : "No instructors found."}</div>`;
 }
 
+// ⭐ / ⚠ prefix for a Strong / Weak Instructor Weekend rating (see loadData()
+// — data comes from people/{uid}.iwRatingSummary, computed server-side from
+// blind feedback, never shown as raw ratings here). Standard and unrated
+// instructors get no prefix — only the two ends of the scale are flagged,
+// same principle as the dashboard's "Notable flags" list.
+function iwTierBadge(tier) {
+  return tier === "strong" ? "⭐ " : tier === "weak" ? "⚠ " : "";
+}
 function makeInstructorCard(i) {
   const sel = selected && selected.kind === "instructor" && selected.id === i.uid;
   return `<div class="pcard${sel ? " selected" : ""}"
                draggable="true" data-id="${i.uid}"
                ondragstart="onDragStart(event,'${i.uid}','instructorPool','instructor')"
-               onclick="onCardClick(event,'${i.uid}','instructorPool','instructor')">
-            <span class="pcard-name">${i.name}</span>
+               onclick="onCardClick(event,'${i.uid}','instructorPool','instructor')"
+               title="${i.iwTier === "strong" ? "Instructor Weekend: notably strong" : i.iwTier === "weak" ? "Instructor Weekend: notably weak" : ""}">
+            <span class="pcard-name">${iwTierBadge(i.iwTier)}${i.name}</span>
           </div>`;
 }
 
@@ -437,7 +457,7 @@ function renderRooms() {
     const team = roomTeams[rid] || { uids: [], prefilled: false };
     const chips = team.uids.map(uid => {
       const inst = allInstructors.find(i => i.uid === uid);
-      const name = inst ? inst.name : uid;
+      const name = inst ? `${iwTierBadge(inst.iwTier)}${inst.name}` : uid;
       return `<span class="instr-chip">${name}<button onclick="event.stopPropagation();removeInstructor('${rid}','${uid}')" title="Remove">×</button></span>`;
     }).join("");
     return `<div class="room-col" id="room-${rid}"
@@ -488,17 +508,65 @@ function removeInstructor(rid, uid) {
 
 // ── Randomize instructors (unassigned only, respects the 5-per-room cap,
 // never reshuffles an existing team) ────────────────────────────────────
+// Skill-balanced as of 2026-10-01 (Jon): "split them equally between the
+// teaching rooms, but taking account of how weak/strong they have been on
+// instructor weekend. Do not pair weak instructors together. Only pair
+// strong instructors together if there is not other option." Weak
+// instructors are placed first, each going to whichever open room doesn't
+// already have one, if such a room exists; strong instructors next, same
+// rule in reverse; standard and not-yet-rated instructors fill in last,
+// purely to even out headcount and total skill — they carry no pairing
+// constraint of their own. Processing order matters here: the constrained
+// tiers get first pick of rooms while there's still room to honour the
+// rule, rather than being squeezed into whatever's left.
+function teamSkillScore(rid) {
+  const team = roomTeams[rid] || { uids: [] };
+  return team.uids.reduce((sum, uid) => {
+    const inst = allInstructors.find(i => i.uid === uid);
+    const tier = inst ? inst.iwTier : "unrated";
+    return sum + (tier === "strong" ? 1 : tier === "weak" ? -1 : 0);
+  }, 0);
+}
+function teamHasTier(rid, tier) {
+  const team = roomTeams[rid] || { uids: [] };
+  return team.uids.some(uid => {
+    const inst = allInstructors.find(i => i.uid === uid);
+    return inst && inst.iwTier === tier;
+  });
+}
 function randomizeInstructors() {
   const assigned = new Set();
   ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
   const pool = allInstructors.filter(i => !assigned.has(i.uid));
   if (!pool.length) { showStatus("Nothing unassigned to allocate", "ok"); return; }
-  pool.sort(() => Math.random() - .5).forEach(inst => {
-    const open = ROOMS.filter(r => (roomTeams[r]?.uids?.length || 0) < 5);
+
+  const tierOrder = { weak: 0, strong: 1, standard: 2, unrated: 2 };
+  const ordered = pool.slice()
+    .sort(() => Math.random() - .5) // random within each tier
+    .sort((a, b) => tierOrder[a.iwTier || "unrated"] - tierOrder[b.iwTier || "unrated"]); // stable: tier groups stay in this order
+
+  ordered.forEach(inst => {
+    let open = ROOMS.filter(r => (roomTeams[r]?.uids?.length || 0) < 5);
     if (!open.length) return; // every room already at 5/5 — leftover instructors stay unassigned
-    const smallest = open.sort((a, b) => roomTeams[a].uids.length - roomTeams[b].uids.length)[0];
-    roomTeams[smallest].uids.push(inst.uid);
-    roomTeams[smallest].prefilled = false;
+
+    const tier = inst.iwTier || "unrated";
+    if (tier === "weak") {
+      const withoutWeak = open.filter(r => !teamHasTier(r, "weak"));
+      if (withoutWeak.length) open = withoutWeak; // soft constraint — only applied when it's actually possible to honour
+    } else if (tier === "strong") {
+      const withoutStrong = open.filter(r => !teamHasTier(r, "strong"));
+      if (withoutStrong.length) open = withoutStrong;
+    }
+
+    // Among whichever rooms are still eligible, balance headcount first,
+    // then total skill score, so no room ends up both fuller and
+    // stronger/weaker than the rest.
+    open.sort((a, b) =>
+      roomTeams[a].uids.length - roomTeams[b].uids.length ||
+      teamSkillScore(a) - teamSkillScore(b));
+    const target = open[0];
+    roomTeams[target].uids.push(inst.uid);
+    roomTeams[target].prefilled = false;
   });
   render();
 }
