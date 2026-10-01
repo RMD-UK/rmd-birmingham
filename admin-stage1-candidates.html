@@ -100,6 +100,16 @@
   </div>
 
   <div class="card">
+    <div class="card-header">Import placement dates</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Paste rows straight from a placement lead's sheet (Pharmacy, or any other programme this comes up for): <strong>first name, last name, email, start date, end date</strong> — dates as DD/MM/YYYY. Matched to candidates already imported above by email. A student can have several rows (several separate placement blocks); each one is added to their file, so re-pasting the same sheet again won't create duplicates. A course runs from its first teaching Monday through its week-3 assessment evening (worked out from the date set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — if any of a candidate's placement dates overlap that whole span for their assigned course, they're flagged here and on the Candidates list below so you can move them by hand. Nothing is saved until you confirm.</p>
+      <textarea id="placementPasteBox" placeholder="Dave, Smith, nxa966@student.bham.ac.uk, 02/11/2026, 02/11/2026&#10;Dave, Smith, nxa966@student.bham.ac.uk, 15/03/2027, 19/03/2027"></textarea>
+      <button class="btn-primary" id="placementParseBtn" onclick="parsePlacementPreview()">Parse &amp; preview</button>
+      <div id="placementPreviewWrap"></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header">Candidates</div>
     <div class="card-body">
       <div class="filters">
@@ -169,17 +179,57 @@ async function loadAutoFitSettings() {
     const cSnap = await db.collection("config").doc("stage1_course_dates").get();
     courseSessions = cSnap.exists ? (cSnap.data().courses || []) : [];
   } catch (err) { courseSessions = []; }
+  // Candidates may already have rendered before this resolved (loadCandidates()
+  // runs independently) — re-render so placement-clash badges, which need
+  // courseSessions, show up without the director having to touch anything.
+  renderCandidates();
+}
+
+// ── Placement-date clash checking (2026-10-01, Jon) ────────────────────────
+// Some candidates — currently Pharmacy, via their placement leads — have
+// dates during the year they're on clinical placement and can't be on an
+// RMD course at all. A course runs from its first teaching Monday through
+// its week-3 assessment evening; if any part of a candidate's placement
+// overlaps that whole span, that course is off the table for them. Course
+// start is derived from the assessment date (2 weeks earlier, Monday of
+// that week) rather than typed in separately on Stage 1 Settings — one date
+// to keep current, not two, and it can't drift out of sync with the
+// assessment date it's derived from.
+function mondayOnOrBefore(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDay(); // 0 = Sunday .. 6 = Saturday
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return d.toISOString().slice(0, 10);
+}
+function courseStartDate(assessmentDate) {
+  const d = new Date(mondayOnOrBefore(assessmentDate) + "T00:00:00");
+  d.setDate(d.getDate() - 14);
+  return d.toISOString().slice(0, 10);
+}
+// Overlap test between a candidate's placement blocks and one course's
+// [start-of-course, assessment-evening] span — inclusive both ends.
+function placementClashesWithCourse(placementBlocks, assessmentDate) {
+  if (!placementBlocks || !placementBlocks.length || !assessmentDate) return false;
+  const start = courseStartDate(assessmentDate);
+  return placementBlocks.some(b => b.start && b.end && b.start <= assessmentDate && b.end >= start);
 }
 
 // Returns { course, reason } — course is null if nothing could be fit, and
 // reason explains why (shown as a preview flag, never silently dropped).
-function autoFitCourse(degreeExact) {
+// placementBlocks (optional) rules out any session that clashes with a
+// known placement date before picking the latest remaining one.
+function autoFitCourse(degreeExact, placementBlocks) {
   if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for" };
   const deadline = programmeDeadlines[degreeExact];
   if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings` };
   if (!courseSessions.length) return { course: null, reason: "no course sessions configured — add this year's dates on Stage 1 Settings" };
-  const eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? 1 : -1);
+  let eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? 1 : -1);
   if (!eligible.length) return { course: null, reason: `no course session falls on or before the ${deadline} deadline` };
+  if (placementBlocks && placementBlocks.length) {
+    const clashFree = eligible.filter(c => !placementClashesWithCourse(placementBlocks, c.date));
+    if (!clashFree.length) return { course: null, reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead` };
+    eligible = clashFree;
+  }
   return { course: eligible[0].name, reason: null };
 }
 
@@ -289,7 +339,7 @@ function parsePreview() {
     // be pushed through deliberately rather than silently rejected.
     r.degreeMatch = resolveStage1Degree(r.degree);
     if (!r.course) {
-      const fit = autoFitCourse(r.degreeMatch ? r.degreeMatch.exact : null);
+      const fit = autoFitCourse(r.degreeMatch ? r.degreeMatch.exact : null, []);
       if (fit.course) { r.course = fit.course; r.courseAutoFit = true; }
       else { errors.push(`Line ${i + 1} ("${esc(r.name)}"): no course typed and none could be auto-fit (${fit.reason}) — kept, but set a course before or after importing.`); }
     }
@@ -513,6 +563,158 @@ async function confirmOutcomesImport() {
   }
 }
 
+// ── Import placement dates (2026-10-01, Jon) ────────────────────────────────
+// Some candidates — currently Pharmacy, via their placement leads — have
+// dates during the year they're on clinical placement and can't be on an
+// RMD course. Pasted here as (name, email, start, end) rows straight off
+// whatever sheet the lead sends, matched onto EXISTING stage1_candidates
+// records by email — same pattern as the outcomes importer above, and
+// deliberately separate from the main candidate paste since this data comes
+// from a different source on a different schedule (often after candidates
+// are already imported and auto-fit onto a course). A candidate can have
+// several placement blocks; each row adds one, deduped exactly on
+// start+end so re-pasting the same sheet twice is harmless.
+function parseUkDate(raw) {
+  const m = (raw || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  const iso = `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  return iso;
+}
+
+let parsedPlacementRows = null;
+
+function parsePlacementPreview() {
+  const raw = document.getElementById("placementPasteBox").value;
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  const wrap = document.getElementById("placementPreviewWrap");
+  if (!lines.length) {
+    wrap.innerHTML = `<div class="empty-state">Nothing to preview — paste some rows above.</div>`;
+    parsedPlacementRows = null;
+    return;
+  }
+
+  const rows = lines.map((line, i) => {
+    const parts = line.split(/\t|,/).map(s => s.trim());
+    const [firstName, lastName, email, startRaw, endRaw] = parts;
+    const start = parseUkDate(startRaw);
+    const end = parseUkDate(endRaw);
+    const name = [firstName, lastName].filter(Boolean).join(" ");
+    const matches = email ? allCandidates.filter(c => (c.email || "").toLowerCase() === email.toLowerCase()) : [];
+    return { lineNo: i + 1, name, email: email || "", startRaw: startRaw || "", endRaw: endRaw || "", start, end, matches, chosenId: matches.length === 1 ? matches[0].id : null };
+  });
+  parsedPlacementRows = rows;
+
+  const unmatched = rows.filter(r => !r.email || r.matches.length === 0);
+  const ambiguous = rows.filter(r => r.matches.length > 1);
+  const badDates = rows.filter(r => !r.start || !r.end);
+
+  const rowHtml = r => {
+    let matchCell;
+    if (!r.email) {
+      matchCell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no email — can't match</span>`;
+    } else if (r.matches.length === 0) {
+      matchCell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no candidate found with this email</span>`;
+    } else if (r.matches.length === 1) {
+      matchCell = `${esc(r.matches[0].name)} <span class="hint" style="margin:0;">(${esc(r.matches[0].course) || "no course"})</span>`;
+    } else {
+      matchCell = `<span class="dup-warning" style="display:inline;">⚠ ${r.matches.length} candidates share this email — pick one:</span><br>
+        <select data-line="${r.lineNo}" onchange="choosePlacementMatch(${r.lineNo}, this.value)">
+          <option value="">Choose…</option>
+          ${r.matches.map(m => `<option value="${esc(m.id)}">${esc(m.name)} — ${esc(m.course) || "no course"}</option>`).join("")}
+        </select>`;
+    }
+    const dateCell = (r.start && r.end)
+      ? `${esc(r.startRaw)} – ${esc(r.endRaw)}`
+      : `<span class="dup-warning dup-exact" style="display:inline;">⚠ "${esc(r.startRaw)}" / "${esc(r.endRaw)}" — expected DD/MM/YYYY</span>`;
+    const chosen = r.matches.length === 1 ? r.matches[0] : (r.chosenId ? allCandidates.find(c => c.id === r.chosenId) : null);
+    const chosenSession = chosen && chosen.course ? courseSessions.find(s => s.name === chosen.course) : null;
+    const clashCell = (chosen && chosenSession && r.start && r.end && placementClashesWithCourse([{ start: r.start, end: r.end }], chosenSession.date))
+      ? `<span class="dup-warning dup-exact" style="display:inline;">⚠ clashes with their course (${esc(chosen.course)})</span>`
+      : (chosen && chosen.course ? "no clash" : "–");
+    return `<tr>
+      <td>${esc(r.name) || "<em>none</em>"}</td>
+      <td>${esc(r.email) || "<em>none</em>"}</td>
+      <td>${dateCell}</td>
+      <td>${matchCell}</td>
+      <td>${clashCell}</td>
+    </tr>`;
+  };
+
+  wrap.innerHTML = `
+    ${unmatched.length ? `<div class="error-list">⚠ ${unmatched.length} row${unmatched.length === 1 ? "" : "s"} couldn't be matched to a candidate — these are shown below but will be skipped on import. Check the email against the candidate list, or that they've been imported yet.</div>` : ""}
+    ${ambiguous.length ? `<div class="error-list">⚠ ${ambiguous.length} row${ambiguous.length === 1 ? "" : "s"} matched more than one candidate record — pick which record each one applies to before importing.</div>` : ""}
+    ${badDates.length ? `<div class="error-list">⚠ ${badDates.length} row${badDates.length === 1 ? "" : "s"} have a date that isn't DD/MM/YYYY — these are shown below but will be skipped on import.</div>` : ""}
+    <table class="preview-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Placement dates</th><th>Match</th><th>Clash?</th></tr></thead>
+      <tbody>${rows.map(rowHtml).join("")}</tbody>
+    </table>
+    <div style="margin-top:12px;">
+      <button class="btn-primary" id="placementImportBtn" onclick="confirmPlacementImport()">Apply placement dates</button>
+    </div>`;
+}
+
+function choosePlacementMatch(lineNo, candidateId) {
+  const r = parsedPlacementRows.find(x => x.lineNo === lineNo);
+  if (r) r.chosenId = candidateId || null;
+}
+
+async function confirmPlacementImport() {
+  if (!parsedPlacementRows) return;
+  const applicable = parsedPlacementRows.filter(r =>
+    r.start && r.end &&
+    (r.matches.length === 1 || (r.matches.length > 1 && r.chosenId)));
+  const stillAmbiguous = parsedPlacementRows.filter(r => r.matches.length > 1 && !r.chosenId);
+  if (stillAmbiguous.length) { alert(`${stillAmbiguous.length} row(s) with multiple matches still need a record chosen before you can import.`); return; }
+  if (!applicable.length) { alert("Nothing to apply — every row is either unmatched or has an unreadable date."); return; }
+
+  const clashCount = applicable.filter(r => {
+    const chosen = r.matches.length === 1 ? r.matches[0] : allCandidates.find(c => c.id === r.chosenId);
+    const session = chosen && chosen.course ? courseSessions.find(s => s.name === chosen.course) : null;
+    return session && placementClashesWithCourse([{ start: r.start, end: r.end }], session.date);
+  }).length;
+  if (clashCount && !confirm(`${clashCount} of these dates clash with the course a candidate is already on. Applying anyway still saves the dates and flags the clash on the Candidates list below — it won't move anyone off their course automatically. Continue?`)) return;
+
+  if (!confirm(`Save placement dates for ${applicable.length} row${applicable.length === 1 ? "" : "s"}? This adds to each candidate's existing placement dates — it doesn't move anyone or change any course assignment.`)) return;
+
+  // Group by candidate id so several rows for the same person merge into one
+  // array write, deduped on exact start+end.
+  const byId = new Map();
+  applicable.forEach(r => {
+    const id = r.matches.length === 1 ? r.matches[0].id : r.chosenId;
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push({ start: r.start, end: r.end });
+  });
+
+  try {
+    const ids = Array.from(byId.keys());
+    const CHUNK = 400;
+    for (let start = 0; start < ids.length; start += CHUNK) {
+      const batch = db.batch();
+      ids.slice(start, start + CHUNK).forEach(id => {
+        const existing = (allCandidates.find(c => c.id === id) || {}).placementBlocks || [];
+        const seen = new Set(existing.map(b => `${b.start}|${b.end}`));
+        const merged = existing.slice();
+        byId.get(id).forEach(b => {
+          const key = `${b.start}|${b.end}`;
+          if (!seen.has(key)) { seen.add(key); merged.push(b); }
+        });
+        const ref = db.collection(COLLECTIONS.stage1Candidates).doc(id);
+        batch.update(ref, { placementBlocks: merged });
+      });
+      await batch.commit();
+    }
+    document.getElementById("placementPasteBox").value = "";
+    document.getElementById("placementPreviewWrap").innerHTML = `<div class="empty-state">Saved placement dates for ${byId.size} candidate(s).</div>`;
+    parsedPlacementRows = null;
+    await loadCandidates();
+  } catch (err) {
+    alert("Import failed: " + err.message);
+  }
+}
+
 // ── Candidate resource access code (feeds candidate-resources.html) ───────
 // Public/unauthenticated read on this one Firestore document is deliberate
 // — see firestore.rules — so the code itself is not a secret in any real
@@ -564,7 +766,7 @@ function renderCandidates() {
         <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th><th></th></tr></thead>
         <tbody>${filtered.map(c => `
           <tr>
-            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}</td>
+            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
@@ -596,6 +798,13 @@ function linkedBadgeHtml(c) {
   if (!c.linkedCandidateId) return "";
   const other = allCandidates.find(x => x.id === c.linkedCandidateId);
   return ` <span class="link-badge" title="Linked as the same person's repeat attempt">🔗 ${other ? esc(other.name) + " — " + esc(other.course || "no course") : "linked record"}</span>`;
+}
+
+function placementClashBadgeHtml(c) {
+  if (!c.placementBlocks || !c.placementBlocks.length || !c.course) return "";
+  const session = courseSessions.find(s => s.name === c.course);
+  if (!session || !session.date || !placementClashesWithCourse(c.placementBlocks, session.date)) return "";
+  return ` <span class="dup-warning dup-exact" style="display:inline;">⚠ Placement clash on ${esc(c.course)}</span>`;
 }
 
 async function linkRepeat(candidateId) {
