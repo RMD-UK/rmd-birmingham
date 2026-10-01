@@ -734,6 +734,10 @@ John, Doe, john.doe@bham.ac.uk, Senior Instructor"></textarea>
       </div>
       <div class="roster-log" id="rosterLog"></div>
       <p style="font-size:12px;color:var(--rmd-muted);margin-top:14px;">Current roster: ${roster.length} member(s).</p>
+      <div style="margin-top:16px;border-top:1px solid #eee;padding-top:14px;">
+        <p style="font-size:12px;color:var(--rmd-muted);margin-bottom:8px;">For clearing out practice entries without touching the real roster. Matches anyone whose name starts with "IW Test Candidate".</p>
+        <button class="btn-action secondary" style="color:#b3261e;border-color:#b3261e;" onclick="deleteTestRosterMembers()">🧪 Delete test roster entries</button>
+      </div>
     </div>`;
 }
 
@@ -827,6 +831,35 @@ async function importRoster() {
     document.querySelector(".roster-card p:last-of-type").textContent = `Current roster: ${roster.length} member(s).`;
   } catch (err) {
     logEl.innerHTML += `<div style="color:var(--rmd-warn);">Import failed: ${err.message}</div>`;
+  }
+}
+
+// Roster management is otherwise all-or-nothing (importRoster() above wipes
+// and replaces the whole collection), so test entries added by hand (e.g.
+// "IW Test Candidate One"..."Fifteen", seeded for IW process testing) have
+// no way to be removed individually without this (2026-10-02, Jon). Matches
+// by name prefix only, never touches anyone else on the roster.
+async function deleteTestRosterMembers() {
+  const targets = roster.filter(m => (m.name || "").trim().toLowerCase().startsWith("iw test candidate"));
+  if (!targets.length) { alert('Nothing to delete — no roster entry starts with "IW Test Candidate".'); return; }
+  const list = targets.map(m => `${m.name} (${m.email})`).join("\n");
+  if (!confirm(`Delete ${targets.length} test roster entr${targets.length === 1 ? "y" : "ies"}?\n\n${list}\n\nNo one else on the roster is touched. This cannot be undone.`)) return;
+  if (!confirm(`Really delete ${targets.length} entr${targets.length === 1 ? "y" : "ies"}? Last chance to back out.`)) return;
+  try {
+    let batch = db.batch();
+    let opCount = 0;
+    for (const m of targets) {
+      batch.delete(db.collection(COLLECTIONS.mouRoster).doc(m.id));
+      opCount++;
+      if (opCount >= 450) { await batch.commit(); batch = db.batch(); opCount = 0; }
+    }
+    if (opCount > 0) { await batch.commit(); }
+    await loadRoster();
+    updateSummary();
+    renderManageRoster();
+    alert(`Deleted ${targets.length} test roster entr${targets.length === 1 ? "y" : "ies"}.`);
+  } catch (err) {
+    alert("Delete failed: " + err.message);
   }
 }
 
