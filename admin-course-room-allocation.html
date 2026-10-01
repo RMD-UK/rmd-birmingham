@@ -73,9 +73,15 @@
     .instr-empty { color:rgba(255,255,255,.45); font-size:11px; font-style:italic; }
     .team-count { font-size:10px; color:rgba(255,255,255,.5); margin-top:2px; }
     .instr-chips { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:5px; }
-    .instr-chip { background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.28); border-radius:4px; padding:2px 5px 2px 8px; font-size:11px; color:#fff; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
-    .instr-chip button { background:none; border:none; color:rgba(255,255,255,.6); cursor:pointer; padding:0; font-size:14px; line-height:1; font-family:var(--font); }
-    .instr-chip button:hover { color:#fff; }
+    /* Solid amber, not the previous translucent-white-on-navy (2026-10-02,
+       Jon — "need to be obvious who the instructors are: different colour
+       & at top of box"). They were already rendered first, in room-head,
+       above the candidate cards in room-body — this just makes the colour
+       unmistakable too, so a glance tells instructor chip from candidate
+       card even once a room has both. */
+    .instr-chip { background:var(--rmd-amber); border:1px solid #c6690f; border-radius:4px; padding:2px 5px 2px 8px; font-size:11px; font-weight:700; color:#2a1700; display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
+    .instr-chip button { background:none; border:none; color:rgba(42,23,0,.55); cursor:pointer; padding:0; font-size:14px; line-height:1; font-family:var(--font); }
+    .instr-chip button:hover { color:#2a1700; }
     .room-body { flex:1; padding:5px; min-height:50px; }
     .room-drop-hint { text-align:center; color:#c8cede; font-size:12px; padding:16px 8px; }
 
@@ -97,7 +103,7 @@
   <h1 class="cra-title">Course Room &amp; Instructor Allocation</h1>
   <span id="saveStatus"></span>
   <button class="cra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
-  <button class="cra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly allocate unassigned candidates</button>
+  <button class="cra-btn" id="autoAllBtn" onclick="randomizeAllCandidatesAllCourses()">🎲 Allocate all candidates to rooms (every course)</button>
   <button class="cra-btn" id="autoInstrBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate unassigned instructors</button>
   <button class="cra-btn" id="restoreBtn" onclick="restoreSaved()" style="display:none">↩ Restore saved</button>
   <button class="cra-btn" id="setDefaultBtn" onclick="setAsDefault()" style="display:none">⭐ Set as default for all courses</button>
@@ -243,7 +249,23 @@ async function loadData() {
 function courseList() {
   const set = new Set();
   allCandidates.forEach(c => { if (c.course) set.add(c.course); });
-  return Array.from(set).sort();
+  // Natural/numeric sort (2026-10-02, Jon — "show courses in order"): pull
+  // the first number out of each name ("Course 2" → 2) and sort on that,
+  // not plain alphabetical. A plain string sort puts "Course 10" before
+  // "Course 2" once courses reach double digits, and separately shoves any
+  // oddly-typed name (e.g. a typo like "Couse 1") wherever its letters
+  // happen to fall rather than where its own number says it belongs — it's
+  // not fixing the typo, just not letting it scramble the order. Anything
+  // with no number at all sorts after every numbered course, alphabetically
+  // among itself.
+  return Array.from(set).sort((a, b) => {
+    const na = parseInt((a.match(/\d+/) || [])[0], 10);
+    const nb = parseInt((b.match(/\d+/) || [])[0], 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    if (!isNaN(na) && isNaN(nb)) return -1;
+    if (isNaN(na) && !isNaN(nb)) return 1;
+    return a.localeCompare(b);
+  });
 }
 
 function populateCourseDropdown() {
@@ -267,7 +289,6 @@ function slugify(s) {
 function selectCourse(course) {
   clearSelection();
   currentCourse = course || null;
-  document.getElementById("autoBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("autoInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("restoreBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("setDefaultBtn").style.display = currentCourse ? "" : "none";
@@ -699,6 +720,88 @@ function randomizeCandidates() {
     c.room = best;
   });
   render();
+}
+
+// Superseded by randomizeAllCandidatesAllCourses() below as the normal way
+// to allocate rooms (2026-10-02, Jon) — left in place only because nothing
+// else currently calls it; safe to delete outright later if it stays
+// unused.
+
+// Runs the same balancing heuristic as the (now unused) per-course
+// randomizeCandidates() above, but across EVERY course in one pass, and
+// writes straight to Firestore rather than staging into the single-course
+// courseCandidates working copy — there's no "select a course first" step
+// for this to hang off any more (2026-10-02, Jon: candidates already land
+// on one of the 6 courses automatically via Stage 1 Candidates' Allocate
+// now / autoFitCourse(); this is the equivalent one-click step for rooms).
+// Only ever touches candidates with no room yet — anyone already placed,
+// on any course, is left exactly where they are, same "don't disturb a
+// manual placement" rule the old per-course button followed.
+async function randomizeAllCandidatesAllCourses() {
+  const courses = courseList();
+  if (!courses.length) { showStatus("No courses found yet", "ok"); return; }
+
+  const byCourse = {};
+  courses.forEach(course => { byCourse[course] = allCandidates.filter(c => c.course === course); });
+
+  const unassignedTotal = courses.reduce((n, course) => n + byCourse[course].filter(c => !ROOMS.includes(c.room)).length, 0);
+  if (!unassignedTotal) { showStatus("Nothing unassigned to allocate, across any course", "ok"); return; }
+
+  if (!confirm(`Randomly allocate ${unassignedTotal} unassigned candidate(s) to rooms across all ${courses.length} course(s)?\n\nThis saves straight to the database — unlike the old per-course flow, there's no separate preview or Save all step. Anyone already placed in a room, on any course, is left untouched.`)) return;
+
+  showStatus("Allocating…", "");
+  const updates = []; // { id, room }
+
+  courses.forEach(course => {
+    const inCourse = byCourse[course];
+    // Working room-of-candidate map for THIS course only — rooms are
+    // per-course, so one course's counts never affect another's.
+    const roomOf = {};
+    inCourse.forEach(c => { if (ROOMS.includes(c.room)) roomOf[c.id] = c.room; });
+    const pool = inCourse.filter(c => !roomOf[c.id]);
+    pool.sort(() => Math.random() - .5).forEach(c => {
+      const dk = degreeKey(c);
+      const best = ROOMS.slice().sort((a, b) => {
+        const aSame = inCourse.filter(x => roomOf[x.id] === a && degreeKey(x) === dk).length;
+        const bSame = inCourse.filter(x => roomOf[x.id] === b && degreeKey(x) === dk).length;
+        if (aSame !== bSame) return aSame - bSame;
+        const aTotal = inCourse.filter(x => roomOf[x.id] === a).length;
+        const bTotal = inCourse.filter(x => roomOf[x.id] === b).length;
+        if (aTotal !== bTotal) return aTotal - bTotal;
+        return Math.random() - .5;
+      })[0];
+      roomOf[c.id] = best;
+      updates.push({ id: c.id, room: best });
+    });
+  });
+
+  try {
+    const CHUNK = 400; // Firestore batch write limit is 500; leave headroom
+    for (let start = 0; start < updates.length; start += CHUNK) {
+      const batch = db.batch();
+      updates.slice(start, start + CHUNK).forEach(u => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(u.id), { room: u.room });
+      });
+      await batch.commit();
+    }
+    // Sync local caches — allCandidates always, and the single-course
+    // courseCandidates working copy too if one happens to be open, so the
+    // grid reflects this without a full reload.
+    updates.forEach(u => {
+      const rec = allCandidates.find(x => x.id === u.id);
+      if (rec) rec.room = u.room;
+      if (currentCourse) {
+        const cc = courseCandidates.find(x => x.id === u.id);
+        if (cc) cc.room = u.room;
+      }
+    });
+    populateCourseDropdown();
+    if (currentCourse) render();
+    showStatus(`✓ Allocated ${updates.length} candidate(s) to rooms across ${courses.length} course(s)`, "ok");
+  } catch (e) {
+    console.error(e);
+    alert("Allocation failed: " + e.message);
+  }
 }
 
 // ── Quick-add a candidate directly from this page ──────────────────────
