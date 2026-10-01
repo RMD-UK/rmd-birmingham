@@ -107,6 +107,7 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
 const { Resend } = require("resend");
+const { GoogleAuth } = require("google-auth-library");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -2381,6 +2382,88 @@ exports.syncIwRegistrationToPeople = onDocumentWritten(
     });
 
     if (after.syncFlag) await regRef.update({ syncFlag: admin.firestore.FieldValue.delete() });
+  }
+);
+
+/**
+ * syncStage1CourseToSheet: Firestore trigger (v2, onDocumentWritten) on
+ * stage1_candidates/{candidateId}. Mirrors a candidate's allocated course
+ * into the "Allocated course" column (G) of the team's master import
+ * Google Sheet, matching rows by email (column C, case-insensitive).
+ *
+ * One-way only, by design (2026-10-01, Jon) — the website stays the single
+ * place that decides who's on which course; this just lets the team see
+ * that result in the sheet they already paste candidates from, without a
+ * second copy of the allocation logic living in Apps Script or anywhere
+ * else. If a matching row can't be found (candidate not yet in the sheet,
+ * or pasted after the Sheet was last refreshed), it logs and skips rather
+ * than guessing at a row.
+ *
+ * One-time setup needed OUTSIDE this repo before this does anything:
+ *  1. Enable the Google Sheets API on the rmd-instructor-weekend GCP
+ *     project (console.cloud.google.com → APIs & Services → Library →
+ *     "Google Sheets API" → Enable).
+ *  2. Share the master import Sheet with this project's Cloud Functions
+ *     runtime service account as an Editor (Share → paste its email,
+ *     found on any function's "Details" tab in the Cloud Console under
+ *     Runtime service account → Editor). No key file or secret needed —
+ *     it authenticates as itself via Application Default Credentials.
+ * Until both are done, this function will log a 403/404 and skip; it
+ * won't block candidate imports or course allocation either way.
+ */
+const STAGE1_SHEET_ID = "1vLFVFM3inl3iE-_8NnMzLjEiGrxlJo5wq-DXXyxLBLQ";
+const STAGE1_SHEET_TAB = "Candidates"; // update here if the tab is ever renamed
+const STAGE1_SHEET_COURSE_COL = "G"; // "Allocated course" — 7th column, after Year of study
+
+let stage1SheetsAuth = null;
+async function stage1SheetsAccessToken() {
+  if (!stage1SheetsAuth) {
+    stage1SheetsAuth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
+  }
+  const client = await stage1SheetsAuth.getClient();
+  const { token } = await client.getAccessToken();
+  return token;
+}
+
+async function stage1SheetsApiFetch(path, options = {}) {
+  const token = await stage1SheetsAccessToken();
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${STAGE1_SHEET_ID}${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(options.headers || {}) }
+  });
+  if (!res.ok) throw new Error(`Sheets API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+exports.syncStage1CourseToSheet = onDocumentWritten(
+  { document: "stage1_candidates/{candidateId}", region: "us-central1" },
+  async (event) => {
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!after || !after.email || !after.course) return; // nothing to mirror yet
+
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    if (before && before.course === after.course && before.email === after.email) return; // unchanged
+
+    const email = String(after.email).trim().toLowerCase();
+    if (!email) return;
+
+    try {
+      const colData = await stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!C2:C`);
+      const rows = colData.values || [];
+      const rowIndex = rows.findIndex(r => (r[0] || "").trim().toLowerCase() === email);
+      if (rowIndex === -1) {
+        console.log(`syncStage1CourseToSheet: no row found for ${email} in the import sheet — skipped.`);
+        return;
+      }
+      const sheetRow = rowIndex + 2; // +1 for the header row, +1 to move from 0-index to 1-index
+      await stage1SheetsApiFetch(
+        `/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}${sheetRow}?valueInputOption=RAW`,
+        { method: "PUT", body: JSON.stringify({ values: [[after.course]] }) }
+      );
+      console.log(`syncStage1CourseToSheet: wrote "${after.course}" for ${email} at row ${sheetRow}.`);
+    } catch (err) {
+      console.error(`syncStage1CourseToSheet: failed to sync ${email}`, err.message);
+    }
   }
 );
 
