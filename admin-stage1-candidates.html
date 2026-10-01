@@ -70,7 +70,7 @@
   </div>
 
   <div class="director-note">
-    Add every candidate for the year, then allocate them to a course using Steps 1 to 3 below. Rooms are assigned afterwards on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation</a>. Only use "Promote to Instructor" for someone genuinely becoming an Instructor, never as a test, since it creates them a real login.
+    Add every candidate for the year, then allocate them to a course using Steps 1 to 3 below. Rooms are assigned afterwards on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation</a>.
   </div>
 
   <div class="card">
@@ -106,7 +106,7 @@
   <div class="card">
     <div class="card-header">Step 3 — Allocate to courses</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">The only thing that ever gives a candidate a course. Runs through everyone added in Step 1 who's been checked in Step 2 — a real placement-dates match, or ticked "no placement dates" — and fits each one to a course by degree deadline, placement clash and course capacity. Anyone not yet checked is skipped and left for later, not guessed at. Manual course override (for anyone auto-fit can't place) is next on the list — for now those are flagged for you to sort by hand.</p>
+      <p class="hint" style="margin-top:0;">This is the only step that actually assigns a candidate to a course. It works through candidates who've been checked in Step 2 (either matched against real placement dates, or marked "no placement dates"), and places each one by degree deadline, placement clashes and course capacity. Anyone not yet checked in Step 2 is left alone rather than guessed at. If someone can't be fitted into any course, they're named in the report afterwards so you can assign a course to them yourself (there's no manual-override button yet).</p>
       <div id="allocationSummary"></div>
       <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:4px 0 14px;">
         <input type="checkbox" id="confirmAllAddedCheckbox" onchange="updateAllocateButtonState()" style="margin-top:2px; width:16px; height:16px;">
@@ -292,7 +292,12 @@ function autoFitCourse(degreeExact, placementBlocks) {
 function populateCourseFilter() {
   const sel = document.getElementById("courseFilter");
   const current = sel.value;
-  const courses = Array.from(new Set(allCandidates.map(c => c.course).filter(Boolean))).sort();
+  const courses = Array.from(new Set(allCandidates.map(c => c.course).filter(Boolean))).sort((a, b) => {
+    const an = parseInt((a.match(/\d+/) || [])[0], 10);
+    const bn = parseInt((b.match(/\d+/) || [])[0], 10);
+    if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
+    return a.localeCompare(b);
+  });
   sel.innerHTML = `<option value="">All courses</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   sel.value = current;
 }
@@ -957,7 +962,7 @@ function renderCandidates() {
 
   document.getElementById("candidatesWrap").innerHTML = filtered.length
     ? `<table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
         <tbody>${filtered.map(c => `
           <tr>
             <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}</td>
@@ -965,7 +970,6 @@ function renderCandidates() {
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
             <td>${esc(c.room) || "–"}</td>
-            <td>${c.promotedToUid ? "" : `<button class="btn-promote" onclick="promoteToInstructor('${c.id}')">Promote to Instructor</button>`}</td>
             <td>${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
               : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}</td>
