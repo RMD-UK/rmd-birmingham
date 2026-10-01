@@ -416,6 +416,7 @@ function parsePreview() {
   const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
   const errors = [];
   const rows = [];
+  let nextPid = 0;
 
   lines.forEach((line, i) => {
     const r = parseLine(line);
@@ -432,11 +433,23 @@ function parsePreview() {
     // starts unallocated. Allocation is a separate, deliberate step (the
     // "Allocate now" button below), so placement dates get a chance to be
     // checked first. See autoFitCourse() and allocateAllNow().
+    // _pid (2026-10-02, Jon) — a stable id for this preview session only,
+    // so a single flagged row can be pulled back out via removePreviewRow()
+    // without re-parsing the textarea (which would renumber everything).
+    r._pid = nextPid++;
     rows.push(r);
   });
 
   parsedRows = rows;
+  renderParsedPreview(errors);
+}
 
+// Pulled out of parsePreview() (2026-10-02, Jon) so removing a single
+// flagged row — see removePreviewRow() — can re-render from the current
+// parsedRows without re-reading the textarea and losing errors/_pid.
+function renderParsedPreview(errors) {
+  errors = errors || [];
+  const rows = parsedRows || [];
   const wrap = document.getElementById("previewWrap");
   if (!rows.length) {
     wrap.innerHTML = errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : `<div class="empty-state">Nothing to preview — paste some rows above.</div>`;
@@ -462,40 +475,60 @@ function parsePreview() {
   // Cluster flagged rows into connected groups (A matches B, B matches C,
   // etc. all land in one group) with a depth-first walk, so a whole matched
   // set renders as consecutive rows instead of needing to be hunted down
-  // across the full paste.
+  // across the full paste. Each cluster also gets a colour from the same
+  // DUP_COLORS palette the saved Candidates list uses (2026-10-02, Jon —
+  // "shade the ones that need cross-referencing... matched by colour in
+  // pairs"), so a matched pair/set is obvious at a glance here too, not
+  // just readable from the warning text.
   const seen = new Set();
   const groupedFlagged = [];
+  let colorIdx = 0;
   rows.filter(r => r._flagged).forEach(start => {
     if (seen.has(start)) return;
+    const cluster = [];
     const stack = [start];
     while (stack.length) {
       const cur = stack.pop();
       if (seen.has(cur)) continue;
       seen.add(cur);
-      groupedFlagged.push(cur);
+      cluster.push(cur);
       cur._matchedPastedRows.forEach(o => { if (!seen.has(o)) stack.push(o); });
     }
+    const color = DUP_COLORS[colorIdx % DUP_COLORS.length];
+    colorIdx++;
+    cluster.forEach(r => { r._dupColor = color; });
+    groupedFlagged.push(...cluster);
   });
   const clear = rows.filter(r => !r._flagged);
 
+  // removePreviewRow() button (2026-10-02, Jon) — pulls just this ONE row
+  // back out of the pending import, nothing saved yet so no Firestore call
+  // needed, just a splice-and-re-render. For a row already saved as a real
+  // candidate, use Delete on the All candidates list below instead — this
+  // button only exists before Import has been clicked.
   const renderRow = r => {
     const degreeCell = (r.degree && !r.degreeMatch)
       ? `${esc(r.degree)} <span class="dup-warning" style="display:inline;">⚠ not one of the 9 standard names</span>`
       : esc(r.degree);
-    return `<tr>
-      <td class="name-cell">${esc(r.name)}</td>
+    const dot = r._dupColor
+      ? `<span class="dup-dot" style="background:${r._dupColor}" title="Possible match — see the flag in this row"></span>`
+      : "";
+    const stripe = r._dupColor ? ` style="border-left:4px solid ${r._dupColor};"` : "";
+    return `<tr${stripe}>
+      <td class="name-cell">${dot}${esc(r.name)}</td>
       <td>${esc(r.email) || "<em>none</em>"}</td>
       <td>${degreeCell}</td>
       <td><em>unallocated</em></td>
       <td>${esc(r.studentId) || "–"}</td>
       <td>${esc(r.yearOfStudy) || "–"}</td>
       <td>${r._warn}</td>
+      <td><button class="btn-danger-sm" onclick="removePreviewRow(${r._pid})">✕ Remove</button></td>
     </tr>`;
   };
-  const tableHead = `<thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>ID</th><th>Year</th><th>Flags</th></tr></thead>`;
+  const tableHead = `<thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>ID</th><th>Year</th><th>Flags</th><th></th></tr></thead>`;
 
   const flaggedSection = groupedFlagged.length
-    ? `<div class="hint" style="margin-top:14px;"><strong>${groupedFlagged.length} row${groupedFlagged.length === 1 ? "" : "s"} need a check</strong> — matched pairs/sets are grouped together so you can compare course and email directly.</div>
+    ? `<div class="hint" style="margin-top:14px;"><strong>${groupedFlagged.length} row${groupedFlagged.length === 1 ? "" : "s"} need a check</strong> — matched pairs/sets are grouped and coloured together so you can compare course and email directly. Found a genuine duplicate? Remove whichever row you don't want before importing.</div>
        <table class="preview-table">${tableHead}<tbody>${groupedFlagged.map(renderRow).join("")}</tbody></table>`
     : "";
 
@@ -512,6 +545,12 @@ function parsePreview() {
     <div style="margin-top:12px;">
       <button class="btn-primary" onclick="confirmImport()">Import ${rows.length} candidate${rows.length === 1 ? "" : "s"}</button>
     </div>`;
+}
+
+function removePreviewRow(pid) {
+  if (!parsedRows) return;
+  parsedRows = parsedRows.filter(r => r._pid !== pid);
+  renderParsedPreview([]);
 }
 async function confirmImport() {
   if (!parsedRows || !parsedRows.length) return;
