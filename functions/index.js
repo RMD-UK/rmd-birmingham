@@ -265,7 +265,7 @@ const SFR_REMINDERS_COLLECTION  = "senior_faculty_review_reminders";
 // routed to the monitored RMD Birmingham inbox via replyTo. Shared with
 // sendAccountCreationReminders below — one verified domain for all
 // automated reminders.
-const FROM_EMAIL  = "RMD Birmingham <reminders@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
+const FROM_EMAIL  = "RMD Birmingham <rmdbirmingham@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
 const REPLY_TO     = "rmdbirmingham@googlemail.com";
 const COMMS_BCC    = "colmds-c-rmdbirmingham@adf.bham.ac.uk"; // 2026-10-02, Jon: one summary copy per admin-comms.html send, not a bcc on every individual email (he explicitly ruled that out — too much volume at one-email-per-recipient)
 const JON_BCC      = "j.hulme.1@bham.ac.uk"; // Jon wants a copy of every IW RSVP invite sent (2026-08-27) — see sendIwRsvpInvites
