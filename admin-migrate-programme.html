@@ -64,15 +64,17 @@
         pairs are marked below.
       </div>
       <div class="warn-box">
-        ⚠️ Safe to re-run — it overwrites by session id, it won't create duplicates. But if the shift tool
-        has already been used to move any session times live, re-running this will overwrite those live
-        changes back to whatever's currently in <code>js/programme-data.js</code>. Only re-run intentionally,
-        e.g. after editing the source file to fix a TBC location.
+        ⚠️ Safe to re-run, and safe to re-run <strong>after</strong> presenters/helpers have been
+        allocated on admin-lecture-allocation.html — a session that already exists in Firestore only has
+        its programme details (time, title, location, roles, notes) refreshed from
+        <code>js/programme-data.js</code>; its <code>lead</code> and <code>helpers</code> are left exactly
+        as allocated, never overwritten. A session that doesn't exist yet in Firestore is created with
+        blank <code>lead</code>/<code>helpers</code>, ready to be allocated.
         <br><br>
         Also deletes: any session doc in Firestore whose id is no longer in
         <code>js/programme-data.js</code> gets removed at the end of the run (logged separately below,
         after the writes) — so deleting a session from the source file and re-running this is enough to
-        take it off the live site too.
+        take it off the live site too. This does delete that session's allocation along with it.
       </div>
 
       <ul class="record-list" id="recordList"></ul>
@@ -141,7 +143,8 @@ function buildSessionDocs() {
         duration: s.duration,
         title: s.title,
         location: s.location || "",
-        lead: s.lead || "",
+        needsPresenter: !!s.needsPresenter,
+        needsHelper: !!s.needsHelper,
         roles: s.roles || [],
         notes: s.notes || "",
         resources: s.resources || [],
@@ -157,6 +160,11 @@ function buildSessionDocs() {
       };
       if (s.subtitle) record.subtitle = s.subtitle;
       if (PAIR_MAP[s.id]) record.pairWith = PAIR_MAP[s.id];
+      // Carried over from programme-data.js as the STARTING value only, for
+      // a session that doesn't exist in Firestore yet (see runMigration() —
+      // never written to a doc that already exists, so an allocation
+      // already saved there is never touched by a re-run of this tool).
+      record.initialLead = s.lead || "";
       docs.push({ id: s.id, day, record });
     });
   });
@@ -188,15 +196,34 @@ async function runMigration() {
 
   let ok = 0, err = 0;
 
+  // Fetch what's already in Firestore BEFORE writing anything — this is how
+  // we tell "create" (needs an initial lead/helpers) apart from "update"
+  // (must never touch lead/helpers, an allocation may already be saved on
+  // this doc). Also reused below for the prune step.
+  const existingSnap = await db.collection(COLLECTIONS.sessions).get();
+  const existingIds = new Set(existingSnap.docs.map(doc => doc.id));
+
   for (let i = 0; i < SESSION_DOCS.length; i++) {
     const d = SESSION_DOCS[i];
     const pct = Math.round(((i + 1) / SESSION_DOCS.length) * 100);
     document.getElementById("progressBar").style.width = pct + "%";
 
+    const { initialLead, ...record } = d.record;
+
     let icon, cls, msg;
     try {
-      await db.collection(COLLECTIONS.sessions).doc(d.id).set(d.record);
-      icon = "✅"; cls = "ok"; msg = "Written";
+      if (existingIds.has(d.id)) {
+        // Already exists — refresh programme details only. merge:true means
+        // any field not in `record` (lead, helpers) is left exactly as it
+        // is in Firestore right now.
+        await db.collection(COLLECTIONS.sessions).doc(d.id).set(record, { merge: true });
+        msg = "Updated (lead/helpers untouched)";
+      } else {
+        // New session — seed it with blank lead/helpers, ready to allocate.
+        await db.collection(COLLECTIONS.sessions).doc(d.id).set({ ...record, lead: initialLead, helpers: [] });
+        msg = "Created";
+      }
+      icon = "✅"; cls = "ok";
       ok++;
     } catch (e) {
       icon = "❌"; cls = "err"; msg = e.message;
@@ -215,15 +242,14 @@ async function runMigration() {
   }
 
   // ── Prune removed sessions ──────────────────────────────────────────────
-  // .set() above only ever creates/overwrites — a session id deleted from
-  // programme-data.js since the last import would otherwise sit in Firestore
-  // forever, still live on the timetable. Added 2026-09-14 after exactly
-  // that happened with the old assessor-stream Saturday morning duplicates.
-  // Anything in the sessions collection whose id isn't in SESSION_DOCS gets
-  // deleted here, logged the same way as the writes above.
+  // A session id deleted from programme-data.js since the last import would
+  // otherwise sit in Firestore forever, still live on the timetable. Added
+  // 2026-09-14 after exactly that happened with the old assessor-stream
+  // Saturday morning duplicates. Anything in the sessions collection whose
+  // id isn't in SESSION_DOCS gets deleted here, logged the same way as the
+  // writes above. This does remove that session's saved allocation with it.
   const currentIds = new Set(SESSION_DOCS.map(d => d.id));
   let pruned = 0, pruneErr = 0;
-  const existingSnap = await db.collection(COLLECTIONS.sessions).get();
   const staleDocs = existingSnap.docs.filter(doc => !currentIds.has(doc.id));
 
   for (const doc of staleDocs) {

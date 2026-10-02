@@ -83,7 +83,8 @@ const PROGRAMME = {
         duration: 30,
         title: "Plenary Introduction & Welcome",
         location: "ATH",
-        lead: "Jon",
+        lead: "",
+        needsPresenter: true,
         roles: ["all"],
         notes: "",
         resources: [
@@ -98,6 +99,8 @@ const PROGRAMME = {
         title: "Equipment Demonstration",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
+        needsHelper: true,
         roles: ["all"],
         notes: "",
         resources: [
@@ -127,6 +130,7 @@ const PROGRAMME = {
         title: "Plenary Lecture: BLS/AED",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -141,6 +145,8 @@ const PROGRAMME = {
         title: "Plenary Demonstration: BLS/AED",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
+        needsHelper: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],
@@ -180,6 +186,7 @@ const PROGRAMME = {
         title: "Plenary Lecture: First Aid",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -256,7 +263,8 @@ const PROGRAMME = {
         duration: 30,
         title: "Plenary Introduction & Welcome",
         location: "ATH",
-        lead: "Jon",
+        lead: "",
+        needsPresenter: true,
         roles: ["faculty", "director"],
         notes: "",
         resources: [
@@ -398,6 +406,7 @@ const PROGRAMME = {
         title: "BLS/AED/First Aid: Q&A & Feedback",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],
@@ -410,6 +419,7 @@ const PROGRAMME = {
         title: "Life Support & Real Life",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -424,6 +434,7 @@ const PROGRAMME = {
         title: "Welcome & Goals of the BLS Instructor Course",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],
@@ -436,6 +447,7 @@ const PROGRAMME = {
         title: "Plenary Lecture: Principles of Adult Learning & Teaching",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -450,6 +462,7 @@ const PROGRAMME = {
         title: "Effective Teaching: 5-Minute Presentation",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -465,6 +478,7 @@ const PROGRAMME = {
         title: "Debrief: 5-Minute Presentation",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -479,6 +493,7 @@ const PROGRAMME = {
         title: "Plenary Lecture: The Learning Conversation",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -653,7 +668,8 @@ const PROGRAMME = {
         duration: 15,
         title: "Learning",
         location: "ATH",
-        lead: "Room faculty lead",
+        lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -669,6 +685,8 @@ const PROGRAMME = {
         title: "Plenary Demonstration: Skills Teaching (BLS/AED)",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
+        needsHelper: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -697,6 +715,7 @@ const PROGRAMME = {
         title: "Plenary Lecture: Assessing",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -712,6 +731,8 @@ const PROGRAMME = {
         title: "Plenary Demonstration: Assessing",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
+        needsHelper: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],
@@ -724,6 +745,7 @@ const PROGRAMME = {
         title: "RMD Reasonable Adjustments Pathway",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],
@@ -786,6 +808,7 @@ const PROGRAMME = {
         title: "Food for Thought",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
@@ -800,6 +823,7 @@ const PROGRAMME = {
         title: "Summary Plenary & End of Course",
         location: "ATH",
         lead: "",
+        needsPresenter: true,
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [],

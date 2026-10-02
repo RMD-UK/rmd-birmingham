@@ -41,7 +41,8 @@
 
   .day-heading { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--rmd-navy); margin:18px 0 8px; padding-bottom:5px; border-bottom:2px solid #dde2ed; }
 
-  .session-row { background:white; border:1.5px solid #e0e4ee; border-radius:8px; padding:10px 14px; margin-bottom:7px; display:flex; align-items:center; gap:14px; }
+  .session-row { background:white; border:1.5px solid #e0e4ee; border-radius:8px; padding:10px 14px; margin-bottom:7px; display:flex; flex-direction:column; gap:9px; }
+  .s-top-row { display:flex; align-items:center; gap:14px; }
   .s-time { font-family:monospace; font-weight:700; color:var(--rmd-navy); min-width:44px; font-size:13px; }
   .s-main { flex:1; min-width:0; }
   .s-title { font-size:13.5px; font-weight:700; color:var(--rmd-navy); }
@@ -50,6 +51,10 @@
   .s-select { width:100%; padding:6px 9px; border:1.5px solid #d0d5e0; border-radius:6px; font-family:var(--font); font-size:12.5px; color:var(--rmd-navy); background:white; }
   .s-select.unassigned { border-color:#c17a00; background:#fff9ec; }
   .s-select.assigned { border-color:#1a6e31; background:#f0fdf4; }
+  .s-helpers-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-left:58px; border-top:1px solid #eef1f8; padding-top:9px; }
+  .s-helpers-label { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:#6b7696; margin-right:2px; }
+  .s-helper-select { width:160px; padding:5px 8px; border:1.5px solid #d0d5e0; border-radius:6px; font-family:var(--font); font-size:12px; color:var(--rmd-navy); background:white; }
+  .s-helper-select.filled { border-color:#1a6e31; background:#f0fdf4; }
 
   .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
   #authMsg { font-size:15px; opacity:.7; }
@@ -87,6 +92,10 @@
     <input type="search" id="searchBox" placeholder="Search sessions…" oninput="renderAll()">
     <label><input type="checkbox" id="unassignedOnly" onchange="renderAll()"> Show unassigned only</label>
   </div>
+  <div style="font-size:11.5px;color:#6b7696;margin:-6px 0 14px;">
+    Showing only sessions flagged as needing a presenter — group practice, breaks and room-level
+    sessions aren't allocated here.
+  </div>
 
   <div id="dayContainer"></div>
 
@@ -101,9 +110,10 @@
 <script>
 
 // ── State ──────────────────────────────────────────────────────────────────
-let sessions = [];      // [{id, day, start, title, subtitle, lead, ...}]
+let sessions = [];      // [{id, day, start, title, subtitle, lead, helpers, needsPresenter, needsHelper, ...}] — needsPresenter:true only, filtered in loadData()
 let allFaculty = [];     // [{name, email}] — Faculty / Instructor Trainer / Assessor Faculty
-let pendingChanges = {}; // {sessionId: newLeadValue}
+let pendingChanges = {}; // {sessionId: {lead?: newLeadValue, helpers?: [up to 4 names]}}
+const MAX_HELPERS = 4;
 const DAY_ORDER = ["friday", "saturday", "sunday"];
 const DAY_LABELS = { friday: "Friday 9 Oct", saturday: "Saturday 10 Oct", sunday: "Sunday 11 Oct" };
 
@@ -123,7 +133,14 @@ async function loadData() {
   // also seeing this same warning themselves.
   try {
     const snap = await db.collection(COLLECTIONS.sessions).orderBy("day").orderBy("order").get();
-    snap.forEach(doc => sessions.push({ id: doc.id, ...doc.data() }));
+    // Only sessions flagged needsPresenter (set in js/programme-data.js, carried
+    // through by admin-migrate-programme.html) show up here at all — group
+    // practice, breaks and room-level sessions are allocated elsewhere.
+    snap.forEach(doc => {
+      const data = doc.data();
+      if (!data.needsPresenter) return;
+      sessions.push({ id: doc.id, ...data });
+    });
   } catch(e) { console.warn("Sessions load failed:", e.message); }
 
   if (!sessions.length) {
@@ -153,7 +170,18 @@ async function loadData() {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function currentLead(s) {
-  return pendingChanges[s.id] !== undefined ? pendingChanges[s.id] : (s.lead || "");
+  const p = pendingChanges[s.id];
+  return (p && p.lead !== undefined) ? p.lead : (s.lead || "");
+}
+
+function currentHelpers(s) {
+  const p = pendingChanges[s.id];
+  return (p && p.helpers !== undefined) ? p.helpers : (s.helpers || []);
+}
+
+function pendingFor(s) {
+  if (!pendingChanges[s.id]) pendingChanges[s.id] = {};
+  return pendingChanges[s.id];
 }
 
 function renderAll() {
@@ -184,6 +212,9 @@ function renderAll() {
       const lead = currentLead(s);
       const row = document.createElement("div");
       row.className = "session-row";
+
+      const topRow = document.createElement("div");
+      topRow.className = "s-top-row";
 
       const timeEl = document.createElement("div");
       timeEl.className = "s-time";
@@ -219,14 +250,65 @@ function renderAll() {
       });
 
       select.addEventListener("change", () => {
-        pendingChanges[s.id] = select.value;
+        pendingFor(s).lead = select.value;
         renderAll();
       });
 
       wrap.appendChild(select);
-      row.appendChild(timeEl);
-      row.appendChild(mainEl);
-      row.appendChild(wrap);
+      topRow.appendChild(timeEl);
+      topRow.appendChild(mainEl);
+      topRow.appendChild(wrap);
+      row.appendChild(topRow);
+
+      // Up to MAX_HELPERS helper slots — only for sessions flagged needsHelper
+      // (demos etc). Same faculty dropdown as the presenter, independently
+      // assignable per slot; clearing a slot compacts the saved list rather
+      // than leaving a gap.
+      if (s.needsHelper) {
+        const helpersRow = document.createElement("div");
+        helpersRow.className = "s-helpers-row";
+
+        const label = document.createElement("span");
+        label.className = "s-helpers-label";
+        label.textContent = "Helpers:";
+        helpersRow.appendChild(label);
+
+        const helpers = currentHelpers(s);
+
+        for (let slot = 0; slot < MAX_HELPERS; slot++) {
+          const current = helpers[slot] || "";
+          const hSelect = document.createElement("select");
+          hSelect.className = "s-helper-select" + (current ? " filled" : "");
+
+          const hBlank = document.createElement("option");
+          hBlank.value = "";
+          hBlank.textContent = `— helper ${slot + 1} —`;
+          hSelect.appendChild(hBlank);
+
+          const hNames = allFaculty.map(f => f.name);
+          if (current && !hNames.includes(current)) hNames.unshift(current);
+
+          hNames.forEach(name => {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            if (name === current) opt.selected = true;
+            hSelect.appendChild(opt);
+          });
+
+          hSelect.addEventListener("change", () => {
+            const next = currentHelpers(s).slice();
+            next[slot] = hSelect.value;
+            pendingFor(s).helpers = next.filter(Boolean).slice(0, MAX_HELPERS);
+            renderAll();
+          });
+
+          helpersRow.appendChild(hSelect);
+        }
+
+        row.appendChild(helpersRow);
+      }
+
       container.appendChild(row);
     });
   });
@@ -250,9 +332,17 @@ async function saveAll() {
   try {
     const batch = db.batch();
     ids.forEach(id => {
-      batch.update(db.collection(COLLECTIONS.sessions).doc(id), { lead: pendingChanges[id] });
+      const p = pendingChanges[id];
+      const update = {};
+      if (p.lead !== undefined) update.lead = p.lead;
+      if (p.helpers !== undefined) update.helpers = p.helpers;
+      if (!Object.keys(update).length) return;
+      batch.update(db.collection(COLLECTIONS.sessions).doc(id), update);
       const s = sessions.find(x => x.id === id);
-      if (s) s.lead = pendingChanges[id];
+      if (s) {
+        if (p.lead !== undefined) s.lead = p.lead;
+        if (p.helpers !== undefined) s.helpers = p.helpers;
+      }
     });
     await batch.commit();
     pendingChanges = {};
