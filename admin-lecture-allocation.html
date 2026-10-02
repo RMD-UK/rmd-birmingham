@@ -184,6 +184,11 @@ async function loadData() {
       const d = doc.data();
       const em = (d.email || "").toLowerCase();
       if (!em || seen.has(em)) return;
+      // 2026-10-02 (Jon: dropdown "contains people who have told me they
+      // cannot come to the weekend") — this load never checked attendance at
+      // all, unlike admin-room-allocation.html's equivalent loadData(), which
+      // this comment already claimed to match. Same exclusion as there now.
+      if (d.attendanceStatus === "declined" || d.cannotAttend === true) return;
       if (d.role === "Faculty" || d.role === "Instructor Trainer" || d.role === "Assessor Faculty" || d.role === "Director") {
         const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || em;
         allFaculty.push({ name, email: em, role: d.role });
