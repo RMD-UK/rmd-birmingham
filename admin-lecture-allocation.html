@@ -62,6 +62,10 @@
   .ra-btn.save:disabled { background:rgba(255,255,255,.1); color:rgba(255,255,255,.45); cursor:default; }
   .ra-btn.save:disabled:hover { background:rgba(255,255,255,.1); }
 
+  .course-tabs { display:flex; gap:8px; margin-bottom:14px; }
+  .course-tab { flex:1; background:white; border:1.5px solid #d0d5e0; border-radius:8px; padding:10px 14px; font-family:var(--font); font-size:13px; font-weight:700; color:#6b7696; cursor:pointer; text-align:center; }
+  .course-tab.active { border-color:var(--rmd-navy); background:var(--rmd-navy); color:#fff; }
+
   .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
   #authMsg { font-size:15px; opacity:.7; }
 </style>
@@ -88,10 +92,15 @@
     run <a href="admin-migrate-programme.html">Migrate Programme to Firestore</a> first, then reload this page.
   </div>
 
+  <div class="course-tabs">
+    <button class="course-tab active" id="courseTab-provider" onclick="setCourse('provider')">🎓 Provider Course</button>
+    <button class="course-tab" id="courseTab-assessor" onclick="setCourse('assessor')">🧑‍🏫 SI / Assessor Course</button>
+  </div>
+
   <div class="stats-row">
     <div class="stat-card green"><div class="stat-num" id="statAssigned">–</div><div class="stat-lbl">Assigned</div></div>
     <div class="stat-card amber"><div class="stat-num" id="statUnassigned">–</div><div class="stat-lbl">Not yet assigned</div></div>
-    <div class="stat-card"><div class="stat-num" id="statTotal">–</div><div class="stat-lbl">Total sessions</div></div>
+    <div class="stat-card"><div class="stat-num" id="statTotal">–</div><div class="stat-lbl">Total sessions (this course)</div></div>
   </div>
 
   <div class="controls">
@@ -100,7 +109,8 @@
   </div>
   <div style="font-size:11.5px;color:#6b7696;margin:-6px 0 14px;">
     Showing only sessions flagged as needing a presenter — group practice, breaks and room-level
-    sessions aren't allocated here.
+    sessions aren't allocated here. Presenter/helper lists are filtered to who's allocated to
+    this course — directors always show on both.
   </div>
 
   <div id="dayContainer"></div>
@@ -117,7 +127,8 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 let sessions = [];      // [{id, day, start, title, subtitle, lead, helpers, needsPresenter, needsHelper, ...}] — needsPresenter:true only, filtered in loadData()
-let allFaculty = [];     // [{name, email}] — Faculty / Instructor Trainer / Assessor Faculty
+let allFaculty = [];     // [{name, email, role}] — Faculty / Instructor Trainer / Assessor Faculty / Director
+let currentCourse = "provider"; // "provider" | "assessor" — which stream's sessions/faculty list is showing
 let pendingChanges = {}; // {sessionId: {lead?: newLeadValue, helpers?: [up to 4 names]}}
 const MAX_HELPERS = 4;
 const DAY_ORDER = ["friday", "saturday", "sunday"];
@@ -163,7 +174,9 @@ async function loadData() {
   }
 
   // Faculty — same source/shape as admin-room-allocation.html's loadData(), extended to
-  // include Assessor Faculty since assessor-stream sessions also need a lead assigned.
+  // include Assessor Faculty since assessor-stream sessions also need a lead assigned, and
+  // Director (2026-10-02, Jon: "also include the directors in the dropdown list") — some
+  // plenary/welcome sessions are presented by a director, not faculty.
   try {
     const fSnap = await db.collection("faculty_responses").get();
     const seen = new Set();
@@ -171,9 +184,9 @@ async function loadData() {
       const d = doc.data();
       const em = (d.email || "").toLowerCase();
       if (!em || seen.has(em)) return;
-      if (d.role === "Faculty" || d.role === "Instructor Trainer" || d.role === "Assessor Faculty") {
+      if (d.role === "Faculty" || d.role === "Instructor Trainer" || d.role === "Assessor Faculty" || d.role === "Director") {
         const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || em;
-        allFaculty.push({ name, email: em });
+        allFaculty.push({ name, email: em, role: d.role });
         seen.add(em);
       }
     });
@@ -194,6 +207,34 @@ function currentHelpers(s) {
   return (p && p.helpers !== undefined) ? p.helpers : (s.helpers || []);
 }
 
+// 2026-10-02 (Jon: "split it so that we do provider course & the SI/assessor
+// course separately" + "always include the directors... others filter it by
+// who is allocated to which course"). Sessions carry which stream they're in
+// via the assessor-stream tag (set in js/programme-data.js); faculty carry it
+// via their faculty_responses role — Assessor Faculty work the SI/Assessor
+// course, Faculty/Instructor Trainer work the Provider course. Directors
+// present on either, so they're never filtered out.
+function isAssessorSession(s) {
+  return (s.tags || []).includes("assessor-stream");
+}
+
+function sessionMatchesCourse(s) {
+  return currentCourse === "assessor" ? isAssessorSession(s) : !isAssessorSession(s);
+}
+
+function namesForCourse() {
+  return allFaculty
+    .filter(f => f.role === "Director" || (currentCourse === "assessor" ? f.role === "Assessor Faculty" : (f.role === "Faculty" || f.role === "Instructor Trainer")))
+    .map(f => f.name);
+}
+
+function setCourse(course) {
+  currentCourse = course;
+  document.getElementById("courseTab-provider").classList.toggle("active", course === "provider");
+  document.getElementById("courseTab-assessor").classList.toggle("active", course === "assessor");
+  renderAll();
+}
+
 function pendingFor(s) {
   if (!pendingChanges[s.id]) pendingChanges[s.id] = {};
   return pendingChanges[s.id];
@@ -210,11 +251,12 @@ function renderAll() {
   DAY_ORDER.forEach(day => {
     const daySessions = sessions
       .filter(s => s.day === day)
+      .filter(sessionMatchesCourse)
       .filter(s => !q || s.title.toLowerCase().includes(q) || (s.subtitle||"").toLowerCase().includes(q))
       .filter(s => !unassignedOnly || !currentLead(s));
 
-    // Count against the full (unfiltered) set for this day, not the filtered view
-    sessions.filter(s => s.day === day).forEach(s => { total++; if (currentLead(s)) assigned++; });
+    // Count against the full (unfiltered) set for this day and course, not the filtered view
+    sessions.filter(s => s.day === day).filter(sessionMatchesCourse).forEach(s => { total++; if (currentLead(s)) assigned++; });
 
     if (!daySessions.length) return;
 
@@ -251,10 +293,11 @@ function renderAll() {
       blankOpt.textContent = "— assign a lead —";
       select.appendChild(blankOpt);
 
-      // If the current lead isn't in the faculty list (e.g. "Jon", "Logistics team" —
-      // free-text values already sitting in older programme data), keep it selectable
+      // If the current lead isn't in this course's faculty list (e.g. "Jon",
+      // "Logistics team" — free-text values already sitting in older programme
+      // data, or someone allocated under the other course) keep it selectable
       // rather than silently dropping it from the dropdown.
-      const names = allFaculty.map(f => f.name);
+      const names = namesForCourse();
       if (lead && !names.includes(lead)) names.unshift(lead);
 
       names.forEach(name => {
@@ -308,7 +351,7 @@ function renderAll() {
           hBlank.textContent = `— helper ${slot + 1} —`;
           hSelect.appendChild(hBlank);
 
-          const hNames = allFaculty.map(f => f.name);
+          const hNames = namesForCourse();
           if (current && !hNames.includes(current)) hNames.unshift(current);
 
           hNames.forEach(name => {
