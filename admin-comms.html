@@ -181,6 +181,20 @@ async function loadGroups() {
   rosterGroup("RMD Student Faculty", ["RMD Student Faculty"]);
   rosterGroup("RMD Senior Faculty", ["RMD Senior Faculty"]);
 
+  // Same mou_roster roles as above, listed again under Stage 1 Courses —
+  // 2026-10-02, Jon: wants "all instructors / all Senior Instructors / all
+  // assessors" as options alongside the per-course Stage 1 groups, split out
+  // of the combined "Assessors & Senior Instructors" roster group rather than
+  // a separate data source (confirmed explicitly). Same people, same email —
+  // just a second, differently-labelled way to find them from this tool.
+  const stage1RoleGroup = (label, roles) => {
+    const people = roster.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
+    groups.push({ id: "stage1role_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "stage1", isRoleGroup: true });
+  };
+  stage1RoleGroup("All Instructors", ["Instructor"]);
+  stage1RoleGroup("All Senior Instructors", ["Senior Instructor"]);
+  stage1RoleGroup("All Assessors", ["Assessor"]);
+
   // IW faculty_responses-based groups — confirmed attendees only, same
   // scoping admin-iw-registrations.html uses when pulling from this source.
   const facSnap = await db.collection("faculty_responses").where("attendanceStatus", "==", "confirmed").get();
@@ -234,8 +248,9 @@ function renderGroupList() {
   const list = document.getElementById("groupList");
   const combos        = groups.filter(g => g.combo);
   const iwGroups       = groups.filter(g => g.category === "iw");
-  const stage1Courses = groups.filter(g => g.category === "stage1" && !g.isAllLeaf);
+  const stage1Courses = groups.filter(g => g.category === "stage1" && !g.isAllLeaf && !g.isRoleGroup);
   const stage1All     = groups.filter(g => g.category === "stage1" && g.isAllLeaf);
+  const stage1Roles    = groups.filter(g => g.category === "stage1" && g.isRoleGroup);
 
   let html = "";
   if (combos.length) {
@@ -244,9 +259,9 @@ function renderGroupList() {
   if (iwGroups.length) {
     html += categorySection("🎓 Instructor Weekend", iwGroups.map(groupRowHtml).join(""), true);
   }
-  if (stage1Courses.length || stage1All.length) {
+  if (stage1Courses.length || stage1All.length || stage1Roles.length) {
     const stems = Array.from(new Set(stage1Courses.map(g => courseStem(g.courseName)))).sort();
-    let inner = stage1All.map(groupRowHtml).join("");
+    let inner = stage1All.map(groupRowHtml).join("") + stage1Roles.map(groupRowHtml).join("");
     if (stems.length > 1) {
       stems.forEach(stem => {
         const members = stage1Courses.filter(g => courseStem(g.courseName) === stem);
