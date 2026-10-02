@@ -104,6 +104,14 @@
   </div>
 
   <div class="card">
+    <div class="card-header">Deadline feasibility check</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Before you allocate: for each course date below, this adds up every unallocated, checked candidate whose programme deadline falls on or before that date (so they'd need to have started Stage 1 by then), and compares that against the total room capacity available across all courses up to that point. A shortfall means there are more deadline-bound candidates than Stage 1 can physically seat in time — worth knowing before you hit "Allocate now" in Step 3, not after. Pharmacy candidates with a placement-date clash on file aren't included (their eligible courses vary clash by clash, so they don't fit this simple running total) — check those individually.</p>
+      <div id="deadlineFeasibility"></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header">Step 3 — Allocate to courses</div>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">Tick the box below and click "Allocate now" to give every checked candidate a course and a room in one go. Only candidates checked in Step 2 are included (real placement-dates match, or ticked "no placement dates"). Anyone not yet checked is left alone, so check them in Step 2 first if they're missing from the result. Anyone the system can't fit anywhere comes back named afterwards for you to place by hand (no manual-override button yet, so that's done outside this page for now).</p>
@@ -1022,6 +1030,7 @@ let editCandidateId = null;
 
 function renderCandidates() {
   renderAllocationSummary();
+  renderDeadlineFeasibility();
   const courseFilter = document.getElementById("courseFilter").value;
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
 
@@ -1171,6 +1180,82 @@ function renderAllocationSummary() {
     ${tile(ready, "Checked — ready to allocate")}
     ${tile(notChecked, "Not yet checked", true)}
   </div>`;
+}
+
+// Deadline feasibility check (2026-10-02, Jon — after a test batch showed
+// 472 candidates landing on Course 1 via the over-cap permission flow,
+// because their deadline made Course 1 their ONLY eligible session: "how
+// do we work out which ones can move" / "can you calculate how many
+// people are needed per course to meet deadlines they have asked for").
+// A candidate's eligible courses are always "every course on or before
+// their deadline" — a PREFIX of the date-sorted course list, never an
+// arbitrary subset. That means a simple running total is mathematically
+// exact here, not just a rough guide: walking the courses in date order,
+// cumulative demand (candidates whose deadline falls on/before this
+// course's date — they have nowhere later they're allowed to go) can
+// never exceed cumulative capacity (every course up to and including this
+// one) without a real shortfall — somebody in that group has no valid
+// seat anywhere, full stop, regardless of exactly how you'd spread them.
+// Pharmacy candidates with a placement-date clash on file are left out of
+// this running total on purpose — a clash removes one specific course
+// from their eligible set rather than narrowing it to a clean prefix, so
+// they don't fit this maths and are called out separately instead.
+function renderDeadlineFeasibility() {
+  const el = document.getElementById("deadlineFeasibility");
+  if (!el) return;
+  if (!courseSessions.length) { el.innerHTML = `<p class="hint" style="margin:0;">No course sessions configured yet — add this year's dates on <a href="admin-stage1-settings.html">Stage 1 Settings</a> first.</p>`; return; }
+
+  const ready = allCandidates.filter(c => !c.course && c.placementChecked);
+  if (!ready.length) { el.innerHTML = `<p class="hint" style="margin:0;">No unallocated, checked candidates yet — nothing to check against deadlines.</p>`; return; }
+
+  const sortedCourses = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const effectiveCapacities = buildEffectiveCapacities();
+
+  const withClash = [];
+  const unresolved = [];
+  const assessable = [];
+  ready.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const deadline = resolved ? programmeDeadlines[resolved.exact] : null;
+    if (!resolved || !deadline) { unresolved.push(c); return; }
+    if (c.placementBlocks && c.placementBlocks.length) { withClash.push(c); return; }
+    assessable.push({ c, deadline });
+  });
+
+  let cumCap = 0;
+  let anyShortfall = false;
+  const rows = sortedCourses.map(course => {
+    cumCap += (effectiveCapacities[course.name] || 10) * ROOMS.length;
+    const cumDemand = assessable.filter(x => x.deadline <= course.date).length;
+    const shortfall = Math.max(0, cumDemand - cumCap);
+    if (shortfall > 0) anyShortfall = true;
+    return { name: course.name, date: course.date, cumCap, cumDemand, shortfall };
+  });
+
+  let noteHtml = `<p class="hint" style="margin:0 0 10px;">${assessable.length} candidate(s) checked against deadlines below.`;
+  if (withClash.length) noteHtml += ` ${withClash.length} Pharmacy candidate(s) with a placement clash excluded — check those individually.`;
+  if (unresolved.length) noteHtml += ` ${unresolved.length} skipped — no recognised programme or no deadline set yet.`;
+  noteHtml += `</p>`;
+
+  el.innerHTML = noteHtml + `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;border-bottom:2px solid #e0e4ee;">
+        <th style="padding:6px 8px;">Course</th>
+        <th style="padding:6px 8px;">Date</th>
+        <th style="padding:6px 8px;">Capacity so far</th>
+        <th style="padding:6px 8px;">Must be placed by now</th>
+        <th style="padding:6px 8px;">Shortfall</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr style="border-bottom:1px solid #eef0f5;${r.shortfall ? "background:#fff4e5;" : ""}">
+          <td style="padding:6px 8px;font-weight:700;">${esc(r.name)}</td>
+          <td style="padding:6px 8px;">${esc(r.date)}</td>
+          <td style="padding:6px 8px;font-variant-numeric:tabular-nums;">${r.cumCap}</td>
+          <td style="padding:6px 8px;font-variant-numeric:tabular-nums;">${r.cumDemand}</td>
+          <td style="padding:6px 8px;font-weight:700;color:${r.shortfall ? "#8a5a00" : "#1a6e31"};">${r.shortfall ? `⚠ short by ${r.shortfall}` : "OK"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
 }
 
 // The Allocate now button only ever becomes clickable once this is ticked
