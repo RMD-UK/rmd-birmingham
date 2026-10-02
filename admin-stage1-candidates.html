@@ -344,6 +344,31 @@ function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCap
   return { course: best.name, reason: null, atCapacity: false };
 }
 
+// Used only to ORDER allocation, never to decide a result on its own — a
+// candidate with few eligible course sessions (because their programme's
+// deadline falls early) gets first claim on Course 1's limited seats,
+// instead of losing out to someone with more flexibility who just happened
+// to be processed first (2026-10-02 bug found, fixed via Claude after Jon
+// flagged it: allocateAllNow() used to fill Course 1 strictly in array
+// order, with no regard for who had another option — so candidates who
+// could just as well have landed on Course 2-6 took seats from candidates
+// whose deadline made Course 1 their ONLY possible session, and those
+// deadline-locked candidates ended up flagged atCapacity instead). Mirrors
+// autoFitCourse's own eligibility filter (deadline, then placement clash)
+// but stops short of a capacity check — this is about how CONSTRAINED a
+// candidate is, not whether a seat happens to be free right now.
+function eligibleCourseCountFor(c) {
+  const resolved = resolveStage1Degree(c.degree);
+  if (!resolved) return 0;
+  const deadline = programmeDeadlines[resolved.exact];
+  if (!deadline || !courseSessions.length) return 0;
+  let eligible = courseSessions.filter(s => s.date && s.date <= deadline);
+  if (c.placementBlocks && c.placementBlocks.length) {
+    eligible = eligible.filter(s => !placementClashesWithCourse(c.placementBlocks, s.date));
+  }
+  return eligible.length;
+}
+
 function populateCourseFilter() {
   const sel = document.getElementById("courseFilter");
   const current = sel.value;
@@ -1351,7 +1376,12 @@ async function allocateAllNow() {
   if (!unallocated.length) { alert("No unallocated candidates — everyone already has a course."); return; }
 
   const notChecked = unallocated.filter(c => !c.placementChecked);
-  const ready = unallocated.filter(c => c.placementChecked);
+  // Most-constrained first (fewest eligible course sessions), so a
+  // deadline-locked candidate (often only Course 1 before their deadline)
+  // claims their seat before a flexible candidate who could just as well
+  // land on a later course takes it instead. See eligibleCourseCountFor().
+  const ready = unallocated.filter(c => c.placementChecked)
+    .sort((a, b) => eligibleCourseCountFor(a) - eligibleCourseCountFor(b));
 
   if (!ready.length) {
     alert(`${notChecked.length} unallocated candidate(s), but none have been checked for placement dates yet. Import placement dates above, or mark them "No placement dates", before allocating.`);
