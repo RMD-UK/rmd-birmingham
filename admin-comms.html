@@ -34,6 +34,17 @@
     .recipient-row:first-child { border-top:none; }
     .recipient-row .name { font-weight:700; color:var(--rmd-navy); }
     .recipient-row .email { color:var(--rmd-muted); font-family:monospace; font-size:11px; margin-left:8px; }
+    .group-list { max-height:280px; overflow-y:auto; border:1px solid #e8edf2; border-radius:6px; }
+    .group-row { display:flex; align-items:flex-start; gap:10px; padding:9px 12px; font-size:13px; border-top:1px solid #f0f3f6; cursor:pointer; }
+    .group-row:first-child { border-top:none; }
+    .group-row:hover { background:#f8fafc; }
+    .group-row input[type=checkbox] { width:16px; height:16px; margin:2px 0 0; flex-shrink:0; }
+    .group-row .glabel { color:var(--rmd-navy); }
+    .group-row.combo { background:#f4f8fc; }
+    .group-row.combo .glabel { font-weight:700; }
+    .group-divider { padding:7px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); background:#f8fafc; border-top:1px solid #f0f3f6; }
+    .group-divider:first-child { border-top:none; }
+    .selected-summary { font-size:12px; color:var(--rmd-muted); margin:6px 0 2px; }
     .confirm-box { display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:14px 0; }
     .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
     .log-line { font-size:13px; padding:4px 0; }
@@ -53,12 +64,14 @@
   </div>
 
   <div class="card">
-    <div class="card-header">1. Choose a group</div>
+    <div class="card-header">1. Choose group(s)</div>
     <div class="card-body">
-      <label class="field-label">Group</label>
-      <select id="groupSelect" onchange="onGroupChange()">
-        <option value="">Loading groups…</option>
-      </select>
+      <label class="field-label">Groups</label>
+      <div class="group-list" id="groupList">
+        <div class="empty-state">Loading groups…</div>
+      </div>
+      <div class="selected-summary" id="selectedSummary"></div>
+      <p class="hint">Tick as many as you need. Recipients from every ticked group are combined and de-duplicated by email, so nobody gets it twice even if they're in more than one group you pick.</p>
       <p class="hint">Sends from <strong>reminders@rmd.uk.com</strong> (replies go to the monitored RMD Birmingham inbox), same address every automated reminder on this site already uses.</p>
     </div>
   </div>
@@ -117,6 +130,12 @@ let currentGroup = null;
 
 function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
 
+function dedupe(people) {
+  const map = new Map();
+  people.forEach(p => { if (p && p.email) map.set(p.email.toLowerCase(), p); });
+  return Array.from(map.values());
+}
+
 function courseSort(a, b) {
   const an = parseInt((a.match(/\d+/) || [])[0], 10);
   const bn = parseInt((b.match(/\d+/) || [])[0], 10);
@@ -164,25 +183,64 @@ async function loadGroups() {
   facGroup("Instructor Trainer Candidates (ITC)", ["Instructor Trainer Candidate", "ITC"]);
   facGroup("Assessor Faculty", ["Assessor Faculty"]);
   facGroup("Faculty", ["Faculty"]);
+  facGroup("Directors", ["Director"]);
 
-  const sel = document.getElementById("groupSelect");
-  sel.innerHTML = `<option value="">Choose a group…</option>` + groups.map(g => `<option value="${esc(g.id)}">${esc(g.label)}</option>`).join("");
+  // Combined convenience groups — built from the individual IW groups above,
+  // shown first and marked distinctly (2026-10-02, Jon: "want to choose some
+  // more groups eg 'all faculty for instructor weekend' and others").
+  const combos = [];
+  const allFacultyPeople = dedupe(fac.filter(m => m.email && ["Instructor Trainer", "Instructor Trainer Candidate", "ITC", "Assessor Faculty", "Faculty", "Director"].includes(m.role)));
+  combos.push({ id: "combo_all_faculty", label: `IW — All Faculty: Instructor Trainers, Assessor Faculty, Faculty, ITC & Directors (${allFacultyPeople.length})`, people: allFacultyPeople, combo: true });
+
+  const everyoneIW = dedupe([
+    ...roster.filter(m => m.email).map(m => ({ name: m.name, email: m.email })),
+    ...fac.filter(m => m.email),
+  ]);
+  combos.push({ id: "combo_everyone_iw", label: `IW — Everyone, every role & stream (${everyoneIW.length})`, people: everyoneIW, combo: true });
+
+  groups = [...combos, ...groups];
+
+  const list = document.getElementById("groupList");
+  let html = `<div class="group-divider">Combined groups</div>` + combos.map(groupRowHtml).join("");
+  html += `<div class="group-divider">Individual groups</div>` + groups.filter(g => !g.combo).map(groupRowHtml).join("");
+  list.innerHTML = html;
+}
+
+function groupRowHtml(g) {
+  return `<label class="group-row${g.combo ? " combo" : ""}">
+    <input type="checkbox" value="${esc(g.id)}" onchange="onGroupChange()">
+    <span class="glabel">${esc(g.label)}</span>
+  </label>`;
+}
+
+function getSelectedGroups() {
+  return Array.from(document.querySelectorAll('#groupList input[type=checkbox]:checked'))
+    .map(cb => groups.find(g => g.id === cb.value))
+    .filter(Boolean);
 }
 
 function onGroupChange() {
+  const selected = getSelectedGroups();
+  const summary = document.getElementById("selectedSummary");
+  summary.textContent = selected.length
+    ? `${selected.length} group${selected.length > 1 ? "s" : ""} selected: ${selected.map(g => g.label.replace(/\s*\(\d+\)$/, "")).join(", ")}`
+    : "";
   document.getElementById("previewCard").style.display = "none";
   document.getElementById("confirmBox").checked = false;
   document.getElementById("sendBtn").disabled = true;
 }
 
 function previewRecipients() {
-  const id = document.getElementById("groupSelect").value;
+  const selected = getSelectedGroups();
   const subject = document.getElementById("subjectInput").value.trim();
   const message = document.getElementById("messageInput").value.trim();
-  if (!id) { alert("Choose a group first."); return; }
+  if (!selected.length) { alert("Choose at least one group first."); return; }
   if (!subject || !message) { alert("Write a subject and a message first."); return; }
 
-  currentGroup = groups.find(g => g.id === id);
+  currentGroup = {
+    label: selected.map(g => g.label).join(" + "),
+    people: dedupe(selected.flatMap(g => g.people)),
+  };
   const wrap = document.getElementById("previewCard");
   wrap.style.display = "block";
   document.getElementById("confirmBox").checked = false;
