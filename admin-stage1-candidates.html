@@ -353,7 +353,7 @@ function populateCourseFilter() {
     if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
     return a.localeCompare(b);
   });
-  sel.innerHTML = `<option value="">All courses</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  sel.innerHTML = `<option value="">All courses</option><option value="__unallocated__">Unallocated</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   sel.value = current;
 }
 
@@ -1032,7 +1032,8 @@ function renderCandidates() {
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
 
   let filtered = allCandidates;
-  if (courseFilter) filtered = filtered.filter(c => c.course === courseFilter);
+  if (courseFilter === "__unallocated__") filtered = filtered.filter(c => !c.course);
+  else if (courseFilter) filtered = filtered.filter(c => c.course === courseFilter);
   if (q) filtered = filtered.filter(c =>
     (c.name || "").toLowerCase().includes(q) ||
     (c.email || "").toLowerCase().includes(q) ||
