@@ -44,6 +44,18 @@
     .group-row.combo .glabel { font-weight:700; }
     .group-divider { padding:7px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); background:#f8fafc; border-top:1px solid #f0f3f6; }
     .group-divider:first-child { border-top:none; }
+    .group-category { border-top:1px solid #f0f3f6; }
+    .group-category:first-child { border-top:none; }
+    .group-category > summary { padding:7px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); background:#f8fafc; cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
+    .group-category > summary::-webkit-details-marker { display:none; }
+    .group-category > summary::before { content:"\25B8"; font-size:10px; }
+    .group-category[open] > summary::before { content:"\25BE"; }
+    .group-subcat { margin-left:16px; border-top:1px solid #f0f3f6; }
+    .group-subcat:first-of-type { border-top:none; }
+    .group-subcat > summary { padding:6px 12px; font-size:12px; font-weight:600; color:var(--rmd-navy); cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
+    .group-subcat > summary::-webkit-details-marker { display:none; }
+    .group-subcat > summary::before { content:"\25B8"; font-size:9px; }
+    .group-subcat[open] > summary::before { content:"\25BE"; }
     .selected-summary { font-size:12px; color:var(--rmd-muted); margin:6px 0 2px; }
     .confirm-box { display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:14px 0; }
     .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
@@ -152,17 +164,17 @@ async function loadGroups() {
   const courses = Array.from(new Set(stage1.filter(c => c.course).map(c => c.course))).sort(courseSort);
   courses.forEach(course => {
     const people = stage1.filter(c => c.course === course && c.email).map(c => ({ name: c.name, email: c.email }));
-    groups.push({ id: "stage1_" + course, label: `Stage 1 — ${course} (${people.length})`, people });
+    groups.push({ id: "stage1_" + course, label: `${course} (${people.length})`, people, category: "stage1", courseName: course });
   });
   const allStage1 = stage1.filter(c => c.email).map(c => ({ name: c.name, email: c.email }));
-  groups.push({ id: "stage1_all", label: `Stage 1 — all candidates, any course (${allStage1.length})`, people: allStage1 });
+  groups.push({ id: "stage1_all", label: `All candidates, any course (${allStage1.length})`, people: allStage1, category: "stage1", isAllLeaf: true });
 
   // IW roster-based groups
   const rosterSnap = await db.collection(COLLECTIONS.mouRoster).get();
   const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const rosterGroup = (label, roles) => {
     const people = roster.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
-    groups.push({ id: "roster_" + roles.join("_"), label: `IW — ${label} (${people.length})`, people });
+    groups.push({ id: "roster_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "iw" });
   };
   rosterGroup("Instructor Candidates", ["Instructor"]);
   rosterGroup("Assessors & Senior Instructors", ["Assessor", "Senior Instructor"]);
@@ -177,7 +189,7 @@ async function loadGroups() {
   }));
   const facGroup = (label, roles) => {
     const people = fac.filter(m => roles.includes(m.role) && m.email);
-    groups.push({ id: "fac_" + roles.join("_"), label: `IW — ${label} (${people.length})`, people });
+    groups.push({ id: "fac_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "iw" });
   };
   facGroup("Instructor Trainers", ["Instructor Trainer"]);
   facGroup("Instructor Trainer Candidates (ITC)", ["Instructor Trainer Candidate", "ITC"]);
@@ -200,10 +212,52 @@ async function loadGroups() {
 
   groups = [...combos, ...groups];
 
+  renderGroupList();
+}
+
+// Trailing-number stripped from a course name so same-stem courses (e.g.
+// "Monday Course 1" / "Monday Course 2") nest under one expandable header —
+// Jon 2026-10-02: "expands from core stems eg 'Monday courses', 'instructor
+// weekend' etc" rather than one long flat checkbox list. Falls back to the
+// full name when there's nothing to strip, so an unrecognised naming scheme
+// just doesn't get sub-grouped rather than breaking.
+function courseStem(courseName) {
+  const stripped = String(courseName || "").replace(/[\s\-_]*\d+[a-z]*\s*$/i, "").trim();
+  return stripped || courseName;
+}
+
+function categorySection(title, innerHtml, open) {
+  return `<details class="group-category"${open ? " open" : ""}><summary>${title}</summary>${innerHtml}</details>`;
+}
+
+function renderGroupList() {
   const list = document.getElementById("groupList");
-  let html = `<div class="group-divider">Combined groups</div>` + combos.map(groupRowHtml).join("");
-  html += `<div class="group-divider">Individual groups</div>` + groups.filter(g => !g.combo).map(groupRowHtml).join("");
-  list.innerHTML = html;
+  const combos        = groups.filter(g => g.combo);
+  const iwGroups       = groups.filter(g => g.category === "iw");
+  const stage1Courses = groups.filter(g => g.category === "stage1" && !g.isAllLeaf);
+  const stage1All     = groups.filter(g => g.category === "stage1" && g.isAllLeaf);
+
+  let html = "";
+  if (combos.length) {
+    html += `<div class="group-divider">Combined groups</div>` + combos.map(groupRowHtml).join("");
+  }
+  if (iwGroups.length) {
+    html += categorySection("🎓 Instructor Weekend", iwGroups.map(groupRowHtml).join(""), true);
+  }
+  if (stage1Courses.length || stage1All.length) {
+    const stems = Array.from(new Set(stage1Courses.map(g => courseStem(g.courseName)))).sort();
+    let inner = stage1All.map(groupRowHtml).join("");
+    if (stems.length > 1) {
+      stems.forEach(stem => {
+        const members = stage1Courses.filter(g => courseStem(g.courseName) === stem);
+        inner += `<details class="group-subcat"><summary>${esc(stem)} (${members.length})</summary>${members.map(groupRowHtml).join("")}</details>`;
+      });
+    } else {
+      inner += stage1Courses.map(groupRowHtml).join("");
+    }
+    html += categorySection("📚 Stage 1 Courses", inner, false);
+  }
+  list.innerHTML = html || `<div class="empty-state">No groups available.</div>`;
 }
 
 function groupRowHtml(g) {
