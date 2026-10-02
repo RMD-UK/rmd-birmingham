@@ -69,6 +69,7 @@
         <tbody></tbody>
       </table>
       <button class="btn-secondary" onclick="addCourseRow()">+ Add course session</button>
+      <button class="btn-secondary" onclick="applyDefaultCapacity()" style="margin-left:10px;">Use standard capacity (first course 12/room, rest 10/room)</button>
       <button class="btn-secondary" onclick="splitCapacityEvenly()" style="margin-left:10px;">⚖️ Split capacity evenly across all courses</button>
       <button class="btn-primary" onclick="saveCourses()" style="margin-left:10px;">Save course sessions</button>
       <div class="status-line" id="coursesStatus"></div>
@@ -178,6 +179,26 @@ function renderCourses() {
 function addCourseRow() {
   courseRows.push({ name: "", date: "", capacity: "" });
   renderCourses();
+}
+
+// Jon's confirmed default (2026-10-02): the first course gets 12 candidates
+// per room, every other course gets 10 per room — leaves the later courses
+// a bit of headroom for resits/absences to be reshuffled in. Applies to
+// every row currently listed, by position (first row = 12, rest = 10), not
+// by name, so it still works if rows are reordered or renamed. Overwrites
+// whatever capacity is already there, since this is the standing default,
+// not a one-off fill. Still needs "Save course sessions" after.
+function applyDefaultCapacity() {
+  const statusEl = document.getElementById("coursesStatus");
+  if (!courseRows.length) {
+    statusEl.textContent = "Add at least one course first.";
+    statusEl.className = "status-line err";
+    return;
+  }
+  courseRows.forEach((c, i) => { c.capacity = i === 0 ? 12 : 10; });
+  renderCourses();
+  statusEl.textContent = `Set — first course 12/room, other ${courseRows.length - 1} course(s) 10/room. Not saved yet — click "Save course sessions".`;
+  statusEl.className = "status-line ok";
 }
 
 // Sets every named course's capacity so the total known candidate count

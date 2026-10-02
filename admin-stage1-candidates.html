@@ -339,18 +339,20 @@ function populateCourseFilter() {
 // Course stays IN the comparison, unchanged: same name+email+degree on a
 // DIFFERENT course is a legitimate repeat/resit, not a duplicate — only
 // flagged if the SAME course is pasted twice.
+// Course dropped from the match (2026-10-02, Jon: "drop course") — name,
+// email and degree together is enough to call it the same person; course
+// no longer has to match too (was previously kept in to avoid flagging a
+// legitimate resit on a later course, but Jon confirmed that's not needed).
 function findDuplicates(candidate, against) {
   const name = normName(candidate.name);
   const email = normCourseRoom(candidate.email);
-  const course = normCourseRoom(candidate.course);
   const degree = normCourseRoom(candidate.degree);
 
   const exact = against.filter(o =>
     o !== candidate &&
     normName(o.name) === name &&
     normCourseRoom(o.email) === email &&
-    normCourseRoom(o.degree) === degree &&
-    normCourseRoom(o.course) === course);
+    normCourseRoom(o.degree) === degree);
 
   return { exact, near: [] };
 }
@@ -358,7 +360,7 @@ function findDuplicates(candidate, against) {
 function duplicateWarningHtml(dupes, candidate) {
   const parts = [];
   if (dupes.exact.length) {
-    parts.push(`<div class="dup-warning dup-exact">⚠ Exact match on name, email, degree and course against: ${dupes.exact.map(o => esc(o.name)).join(", ")}. Likely the same person entered twice.</div>`);
+    parts.push(`<div class="dup-warning dup-exact">⚠ Exact match on name, email and degree against: ${dupes.exact.map(o => esc(o.name)).join(", ")}. Likely the same person entered twice.</div>`);
   }
   return parts.join("");
 }
@@ -983,6 +985,13 @@ async function changeAccessCode() {
 }
 
 // ── Candidates list ───────────────────────────────────────────────────────
+// 2026-10-02, Jon: "how do we fix it on the site - what tool to use there
+// for any director" — there was no way to correct a bad record (e.g. a
+// paste-import row that landed in the wrong field, like the "Pharmacy
+// MPharm" case) short of Delete + re-paste that one row. editCandidateId
+// tracks which row (if any) is currently in inline edit mode.
+let editCandidateId = null;
+
 function renderCandidates() {
   renderAllocationSummary();
   const courseFilter = document.getElementById("courseFilter").value;
@@ -1000,20 +1009,71 @@ function renderCandidates() {
   document.getElementById("candidatesWrap").innerHTML = filtered.length
     ? `<table class="data-table">
         <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
-        <tbody>${filtered.map(c => `
+        <tbody>${filtered.map(c => c.id === editCandidateId ? editRowHtml(c) : `
           <tr>
             <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
             <td>${esc(c.room) || "–"}</td>
+            <td><button class="btn-link-sm" onclick="startEditCandidate('${c.id}')">✎ Edit</button></td>
             <td>${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
-              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}</td>
-            <td><button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
+              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}
+              <button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
           </tr>`).join("")}</tbody>
       </table>`
     : `<div class="empty-state">No candidates match.</div>`;
+}
+
+// Inline edit row — Name, Email, Degree only (2026-10-02). Course and Room
+// deliberately stay read-only here: they're set by Allocate Now / Course
+// Room & Instructor Allocation, not hand-typed, so editing them from this
+// table would bypass the capacity/clash logic those tools apply. Degree is
+// a free-text input, not the standardised dropdown Step 1's import preview
+// uses — good enough for fixing a mis-typed/misplaced value; run it back
+// through Step 1's import if you want it validated against the 9 standard
+// names.
+function editRowHtml(c) {
+  return `<tr>
+    <td><input type="text" id="editName_${c.id}" value="${esc(c.name)}" style="width:100%;padding:6px;font-size:13px;"></td>
+    <td><input type="text" id="editEmail_${c.id}" value="${esc(c.email)}" style="width:100%;padding:6px;font-size:13px;"></td>
+    <td><input type="text" id="editDegree_${c.id}" value="${esc(c.degree)}" style="width:100%;padding:6px;font-size:13px;"></td>
+    <td>${esc(c.course) || "–"}</td>
+    <td>${esc(c.room) || "–"}</td>
+    <td colspan="2">
+      <button class="btn-promote" onclick="saveEditCandidate('${c.id}')">Save</button>
+      <button class="btn-link-sm" onclick="cancelEditCandidate()">Cancel</button>
+    </td>
+  </tr>`;
+}
+
+function startEditCandidate(id) {
+  editCandidateId = id;
+  renderCandidates();
+}
+
+function cancelEditCandidate() {
+  editCandidateId = null;
+  renderCandidates();
+}
+
+async function saveEditCandidate(id) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c) return;
+  const name = (document.getElementById(`editName_${id}`).value || "").trim();
+  const email = (document.getElementById(`editEmail_${id}`).value || "").trim();
+  const degree = (document.getElementById(`editDegree_${id}`).value || "").trim();
+  if (!name) { alert("Name can't be blank."); return; }
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ name, email, degree });
+    c.name = name; c.email = email; c.degree = degree;
+    editCandidateId = null;
+    computeDuplicateColors();
+    renderCandidates();
+  } catch (err) {
+    alert("Couldn't save: " + err.message);
+  }
 }
 
 // ── Repeat/subsequent-course linking ──────────────────────────────────────
