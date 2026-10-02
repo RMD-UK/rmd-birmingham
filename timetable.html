@@ -471,6 +471,22 @@
     if (s.location) tags += `<span class="meta-tag tag-location">📍 ${s.location}</span>`;
     if (s.lead)     tags += `<span class="meta-tag tag-lead">👤 ${s.lead}</span>`;
     if (Array.isArray(s.helpers)) s.helpers.forEach(h => { if (h) tags += `<span class="meta-tag tag-helper">🙋 ${h}</span>`; });
+
+    // 2026-10-02 (Jon: "Still can't see presenter allocation") — a session
+    // flagged needsPresenter/needsHelper with nobody picked yet rendered no
+    // tag at all above, identical to a session that never needed one in the
+    // first place. Director-only (same reasoning as showAssessorFeedback
+    // below — this is a coordination hint, not something candidates need to
+    // see), with a direct link to the allocation tool.
+    if (currentRole === "director") {
+      const presenterMissing = s.needsPresenter && !s.lead;
+      const helperMissing = s.needsHelper && (!Array.isArray(s.helpers) || !s.helpers.filter(Boolean).length);
+      if (presenterMissing || helperMissing) {
+        const what = presenterMissing && helperMissing ? "presenter &amp; helper" : (presenterMissing ? "presenter" : "helper");
+        tags += `<span class="meta-tag" style="background:#fff3cd;color:#856404;">⚠ Needs ${what} — <a href="admin-lecture-allocation.html" style="color:#856404;text-decoration:underline;">allocate</a></span>`;
+      }
+    }
+
     if (isGateway && !isBreak) tags += `<span class="meta-tag tag-gateway">⏱ Gateway deadline: 12:00</span>`;
     if (isITC)      tags += `<span class="meta-tag tag-itc">🔍 ITC observation</span>`;
     if (isPlaceholder) tags += `<span class="meta-tag" style="background:#fff3cd;color:#856404;">⚠ To be confirmed</span>`;
