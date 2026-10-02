@@ -348,6 +348,16 @@ async function loadData() {
     }
   } catch(e) {}
 
+  // 2026-10-02 (Jon: "By default, select all of them") — only kicks in
+  // when nothing's been explicitly selected yet (no saved config, or a
+  // saved config with an empty list), so it never fights a selection
+  // someone already saved. Auto-allocate needs at least one ITC checked
+  // to do anything, so starting empty meant an extra manual step every
+  // time before it could be used.
+  if (itcSet.size === 0) {
+    allITC.forEach(p => itcSet.add(p.email));
+  }
+
   render();
 }
 
