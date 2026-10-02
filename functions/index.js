@@ -267,7 +267,7 @@ const SFR_REMINDERS_COLLECTION  = "senior_faculty_review_reminders";
 // automated reminders.
 const FROM_EMAIL  = "RMD Birmingham <reminders@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
 const REPLY_TO     = "rmdbirmingham@googlemail.com";
-const COMMS_BCC    = "colmds-c-rmdbirmingham@adf.bham.ac.uk"; // 2026-10-02, Jon: bcc every admin-comms.html send here
+const COMMS_BCC    = "colmds-c-rmdbirmingham@adf.bham.ac.uk"; // 2026-10-02, Jon: one summary copy per admin-comms.html send, not a bcc on every individual email (he explicitly ruled that out — too much volume at one-email-per-recipient)
 const JON_BCC      = "j.hulme.1@bham.ac.uk"; // Jon wants a copy of every IW RSVP invite sent (2026-08-27) — see sendIwRsvpInvites
 const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 
@@ -3100,7 +3100,6 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
       const { error } = await resend.emails.send({
         from: FROM_EMAIL,
         to: person.email,
-        bcc: COMMS_BCC,
         replyTo: REPLY_TO,
         subject,
         text: personalised
@@ -3121,6 +3120,38 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
     sentByUid: auth.uid,
     sentByEmail: (auth.token.email || "").toLowerCase()
   });
+
+  // One summary copy to COMMS_BCC — not a per-recipient bcc (that's one email
+  // per recipient, which Jon explicitly didn't want). States exactly which
+  // addresses were actually sent to, and any that failed.
+  try {
+    const summaryLines = [
+      `Group: ${groupLabel || "(none)"}`,
+      `Sent by: ${(auth.token.email || auth.uid)}`,
+      `Recipients: ${sent} sent${failedEmails.length ? `, ${failedEmails.length} failed` : ""}`,
+      "",
+      "--- Original subject ---",
+      subject,
+      "",
+      "--- Original message ---",
+      message,
+      "",
+      "--- Sent to ---",
+      ...sentTo,
+    ];
+    if (failedEmails.length) {
+      summaryLines.push("", "--- Failed ---", ...failedEmails);
+    }
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: COMMS_BCC,
+      replyTo: REPLY_TO,
+      subject: `[RMD Comms copy] ${subject} — ${sent} sent${groupLabel ? ` (${groupLabel})` : ""}`,
+      text: summaryLines.join("\n")
+    });
+  } catch (err) {
+    console.error("sendBulkComms: summary copy to COMMS_BCC failed", err.message);
+  }
 
   return { sent, failed: failedEmails.length, failedEmails };
 });
