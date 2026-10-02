@@ -3100,7 +3100,7 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
       const { error } = await resend.emails.send({
         from: FROM_EMAIL,
         to: person.email,
-        replyTo: REPLY_TO,
+        replyTo: COMMS_BCC, // 2026-10-02, Jon: comms-tool templates (e.g. course allocation emails) tell recipients to email colmds-c-rmdbirmingham@adf.bham.ac.uk directly — replyTo now matches what the message body actually says, instead of the old generic REPLY_TO Gmail address
         subject,
         text: personalised
       });
