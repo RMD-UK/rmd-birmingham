@@ -125,6 +125,7 @@
   <span id="saveStatus"></span>
   <button class="ra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
   <button class="ra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly sort Instructor Candidates</button>
+  <button class="ra-btn" id="autoInstBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate Instructor Trainers</button>
   <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
 </div>
 
@@ -195,9 +196,12 @@
     </div>
 
     <div class="itc-section">
-      <div class="itc-sec-head">Step 2 — Assign a room per session block</div>
+      <div class="itc-sec-head">
+        Step 2 — Assign a room per session block
+        <button class="ra-btn" id="itcAutoBtn" onclick="autoAllocateITCs()" style="background:rgba(255,255,255,.14);color:var(--rmd-navy);border:1.5px solid var(--rmd-navy);">⚡ Auto-allocate</button>
+      </div>
       <div class="itc-sec-body">
-        <p style="font-size:13px;color:#505878;margin:0 0 12px">Each ITC gets a different room for each block. Leave blank if an ITC is not rotating in that block.</p>
+        <p style="font-size:13px;color:#505878;margin:0 0 12px">Each ITC gets a different room for each block. Leave blank if an ITC is not rotating in that block. <b>Auto-allocate</b> fills the whole grid in one go: each block gets every selected ITC in a different room (never two ITCs sharing a room in the same block), and rotates each ITC through a different room each block, same as picking it by hand.</p>
         <div class="itc-grid-wrap" id="itcGridWrap">
           <p style="color:#b0b8cc;font-size:13px;">Select ITCs in Step 1 first.</p>
         </div>
@@ -345,6 +349,16 @@ async function loadData() {
     }
   } catch(e) {}
 
+  // 2026-10-02 (Jon: "By default, select all of them") — only kicks in
+  // when nothing's been explicitly selected yet (no saved config, or a
+  // saved config with an empty list), so it never fights a selection
+  // someone already saved. Auto-allocate needs at least one ITC checked
+  // to do anything, so starting empty meant an extra manual step every
+  // time before it could be used.
+  if (itcSet.size === 0) {
+    allITC.forEach(p => itcSet.add(p.email));
+  }
+
   render();
 }
 
@@ -435,6 +449,7 @@ function makeCard(person, source, roleType) {
 // ── Rooms ──────────────────────────────────────────────────────────────────
 function renderRooms() {
   document.getElementById("autoBtn").style.display = "";
+  document.getElementById("autoInstBtn").style.display = "";
   document.getElementById("roomsGrid").innerHTML = ROOMS.map(rid => {
     const g     = groups[rid];
     const total = g.candidates.length + g.instructors.length;
@@ -556,7 +571,7 @@ function removeFromRoom(rid, email, roleType, event) {
   renderPool(); renderRooms(); updateStats();
 }
 
-// ── Randomize (Instructor Candidates only — Instructor Trainers are placed deliberately) ──
+// ── Randomize (Instructor Candidates) ──
 function randomizeCandidates() {
   if (!allCandidates.length) { showStatus("No candidates loaded — check mou_roster data","err"); return; }
   const assigned = assignedEmails();
@@ -565,6 +580,24 @@ function randomizeCandidates() {
   pool.sort(()=>Math.random()-.5).forEach(person => {
     const smallest = ROOMS.slice().sort((a,b)=>(groups[a].candidates.length+groups[a].instructors.length)-(groups[b].candidates.length+groups[b].instructors.length))[0];
     groups[smallest].candidates.push(person);
+  });
+  renderPool(); renderRooms(); updateStats();
+}
+
+// ── Randomize (Instructor Trainers) — added 2026-10-02 per Jon; the candidate
+// randomizer above used to be scoped "Instructor Trainers are placed deliberately",
+// so check the spread this produces rather than assuming it matches whatever
+// manual logic that comment was protecting. Balances by instructor count per
+// room (not total headcount) so trainers spread evenly across all rooms. ──
+function randomizeInstructors() {
+  const selInst = selectedInstructors();
+  if (!selInst.length) { showStatus("No Instructor Trainers selected — pick them on the Teaching Faculty tab first","err"); return; }
+  const assigned = assignedEmails();
+  const pool = selInst.filter(p=>!assigned.has(p.email));
+  if (!pool.length) { showStatus("All selected Instructor Trainers already assigned","ok"); return; }
+  pool.sort(()=>Math.random()-.5).forEach(person => {
+    const smallest = ROOMS.slice().sort((a,b)=>groups[a].instructors.length-groups[b].instructors.length)[0];
+    groups[smallest].instructors.push(person);
   });
   renderPool(); renderRooms(); updateStats();
 }
@@ -650,6 +683,39 @@ function setITCRoom(email, sessionKey, roomId) {
   }
   if (!itcSchedule[email]) itcSchedule[email] = {};
   itcSchedule[email][sessionKey] = roomId;
+}
+
+// One-button fill for the whole Step 2 grid. Uses a rotating offset so, for
+// ITC index i and block index b, the room slot is (i + b) % n — a bijection
+// within each block (so no two ITCs ever land on the same room that block,
+// same hard rule setITCRoom() enforces by hand) and a different slot for
+// every ITC from one block to the next (so nobody sits in the same room
+// twice running, matching "they rotate through rooms" above). If there are
+// more selected ITCs than rooms, whoever's slot lands past the last room
+// sits that block out — same rotating offset means it's a different person
+// each time, not always the same ones left out.
+function autoAllocateITCs() {
+  const itcs = allITC.filter(p => itcSet.has(p.email));
+  const n = itcs.length;
+  if (!n) { showStatus("Select ITCs in Step 1 first.", "err"); return; }
+
+  const hasExisting = itcs.some(itc => {
+    const sched = itcSchedule[itc.email] || {};
+    return ITC_SESSIONS.some(s => sched[s.key]);
+  });
+  if (hasExisting && !confirm("This replaces every room already assigned below for the selected ITCs. Continue?")) return;
+
+  const numRooms = ROOMS.length;
+  itcs.forEach((itc, i) => {
+    if (!itcSchedule[itc.email]) itcSchedule[itc.email] = {};
+    ITC_SESSIONS.forEach((s, b) => {
+      const slot = (i + b) % n;
+      itcSchedule[itc.email][s.key] = slot < numRooms ? ROOMS[slot] : "";
+    });
+  });
+
+  renderITCGrid();
+  showStatus(`Auto-allocated ${n} ITC${n === 1 ? "" : "s"} across ${ITC_SESSIONS.length} blocks — remember to Save all.`, "ok");
 }
 
 // ── Save ───────────────────────────────────────────────────────────────────

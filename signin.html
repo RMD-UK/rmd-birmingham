@@ -40,7 +40,7 @@
       <h2 style="color:var(--rmd-navy);margin-bottom:8px;">Welcome!</h2>
       <p id="candidateName" style="font-size:18px;font-weight:700;color:var(--rmd-blue);margin-bottom:4px;"></p>
       <p id="candidateStream" style="font-size:13px;color:var(--rmd-muted);margin-bottom:20px;"></p>
-      <p style="font-size:13px;color:var(--rmd-muted);margin-bottom:16px;">Your arrival has been recorded.</p>
+      <p id="candidateArrivalNote" style="font-size:13px;color:var(--rmd-muted);margin-bottom:16px;">Your arrival has been recorded.</p>
       <button class="btn-login" onclick="goToTimetable()">View Timetable →</button>
     </div>
 
@@ -80,15 +80,32 @@
     document.getElementById("emailChangedBanner").style.display = "block";
   }
 
+  // Same Saturday/Sunday split and date gate as iw-checkin.html / attendance.html
+  // (2026-10-02, Jon) — this QR landing writes to the same `attendance`
+  // collection, just via a per-person link instead of the shared kiosk.
+  function currentIwDay() {
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+    if (y === 2026 && m === 10 && d === 10) return "saturday";
+    if (y === 2026 && m === 10 && d === 11) return "sunday";
+    return null;
+  }
   async function loadCandidateProfile(id) {
     try {
       const doc  = await db.collection(COLLECTIONS.people).doc(id).get();
       const data = doc.exists ? doc.data() : null;
       document.getElementById("candidateName").textContent   = data ? data.name   : "Candidate";
       document.getElementById("candidateStream").textContent = data ? data.stream : "";
-      await db.collection(COLLECTIONS.attendance).doc(id).set({
-        arrived: firebase.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      const day = currentIwDay();
+      const noteEl = document.getElementById("candidateArrivalNote");
+      if (day) {
+        await db.collection(COLLECTIONS.attendance).doc(id).set({
+          ["arrived_" + day]: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        noteEl.textContent = `Your arrival has been recorded for ${day === "saturday" ? "Saturday" : "Sunday"}.`;
+      } else {
+        noteEl.textContent = "Check-in isn't open right now — see a member of staff if you need help.";
+      }
     } catch (err) {
       document.getElementById("candidateName").textContent = "Welcome!";
     }

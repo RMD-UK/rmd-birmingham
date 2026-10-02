@@ -41,7 +41,8 @@
 
   .day-heading { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:var(--rmd-navy); margin:18px 0 8px; padding-bottom:5px; border-bottom:2px solid #dde2ed; }
 
-  .session-row { background:white; border:1.5px solid #e0e4ee; border-radius:8px; padding:10px 14px; margin-bottom:7px; display:flex; align-items:center; gap:14px; }
+  .session-row { background:white; border:1.5px solid #e0e4ee; border-radius:8px; padding:10px 14px; margin-bottom:7px; display:flex; flex-direction:column; gap:9px; }
+  .s-top-row { display:flex; align-items:center; gap:14px; }
   .s-time { font-family:monospace; font-weight:700; color:var(--rmd-navy); min-width:44px; font-size:13px; }
   .s-main { flex:1; min-width:0; }
   .s-title { font-size:13.5px; font-weight:700; color:var(--rmd-navy); }
@@ -50,6 +51,20 @@
   .s-select { width:100%; padding:6px 9px; border:1.5px solid #d0d5e0; border-radius:6px; font-family:var(--font); font-size:12.5px; color:var(--rmd-navy); background:white; }
   .s-select.unassigned { border-color:#c17a00; background:#fff9ec; }
   .s-select.assigned { border-color:#1a6e31; background:#f0fdf4; }
+  .s-helpers-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-left:58px; border-top:1px solid #eef1f8; padding-top:9px; }
+  .s-helpers-label { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:#6b7696; margin-right:2px; }
+  .s-helper-select { width:160px; padding:5px 8px; border:1.5px solid #d0d5e0; border-radius:6px; font-family:var(--font); font-size:12px; color:var(--rmd-navy); background:white; }
+  .s-helper-select.filled { border-color:#1a6e31; background:#f0fdf4; }
+  .s-select.dirty, .s-helper-select.dirty { border-color:#c17a00; border-style:dashed; }
+  .unsaved-dot { font-size:10.5px; font-weight:800; color:#c17a00; white-space:nowrap; margin-left:6px; }
+  .ra-btn.save.has-pending { background:#c17a00; }
+  .ra-btn.save.has-pending:hover { background:#a86600; }
+  .ra-btn.save:disabled { background:rgba(255,255,255,.1); color:rgba(255,255,255,.45); cursor:default; }
+  .ra-btn.save:disabled:hover { background:rgba(255,255,255,.1); }
+
+  .course-tabs { display:flex; gap:8px; margin-bottom:14px; }
+  .course-tab { flex:1; background:white; border:1.5px solid #d0d5e0; border-radius:8px; padding:10px 14px; font-family:var(--font); font-size:13px; font-weight:700; color:#6b7696; cursor:pointer; text-align:center; }
+  .course-tab.active { border-color:var(--rmd-navy); background:var(--rmd-navy); color:#fff; }
 
   .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
   #authMsg { font-size:15px; opacity:.7; }
@@ -67,7 +82,7 @@
   <a href="cd-dashboard.html" class="ra-back">← Dashboard</a>
   <h1 class="ra-title">Lecture Allocation — Instructor Weekend 2026</h1>
   <span id="saveStatus"></span>
-  <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
+  <button class="ra-btn save" id="saveBtn" onclick="saveAll()">✓ All changes saved</button>
 </div>
 
 <div class="wrap">
@@ -77,15 +92,25 @@
     run <a href="admin-migrate-programme.html">Migrate Programme to Firestore</a> first, then reload this page.
   </div>
 
+  <div class="course-tabs">
+    <button class="course-tab active" id="courseTab-provider" onclick="setCourse('provider')">🎓 Provider Course</button>
+    <button class="course-tab" id="courseTab-assessor" onclick="setCourse('assessor')">🧑‍🏫 SI / Assessor Course</button>
+  </div>
+
   <div class="stats-row">
     <div class="stat-card green"><div class="stat-num" id="statAssigned">–</div><div class="stat-lbl">Assigned</div></div>
     <div class="stat-card amber"><div class="stat-num" id="statUnassigned">–</div><div class="stat-lbl">Not yet assigned</div></div>
-    <div class="stat-card"><div class="stat-num" id="statTotal">–</div><div class="stat-lbl">Total sessions</div></div>
+    <div class="stat-card"><div class="stat-num" id="statTotal">–</div><div class="stat-lbl">Total sessions (this course)</div></div>
   </div>
 
   <div class="controls">
     <input type="search" id="searchBox" placeholder="Search sessions…" oninput="renderAll()">
     <label><input type="checkbox" id="unassignedOnly" onchange="renderAll()"> Show unassigned only</label>
+  </div>
+  <div style="font-size:11.5px;color:#6b7696;margin:-6px 0 14px;">
+    Showing only sessions flagged as needing a presenter — group practice, breaks and room-level
+    sessions aren't allocated here. Presenter/helper lists are filtered to who's allocated to
+    this course — directors always show on both.
   </div>
 
   <div id="dayContainer"></div>
@@ -101,9 +126,11 @@
 <script>
 
 // ── State ──────────────────────────────────────────────────────────────────
-let sessions = [];      // [{id, day, start, title, subtitle, lead, ...}]
-let allFaculty = [];     // [{name, email}] — Faculty / Instructor Trainer / Assessor Faculty
-let pendingChanges = {}; // {sessionId: newLeadValue}
+let sessions = [];      // [{id, day, start, title, subtitle, lead, helpers, needsPresenter, needsHelper, ...}] — needsPresenter:true only, filtered in loadData()
+let allFaculty = [];     // [{name, email, role}] — Faculty / Instructor Trainer / Assessor Faculty / Director
+let currentCourse = "provider"; // "provider" | "assessor" — which stream's sessions/faculty list is showing
+let pendingChanges = {}; // {sessionId: {lead?: newLeadValue, helpers?: [up to 4 names]}}
+const MAX_HELPERS = 4;
 const DAY_ORDER = ["friday", "saturday", "sunday"];
 const DAY_LABELS = { friday: "Friday 9 Oct", saturday: "Saturday 10 Oct", sunday: "Sunday 11 Oct" };
 
@@ -122,8 +149,24 @@ async function loadData() {
   // silently overwritten by someone re-running the migration from stale source data without
   // also seeing this same warning themselves.
   try {
-    const snap = await db.collection(COLLECTIONS.sessions).orderBy("day").orderBy("order").get();
-    snap.forEach(doc => sessions.push({ id: doc.id, ...doc.data() }));
+    // No orderBy here deliberately — day+order together need a composite
+    // Firestore index that doesn't exist on this project, and the collection
+    // is only ~60 docs, so sorting client-side below is simpler and doesn't
+    // depend on an index ever being created. Only sessions flagged
+    // needsPresenter (set in js/programme-data.js, carried through by
+    // admin-migrate-programme.html) show up here at all — group practice,
+    // breaks and room-level sessions are allocated elsewhere.
+    const snap = await db.collection(COLLECTIONS.sessions).get();
+    snap.forEach(doc => {
+      const data = doc.data();
+      if (!data.needsPresenter) return;
+      sessions.push({ id: doc.id, ...data });
+    });
+    sessions.sort((a, b) => {
+      const dayDiff = DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day);
+      if (dayDiff !== 0) return dayDiff;
+      return (a.order || 0) - (b.order || 0);
+    });
   } catch(e) { console.warn("Sessions load failed:", e.message); }
 
   if (!sessions.length) {
@@ -131,7 +174,9 @@ async function loadData() {
   }
 
   // Faculty — same source/shape as admin-room-allocation.html's loadData(), extended to
-  // include Assessor Faculty since assessor-stream sessions also need a lead assigned.
+  // include Assessor Faculty since assessor-stream sessions also need a lead assigned, and
+  // Director (2026-10-02, Jon: "also include the directors in the dropdown list") — some
+  // plenary/welcome sessions are presented by a director, not faculty.
   try {
     const fSnap = await db.collection("faculty_responses").get();
     const seen = new Set();
@@ -139,9 +184,14 @@ async function loadData() {
       const d = doc.data();
       const em = (d.email || "").toLowerCase();
       if (!em || seen.has(em)) return;
-      if (d.role === "Faculty" || d.role === "Instructor Trainer" || d.role === "Assessor Faculty") {
+      // 2026-10-02 (Jon: dropdown "contains people who have told me they
+      // cannot come to the weekend") — this load never checked attendance at
+      // all, unlike admin-room-allocation.html's equivalent loadData(), which
+      // this comment already claimed to match. Same exclusion as there now.
+      if (d.attendanceStatus === "declined" || d.cannotAttend === true) return;
+      if (d.role === "Faculty" || d.role === "Instructor Trainer" || d.role === "Assessor Faculty" || d.role === "Director") {
         const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || em;
-        allFaculty.push({ name, email: em });
+        allFaculty.push({ name, email: em, role: d.role });
         seen.add(em);
       }
     });
@@ -153,7 +203,46 @@ async function loadData() {
 
 // ── Render ─────────────────────────────────────────────────────────────────
 function currentLead(s) {
-  return pendingChanges[s.id] !== undefined ? pendingChanges[s.id] : (s.lead || "");
+  const p = pendingChanges[s.id];
+  return (p && p.lead !== undefined) ? p.lead : (s.lead || "");
+}
+
+function currentHelpers(s) {
+  const p = pendingChanges[s.id];
+  return (p && p.helpers !== undefined) ? p.helpers : (s.helpers || []);
+}
+
+// 2026-10-02 (Jon: "split it so that we do provider course & the SI/assessor
+// course separately" + "always include the directors... others filter it by
+// who is allocated to which course"). Sessions carry which stream they're in
+// via the assessor-stream tag (set in js/programme-data.js); faculty carry it
+// via their faculty_responses role — Assessor Faculty work the SI/Assessor
+// course, Faculty/Instructor Trainer work the Provider course. Directors
+// present on either, so they're never filtered out.
+function isAssessorSession(s) {
+  return (s.tags || []).includes("assessor-stream");
+}
+
+function sessionMatchesCourse(s) {
+  return currentCourse === "assessor" ? isAssessorSession(s) : !isAssessorSession(s);
+}
+
+function namesForCourse() {
+  return allFaculty
+    .filter(f => f.role === "Director" || (currentCourse === "assessor" ? f.role === "Assessor Faculty" : (f.role === "Faculty" || f.role === "Instructor Trainer")))
+    .map(f => f.name);
+}
+
+function setCourse(course) {
+  currentCourse = course;
+  document.getElementById("courseTab-provider").classList.toggle("active", course === "provider");
+  document.getElementById("courseTab-assessor").classList.toggle("active", course === "assessor");
+  renderAll();
+}
+
+function pendingFor(s) {
+  if (!pendingChanges[s.id]) pendingChanges[s.id] = {};
+  return pendingChanges[s.id];
 }
 
 function renderAll() {
@@ -167,11 +256,12 @@ function renderAll() {
   DAY_ORDER.forEach(day => {
     const daySessions = sessions
       .filter(s => s.day === day)
+      .filter(sessionMatchesCourse)
       .filter(s => !q || s.title.toLowerCase().includes(q) || (s.subtitle||"").toLowerCase().includes(q))
       .filter(s => !unassignedOnly || !currentLead(s));
 
-    // Count against the full (unfiltered) set for this day, not the filtered view
-    sessions.filter(s => s.day === day).forEach(s => { total++; if (currentLead(s)) assigned++; });
+    // Count against the full (unfiltered) set for this day and course, not the filtered view
+    sessions.filter(s => s.day === day).filter(sessionMatchesCourse).forEach(s => { total++; if (currentLead(s)) assigned++; });
 
     if (!daySessions.length) return;
 
@@ -185,6 +275,9 @@ function renderAll() {
       const row = document.createElement("div");
       row.className = "session-row";
 
+      const topRow = document.createElement("div");
+      topRow.className = "s-top-row";
+
       const timeEl = document.createElement("div");
       timeEl.className = "s-time";
       timeEl.textContent = s.start || "";
@@ -197,17 +290,19 @@ function renderAll() {
       const wrap = document.createElement("div");
       wrap.className = "s-lead-wrap";
       const select = document.createElement("select");
-      select.className = "s-select " + (lead ? "assigned" : "unassigned");
+      const leadDirty = pendingChanges[s.id] && pendingChanges[s.id].lead !== undefined;
+      select.className = "s-select " + (lead ? "assigned" : "unassigned") + (leadDirty ? " dirty" : "");
 
       const blankOpt = document.createElement("option");
       blankOpt.value = "";
       blankOpt.textContent = "— assign a lead —";
       select.appendChild(blankOpt);
 
-      // If the current lead isn't in the faculty list (e.g. "Jon", "Logistics team" —
-      // free-text values already sitting in older programme data), keep it selectable
+      // If the current lead isn't in this course's faculty list (e.g. "Jon",
+      // "Logistics team" — free-text values already sitting in older programme
+      // data, or someone allocated under the other course) keep it selectable
       // rather than silently dropping it from the dropdown.
-      const names = allFaculty.map(f => f.name);
+      const names = namesForCourse();
       if (lead && !names.includes(lead)) names.unshift(lead);
 
       names.forEach(name => {
@@ -219,14 +314,79 @@ function renderAll() {
       });
 
       select.addEventListener("change", () => {
-        pendingChanges[s.id] = select.value;
+        pendingFor(s).lead = select.value;
         renderAll();
       });
 
       wrap.appendChild(select);
-      row.appendChild(timeEl);
-      row.appendChild(mainEl);
-      row.appendChild(wrap);
+      if (leadDirty) {
+        const dot = document.createElement("span");
+        dot.className = "unsaved-dot";
+        dot.textContent = "● unsaved";
+        wrap.appendChild(dot);
+      }
+      topRow.appendChild(timeEl);
+      topRow.appendChild(mainEl);
+      topRow.appendChild(wrap);
+      row.appendChild(topRow);
+
+      // Up to MAX_HELPERS helper slots — only for sessions flagged needsHelper
+      // (demos etc). Same faculty dropdown as the presenter, independently
+      // assignable per slot; clearing a slot compacts the saved list rather
+      // than leaving a gap.
+      if (s.needsHelper) {
+        const helpersRow = document.createElement("div");
+        helpersRow.className = "s-helpers-row";
+
+        const label = document.createElement("span");
+        label.className = "s-helpers-label";
+        label.textContent = "Helpers:";
+        helpersRow.appendChild(label);
+
+        const helpers = currentHelpers(s);
+        const helpersDirty = pendingChanges[s.id] && pendingChanges[s.id].helpers !== undefined;
+
+        for (let slot = 0; slot < MAX_HELPERS; slot++) {
+          const current = helpers[slot] || "";
+          const hSelect = document.createElement("select");
+          hSelect.className = "s-helper-select" + (current ? " filled" : "") + (helpersDirty ? " dirty" : "");
+
+          const hBlank = document.createElement("option");
+          hBlank.value = "";
+          hBlank.textContent = `— helper ${slot + 1} —`;
+          hSelect.appendChild(hBlank);
+
+          const hNames = namesForCourse();
+          if (current && !hNames.includes(current)) hNames.unshift(current);
+
+          hNames.forEach(name => {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            if (name === current) opt.selected = true;
+            hSelect.appendChild(opt);
+          });
+
+          hSelect.addEventListener("change", () => {
+            const next = currentHelpers(s).slice();
+            next[slot] = hSelect.value;
+            pendingFor(s).helpers = next.filter(Boolean).slice(0, MAX_HELPERS);
+            renderAll();
+          });
+
+          helpersRow.appendChild(hSelect);
+        }
+
+        if (helpersDirty) {
+          const hDot = document.createElement("span");
+          hDot.className = "unsaved-dot";
+          hDot.textContent = "● unsaved";
+          helpersRow.appendChild(hDot);
+        }
+
+        row.appendChild(helpersRow);
+      }
+
       container.appendChild(row);
     });
   });
@@ -234,6 +394,31 @@ function renderAll() {
   document.getElementById("statAssigned").textContent = assigned;
   document.getElementById("statUnassigned").textContent = total - assigned;
   document.getElementById("statTotal").textContent = total;
+  updateSaveButton();
+}
+
+// 2026-10-02 (Jon: "how do I tell if I've saved them already — only shows
+// 'Save all'") — the button used to read the same thing whether there were
+// unsaved edits or not, and a filled-in dropdown looked identical whether
+// it came from Firestore or from a pick you'd just made but not saved yet.
+// This makes both states visible: the button names the pending count (or
+// confirms everything's saved), and each dirty field gets a dashed amber
+// border plus an "● unsaved" badge until Save all is clicked.
+function updateSaveButton() {
+  const n = Object.keys(pendingChanges).filter(id => {
+    const p = pendingChanges[id];
+    return p && (p.lead !== undefined || p.helpers !== undefined);
+  }).length;
+  const btn = document.getElementById("saveBtn");
+  if (n > 0) {
+    btn.textContent = `💾 Save all (${n} unsaved)`;
+    btn.classList.add("has-pending");
+    btn.disabled = false;
+  } else {
+    btn.textContent = "✓ All changes saved";
+    btn.classList.remove("has-pending");
+    btn.disabled = true;
+  }
 }
 
 // ── Save ───────────────────────────────────────────────────────────────────
@@ -250,13 +435,22 @@ async function saveAll() {
   try {
     const batch = db.batch();
     ids.forEach(id => {
-      batch.update(db.collection(COLLECTIONS.sessions).doc(id), { lead: pendingChanges[id] });
+      const p = pendingChanges[id];
+      const update = {};
+      if (p.lead !== undefined) update.lead = p.lead;
+      if (p.helpers !== undefined) update.helpers = p.helpers;
+      if (!Object.keys(update).length) return;
+      batch.update(db.collection(COLLECTIONS.sessions).doc(id), update);
       const s = sessions.find(x => x.id === id);
-      if (s) s.lead = pendingChanges[id];
+      if (s) {
+        if (p.lead !== undefined) s.lead = p.lead;
+        if (p.helpers !== undefined) s.helpers = p.helpers;
+      }
     });
     await batch.commit();
     pendingChanges = {};
     showStatus(`Saved ${ids.length} change${ids.length===1?"":"s"}`, "ok");
+    renderAll();
   } catch(e) {
     showStatus("Save failed: " + e.message, "err");
   }

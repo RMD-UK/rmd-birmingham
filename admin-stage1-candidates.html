@@ -29,6 +29,9 @@
     .btn-promote:hover { background:#1a6e31; color:white; }
     .btn-danger-sm { padding:6px 12px; background:white; color:#b7410e; border:2px solid #f5b8b0; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--font); cursor:pointer; }
     .btn-danger-sm:hover { background:#fce8e6; }
+    .btn-danger { padding:12px 20px; background:#b7410e; color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger:disabled { background:#aab8c2; cursor:default; }
+    .btn-danger:hover:not(:disabled) { background:#8f3209; }
     .summary-line { font-size:13px; color:var(--rmd-muted); margin-bottom:12px; }
     .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
     textarea { width:100%; min-height:120px; padding:10px; border:2px solid #ccd6dd; border-radius:6px; font-size:13px; font-family:monospace; margin-bottom:8px; }
@@ -43,6 +46,7 @@
     .promoted-badge { background:#e1efe3; color:#1a6e31; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; }
     .dup-warning { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:6px 10px; font-size:11px; color:#856404; margin-top:4px; }
     .dup-exact { background:#fce8e6; border-color:#f5b8b0; color:#b7410e; }
+    .dup-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; cursor:help; border:1px solid rgba(0,0,0,0.15); }
     .preview-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
     .preview-table th { text-align:left; background:#eef2f6; padding:6px 8px; font-size:10px; text-transform:uppercase; color:var(--rmd-muted); }
     .preview-table td { padding:6px 8px; border-top:1px solid #f0f3f6; }
@@ -56,18 +60,17 @@
 <div class="page">
 
   <div class="top-bar">
-    <a href="admin-global-tools.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
     <div style="flex:1;">
       <div class="top-bar-title">Stage 1 Candidates</div>
       <div class="top-bar-sub">RMD Birmingham · Director only</div>
     </div>
     <a href="admin-stage1-settings.html" class="top-bar-link">⚙️ Settings</a>
-    <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation (3.6)</a>
+    <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation</a>
   </div>
 
   <div class="director-note">
-    Section 3.5 of the platform workplan: a lightweight per-year record for every taught first-year, no login involved. This is the population <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a> loads candidates from, by course.<br><br>
-    Course and room names below are free text — the definitive teaching-room list is now confirmed (see the Course Room &amp; Instructor Allocation page above), but candidate records here stay free text so a typo or early entry never blocks an import; that page is where a candidate's room is actually locked in. Rating is deliberately not on this page: the structured BLS appraisal (3.7) that replaces a free rating hasn't been built yet either. "Promote to Instructor" creates the person a real account (Firebase login + a <code>people</code> record) and starts their role history — do this only for someone actually being made an Instructor, not as a test.
+    Add every candidate for the year, then allocate them to a course using Steps 1 to 3 below. Rooms are assigned afterwards on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation</a>.
   </div>
 
   <div class="card">
@@ -80,28 +83,46 @@
   </div>
 
   <div class="card">
-    <div class="card-header">Add candidates</div>
+    <div class="card-header">Step 1 — Add candidates</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>first name, surname, email, degree, course, DOB, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. Everything after degree is optional (leave blank between commas to skip): leave <strong>course</strong> blank and it's worked out automatically from the programme's deadline and this year's course dates (set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — shown with an "auto" badge in the preview so you can check it before importing; a day/month of birth (e.g. <code>14/03</code>) helps tell apart two candidates with a similar name; student ID and year of study aren't used anywhere yet but are captured now so they're already on file when they are. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation (3.6)</a>, once you've confirmed who's actually on the course.</p>
-      <textarea id="pasteBox" placeholder="Jane, Smith, j.smith@bham.ac.uk, Medicine, Course 1, 14/03, 10234567, 2&#10;Tom, Jones,, Medicine, Course 1,,, 1"></textarea>
+      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>last name, first name, email, degree, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. Only last name and first name are required. Email, degree, student ID and year of study are all optional (leave blank between commas to skip) — most students won't have a student ID on file, so leave that column empty rather than holding a row back. Tab or comma separated. Room isn't collected here any more — that's set on <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation</a>, once you've confirmed who's actually on the course.</p>
+      <p class="hint" style="margin-top:0;"><strong>Nobody gets a course here.</strong> Everyone pasted in starts unallocated — that only happens deliberately, in Step 3 below, once placement dates have been checked for everyone (Step 2).</p>
+      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, , 1"></textarea>
       <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
       <div id="previewWrap"></div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header">Import assessment outcomes</div>
+    <div class="card-header">Step 2 — Check placement dates (Pharmacy only)</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste rows from your outcomes sheet: <strong>email, pass/fail, more than 2 attempts</strong>. Matched by email against the candidates already imported above. Pass/fail accepts "pass", "fail", "passed", "failed", "exempt" (case doesn't matter) — anything else is flagged so it's not silently guessed. Attempts accepts a number (e.g. <code>3</code>) or yes/no. Nothing is saved until you confirm.</p>
-      <textarea id="outcomesPasteBox" placeholder="j.smith@bham.ac.uk, pass, no&#10;t.jones@bham.ac.uk, fail, 3"></textarea>
-      <button class="btn-primary" id="outcomesParseBtn" onclick="parseOutcomesPreview()">Parse &amp; preview</button>
-      <div id="outcomesPreviewWrap"></div>
+      <p class="hint" style="margin-top:0;">Pharmacy MPharm is the only programme that actually has placement dates, so this step only matters for them, since every other programme is checked automatically the moment they're added in Step 1. Paste rows straight from a placement lead's sheet — accepts either <strong>Student ID, last name, first name, email, start date, end date</strong> (the real Pharmacy export) or the older <strong>first name, last name, email, start date, end date</strong>, dates as DD/MM/YYYY. A pasted header row is dropped automatically. Matched to candidates already added in Step 1 by email — this also clears them for allocation in Step 3. A student can have several rows (several separate placement blocks); each one is added to their file, so re-pasting the same sheet again won't create duplicates. A course runs on 3 consecutive Mondays (worked out from the date set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — if any of those 3 Mondays falls inside one of a candidate's placement blocks, that's a clash, flagged here and in All candidates below. Nothing is saved until you confirm.</p>
+      <textarea id="placementPasteBox" placeholder="Dave, Smith, abc123@student.bham.ac.uk, 02/11/2026, 02/11/2026&#10;Dave, Smith, abc123@student.bham.ac.uk, 15/03/2027, 19/03/2027"></textarea>
+      <button class="btn-primary" id="placementParseBtn" onclick="parsePlacementPreview()">Parse &amp; preview</button>
+      <div id="placementPreviewWrap"></div>
     </div>
   </div>
 
   <div class="card">
-    <div class="card-header">Candidates</div>
+    <div class="card-header">Step 3 — Allocate to courses</div>
     <div class="card-body">
+      <p class="hint" style="margin-top:0;">Tick the box below and click "Allocate now" to give every checked candidate a course and a room in one go. Only candidates checked in Step 2 are included (real placement-dates match, or ticked "no placement dates"). Anyone not yet checked is left alone, so check them in Step 2 first if they're missing from the result. Anyone the system can't fit anywhere comes back named afterwards for you to place by hand (no manual-override button yet, so that's done outside this page for now).</p>
+      <div id="allocationSummary"></div>
+      <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:4px 0 14px;">
+        <input type="checkbox" id="confirmAllAddedCheckbox" onchange="updateAllocateButtonState()" style="margin-top:2px; width:16px; height:16px;">
+        I confirm every candidate for this round has been added in Step 1 — nobody known about is still missing.
+      </label>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn-primary" id="allocateNowBtn" onclick="allocateAllNow()" disabled>Allocate now</button>
+        <button class="btn-secondary" onclick="markAllNoPlacementDates()">Mark all unchecked as "no placement dates" (excludes Pharmacy)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">All candidates</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">A coloured dot before a name means that candidate shares a surname and course with at least one other candidate below — matching colours mark the same group. Hover a dot to see who it matches. Same soft "check, don't auto-exclude" flag as the Add candidates preview above, just kept visible once records are saved.</p>
       <div class="filters">
         <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
         <input type="text" id="searchBox" placeholder="Search by name, email or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
@@ -109,6 +130,24 @@
       <p class="hint" style="margin-top:0;">Someone repeating (absence, need to redo) gets a fresh record on the new course rather than editing their old one in place — paste them in above as normal, then use <strong>Link repeat</strong> on either their old or new row to connect the two records for reference. Nothing else changes; it just stops an old attempt reading as still-pending once you can see it led to a later one.</p>
       <div class="summary-line" id="summaryLine"></div>
       <div id="candidatesWrap"></div>
+      <div style="margin-top:16px;border-top:1px solid #f0f3f6;padding-top:14px;">
+        <p class="hint" style="margin-top:0;"><strong>Recovers from a bad "Allocate now" run</strong> — clears the course and room off every allocated candidate so they go back to unallocated and can be run through Step 3 again. Nobody's record is deleted, nothing from Step 1 or Step 2 (name, email, degree, placement dates) is touched or lost — only course and room are cleared. Needs typing a confirmation phrase, on top of the usual two "are you sure" prompts, since this is the one that undoes a big run in one click.</p>
+        <button class="btn-danger" id="unallocateAllBtn" onclick="unallocateAllCandidates()">↩️ Un-allocate all (clear course &amp; room)</button>
+        <p class="hint" style="margin:14px 0 6px;">For clearing out a prepped-but-not-yet-allocated batch — test rows, or a real batch you've decided not to run with — before it's been through Step 3. Anyone already allocated (has a course) is never touched by this, allocated or not doesn't matter once Delete all unallocated runs, it only ever looks at who's still unallocated.</p>
+        <button class="btn-danger" id="deleteUnallocatedBtn" onclick="deleteAllUnallocated()">🗑 Delete all unallocated</button>
+        <p class="hint" style="margin:14px 0 6px;">For clearing out practice data regardless of allocation status — matches anyone whose email contains <code>.test@</code>, which is how every test batch generated for this site has been addressed. Real candidates never match this, so it's safe to run even once some test rows have been allocated.</p>
+        <button class="btn-danger" id="deleteTestBtn" onclick="deleteTestCandidates()">🧪 Delete test candidates</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Import assessment outcomes (after the course has run)</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">A separate, later task — not part of adding, checking or allocating candidates above. Once a course has actually run, paste rows from your outcomes sheet: <strong>email, pass/fail, more than 2 attempts</strong>. Matched by email against the candidates already added above. Pass/fail accepts "pass", "fail", "passed", "failed", "exempt" (case doesn't matter) — anything else is flagged so it's not silently guessed. Attempts accepts a number (e.g. <code>3</code>) or yes/no. Nothing is saved until you confirm.</p>
+      <textarea id="outcomesPasteBox" placeholder="j.smith@bham.ac.uk, pass, no&#10;t.jones@bham.ac.uk, fail, 3"></textarea>
+      <button class="btn-primary" id="outcomesParseBtn" onclick="parseOutcomesPreview()">Parse &amp; preview</button>
+      <div id="outcomesPreviewWrap"></div>
     </div>
   </div>
 
@@ -127,6 +166,12 @@ requireDirector("timetable.html");
 
 let allCandidates = [];
 let parsedRows = null;
+// Room-splitting, folded into Allocate now (2026-10-02, Jon — "I want it as
+// 1-click as possible so that they are allocated to a course and then
+// split to rooms in 1 go"). STAGE1_TEACHING_ROOMS is declared once in
+// js/firebase-config.js — do not duplicate the list here, same rule
+// admin-course-room-allocation.html follows.
+const ROOMS = STAGE1_TEACHING_ROOMS;
 loadAutoFitSettings();
 
 function normName(s) { return (s || "").trim().toLowerCase().replace(/\s+/g, " "); }
@@ -141,22 +186,32 @@ async function loadCandidates() {
   const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
   allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  computeDuplicateColors();
+  // Never let "everyone's added" carry over a reload or a fresh import —
+  // Jon has to re-confirm every time the candidate list changes underneath
+  // it, so Allocate now can't fire on a stale tick (2026-10-01, Jon).
+  const confirmCb = document.getElementById("confirmAllAddedCheckbox");
+  if (confirmCb) confirmCb.checked = false;
+  updateAllocateButtonState();
   populateCourseFilter();
   renderCandidates();
 }
 
-// ── Course auto-fit (2026-09-27, Jon) ──────────────────────────────────────
-// A candidate pasted with no course typed gets one worked out automatically:
-// the LATEST configured course session still on/before their programme's
-// assessment deadline (Jon's confirmed rule — most possible teaching time
-// before their deadline, over rushing them into the earliest slot). Both
-// inputs are director-maintained on admin-stage1-settings.html:
+// ── Course auto-fit (2026-09-27, Jon; no longer runs at import as of
+// 2026-10-01) ───────────────────────────────────────────────────────────
+// Works out the LATEST configured course session still on/before a
+// candidate's programme's assessment deadline (Jon's confirmed rule — most
+// possible teaching time before their deadline, over rushing them into the
+// earliest slot). Both inputs are director-maintained on
+// admin-stage1-settings.html:
 //   config/stage1_programme_deadlines.deadlines  { "Nursing MSc": "2027-03-01", ... }
 //   config/stage1_course_dates.courses            [{ name, date }, ...]
-// A course typed explicitly in the paste is always respected as-is — this
-// only fills in when the course field was left blank. If no deadline is set
-// for that programme, or no session falls on/before the deadline, the
-// course is left blank and parsePreview() flags it rather than guessing.
+// Only ever called from allocateAllNow() (Step 3) now — importing a
+// candidate (Step 1) always leaves them unallocated, so placement dates
+// get a chance to be checked (Step 2) first. If no deadline is set for
+// that programme, or no session falls on/before the deadline, the
+// candidate is left unallocated and flagged with the reason instead of
+// guessing.
 let programmeDeadlines = {};
 let courseSessions = [];
 
@@ -169,83 +224,216 @@ async function loadAutoFitSettings() {
     const cSnap = await db.collection("config").doc("stage1_course_dates").get();
     courseSessions = cSnap.exists ? (cSnap.data().courses || []) : [];
   } catch (err) { courseSessions = []; }
+  // Candidates may already have rendered before this resolved (loadCandidates()
+  // runs independently) — re-render so placement-clash badges, which need
+  // courseSessions, show up without the director having to touch anything.
+  renderCandidates();
+}
+
+// ── Placement-date clash checking (2026-10-01, Jon) ────────────────────────
+// Some candidates — currently Pharmacy, via their placement leads — have
+// dates during the year they're on clinical placement and can't be on an
+// RMD course at all. A course only actually runs on 3 Monday evenings — two
+// teaching sessions and the week-3 assessment evening — so a clash means
+// one of THOSE THREE DATES falls inside a placement block, not any day in
+// the three-week span between them (2026-10-01, Jon: corrected from an
+// earlier whole-span overlap check, which over-flagged a placement day that
+// fell between two Mondays with no real session that day). The assessment
+// date on Stage 1 Settings is itself always a Monday (Jon confirmed every
+// course session is scheduled that way), so the other two Mondays are just
+// 7 and 14 days earlier — no day-of-week rounding needed.
+function courseMondays(assessmentDate) {
+  const d = new Date(assessmentDate + "T00:00:00");
+  const mondays = [];
+  for (let weeksBack = 2; weeksBack >= 0; weeksBack--) {
+    const m = new Date(d);
+    m.setDate(m.getDate() - weeksBack * 7);
+    mondays.push(m.toISOString().slice(0, 10));
+  }
+  return mondays; // [first session, second session, assessment evening]
+}
+// True if any of a course's 3 Monday sessions falls inside one of a
+// candidate's placement blocks — inclusive both ends.
+function placementClashesWithCourse(placementBlocks, assessmentDate) {
+  if (!placementBlocks || !placementBlocks.length || !assessmentDate) return false;
+  const mondays = courseMondays(assessmentDate);
+  return placementBlocks.some(b =>
+    b.start && b.end && mondays.some(m => m >= b.start && m <= b.end));
 }
 
 // Returns { course, reason } — course is null if nothing could be fit, and
 // reason explains why (shown as a preview flag, never silently dropped).
-function autoFitCourse(degreeExact) {
-  if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for" };
+// placementBlocks (optional) rules out any session that clashes with a
+// known placement date before picking the latest remaining one.
+// Effective per-room capacity for every course session, computed once per
+// allocateAllNow() run (2026-10-02, Jon: "fill up course 1 with 12 per
+// room, then distribute others across the other courses with 10 per room
+// if possible... no need for the split across courses button - this
+// should be the default of what's done when courses allocated"). A course
+// with an explicit capacity typed on Stage 1 Settings keeps that number;
+// anything left blank gets the built-in default — 12/room for the
+// earliest-dated course, 10/room for every other one — so this is applied
+// automatically at allocation time, not a step Jon has to run first.
+function buildEffectiveCapacities() {
+  const sorted = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const effective = {};
+  sorted.forEach((c, i) => {
+    effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : (i === 0 ? 12 : 10);
+  });
+  // Any course missing a date (shouldn't happen — Stage 1 Settings always
+  // asks for one) still gets a sane fallback rather than being left out.
+  courseSessions.forEach(c => { if (!(c.name in effective)) effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : 10; });
+  return effective;
+}
+
+// Course 1 (the earliest-dated session overall) is the priority fill, up to
+// its own cap; everyone else spreads as evenly as possible across whichever
+// remaining eligible course currently has the fewest people — NOT a
+// sequential course-by-course fill (2026-10-02, Jon: "the split across
+// courses 2-6 is expected to be as even as possible on initial
+// allocation"). allowOverCap, set only once permission's been given for a
+// batch that didn't all fit within capacity, picks the least-loaded
+// eligible course regardless of cap, course 1 included, rather than
+// flagging the candidate.
+function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCapacities, allowOverCap) {
+  if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for", atCapacity: false };
   const deadline = programmeDeadlines[degreeExact];
-  if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings` };
-  if (!courseSessions.length) return { course: null, reason: "no course sessions configured — add this year's dates on Stage 1 Settings" };
-  const eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? 1 : -1);
-  if (!eligible.length) return { course: null, reason: `no course session falls on or before the ${deadline} deadline` };
-  return { course: eligible[0].name, reason: null };
+  if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings`, atCapacity: false };
+  if (!courseSessions.length) return { course: null, reason: "no course sessions configured — add this year's dates on Stage 1 Settings", atCapacity: false };
+  let eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? -1 : 1);
+  if (!eligible.length) return { course: null, reason: `no course session falls on or before the ${deadline} deadline`, atCapacity: false };
+  if (placementBlocks && placementBlocks.length) {
+    const clashFree = eligible.filter(c => !placementClashesWithCourse(placementBlocks, c.date));
+    if (!clashFree.length) return { course: null, reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead`, atCapacity: false };
+    eligible = clashFree;
+  }
+
+  const caps = effectiveCapacities || {};
+  const counts = runningCounts || {};
+  const capOf = s => caps[s.name] ? caps[s.name] * ROOMS.length : null;
+  const countOf = s => counts[s.name] != null ? counts[s.name] : allCandidates.filter(c => c.course === s.name).length;
+
+  if (allowOverCap) {
+    let best = eligible[0], bestCount = countOf(best);
+    eligible.forEach(s => { const n = countOf(s); if (n < bestCount) { best = s; bestCount = n; } });
+    return { course: best.name, reason: null, atCapacity: false };
+  }
+
+  const hasRoom = s => { const cap = capOf(s); return cap == null || countOf(s) < cap; };
+  const earliestOverall = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1)[0];
+  const courseOne = earliestOverall && eligible.find(s => s.name === earliestOverall.name);
+
+  if (courseOne && hasRoom(courseOne)) {
+    return { course: courseOne.name, reason: null, atCapacity: false };
+  }
+
+  const rest = eligible.filter(s => !courseOne || s.name !== courseOne.name).filter(hasRoom);
+  if (!rest.length) {
+    const ref = courseOne || eligible[0];
+    const cap = caps[ref.name];
+    const capNote = cap ? ` (capacity ${cap}/room × ${ROOMS.length} rooms = ${cap * ROOMS.length})` : "";
+    return { course: null, reason: `every course session on or before the ${deadline} deadline is already at capacity${capNote}`, atCapacity: true };
+  }
+  let best = rest[0], bestCount = countOf(best);
+  rest.forEach(s => { const n = countOf(s); if (n < bestCount) { best = s; bestCount = n; } });
+  return { course: best.name, reason: null, atCapacity: false };
 }
 
 function populateCourseFilter() {
   const sel = document.getElementById("courseFilter");
   const current = sel.value;
-  const courses = Array.from(new Set(allCandidates.map(c => c.course).filter(Boolean))).sort();
+  const courses = Array.from(new Set(allCandidates.map(c => c.course).filter(Boolean))).sort((a, b) => {
+    const an = parseInt((a.match(/\d+/) || [])[0], 10);
+    const bn = parseInt((b.match(/\d+/) || [])[0], 10);
+    if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
+    return a.localeCompare(b);
+  });
   sel.innerHTML = `<option value="">All courses</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   sel.value = current;
 }
 
 // ── Duplicate detection ──────────────────────────────────────────────────
-// Same "flag it, don't guess" rule used elsewhere (visitor-export, 0.1's
-// drift flags): an exact match on name+degree+course is flagged, and so is a
-// same-surname match within the same course that isn't already an exact hit
-// — same soft "check, don't auto-exclude" approach as the IW visitor-export
-// review list, since a nickname or spelling variant (e.g. "Tom"/"Thomas")
-// won't match on full name but is still worth a second look.
-// Room dropped from these comparisons 2026-09-07 (Jon) alongside removing it
-// from import — room is set later on 3.6 and every freshly-imported
-// candidate starts unassigned, so comparing on it here would never match
-// anything and, worse, would silently miss a genuine repeat/re-add whose
-// old record already has a room from a previous course.
-// A day/month-of-birth match/mismatch between two near-matches is surfaced
-// as extra evidence, not used to auto-resolve anything — a director always
-// makes the final call. This is also what catches someone genuinely being
-// added to a later/repeat course: same name+surname+degree but a different
-// course value won't trigger these at all (by design — a new course means a
-// new attempt, not a duplicate), so a repeat only gets flagged if the SAME
-// course is pasted twice.
+// 2026-10-02, Jon: only flag a match on name + email + degree + course —
+// a same-surname-only match (the old "near" category below) produced false
+// flags on genuinely different people, so it's gone. "Same surname, but a
+// different degree or email, is safe to regard as different people" (Jon's
+// words) — i.e. surname alone is no longer evidence of anything here.
+// Email added as a required field alongside the existing name+degree+course
+// match (unchanged from before) — a shared name+degree+course is still
+// common enough (two students on the same programme, same course sitting)
+// that email is what actually confirms it's the same real person.
+// Room stays out of this comparison (2026-09-07, Jon) — room is set later
+// on 3.6 and every freshly-imported candidate starts unassigned.
+// Course stays IN the comparison, unchanged: same name+email+degree on a
+// DIFFERENT course is a legitimate repeat/resit, not a duplicate — only
+// flagged if the SAME course is pasted twice.
+// Course dropped from the match (2026-10-02, Jon: "drop course") — name,
+// email and degree together is enough to call it the same person; course
+// no longer has to match too (was previously kept in to avoid flagging a
+// legitimate resit on a later course, but Jon confirmed that's not needed).
 function findDuplicates(candidate, against) {
   const name = normName(candidate.name);
-  const surname = surnameOf(candidate.name);
-  const course = normCourseRoom(candidate.course);
+  const email = normCourseRoom(candidate.email);
   const degree = normCourseRoom(candidate.degree);
 
   const exact = against.filter(o =>
     o !== candidate &&
     normName(o.name) === name &&
-    normCourseRoom(o.degree) === degree &&
-    normCourseRoom(o.course) === course);
+    normCourseRoom(o.email) === email &&
+    normCourseRoom(o.degree) === degree);
 
-  const near = against.filter(o =>
-    o !== candidate &&
-    !exact.includes(o) &&
-    normCourseRoom(o.course) === course &&
-    surnameOf(o.name) === surname &&
-    surname !== "");
-
-  return { exact, near };
+  return { exact, near: [] };
 }
 
 function duplicateWarningHtml(dupes, candidate) {
   const parts = [];
   if (dupes.exact.length) {
-    parts.push(`<div class="dup-warning dup-exact">⚠ Exact match on name, degree and course against: ${dupes.exact.map(o => esc(o.name)).join(", ")}. Likely the same person entered twice.</div>`);
-  }
-  if (dupes.near.length) {
-    const dobNote = candidate.dob
-      ? dupes.near.map(o => o.dob
-          ? (o.dob === candidate.dob ? `${esc(o.name)} (same DOB — likely the same person)` : `${esc(o.name)} (different DOB — likely a different person)`)
-          : `${esc(o.name)} (no DOB on file to compare)`).join("; ")
-      : dupes.near.map(o => esc(o.name)).join(", ");
-    parts.push(`<div class="dup-warning">⚠ Possible match — same surname and course: ${dobNote}. Check before assuming these are different people.</div>`);
+    parts.push(`<div class="dup-warning dup-exact">⚠ Exact match on name, email and degree against: ${dupes.exact.map(o => esc(o.name)).join(", ")}. Likely the same person entered twice.</div>`);
   }
   return parts.join("");
+}
+
+// ── Duplicate colour-coding for the saved Candidates list (2026-10-02, Jon
+// — "helpful to have the possible same people to check in the overall
+// candidate list, when pasted, as colour coded so it's obvious when you're
+// flagging") ──────────────────────────────────────────────────────────────
+// Same match rule as the paste preview (findDuplicates — same surname and
+// course), but run across every SAVED candidate, not just a fresh paste, so
+// the colour-coding stays live once records are sitting in the system
+// rather than only showing up at import time. Connected clusters (A
+// matches B, B matches C, ...) share one colour via the same DFS approach
+// used to group the paste preview. Colours cycle if there are more
+// clusters than the palette — distinct within what's visible is the goal,
+// not a globally unique colour per cluster.
+const DUP_COLORS = ["#e6194b","#3cb44b","#4363d8","#f58231","#911eb4","#008080","#9a6324","#f032e6","#808000","#46f0f0"];
+
+function computeDuplicateColors() {
+  allCandidates.forEach(c => { c._dupColor = null; c._dupPeers = []; });
+  const seen = new Set();
+  let colorIdx = 0;
+  allCandidates.forEach(start => {
+    if (seen.has(start)) return;
+    const startDupes = findDuplicates(start, allCandidates);
+    if (!startDupes.exact.length && !startDupes.near.length) return;
+    const cluster = [];
+    const stack = [start];
+    const localSeen = new Set();
+    while (stack.length) {
+      const cur = stack.pop();
+      if (localSeen.has(cur)) continue;
+      localSeen.add(cur);
+      cluster.push(cur);
+      const d = findDuplicates(cur, allCandidates);
+      [...d.exact, ...d.near].forEach(o => { if (!localSeen.has(o)) stack.push(o); });
+    }
+    const color = DUP_COLORS[colorIdx % DUP_COLORS.length];
+    colorIdx++;
+    cluster.forEach(c => {
+      seen.add(c);
+      c._dupColor = color;
+      c._dupPeers = cluster.filter(o => o !== c).map(o => `${o.name} (${o.course || "no course"})`);
+    });
+  });
 }
 
 // ── Add candidates (paste, parse, preview, import) ──────────────────────
@@ -259,14 +447,18 @@ function parseLine(line) {
   // reads it — findDuplicates()/surnameOf() below, admin-course-room-
   // allocation.html, promotion to people/{uid} — is unchanged and doesn't
   // need to know the paste format changed.
-  const [firstName, surname, email, degree, course, dob, studentId, yearOfStudy] = parts;
+  // 2026-10-01 (Jon): column order changed to surname before first name, and
+  // Course/DOB dropped from the pasted format entirely — course is always
+  // auto-fit now (see parsePreview()), never typed in here, and DOB is no
+  // longer collected at all.
+  const [surname, firstName, email, degree, studentId, yearOfStudy] = parts;
   const name = [firstName, surname].filter(Boolean).join(" ");
   // Room is deliberately not collected here (2026-09-07, Jon) — it's set on
   // Course Room & Instructor Allocation (3.6) instead, once a course's real
   // roster is confirmed. Every imported candidate starts unassigned.
   // studentId / yearOfStudy added 2026-09-27 (Jon) — captured going forward
   // for future matching/reporting use, not read by anything yet.
-  return { name: name || "", email: email || "", degree: degree || "", course: course || "", dob: dob || "", studentId: (studentId || "").trim(), yearOfStudy: (yearOfStudy || "").trim() };
+  return { name: name || "", email: email || "", degree: degree || "", course: "", studentId: (studentId || "").trim(), yearOfStudy: (yearOfStudy || "").trim() };
 }
 
 function parsePreview() {
@@ -274,6 +466,7 @@ function parsePreview() {
   const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
   const errors = [];
   const rows = [];
+  let nextPid = 0;
 
   lines.forEach((line, i) => {
     const r = parseLine(line);
@@ -286,54 +479,149 @@ function parsePreview() {
     // (see confirmImport()) so a real but not-yet-listed degree can still
     // be pushed through deliberately rather than silently rejected.
     r.degreeMatch = resolveStage1Degree(r.degree);
-    if (!r.course) {
-      const fit = autoFitCourse(r.degreeMatch ? r.degreeMatch.exact : null);
-      if (fit.course) { r.course = fit.course; r.courseAutoFit = true; }
-      else { errors.push(`Line ${i + 1} ("${esc(r.name)}"): no course typed and none could be auto-fit (${fit.reason}) — kept, but set a course before or after importing.`); }
-    }
+    // Course is never set at import (2026-10-01, Jon) — every candidate
+    // starts unallocated. Allocation is a separate, deliberate step (the
+    // "Allocate now" button below), so placement dates get a chance to be
+    // checked first. See autoFitCourse() and allocateAllNow().
+    // _pid (2026-10-02, Jon) — a stable id for this preview session only,
+    // so a single flagged row can be pulled back out via removePreviewRow()
+    // without re-parsing the textarea (which would renumber everything).
+    r._pid = nextPid++;
     rows.push(r);
   });
 
   parsedRows = rows;
+  renderParsedPreview(errors);
+}
 
+// Pulled out of parsePreview() (2026-10-02, Jon) so removing a single
+// flagged row — see removePreviewRow() — can re-render from the current
+// parsedRows without re-reading the textarea and losing errors/_pid.
+function renderParsedPreview(errors) {
+  errors = errors || [];
+  const rows = parsedRows || [];
   const wrap = document.getElementById("previewWrap");
   if (!rows.length) {
     wrap.innerHTML = errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : `<div class="empty-state">Nothing to preview — paste some rows above.</div>`;
     return;
   }
 
-  const unrecognizedCount = rows.filter(r => r.degree && !r.degreeMatch).length;
+  const unrecognizedCount = rows.filter(r => r.degree && !r.degreeMatch && !r.degreeOverride).length;
 
-  const rowsHtml = rows.map((r, i) => {
+  const rowSet = new Set(rows);
+  // Compute each row's duplicate warning once, and record which OTHER
+  // PASTED rows (not existing system records) it matched against, so
+  // matched rows can be grouped next to each other below instead of
+  // scattered in whatever order they were pasted (2026-10-01, Jon —
+  // reviewing a flag is much easier when both halves of a possible match
+  // sit on adjacent lines with course and email visible side by side).
+  rows.forEach((r, i) => {
     const dupes = findDuplicates(r, [...rows.slice(0, i), ...rows.slice(i + 1), ...allCandidates]);
-    const warn = duplicateWarningHtml(dupes, r);
+    r._warn = duplicateWarningHtml(dupes, r);
+    r._flagged = !!(dupes.exact.length || dupes.near.length);
+    r._matchedPastedRows = [...dupes.exact, ...dupes.near].filter(o => rowSet.has(o));
+  });
+
+  // Cluster flagged rows into connected groups (A matches B, B matches C,
+  // etc. all land in one group) with a depth-first walk, so a whole matched
+  // set renders as consecutive rows instead of needing to be hunted down
+  // across the full paste. Each cluster also gets a colour from the same
+  // DUP_COLORS palette the saved Candidates list uses (2026-10-02, Jon —
+  // "shade the ones that need cross-referencing... matched by colour in
+  // pairs"), so a matched pair/set is obvious at a glance here too, not
+  // just readable from the warning text.
+  const seen = new Set();
+  const groupedFlagged = [];
+  let colorIdx = 0;
+  rows.filter(r => r._flagged).forEach(start => {
+    if (seen.has(start)) return;
+    const cluster = [];
+    const stack = [start];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      cluster.push(cur);
+      cur._matchedPastedRows.forEach(o => { if (!seen.has(o)) stack.push(o); });
+    }
+    const color = DUP_COLORS[colorIdx % DUP_COLORS.length];
+    colorIdx++;
+    cluster.forEach(r => { r._dupColor = color; });
+    groupedFlagged.push(...cluster);
+  });
+  const clear = rows.filter(r => !r._flagged);
+
+  // removePreviewRow() button (2026-10-02, Jon) — pulls just this ONE row
+  // back out of the pending import, nothing saved yet so no Firestore call
+  // needed, just a splice-and-re-render. For a row already saved as a real
+  // candidate, use Delete on the All candidates list below instead — this
+  // button only exists before Import has been clicked.
+  const renderRow = r => {
     const degreeCell = (r.degree && !r.degreeMatch)
-      ? `${esc(r.degree)} <span class="dup-warning" style="display:inline;">⚠ not one of the 9 standard names</span>`
+      ? (r.degreeOverride
+          ? `<span class="dup-warning" style="display:inline;text-decoration:line-through;opacity:0.6;">${esc(r.degree)}</span> → <strong>${esc(r.degreeOverride)}</strong> <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:11px;margin-left:4px;" onclick="setDegreeOverride(${r._pid},'')">Undo</button>`
+          : `${esc(r.degree)} <span class="dup-warning" style="display:inline;">⚠ not one of the 9 standard names</span>
+             <select style="margin-left:6px;font-size:12px;padding:2px 4px;" onchange="setDegreeOverride(${r._pid}, this.value)">
+               <option value="">Change to…</option>
+               ${Object.keys(STAGE1_DEGREE_GROUPS).map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join("")}
+             </select>`)
       : esc(r.degree);
-    return `<tr>
-      <td class="name-cell">${esc(r.name)}</td>
+    const dot = r._dupColor
+      ? `<span class="dup-dot" style="background:${r._dupColor}" title="Possible match — see the flag in this row"></span>`
+      : "";
+    const stripe = r._dupColor ? ` style="border-left:4px solid ${r._dupColor};"` : "";
+    return `<tr${stripe}>
+      <td class="name-cell">${dot}${esc(r.name)}</td>
       <td>${esc(r.email) || "<em>none</em>"}</td>
       <td>${degreeCell}</td>
-      <td>${esc(r.course) || "<em>none</em>"}${r.courseAutoFit ? ` <span class="link-badge" title="Auto-fit from programme deadline + course settings">auto</span>` : ""}</td>
-      <td>${esc(r.dob) || "–"}</td>
+      <td><em>unallocated</em></td>
       <td>${esc(r.studentId) || "–"}</td>
       <td>${esc(r.yearOfStudy) || "–"}</td>
-      <td>${warn}</td>
+      <td>${r._warn}</td>
+      <td><button class="btn-danger-sm" onclick="removePreviewRow(${r._pid})">✕ Remove</button></td>
     </tr>`;
-  }).join("");
+  };
+  const tableHead = `<thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>ID</th><th>Year</th><th>Flags</th><th></th></tr></thead>`;
+
+  const flaggedSection = groupedFlagged.length
+    ? `<div class="hint" style="margin-top:14px;"><strong>${groupedFlagged.length} row${groupedFlagged.length === 1 ? "" : "s"} need a check</strong> — matched pairs/sets are grouped and coloured together so you can compare course and email directly. Found a genuine duplicate? Remove whichever row you don't want before importing.</div>
+       <table class="preview-table">${tableHead}<tbody>${groupedFlagged.map(renderRow).join("")}</tbody></table>`
+    : "";
+
+  const clearSection = clear.length
+    ? `<div class="hint" style="margin-top:14px;">${clear.length} row${clear.length === 1 ? "" : "s"} — no flags</div>
+       <table class="preview-table">${tableHead}<tbody>${clear.map(renderRow).join("")}</tbody></table>`
+    : "";
 
   wrap.innerHTML = `
     ${errors.length ? `<div class="error-list">${errors.map(e => `⚠ ${e}`).join("<br>")}</div>` : ""}
     ${unrecognizedCount ? `<div class="error-list">⚠ ${unrecognizedCount} row${unrecognizedCount === 1 ? "" : "s"} ${unrecognizedCount === 1 ? "has" : "have"} a degree that isn't one of the 9 standard names — you'll be asked to confirm these specifically before import.</div>` : ""}
-    <table class="preview-table">
-      <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>DOB (day/mth)</th><th>ID</th><th>Year</th><th>Flags</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
+    ${flaggedSection}
+    ${clearSection}
     <div style="margin-top:12px;">
       <button class="btn-primary" onclick="confirmImport()">Import ${rows.length} candidate${rows.length === 1 ? "" : "s"}</button>
     </div>`;
 }
 
+function removePreviewRow(pid) {
+  if (!parsedRows) return;
+  parsedRows = parsedRows.filter(r => r._pid !== pid);
+  renderParsedPreview([]);
+}
+
+// 2026-10-02, Jon: instead of only being able to accept an unrecognized
+// degree as typed (the confirm() in confirmImport() below), let a flagged
+// row be corrected right in the preview table to one of the 9 standard
+// names. An empty value clears the override (back to "as typed"/unresolved).
+// The chosen name is what actually gets saved — see confirmImport()'s write
+// loop below, which now reads r.degreeOverride || r.degree.
+function setDegreeOverride(pid, value) {
+  if (!parsedRows) return;
+  const row = parsedRows.find(r => r._pid === pid);
+  if (!row) return;
+  row.degreeOverride = value || "";
+  renderParsedPreview([]);
+}
 async function confirmImport() {
   if (!parsedRows || !parsedRows.length) return;
 
@@ -343,7 +631,7 @@ async function confirmImport() {
   // through to "Add N candidates?". Rows with no degree at all aren't
   // included here — that's a pre-existing, separate "missing course"-style
   // soft warning, not a standardisation problem.
-  const unrecognized = parsedRows.filter(r => r.degree && !r.degreeMatch);
+  const unrecognized = parsedRows.filter(r => r.degree && !r.degreeMatch && !r.degreeOverride);
   if (unrecognized.length) {
     const list = unrecognized.map(r => `"${r.name}": "${r.degree}"`).join("\n");
     if (!confirm(`${unrecognized.length} candidate${unrecognized.length === 1 ? "" : "s"} ${unrecognized.length === 1 ? "has" : "have"} a degree that doesn't match any of the 9 standard names:\n\n${list}\n\nImport anyway with this text as typed?`)) return;
@@ -357,9 +645,18 @@ async function confirmImport() {
       const batch = db.batch();
       parsedRows.slice(start, start + CHUNK).forEach(r => {
         const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
+        // Pharmacy MPharm is the only programme that actually has placement
+        // dates (Jon, 2026-10-01) — every other programme is auto-checked
+        // as "no placement dates" right at import, so only Pharmacy needs
+        // the real Step 2 check from here on. Already-imported candidates
+        // from before this change still get caught up by "Mark all
+        // unchecked" in Step 2.
+        const finalDegree = r.degreeOverride || r.degree;
+        const isPharmacy = (resolveStage1Degree(finalDegree) || {}).exact === "Pharmacy MPharm";
         batch.set(ref, {
-          name: r.name, email: r.email.toLowerCase(), degree: r.degree, course: r.course, room: null, dob: r.dob,
+          name: r.name, email: r.email.toLowerCase(), degree: finalDegree, course: "", room: null,
           studentId: r.studentId || "", yearOfStudy: r.yearOfStudy || "",
+          placementChecked: !isPharmacy, placementBlocks: [],
           promotedToUid: null, promotedAt: null,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
@@ -512,6 +809,177 @@ async function confirmOutcomesImport() {
   }
 }
 
+// ── Import placement dates (2026-10-01, Jon) ────────────────────────────────
+// Some candidates — currently Pharmacy, via their placement leads — have
+// dates during the year they're on clinical placement and can't be on an
+// RMD course. Pasted here straight off whatever sheet the lead sends,
+// matched onto EXISTING stage1_candidates records by email — same pattern
+// as the outcomes importer above, and deliberately separate from the main
+// candidate paste since this data comes from a different source on a
+// different schedule (often after candidates are already imported and
+// auto-fit onto a course). A candidate can have several placement blocks;
+// each row adds one, deduped exactly on start+end so re-pasting the same
+// sheet twice is harmless.
+//
+// Accepts two row shapes, picked by column count (2026-10-01, matched to
+// the real Pharmacy placement export):
+//   6+ columns: Student ID, Last Name, First Name, Email, Start, End
+//   5 columns:  First name, Last name, Email, Start, End (legacy/manual paste)
+// Student ID itself isn't used — matching is always by email — so it's
+// just skipped over in the 6-column shape. A header row (first line,
+// containing both "email" and "date") is dropped automatically.
+function parseUkDate(raw) {
+  const m = (raw || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  const iso = `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+  const d = new Date(iso + "T00:00:00");
+  if (isNaN(d.getTime())) return null;
+  return iso;
+}
+
+let parsedPlacementRows = null;
+
+function parsePlacementPreview() {
+  const raw = document.getElementById("placementPasteBox").value;
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean).filter((l, i) => {
+    if (i !== 0) return true;
+    const low = l.toLowerCase();
+    return !(low.includes("email") && low.includes("date")); // drop a pasted header row
+  });
+  const wrap = document.getElementById("placementPreviewWrap");
+  if (!lines.length) {
+    wrap.innerHTML = `<div class="empty-state">Nothing to preview — paste some rows above.</div>`;
+    parsedPlacementRows = null;
+    return;
+  }
+
+  const rows = lines.map((line, i) => {
+    const parts = line.split(/\t|,/).map(s => s.trim());
+    let firstName, lastName, email, startRaw, endRaw;
+    if (parts.length >= 6) {
+      // Real export: Student ID, Last Name, First Name, Email, Start, End
+      [, lastName, firstName, email, startRaw, endRaw] = parts;
+    } else {
+      // Legacy 5-column paste: First name, Last name, Email, Start, End
+      [firstName, lastName, email, startRaw, endRaw] = parts;
+    }
+    const start = parseUkDate(startRaw);
+    const end = parseUkDate(endRaw);
+    const name = [firstName, lastName].filter(Boolean).join(" ");
+    const matches = email ? allCandidates.filter(c => (c.email || "").toLowerCase() === email.toLowerCase()) : [];
+    return { lineNo: i + 1, name, email: email || "", startRaw: startRaw || "", endRaw: endRaw || "", start, end, matches, chosenId: matches.length === 1 ? matches[0].id : null };
+  });
+  parsedPlacementRows = rows;
+
+  const unmatched = rows.filter(r => !r.email || r.matches.length === 0);
+  const ambiguous = rows.filter(r => r.matches.length > 1);
+  const badDates = rows.filter(r => !r.start || !r.end);
+
+  const rowHtml = r => {
+    let matchCell;
+    if (!r.email) {
+      matchCell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no email — can't match</span>`;
+    } else if (r.matches.length === 0) {
+      matchCell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no candidate found with this email</span>`;
+    } else if (r.matches.length === 1) {
+      matchCell = `${esc(r.matches[0].name)} <span class="hint" style="margin:0;">(${esc(r.matches[0].course) || "no course"})</span>`;
+    } else {
+      matchCell = `<span class="dup-warning" style="display:inline;">⚠ ${r.matches.length} candidates share this email — pick one:</span><br>
+        <select data-line="${r.lineNo}" onchange="choosePlacementMatch(${r.lineNo}, this.value)">
+          <option value="">Choose…</option>
+          ${r.matches.map(m => `<option value="${esc(m.id)}">${esc(m.name)} — ${esc(m.course) || "no course"}</option>`).join("")}
+        </select>`;
+    }
+    const dateCell = (r.start && r.end)
+      ? `${esc(r.startRaw)} – ${esc(r.endRaw)}`
+      : `<span class="dup-warning dup-exact" style="display:inline;">⚠ "${esc(r.startRaw)}" / "${esc(r.endRaw)}" — expected DD/MM/YYYY</span>`;
+    const chosen = r.matches.length === 1 ? r.matches[0] : (r.chosenId ? allCandidates.find(c => c.id === r.chosenId) : null);
+    const chosenSession = chosen && chosen.course ? courseSessions.find(s => s.name === chosen.course) : null;
+    const clashCell = (chosen && chosenSession && r.start && r.end && placementClashesWithCourse([{ start: r.start, end: r.end }], chosenSession.date))
+      ? `<span class="dup-warning dup-exact" style="display:inline;">⚠ clashes with their course (${esc(chosen.course)})</span>`
+      : (chosen && chosen.course ? "no clash" : "–");
+    return `<tr>
+      <td>${esc(r.name) || "<em>none</em>"}</td>
+      <td>${esc(r.email) || "<em>none</em>"}</td>
+      <td>${dateCell}</td>
+      <td>${matchCell}</td>
+      <td>${clashCell}</td>
+    </tr>`;
+  };
+
+  wrap.innerHTML = `
+    ${unmatched.length ? `<div class="error-list">⚠ ${unmatched.length} row${unmatched.length === 1 ? "" : "s"} couldn't be matched to a candidate — these are shown below but will be skipped on import. Check the email against the candidate list, or that they've been imported yet.</div>` : ""}
+    ${ambiguous.length ? `<div class="error-list">⚠ ${ambiguous.length} row${ambiguous.length === 1 ? "" : "s"} matched more than one candidate record — pick which record each one applies to before importing.</div>` : ""}
+    ${badDates.length ? `<div class="error-list">⚠ ${badDates.length} row${badDates.length === 1 ? "" : "s"} have a date that isn't DD/MM/YYYY — these are shown below but will be skipped on import.</div>` : ""}
+    <table class="preview-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Placement dates</th><th>Match</th><th>Clash?</th></tr></thead>
+      <tbody>${rows.map(rowHtml).join("")}</tbody>
+    </table>
+    <div style="margin-top:12px;">
+      <button class="btn-primary" id="placementImportBtn" onclick="confirmPlacementImport()">Apply placement dates</button>
+    </div>`;
+}
+
+function choosePlacementMatch(lineNo, candidateId) {
+  const r = parsedPlacementRows.find(x => x.lineNo === lineNo);
+  if (r) r.chosenId = candidateId || null;
+}
+
+async function confirmPlacementImport() {
+  if (!parsedPlacementRows) return;
+  const applicable = parsedPlacementRows.filter(r =>
+    r.start && r.end &&
+    (r.matches.length === 1 || (r.matches.length > 1 && r.chosenId)));
+  const stillAmbiguous = parsedPlacementRows.filter(r => r.matches.length > 1 && !r.chosenId);
+  if (stillAmbiguous.length) { alert(`${stillAmbiguous.length} row(s) with multiple matches still need a record chosen before you can import.`); return; }
+  if (!applicable.length) { alert("Nothing to apply — every row is either unmatched or has an unreadable date."); return; }
+
+  const clashCount = applicable.filter(r => {
+    const chosen = r.matches.length === 1 ? r.matches[0] : allCandidates.find(c => c.id === r.chosenId);
+    const session = chosen && chosen.course ? courseSessions.find(s => s.name === chosen.course) : null;
+    return session && placementClashesWithCourse([{ start: r.start, end: r.end }], session.date);
+  }).length;
+  if (clashCount && !confirm(`${clashCount} of these dates clash with the course a candidate is already on. Applying anyway still saves the dates and flags the clash on the Candidates list below — it won't move anyone off their course automatically. Continue?`)) return;
+
+  if (!confirm(`Save placement dates for ${applicable.length} row${applicable.length === 1 ? "" : "s"}? This adds to each candidate's existing placement dates — it doesn't move anyone or change any course assignment.`)) return;
+
+  // Group by candidate id so several rows for the same person merge into one
+  // array write, deduped on exact start+end.
+  const byId = new Map();
+  applicable.forEach(r => {
+    const id = r.matches.length === 1 ? r.matches[0].id : r.chosenId;
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push({ start: r.start, end: r.end });
+  });
+
+  try {
+    const ids = Array.from(byId.keys());
+    const CHUNK = 400;
+    for (let start = 0; start < ids.length; start += CHUNK) {
+      const batch = db.batch();
+      ids.slice(start, start + CHUNK).forEach(id => {
+        const existing = (allCandidates.find(c => c.id === id) || {}).placementBlocks || [];
+        const seen = new Set(existing.map(b => `${b.start}|${b.end}`));
+        const merged = existing.slice();
+        byId.get(id).forEach(b => {
+          const key = `${b.start}|${b.end}`;
+          if (!seen.has(key)) { seen.add(key); merged.push(b); }
+        });
+        const ref = db.collection(COLLECTIONS.stage1Candidates).doc(id);
+        batch.update(ref, { placementBlocks: merged, placementChecked: true });
+      });
+      await batch.commit();
+    }
+    document.getElementById("placementPasteBox").value = "";
+    document.getElementById("placementPreviewWrap").innerHTML = `<div class="empty-state">Saved placement dates for ${byId.size} candidate(s).</div>`;
+    parsedPlacementRows = null;
+    await loadCandidates();
+  } catch (err) {
+    alert("Import failed: " + err.message);
+  }
+}
+
 // ── Candidate resource access code (feeds candidate-resources.html) ───────
 // Public/unauthenticated read on this one Firestore document is deliberate
 // — see firestore.rules — so the code itself is not a secret in any real
@@ -545,7 +1013,15 @@ async function changeAccessCode() {
 }
 
 // ── Candidates list ───────────────────────────────────────────────────────
+// 2026-10-02, Jon: "how do we fix it on the site - what tool to use there
+// for any director" — there was no way to correct a bad record (e.g. a
+// paste-import row that landed in the wrong field, like the "Pharmacy
+// MPharm" case) short of Delete + re-paste that one row. editCandidateId
+// tracks which row (if any) is currently in inline edit mode.
+let editCandidateId = null;
+
 function renderCandidates() {
+  renderAllocationSummary();
   const courseFilter = document.getElementById("courseFilter").value;
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
 
@@ -560,22 +1036,72 @@ function renderCandidates() {
 
   document.getElementById("candidatesWrap").innerHTML = filtered.length
     ? `<table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th><th></th></tr></thead>
-        <tbody>${filtered.map(c => `
+        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
+        <tbody>${filtered.map(c => c.id === editCandidateId ? editRowHtml(c) : `
           <tr>
-            <td class="name-cell">${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}</td>
+            <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
             <td>${esc(c.room) || "–"}</td>
-            <td>${c.promotedToUid ? "" : `<button class="btn-promote" onclick="promoteToInstructor('${c.id}')">Promote to Instructor</button>`}</td>
+            <td><button class="btn-link-sm" onclick="startEditCandidate('${c.id}')">✎ Edit</button></td>
             <td>${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
-              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}</td>
-            <td><button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
+              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}
+              <button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
           </tr>`).join("")}</tbody>
       </table>`
     : `<div class="empty-state">No candidates match.</div>`;
+}
+
+// Inline edit row — Name, Email, Degree only (2026-10-02). Course and Room
+// deliberately stay read-only here: they're set by Allocate Now / Course
+// Room & Instructor Allocation, not hand-typed, so editing them from this
+// table would bypass the capacity/clash logic those tools apply. Degree is
+// a free-text input, not the standardised dropdown Step 1's import preview
+// uses — good enough for fixing a mis-typed/misplaced value; run it back
+// through Step 1's import if you want it validated against the 9 standard
+// names.
+function editRowHtml(c) {
+  return `<tr>
+    <td><input type="text" id="editName_${c.id}" value="${esc(c.name)}" style="width:100%;padding:6px;font-size:13px;"></td>
+    <td><input type="text" id="editEmail_${c.id}" value="${esc(c.email)}" style="width:100%;padding:6px;font-size:13px;"></td>
+    <td><input type="text" id="editDegree_${c.id}" value="${esc(c.degree)}" style="width:100%;padding:6px;font-size:13px;"></td>
+    <td>${esc(c.course) || "–"}</td>
+    <td>${esc(c.room) || "–"}</td>
+    <td colspan="2">
+      <button class="btn-promote" onclick="saveEditCandidate('${c.id}')">Save</button>
+      <button class="btn-link-sm" onclick="cancelEditCandidate()">Cancel</button>
+    </td>
+  </tr>`;
+}
+
+function startEditCandidate(id) {
+  editCandidateId = id;
+  renderCandidates();
+}
+
+function cancelEditCandidate() {
+  editCandidateId = null;
+  renderCandidates();
+}
+
+async function saveEditCandidate(id) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c) return;
+  const name = (document.getElementById(`editName_${id}`).value || "").trim();
+  const email = (document.getElementById(`editEmail_${id}`).value || "").trim();
+  const degree = (document.getElementById(`editDegree_${id}`).value || "").trim();
+  if (!name) { alert("Name can't be blank."); return; }
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ name, email, degree });
+    c.name = name; c.email = email; c.degree = degree;
+    editCandidateId = null;
+    computeDuplicateColors();
+    renderCandidates();
+  } catch (err) {
+    alert("Couldn't save: " + err.message);
+  }
 }
 
 // ── Repeat/subsequent-course linking ──────────────────────────────────────
@@ -595,6 +1121,272 @@ function linkedBadgeHtml(c) {
   if (!c.linkedCandidateId) return "";
   const other = allCandidates.find(x => x.id === c.linkedCandidateId);
   return ` <span class="link-badge" title="Linked as the same person's repeat attempt">🔗 ${other ? esc(other.name) + " — " + esc(other.course || "no course") : "linked record"}</span>`;
+}
+
+function placementClashBadgeHtml(c) {
+  if (!c.placementBlocks || !c.placementBlocks.length || !c.course) return "";
+  const session = courseSessions.find(s => s.name === c.course);
+  if (!session || !session.date || !placementClashesWithCourse(c.placementBlocks, session.date)) return "";
+  return ` <span class="dup-warning dup-exact" style="display:inline;">⚠ Placement clash on ${esc(c.course)}</span>`;
+}
+
+// ── Allocation gate (2026-10-01, Jon) ──────────────────────────────────────
+// Course is never set at import any more (see parsePreview()) — a candidate
+// only gets a course once "Allocate now" runs for them, and only once
+// they've been "checked" for placement dates: either they matched a row in
+// the placement-dates import above (placementChecked gets set there), or
+// someone explicitly ticked "No placement dates" for them (markNoPlacement-
+// Dates() / markAllNoPlacementDates() below). This is what makes the
+// add → check → allocate order unskippable rather than just documented.
+function placementCheckBadgeHtml(c) {
+  if (c.course) return ""; // already allocated — the check already did its job
+  if (c.placementChecked) return ` <span class="link-badge" title="Checked for placement dates — ready for Allocate now">✓ checked</span>`;
+  if ((resolveStage1Degree(c.degree) || {}).exact === "Pharmacy MPharm") {
+    return ` <span class="dup-warning" style="display:inline;">⚠ needs placement check (Pharmacy — import dates above)</span>`;
+  }
+  return ` <span class="dup-warning" style="display:inline;">⚠ needs placement check <button class="btn-link-sm" onclick="markNoPlacementDates('${c.id}')">No placement dates</button></span>`;
+}
+
+// Live counts shown in Step 3, so the state of play (who's in, who's
+// checked, who's already placed) is obvious before anyone touches the
+// Allocate button — not just logic enforced silently behind the scenes.
+function renderAllocationSummary() {
+  const el = document.getElementById("allocationSummary");
+  if (!el) return;
+  const total = allCandidates.length;
+  const allocated = allCandidates.filter(c => c.course).length;
+  const unallocated = allCandidates.filter(c => !c.course);
+  const ready = unallocated.filter(c => c.placementChecked).length;
+  const notChecked = unallocated.filter(c => !c.placementChecked).length;
+
+  const tile = (n, label, warn) => `
+    <div style="flex:1;min-width:130px;background:${warn && n ? "#fff4e5" : "#f4f6fa"};border:1.5px solid ${warn && n ? "#f0b860" : "#e0e4ee"};border-radius:10px;padding:12px 14px;">
+      <div style="font-size:26px;font-weight:800;color:${warn && n ? "#8a5a00" : "var(--rmd-navy)"};font-variant-numeric:tabular-nums;">${n}</div>
+      <div style="font-size:12px;color:#5a6478;font-weight:700;">${label}</div>
+    </div>`;
+
+  el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px;">
+    ${tile(total, "Total candidates added")}
+    ${tile(allocated, "Already allocated")}
+    ${tile(ready, "Checked — ready to allocate")}
+    ${tile(notChecked, "Not yet checked", true)}
+  </div>`;
+}
+
+// The Allocate now button only ever becomes clickable once this is ticked
+// (2026-10-01, Jon) — on top of allocateAllNow()'s own guard below, so a
+// mass allocation genuinely can't fire by accident before Jon's actually
+// said everyone he knows of is in.
+function updateAllocateButtonState() {
+  const cb = document.getElementById("confirmAllAddedCheckbox");
+  const btn = document.getElementById("allocateNowBtn");
+  if (cb && btn) btn.disabled = !cb.checked;
+}
+
+async function markNoPlacementDates(id) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c || c.placementChecked) return;
+  if ((resolveStage1Degree(c.degree) || {}).exact === "Pharmacy MPharm") {
+    alert(`${c.name} is Pharmacy MPharm — Pharmacy candidates always have placement dates, so this can't be used for them. Use the placement-dates import above to record their real dates instead.`);
+    return;
+  }
+  if (!confirm(`Mark ${c.name} as checked, with no placement dates on file?\n\nOnly do this if you're sure they have none — this is what clears them for "Allocate now".`)) return;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ placementChecked: true });
+    c.placementChecked = true;
+    renderCandidates();
+  } catch (err) {
+    alert("Failed: " + err.message);
+  }
+}
+
+async function markAllNoPlacementDates() {
+  const unchecked = allCandidates.filter(c =>
+    !c.course && !c.placementChecked &&
+    (resolveStage1Degree(c.degree) || {}).exact !== "Pharmacy MPharm");
+  if (!unchecked.length) { alert("Nothing to mark — everyone unallocated is either already checked or Pharmacy (use the placement-dates import for them)."); return; }
+  if (!confirm(`Mark all ${unchecked.length} unallocated, unchecked candidate(s) as "no placement dates"?\n\nPharmacy candidates are excluded automatically — import their real dates above instead. Only confirm this for a batch you're sure has no placement risk.`)) return;
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < unchecked.length; start += CHUNK) {
+      const batch = db.batch();
+      unchecked.slice(start, start + CHUNK).forEach(c => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { placementChecked: true });
+      });
+      await batch.commit();
+    }
+    unchecked.forEach(c => { c.placementChecked = true; });
+    renderCandidates();
+    alert(`Marked ${unchecked.length} candidate(s) as checked.`);
+  } catch (err) {
+    alert("Failed: " + err.message);
+  }
+}
+
+// Same degree-balancing key admin-course-room-allocation.html's room
+// randomizer uses (kept in sync deliberately, not shared via import, since
+// the two pages don't share a module system) — groups by the 9 standard
+// programme names where a candidate's degree resolves to one, otherwise by
+// the raw text typed, so an unrecognised degree still balances consistently
+// across rooms instead of being ignored.
+function degreeKey(c) {
+  const match = resolveStage1Degree(c.degree);
+  return match ? ("group:" + match.group) : ("raw:" + (c.degree || "").trim().toLowerCase());
+}
+
+// The only place a candidate's course AND room get set, now that import
+// does neither. Only ever acts on candidates already marked
+// placementChecked — anyone not yet checked is skipped and listed, not
+// guessed at. Room-splitting folded in here (2026-10-02, Jon — "allocated
+// to a course and then split to rooms in 1 go") using the same balancing
+// heuristic as the room randomizer on Course Room & Instructor Allocation —
+// that page's own "Allocate all candidates to rooms" button still exists
+// for anyone who ends up unrouted afterwards (added or checked late,
+// reset back to unallocated, etc.), it just isn't the main path any more.
+async function allocateAllNow() {
+  const confirmCb = document.getElementById("confirmAllAddedCheckbox");
+  if (!confirmCb || !confirmCb.checked) {
+    alert('Tick "I confirm every candidate for this round has been added" in Step 3 first \u2014 that\u2019s what stops a mass allocation running before everyone\u2019s actually on the system.');
+    return;
+  }
+  const unallocated = allCandidates.filter(c => !c.course);
+  if (!unallocated.length) { alert("No unallocated candidates — everyone already has a course."); return; }
+
+  const notChecked = unallocated.filter(c => !c.placementChecked);
+  const ready = unallocated.filter(c => c.placementChecked);
+
+  if (!ready.length) {
+    alert(`${notChecked.length} unallocated candidate(s), but none have been checked for placement dates yet. Import placement dates above, or mark them "No placement dates", before allocating.`);
+    return;
+  }
+
+  let confirmMsg = `Allocate ${ready.length} checked candidate(s) to courses AND rooms now?`;
+  if (notChecked.length) confirmMsg += `\n\n${notChecked.length} unallocated candidate(s) will be skipped — not yet checked for placement dates.`;
+  confirmMsg += `\n\nThis is a single step now — anyone who gets a course also gets a room in the same pass, split to balance degree mix and room numbers. There's no review screen in between; check the result on Course Room & Instructor Allocation afterwards.`;
+  if (!confirm(confirmMsg)) return;
+
+  const toWrite = [];
+  const flagged = [];
+  const capFlagged = []; // flagged purely because every eligible course is full — not degree/deadline/clash issues
+  // Seeded from already-committed data, then incremented as each candidate
+  // in THIS run is provisionally assigned — see autoFitCourse's comment on
+  // why this has to happen here rather than re-scanning allCandidates.
+  const runningCourseCounts = {};
+  allCandidates.forEach(c => { if (c.course) runningCourseCounts[c.course] = (runningCourseCounts[c.course] || 0) + 1; });
+  const effectiveCapacities = buildEffectiveCapacities();
+  ready.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, false);
+    if (fit.course) {
+      toWrite.push({ c, course: fit.course });
+      runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
+    } else if (fit.atCapacity) {
+      capFlagged.push(c);
+    } else {
+      flagged.push({ c, reason: fit.reason });
+    }
+  });
+
+  // Permission check, asked once for the whole batch rather than per
+  // candidate (2026-10-02, Jon: "if need more per room, can do that with
+  // permission - check?") — only for candidates who couldn't be placed
+  // purely because every course session they're eligible for is already at
+  // capacity; anyone flagged for a different reason (no deadline set, no
+  // eligible session, placement clash) is never offered this, since going
+  // over cap wouldn't fix that anyway.
+  if (capFlagged.length) {
+    const goOverCap = confirm(`${capFlagged.length} candidate(s) couldn't be placed because every course session they're eligible for is already at its capacity.\n\nAllow these to go over cap and be placed anyway? They'll be spread across their eligible courses to keep numbers as even as possible, rather than all landing on one.`);
+    capFlagged.forEach(c => {
+      if (!goOverCap) {
+        flagged.push({ c, reason: "every course session they're eligible for is at capacity (over-cap placement declined)" });
+        return;
+      }
+      const resolved = resolveStage1Degree(c.degree);
+      const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, true);
+      if (fit.course) {
+        toWrite.push({ c, course: fit.course });
+        runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
+      } else {
+        flagged.push({ c, reason: fit.reason || "couldn't be placed even over cap" });
+      }
+    });
+  }
+
+  // Room-split, course by course, against everyone already ON that course
+  // (including anyone already roomed there from an earlier run) so numbers
+  // stay balanced rather than restarting from zero each time this runs.
+  const byCourse = {};
+  toWrite.forEach(({ c, course }) => { (byCourse[course] = byCourse[course] || []).push(c); });
+  const roomFor = new Map(); // candidate id -> room, this run only
+  Object.keys(byCourse).forEach(course => {
+    const existingOnCourse = allCandidates.filter(x => x.course === course);
+    const roomOf = {};
+    existingOnCourse.forEach(x => { if (ROOMS.includes(x.room)) roomOf[x.id] = x.room; });
+    byCourse[course].sort(() => Math.random() - .5).forEach(c => {
+      const dk = degreeKey(c);
+      const best = ROOMS.slice().sort((a, b) => {
+        const aSame = existingOnCourse.filter(x => roomOf[x.id] === a && degreeKey(x) === dk).length;
+        const bSame = existingOnCourse.filter(x => roomOf[x.id] === b && degreeKey(x) === dk).length;
+        if (aSame !== bSame) return aSame - bSame;
+        const aTotal = existingOnCourse.filter(x => roomOf[x.id] === a).length;
+        const bTotal = existingOnCourse.filter(x => roomOf[x.id] === b).length;
+        if (aTotal !== bTotal) return aTotal - bTotal;
+        return Math.random() - .5;
+      })[0];
+      roomOf[c.id] = best;
+      roomFor.set(c.id, best);
+    });
+  });
+
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < toWrite.length; start += CHUNK) {
+      const batch = db.batch();
+      toWrite.slice(start, start + CHUNK).forEach(({ c, course }) => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null });
+      });
+      await batch.commit();
+    }
+    toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; });
+
+    // In-page result panel instead of alert() (2026-10-02, Jon: "need to be
+    // shown which candidate this refers to — how to review?") — a native
+    // alert can't hold a clickable link, so anyone flagged as "couldn't be
+    // auto-fit" is listed here instead, each one a link straight to their
+    // row in All candidates below (see reviewFlaggedCandidate()).
+    let summaryHtml = `<div style="background:#e1efe3;border:1px solid #1a6e31;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:#1a6e31;font-size:13px;font-weight:700;">Allocated ${toWrite.length} candidate(s) to a course and a room.</div>`;
+    if (flagged.length) {
+      summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${flagged.length} couldn't be auto-fit — pick a course for ${flagged.length === 1 ? "this one" : "these"} by hand. Click a name to find them in All candidates below:</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${flagged.map(f => `<a href="javascript:void(0)" onclick="reviewFlaggedCandidate('${f.c.id}')" style="color:#856404;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer;">${esc(f.c.name)}</a><span style="font-size:11px;color:#856404;margin:-4px 0 2px;">${esc(f.reason)}</span>`).join("")}
+        </div>
+      </div>`;
+    }
+    if (notChecked.length) summaryHtml += `<p class="hint" style="margin:0 0 12px;">${notChecked.length} skipped — not yet checked for placement dates.</p>`;
+    const summaryEl = document.getElementById("allocationSummary");
+    summaryEl.innerHTML = summaryHtml;
+    summaryEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    renderCandidates();
+    populateCourseFilter();
+  } catch (err) {
+    alert("Allocation failed: " + err.message);
+  }
+}
+
+// Jumps to a flagged candidate's row in All candidates (2026-10-02) — fills
+// the search box with their email (falls back to name if they have none)
+// and clears the course filter, since a flagged candidate has no course to
+// filter by yet, then scrolls the table into view.
+function reviewFlaggedCandidate(candidateId) {
+  const c = allCandidates.find(x => x.id === candidateId);
+  if (!c) return;
+  const courseSel = document.getElementById("courseFilter");
+  if (courseSel) courseSel.value = "";
+  const search = document.getElementById("searchBox");
+  if (search) { search.value = c.email || c.name; renderCandidates(); }
+  const wrap = document.getElementById("candidatesWrap");
+  if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function linkRepeat(candidateId) {
@@ -675,10 +1467,136 @@ async function deleteCandidate(id) {
       const other = allCandidates.find(x => x.id === c.linkedCandidateId);
       if (other) other.linkedCandidateId = null;
     }
+    computeDuplicateColors();
     populateCourseFilter();
     renderCandidates();
   } catch (err) {
     alert("Delete failed: " + err.message);
+  }
+}
+
+// Rescue button for a bad "Allocate now" run (2026-10-02, Jon: "Allocation
+// not gone as i needed (made a mistake). Need button (with lots of
+// protection layers) to delete all allocated candidates"). Built as an
+// UN-allocate, not a record delete — it only clears course and room on
+// every candidate that has them, same two fields allocateAllNow() sets, so
+// everyone goes back to the unallocated pool with their name, email,
+// degree and placement-date work from Steps 1 and 2 completely intact and
+// ready to be run through Step 3 again. A real record delete would lose
+// all of that and can't be the recovery path for a MIS-allocation (as
+// opposed to deleteAllUnallocated/deleteTestCandidates below, which are
+// for records that should never have existed at all). Three layers of
+// protection, heavier than the other bulk buttons on this page since this
+// one can undo a run of well over a thousand candidates in a single click:
+// a count-bearing confirm, a second are-you-sure, then typing the word
+// UNALLOCATE to actually fire.
+async function unallocateAllCandidates() {
+  const targets = allCandidates.filter(c => c.course);
+  if (!targets.length) { alert("Nothing to un-allocate — no candidate currently has a course."); return; }
+  if (!confirm(`Clear course and room off all ${targets.length} currently-allocated candidate(s)?\n\nThis does NOT delete any candidate record — names, emails, degrees and placement-date work are untouched. It only clears course and room so you can re-run "Allocate now" from Step 3.\n\nThis cannot be undone once confirmed.`)) return;
+  if (!confirm(`Really clear course/room from ${targets.length} record(s)? Last chance to back out.`)) return;
+  const typed = prompt(`Type UNALLOCATE (all capitals) to confirm clearing ${targets.length} candidate(s)' course and room:`);
+  if (typed !== "UNALLOCATE") { alert("Didn't match — nothing was changed."); return; }
+  try {
+    const CHUNK = 400; // Firestore batch write limit is 500; leave headroom
+    for (let start = 0; start < targets.length; start += CHUNK) {
+      const batch = db.batch();
+      targets.slice(start, start + CHUNK).forEach(c => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course: null, room: null });
+      });
+      await batch.commit();
+    }
+    targets.forEach(c => { c.course = null; c.room = null; });
+    populateCourseFilter();
+    renderCandidates();
+    const summaryEl = document.getElementById("allocationSummary");
+    if (summaryEl) summaryEl.innerHTML = `<div style="background:#e8f0fe;border:1px solid #b8d4f5;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:var(--rmd-navy);font-size:13px;font-weight:700;">Cleared course and room from ${targets.length} candidate(s) — they're back in the unallocated pool, ready for Step 3.</div>`;
+    alert(`Done — ${targets.length} candidate(s) un-allocated.`);
+  } catch (err) {
+    alert("Un-allocate failed: " + err.message);
+  }
+}
+
+// Bulk version of deleteCandidate() above, scoped to everyone still
+// unallocated (2026-10-02, Jon — clearing out a prepped test batch, or a
+// real batch abandoned before Step 3, without picking through one by one).
+// Deliberately only ever touches c.course === "" / falsy — once "Allocate
+// now" has given someone a course they're excluded, same as every other
+// unallocated-only action on this page (Mark all "no placement dates",
+// autoFitCourse). Linked-repeat pointers are cleared the same way single
+// delete does, so nothing is left pointing at a record that no longer
+// exists.
+async function deleteAllUnallocated() {
+  const targets = allCandidates.filter(c => !c.course);
+  if (!targets.length) { alert("Nothing to delete — everyone on this list already has a course."); return; }
+  const targetIds = new Set(targets.map(c => c.id));
+  if (!confirm(`Delete all ${targets.length} unallocated candidate(s)?\n\nAnyone already allocated a course is left untouched. This cannot be undone.`)) return;
+  if (!confirm(`Really delete ${targets.length} record(s)? Last chance to back out.`)) return;
+  try {
+    const CHUNK = 400; // Firestore batch write limit is 500; leave headroom
+    for (let start = 0; start < targets.length; start += CHUNK) {
+      const batch = db.batch();
+      targets.slice(start, start + CHUNK).forEach(c => {
+        batch.delete(db.collection(COLLECTIONS.stage1Candidates).doc(c.id));
+        // Clear a dangling link pointer on anyone linked to a deleted
+        // record, same as single delete — including a link to ANOTHER
+        // target in this same batch, which still needs clearing on
+        // whichever side isn't itself being deleted.
+        if (c.linkedCandidateId && !targetIds.has(c.linkedCandidateId)) {
+          batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.linkedCandidateId), { linkedCandidateId: null, linkedAt: null });
+        }
+      });
+      await batch.commit();
+    }
+    allCandidates = allCandidates.filter(c => !targetIds.has(c.id));
+    allCandidates.forEach(c => {
+      if (c.linkedCandidateId && targetIds.has(c.linkedCandidateId)) c.linkedCandidateId = null;
+    });
+    computeDuplicateColors();
+    populateCourseFilter();
+    renderCandidates();
+    alert(`Deleted ${targets.length} unallocated candidate(s).`);
+  } catch (err) {
+    alert("Bulk delete failed: " + err.message);
+  }
+}
+
+// Same mechanism as deleteAllUnallocated() above, but scoped by email
+// instead of allocation status (2026-10-02, Jon) — every test batch
+// generated for this site has used a ".test@" email, so this is how
+// practice data gets cleared out even after it's already been through
+// Step 3 and has a course/room, which deleteAllUnallocated() won't touch.
+async function deleteTestCandidates() {
+  const targets = allCandidates.filter(c => (c.email || "").toLowerCase().includes(".test@"));
+  if (!targets.length) { alert("Nothing to delete — no candidate's email contains \".test@\"."); return; }
+  const targetIds = new Set(targets.map(c => c.id));
+  const PREVIEW_CAP = 25;
+  const names = targets.slice(0, PREVIEW_CAP).map(c => `${c.name} (${c.email})`).join("\n");
+  const more = targets.length > PREVIEW_CAP ? `\n…and ${targets.length - PREVIEW_CAP} more` : "";
+  if (!confirm(`Delete ${targets.length} test candidate(s)? Matched by ".test@" in their email:\n\n${names}${more}\n\nThis includes anyone already allocated a course/room. This cannot be undone.`)) return;
+  if (!confirm(`Really delete ${targets.length} record(s)? Last chance to back out.`)) return;
+  try {
+    const CHUNK = 400; // Firestore batch write limit is 500; leave headroom
+    for (let start = 0; start < targets.length; start += CHUNK) {
+      const batch = db.batch();
+      targets.slice(start, start + CHUNK).forEach(c => {
+        batch.delete(db.collection(COLLECTIONS.stage1Candidates).doc(c.id));
+        if (c.linkedCandidateId && !targetIds.has(c.linkedCandidateId)) {
+          batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.linkedCandidateId), { linkedCandidateId: null, linkedAt: null });
+        }
+      });
+      await batch.commit();
+    }
+    allCandidates = allCandidates.filter(c => !targetIds.has(c.id));
+    allCandidates.forEach(c => {
+      if (c.linkedCandidateId && targetIds.has(c.linkedCandidateId)) c.linkedCandidateId = null;
+    });
+    computeDuplicateColors();
+    populateCourseFilter();
+    renderCandidates();
+    alert(`Deleted ${targets.length} test candidate(s).`);
+  } catch (err) {
+    alert("Bulk delete failed: " + err.message);
   }
 }
 

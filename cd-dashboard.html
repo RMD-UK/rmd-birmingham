@@ -62,17 +62,24 @@
     .sidebar-nav { padding: 10px 0; flex: 1; }
     .nav-item {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 8px;
       padding: 11px 14px;
       color: rgba(255,255,255,0.65);
       cursor: pointer;
       font-size: 13px;
       font-weight: 600;
+      line-height: 1.3;
       border-left: 3px solid transparent;
       transition: all 0.12s;
-      white-space: nowrap;
     }
+    /* 2026-10-01, per Jon: longer labels (e.g. "Assessors and Senior
+       Instructors") were being clipped by the fixed 180px sidebar width
+       with no wrapping — wrap onto a second line instead of hiding text.
+       The icon stays top-aligned (align-items: flex-start above) so a
+       wrapped two-line label still reads correctly next to it. */
+    .nav-item span:not(.nav-icon) { white-space: normal; }
+    .nav-item .nav-icon { flex-shrink: 0; margin-top: 1px; }
     .nav-item:hover { background: rgba(255,255,255,0.06); color: white; }
     .nav-item.active { color: white; border-left-color: #4ab5f0; background: rgba(74,181,240,0.1); }
     .nav-item .nav-badge {
@@ -167,6 +174,17 @@
     .tl-dot.red    { background: #b7410e; }
     .tl-dot.grey   { background: #ccd6dd; }
     .tl-sessions { display: flex; gap: 4px; flex-wrap: wrap; }
+    /* Status column (2026-10-01, Jon): one small dot per session rating,
+       the existing .tl-dot reused larger on the right as the average. */
+    .status-dots { display: flex; align-items: center; gap: 3px; }
+    .tl-dot-sm {
+      width: 9px; height: 9px; border-radius: 50%;
+      display: inline-block; flex-shrink: 0; border: 1px solid rgba(0,0,0,.08);
+    }
+    .tl-dot-sm.green { background: #1a6e31; }
+    .tl-dot-sm.amber { background: #c17a00; }
+    .tl-dot-sm.red   { background: #b7410e; }
+    .tl-dot-sm.grey  { background: #ccd6dd; }
     .tl-badge {
       font-size: 10px; padding: 2px 6px; border-radius: 4px;
       font-weight: 700; cursor: pointer;
@@ -199,17 +217,6 @@
     .cand-table tr:last-child td { border-bottom: none; }
     .cand-table tr:hover td { background: #fafbfc; }
 
-    /* ── Decision dropdown ── */
-    .decision-select {
-      padding: 4px 8px; border-radius: 4px;
-      border: 1px solid #ccd6dd; font-size: 12px;
-      font-family: var(--font); color: var(--rmd-navy);
-      background: white; cursor: pointer;
-    }
-    .decision-select.pass   { border-color: #1a6e31; color: #1a6e31; background: #e6f4ea; }
-    .decision-select.fail   { border-color: #b7410e; color: #b7410e; background: #fde8e4; }
-    .decision-select.defer  { border-color: #c17a00; color: #c17a00; background: #fff3cd; }
-
     /* ── Programme timeline ── */
     .prog-row {
       display: flex; gap: 10px; align-items: flex-start;
@@ -235,6 +242,18 @@
     .itc-check { display: flex; gap: 4px; }
     .itc-cb { width: 24px; height: 24px; border-radius: 4px; border: 2px solid #dce3ea; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.12s; }
     .itc-cb.done { background: #1a6e31; border-color: #145727; color: white; }
+
+    /* ── ITC completion (2026-10-01, per Jon) ── */
+    .itc-outcome-select {
+      padding: 5px 8px; border-radius: 6px; border: 1px solid #ccd6dd;
+      font-size: 12px; font-family: var(--font); color: var(--rmd-navy); background: white;
+      width: 230px; flex-shrink: 0;
+    }
+    .itc-already-badge {
+      font-size: 11px; color: #856404; background: #fff3cd;
+      padding: 3px 10px; border-radius: 10px; font-weight: 700; white-space: nowrap;
+    }
+    .itc-rounds-note { font-size: 11px; color: var(--rmd-muted); }
 
     /* ── Faculty meeting slides (presentation mode) ── */
     .meeting-slide {
@@ -356,7 +375,7 @@
 
 <!-- ── Header ── -->
 <div class="dash-header">
-  <a href="timetable.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
   <div class="dash-title">
     Course Director Dashboard
     <span id="dashSubtitle">RMD Instructor Weekend 2026 — Birmingham</span>
@@ -366,18 +385,18 @@
     <!-- Manual refresh — added 2026-09-12. Everything on this page except the
          red-flag alert strip (watchAlerts()'s live listener) is a one-time
          .get() at page load: room/group assignments, candidate lists,
-         decisions, ITC schedule, faculty responses. If someone changes any
-         of that elsewhere while this tab is open, it goes stale until either
-         a full page reload or this button re-runs the same loads in place. -->
+         ITC schedule, faculty responses. If someone changes any of that
+         elsewhere while this tab is open, it goes stale until either a full
+         page reload or this button re-runs the same loads in place. -->
     <a href="#" onclick="refreshDashboardData(this)" class="dash-signout" id="refreshBtn">🔄 Refresh</a>
     <a href="member-menu.html" class="dash-signout">‹ Menu</a>
     <a href="timetable.html" class="dash-signout">← Timetable</a>
     <!-- Reset practice data — director-only rehearsal tool, added 2026-09-12.
-         Clears session_feedback + decisions so a rehearsal run of the
-         Overview/Feedback tabs doesn't leave fake ratings/decisions sitting
-         on the real dashboard. Only rendered before the actual event starts
-         (see resetPracticeData()'s caller in boot) so nobody can wipe genuine
-         candidate feedback once the weekend is under way. -->
+         Clears session_feedback so a rehearsal run of the Overview/Feedback
+         tabs doesn't leave fake ratings sitting on the real dashboard. Only
+         rendered before the actual event starts (see resetPracticeData()'s
+         caller in boot) so nobody can wipe genuine candidate feedback once
+         the weekend is under way. -->
     <a href="#" onclick="resetPracticeData()" class="dash-signout" id="resetPracticeBtn" style="display:none;color:#ffb4a0;">🗑 Reset practice data</a>
     <a href="#" onclick="signOut()" class="dash-signout">Sign out</a>
   </div>
@@ -505,6 +524,7 @@
           <a href="iw-checkin.html" target="_blank" style="display:inline-block;padding:10px 16px;background:#0067A4;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🖥 Check-in Search Page</a>
           <a href="iw-checkin-poster.html" target="_blank" style="display:inline-block;padding:10px 16px;background:#C26A00;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">📱 Check-in Poster (QR)</a>
           <a href="admin-room-allocation.html" style="display:inline-block;padding:10px 16px;background:var(--rmd-navy);color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🏫 Room Allocation</a>
+          <a href="admin-lecture-allocation.html" style="display:inline-block;padding:10px 16px;background:#8b2e9e;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🎤 Lecture Allocation</a>
           <a href="admin-global-tools.html" style="display:inline-block;padding:10px 16px;background:var(--rmd-mid);color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🌐 Global Admin Tools</a>
         </div>
       </div>
@@ -541,9 +561,8 @@
               <th>Stream</th>
               <th>Group</th>
               <th>Status</th>
-              <th>Decision</th>
             </tr></thead>
-            <tbody id="candTableBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+            <tbody id="candTableBody"><tr><td colspan="4" class="loading">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -572,9 +591,8 @@
             <thead><tr>
               <th>Name</th>
               <th>Status</th>
-              <th>Decision</th>
             </tr></thead>
-            <tbody id="assessorTableBody"><tr><td colspan="3" class="loading">Loading…</td></tr></tbody>
+            <tbody id="assessorTableBody"><tr><td colspan="2" class="loading">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -592,6 +610,18 @@
         <div class="card-body" id="itcObsBody">
           <div class="empty-msg">Observation records will appear here as ITCs are assessed.</div>
         </div>
+      </div>
+      <div class="card">
+        <div class="card-header">ITC Completion
+          <div class="card-actions">
+            <label style="font-size:11px;font-weight:400;opacity:0.85;margin-right:4px;">Date</label>
+            <input type="date" id="itcCompletionDate" value="2026-10-11"
+              style="padding:4px 6px;border:1px solid rgba(255,255,255,0.3);border-radius:4px;font-family:var(--font);font-size:12px;background:rgba(255,255,255,0.1);color:white;">
+          </div>
+        </div>
+        <p class="text-sm text-muted" style="margin:10px 14px 0;">Record each ITC's outcome for this Instructor Weekend. The usual expectation is two completed rounds as ITC before upgrading to Instructor Trainer — the suggested outcome below reflects that, but you can change it per person.</p>
+        <div class="card-body" id="itcCompletionBody"><div class="loading">Loading…</div></div>
+        <div class="card-body" id="itcCompletionReview" style="display:none;padding-top:0;"></div>
       </div>
     </section>
 
@@ -762,6 +792,7 @@
           <a href="iw-checkin.html" target="_blank" style="display:inline-block;padding:10px 16px;background:#0067A4;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🖥 Check-in Search Page</a>
           <a href="iw-checkin-poster.html" target="_blank" style="display:inline-block;padding:10px 16px;background:#C26A00;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">📱 Check-in Poster (QR)</a>
           <a href="admin-room-allocation.html" style="display:inline-block;padding:10px 16px;background:var(--rmd-navy);color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🏫 Room Allocation</a>
+          <a href="admin-lecture-allocation.html" style="display:inline-block;padding:10px 16px;background:#8b2e9e;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🎤 Lecture Allocation</a>
           <a href="admin-global-tools.html" style="display:inline-block;padding:10px 16px;background:var(--rmd-mid);color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🌐 Global Admin Tools</a>
         </div>
       </div>
@@ -800,7 +831,6 @@ let currentUser  = null;
 let allPeople    = [];    // all people docs
 let iwAssignments = {};   // { uid: function } -- this year's IW job, from iw_assignments; falls back to people.role when absent
 let feedbackData = [];    // session_feedback docs
-let decisions    = {};    // { candidateId: decision }
 let currentSection = "overview";
 let currentProgDay    = "saturday";
 let currentFeedbackDay = "saturday";
@@ -813,6 +843,7 @@ let notesSaveTimer;
 // ITC observation + AI summary state (config/itc_schedule, itc_observations, itc_summaries)
 let itcSchedule  = {};    // { itcs:[{name,email}], assignments:{email:{sat_group,...}} }
 let itcSummaries = {};    // { itcEmail: {summary, observationCount, generatedAt, ...} }
+let itcOutcomeChoices = {}; // { uid: "upgraded"|"completed"|"failed" } — pending ITC Completion picks, 2026-10-01
 let fns; // firebase.functions() — set in boot, after initFirebase()
 
 // Room rosters (groups collection, one doc per room) + which session block
@@ -862,7 +893,7 @@ window.addEventListener("load", () => {
   requireDirector("timetable.html").then(async user => {
     currentUser = user;
 
-    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
     renderAssessors();
     renderProgramme("saturday");
@@ -870,6 +901,7 @@ window.addEventListener("load", () => {
     renderMeetingSlides("saturday");
     renderITCs();
     renderItcSummaries();
+    renderItcCompletion();
     renderRooms();
     loadMeetingNotes();
     loadReport();
@@ -946,11 +978,56 @@ async function loadFeedback() {
   feedbackData = [...sessionFeedback, ...assessorFeedback];
 }
 
-async function loadDecisions() {
-  try {
-    const snap = await db.collection("decisions").get();
-    snap.docs.forEach(d => { decisions[d.id] = d.data().decision; });
-  } catch (e) { decisions = {}; }
+// ── Instructor Weekend rating score (2026-10-01, Jon) ──────────────────────
+// Turns each individual traffic-light entry (green/amber/red, plus an
+// optional "notably strong"/"notably weak" flag) into a number, then
+// averages across every entry for that person. The small dots in the
+// Status column show the PLAIN traffic-light colour for each session; the
+// one larger dot alongside them (reusing the existing .tl-dot) shows the
+// computed average, banded back onto the same three colours.
+//
+// green=2, amber=1, red=0, with +1 for a "notably strong" flag and -1 for
+// "notably weak" on top of whichever base it was paired with. Averaged
+// (not summed) so someone with 3 ratings isn't penalised or boosted next
+// to someone with 10. strong >= 1.5, weak < 0.5, otherwise standard.
+//
+// This same formula is duplicated server-side in functions/index.js
+// (recomputeInstructorIwScore) for Course Room & Instructor Allocation,
+// which can't read raw feedback at all (kept blind on purpose, 2026-10-01
+// — see that function's comment) and only ever sees the finished average.
+// Keep the two in sync if this changes.
+const IW_RATING_BASE = { green: 2, amber: 1, red: 0 };
+function iwEntryScore(f) {
+  const base = IW_RATING_BASE[f.rating];
+  if (base === undefined) return null;
+  return base + (f.strong ? 1 : 0) - (f.weak ? 1 : 0);
+}
+function iwTierFromAverage(average) {
+  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+}
+function iwTierDotClass(tier) {
+  return tier === "strong" ? "green" : tier === "weak" ? "red" : tier === "standard" ? "amber" : "grey";
+}
+function candidateIwScore(candidateId) {
+  const entries = feedbackData
+    .filter(f => f.candidateId === candidateId)
+    .slice()
+    .sort((a, b) => (a.savedAt?.seconds || 0) - (b.savedAt?.seconds || 0))
+    .map(f => ({ ...f, score: iwEntryScore(f) }))
+    .filter(f => f.score !== null);
+  if (!entries.length) return { entries: [], average: null, tier: "unrated" };
+  const average = entries.reduce((sum, f) => sum + f.score, 0) / entries.length;
+  return { entries, average, tier: iwTierFromAverage(average) };
+}
+function statusDotsHtml(candidateId) {
+  const { entries, average, tier } = candidateIwScore(candidateId);
+  if (!entries.length) return `<span class="tl-badge none">Not yet rated</span>`;
+  const small = entries.map(f => {
+    const flagNote = f.strong ? " — notably strong" : f.weak ? " — notably weak" : "";
+    const sessionNote = f.isAssessorFeedback ? "Assessor/SI feedback" : esc(f.sessionId || "Session");
+    return `<span class="tl-dot-sm ${f.rating}" title="${sessionNote}${flagNote}"></span>`;
+  }).join("");
+  return `<span class="status-dots">${small}<span class="tl-dot ${iwTierDotClass(tier)}" title="Average ${average.toFixed(2)} — ${tier}" style="width:14px;height:14px;margin-left:4px;"></span></span>`;
 }
 
 async function loadItcSchedule() {
@@ -994,9 +1071,16 @@ function renderOverview() {
   document.getElementById("statAmber").textContent      = amber;
   document.getElementById("statRed").textContent        = red.length;
 
-  // Arrived — from attendance collection (best effort)
+  // Arrived — from attendance collection (best effort). Counts anyone
+  // arrived on EITHER day (2026-10-02: attendance.html split into separate
+  // Saturday/Sunday fields) rather than just counting docs, which is also
+  // more accurate than before — a doc can exist purely for a "not expected"
+  // flag with nobody actually arrived.
   db.collection(COLLECTIONS.attendance).get()
-    .then(s => document.getElementById("statArrived").textContent = s.size)
+    .then(s => {
+      const arrived = s.docs.filter(d => { const x = d.data(); return !!x.arrived_saturday || !!x.arrived_sunday; }).length;
+      document.getElementById("statArrived").textContent = arrived;
+    })
     .catch(() => document.getElementById("statArrived").textContent = "–");
 
   // Active concerns (red flags)
@@ -1020,13 +1104,6 @@ function renderOverview() {
             ${f.comment ? `<div class="comment-detail">${esc(f.comment)}</div>` : ""}
           </div>
         </div>
-        <select class="decision-select ${decisionClass(decisions[f.candidateId])}"
-          onchange="saveDecision('${f.candidateId}', this.value, this)">
-          <option value="">– Decision –</option>
-          <option value="pass"  ${decisions[f.candidateId]==="pass"  ?"selected":""}>Pass</option>
-          <option value="defer" ${decisions[f.candidateId]==="defer" ?"selected":""}>Defer</option>
-          <option value="fail"  ${decisions[f.candidateId]==="fail"  ?"selected":""}>Fail</option>
-        </select>
       </div>`).join("");
   }
 
@@ -1098,35 +1175,30 @@ function renderCandidates(filter) {
     ? candidates.filter(c => c.name.toLowerCase().includes(filter.toLowerCase()))
     : candidates;
 
-  const tbody = document.getElementById("candTableBody");
-  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">No candidates found.</td></tr>`; return; }
-
-  // Latest rating per candidate
-  const latestRating = {};
-  feedbackData.forEach(f => {
-    const existing = latestRating[f.candidateId];
-    if (!existing || (f.savedAt && (!existing.savedAt || f.savedAt.seconds > existing.savedAt.seconds)))
-      latestRating[f.candidateId] = f;
+  // 2026-10-01, per Jon: sort by room Group first, then alphabetically by
+  // name within each group, so the table reads as grouped blocks rather
+  // than whatever order Firestore happened to return. Candidates with no
+  // group assigned yet sort to the end, alphabetically among themselves.
+  filtered.sort((a, b) => {
+    const groupA = a.group || "";
+    const groupB = b.group || "";
+    if (groupA !== groupB) {
+      if (!groupA) return 1;
+      if (!groupB) return -1;
+      return groupA.localeCompare(groupB, undefined, { numeric: true });
+    }
+    return a.name.localeCompare(b.name);
   });
 
+  const tbody = document.getElementById("candTableBody");
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-msg">No candidates found.</td></tr>`; return; }
+
   tbody.innerHTML = filtered.map(c => {
-    const latest  = latestRating[c.id];
-    const rating  = latest?.rating || "none";
-    const dec     = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
       <td>${esc(c.roleLabel || c.stream || ROLE_LABELS[effectiveRole(c)] || effectiveRole(c))}</td>
       <td>${esc(c.group || "–")}</td>
-      <td><span class="tl-badge ${rating}">${rating === "none" ? "Not yet rated" : rating.charAt(0).toUpperCase() + rating.slice(1)}</span></td>
-      <td>
-        <select class="decision-select ${decisionClass(dec)}"
-          onchange="saveDecision('${c.id}', this.value, this)">
-          <option value="">– –</option>
-          <option value="pass"  ${dec==="pass"  ?"selected":""}>Pass</option>
-          <option value="defer" ${dec==="defer" ?"selected":""}>Defer</option>
-          <option value="fail"  ${dec==="fail"  ?"selected":""}>Fail</option>
-        </select>
-      </td>
+      <td>${statusDotsHtml(c.id)}</td>
     </tr>`;
   }).join("");
 }
@@ -1143,33 +1215,12 @@ function renderAssessors(filter) {
     : assessors;
 
   const tbody = document.getElementById("assessorTableBody");
-  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-msg">No Assessor / Senior Instructor candidates found.</td></tr>`; return; }
-
-  // Latest rating per candidate — feedbackData already includes
-  // assessor_feedback (merged in loadFeedback()), so this is the same
-  // lookup renderCandidates() does for the instructor stream.
-  const latestRating = {};
-  feedbackData.forEach(f => {
-    const existing = latestRating[f.candidateId];
-    if (!existing || (f.savedAt && (!existing.savedAt || f.savedAt.seconds > existing.savedAt.seconds)))
-      latestRating[f.candidateId] = f;
-  });
+  if (!filtered.length) { tbody.innerHTML = `<tr><td colspan="2" class="empty-msg">No Assessor / Senior Instructor candidates found.</td></tr>`; return; }
 
   tbody.innerHTML = filtered.map(c => {
-    const latest  = latestRating[c.id];
-    const rating  = latest?.rating || "none";
-    const dec     = decisions[c.id] || "";
     return `<tr>
       <td><strong>${esc(c.name)}</strong></td>
-      <td><span class="tl-badge ${rating}">${rating === "none" ? "Not yet rated" : rating.charAt(0).toUpperCase() + rating.slice(1)}</span></td>
-      <td>
-        <select class="decision-select ${decisionClass(dec)}"
-          onchange="saveDecision('${c.id}', this.value, this)">
-          <option value="">– –</option>
-          <option value="pass" ${dec==="pass" ?"selected":""}>Pass</option>
-          <option value="fail" ${dec==="fail" ?"selected":""}>Fail</option>
-        </select>
-      </td>
+      <td>${statusDotsHtml(c.id)}</td>
     </tr>`;
   }).join("");
 }
@@ -1285,6 +1336,156 @@ async function generateItcSummary(itcEmail, docId) {
     alert(`Couldn't generate summary: ${err.message || err.code || "unknown error"}`);
     if (btn) { btn.disabled = false; btn.textContent = "✨ Generate summary"; }
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ITC COMPLETION (2026-10-01, per Jon) — end-of-weekend outcome per ITC:
+// upgrade to Instructor Trainer (role history entry, same mechanism as
+// admin-iw-pass-confirmation.html uses for Instructor Candidates), complete
+// another round as ITC (no role change, just logged), or fail (no role
+// change, logged). itcRoundHistory on people/{uid} accumulates one entry
+// per Instructor Weekend year so the "usual two rounds before upgrading"
+// expectation can be suggested as a default, never enforced — the director
+// always has the final call per person.
+// ─────────────────────────────────────────────────────────────────────────────
+function setItcOutcome(id, val) { itcOutcomeChoices[id] = val; }
+
+function itcAlreadyRecorded(c) {
+  return (Array.isArray(c.itcRoundHistory) ? c.itcRoundHistory : [])
+    .find(h => h.year === CURRENT_IW_YEAR);
+}
+
+function itcRoundsCompleted(c) {
+  return (Array.isArray(c.itcRoundHistory) ? c.itcRoundHistory : [])
+    .filter(h => h.outcome === "upgraded" || h.outcome === "completed").length;
+}
+
+function renderItcCompletion() {
+  const body = document.getElementById("itcCompletionBody");
+  const reviewEl = document.getElementById("itcCompletionReview");
+  if (reviewEl) { reviewEl.style.display = "none"; reviewEl.innerHTML = ""; }
+
+  const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!itcs.length) {
+    body.innerHTML = `<div class="empty-msg">No ITCs assigned for Instructor Weekend ${CURRENT_IW_YEAR} yet.</div>`;
+    return;
+  }
+
+  let pendingCount = 0;
+  body.innerHTML = itcs.map(c => {
+    const already = itcAlreadyRecorded(c);
+    if (already) {
+      const label = already.outcome === "upgraded" ? "Upgraded to Instructor Trainer"
+        : already.outcome === "failed" ? "Did not pass this round"
+        : "Completed this round as ITC";
+      return `
+      <div class="itc-row">
+        <div class="itc-name" style="flex:1;min-width:0;">${esc(c.name)}</div>
+        <div class="itc-already-badge">Recorded ${CURRENT_IW_YEAR}: ${label}</div>
+      </div>`;
+    }
+
+    pendingCount++;
+    const roundsDone = itcRoundsCompleted(c);
+    const defaultOutcome = roundsDone >= 2 ? "upgraded" : "completed";
+    if (!(c.id in itcOutcomeChoices)) itcOutcomeChoices[c.id] = defaultOutcome;
+
+    return `
+    <div class="itc-row">
+      <div style="flex:1;min-width:0;">
+        <div class="itc-name">${esc(c.name)}</div>
+        <div class="itc-rounds-note">${roundsDone} round${roundsDone === 1 ? "" : "s"} completed so far${roundsDone >= 2 ? " — meets the usual 2-round expectation" : ""}</div>
+      </div>
+      <select class="itc-outcome-select" onchange="setItcOutcome('${c.id}', this.value)">
+        <option value="completed" ${itcOutcomeChoices[c.id] === "completed" ? "selected" : ""}>Complete another course as ITC</option>
+        <option value="upgraded"  ${itcOutcomeChoices[c.id] === "upgraded"  ? "selected" : ""}>Upgrade to Instructor Trainer</option>
+        <option value="failed"    ${itcOutcomeChoices[c.id] === "failed"    ? "selected" : ""}>Fail</option>
+      </select>
+    </div>`;
+  }).join("");
+
+  if (pendingCount) {
+    body.insertAdjacentHTML("beforeend",
+      `<button class="btn-sm btn-primary" style="margin-top:12px;" onclick="reviewItcCompletion()">Review &amp; Confirm →</button>`);
+  }
+}
+
+function reviewItcCompletion() {
+  const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC);
+  const pending = itcs.filter(c => !itcAlreadyRecorded(c));
+  const chosen = pending.filter(c => itcOutcomeChoices[c.id]);
+  const upgrades  = chosen.filter(c => itcOutcomeChoices[c.id] === "upgraded");
+  const completes = chosen.filter(c => itcOutcomeChoices[c.id] === "completed");
+  const fails     = chosen.filter(c => itcOutcomeChoices[c.id] === "failed");
+
+  const reviewEl = document.getElementById("itcCompletionReview");
+  reviewEl.style.display = "block";
+
+  if (!chosen.length) {
+    reviewEl.innerHTML = `<div class="empty-msg">Set an outcome for at least one ITC before confirming.</div>`;
+    return;
+  }
+
+  const lines = [];
+  if (upgrades.length)  lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${upgrades.length}</strong> upgraded to Instructor Trainer: ${upgrades.map(c => esc(c.name)).join(", ")}</div>`);
+  if (completes.length) lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${completes.length}</strong> completing another course as ITC: ${completes.map(c => esc(c.name)).join(", ")}</div>`);
+
+  let failBlock = "";
+  if (fails.length) {
+    failBlock = `
+      <div style="background:#fde8e4;border:1px solid #f4bfb6;border-radius:8px;padding:12px 14px;margin-top:10px;">
+        <div style="font-weight:700;color:#8f3309;margin-bottom:6px;">⚠️ ${fails.length} marked Fail</div>
+        <div style="font-size:13px;color:#8f3309;">${fails.map(c => esc(c.name)).join(", ")}</div>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#8f3309;margin-top:10px;cursor:pointer;">
+          <input type="checkbox" id="itcFailCheck" onchange="document.getElementById('itcConfirmBtn').disabled = !this.checked">
+          I've checked this list and confirm these ${fails.length} ITC(s) genuinely did not pass this round.
+        </label>
+      </div>`;
+  }
+
+  reviewEl.innerHTML = `
+    ${lines.join("")}
+    ${failBlock}
+    <button class="btn-sm btn-primary" style="margin-top:12px;" id="itcConfirmBtn" ${fails.length ? "disabled" : ""} onclick="submitItcCompletion(this)">
+      Save — record ${chosen.length} outcome${chosen.length === 1 ? "" : "s"}
+    </button>`;
+}
+
+async function submitItcCompletion(btn) {
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+
+  const dateVal = document.getElementById("itcCompletionDate").value || null;
+  const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC);
+  const pending = itcs.filter(c => !itcAlreadyRecorded(c) && itcOutcomeChoices[c.id]);
+
+  let ok = 0, failedCount = 0;
+  for (const c of pending) {
+    const outcome = itcOutcomeChoices[c.id];
+    try {
+      if (outcome === "upgraded") {
+        await addRoleHistoryEntry(c.id, "Instructor Trainer", dateVal, "itc-completion",
+          "Upgraded from ITC after Instructor Weekend " + CURRENT_IW_YEAR);
+      }
+      await db.collection(COLLECTIONS.people).doc(c.id).update({
+        itcRoundHistory: firebase.firestore.FieldValue.arrayUnion({
+          year: CURRENT_IW_YEAR, outcome, date: dateVal, source: "itc-completion"
+        })
+      });
+      ok++;
+    } catch (e) {
+      failedCount++;
+      console.warn("ITC completion failed for", c.name, e.message);
+    }
+  }
+
+  await loadPeople();
+  renderItcCompletion();
+
+  const reviewEl = document.getElementById("itcCompletionReview");
+  reviewEl.innerHTML = `<div class="success-msg" style="font-size:13px;color:#1a6e31;">Done — recorded ${ok} outcome${ok === 1 ? "" : "s"}.${failedCount ? ` ${failedCount} failed to save — check your connection and try those again.` : ""}</div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1542,13 +1743,6 @@ function renderFeedback(day) {
           <div class="text-sm text-muted">${esc(feedback.sessionId)} · Group ${esc(candidate.group || "–")}</div>
           ${feedback.comment ? `<div class="comment-detail">${esc(feedback.comment)}</div>` : `<div class="text-sm text-muted mt-8">No comment provided.</div>`}
         </div>
-        <select class="decision-select ${decisionClass(decisions[candidate.id])}"
-          onchange="saveDecision('${candidate.id}', this.value, this)">
-          <option value="">– Decision –</option>
-          <option value="pass"  ${decisions[candidate.id]==="pass"  ?"selected":""}>Pass</option>
-          <option value="defer" ${decisions[candidate.id]==="defer" ?"selected":""}>Defer</option>
-          <option value="fail"  ${decisions[candidate.id]==="fail"  ?"selected":""}>Fail</option>
-        </select>
       </div>`).join("");
   } else {
     redCard.style.display = "none";
@@ -1621,28 +1815,6 @@ function dismissAlerts() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DECISIONS
-// ─────────────────────────────────────────────────────────────────────────────
-async function saveDecision(candidateId, decision, selectEl) {
-  decisions[candidateId] = decision;
-  selectEl.className = `decision-select ${decisionClass(decision)}`;
-  try {
-    await db.collection("decisions").doc(candidateId).set({
-      decision,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedByUid: currentUser?.uid
-    }, { merge: true });
-  } catch (e) { console.warn("Decision save failed:", e.message); }
-}
-
-function decisionClass(dec) {
-  if (dec === "pass")  return "pass";
-  if (dec === "fail")  return "fail";
-  if (dec === "defer") return "defer";
-  return "";
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // BROADCAST MESSAGE
 // ─────────────────────────────────────────────────────────────────────────────
 async function sendBroadcast() {
@@ -1699,15 +1871,8 @@ function exportReport() {
     "Actions":          document.getElementById("rep-actions").value
   };
 
-  // Candidate summary
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
-  const decisionLines = candidates.map(c =>
-    `  - ${c.name}: ${decisions[c.id] ? decisions[c.id].toUpperCase() : "No decision recorded"}`
-  ).join("\n");
-
   let text = `RMD INSTRUCTOR WEEKEND 2026 — COURSE REPORT\nBirmingham Medical School\n`;
   text += `Generated: ${new Date().toLocaleString("en-GB")}\n\n`;
-  text += `CANDIDATE DECISIONS:\n${decisionLines || "  None recorded."}\n\n`;
   Object.entries(fields).forEach(([label, val]) => {
     if (val.trim()) text += `\n${label.toUpperCase()}\n${"─".repeat(label.length)}\n${val}\n`;
   });
@@ -1822,7 +1987,7 @@ async function refreshDashboardData(linkEl) {
   const original = linkEl ? linkEl.textContent : null;
   if (linkEl) { linkEl.textContent = "⏳ Refreshing…"; linkEl.style.pointerEvents = "none"; }
   try {
-    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadDecisions(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
+    await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
     renderProgramme(currentProgDay);
     renderFeedback(currentFeedbackDay);
@@ -1830,6 +1995,7 @@ async function refreshDashboardData(linkEl) {
     renderAssessors();
     renderITCs();
     renderItcSummaries();
+    renderItcCompletion();
     renderRooms();
     if (currentSection === "faculty") { await loadFacultyResponses(); renderFacultyList(); }
   } catch (e) {
@@ -1842,30 +2008,26 @@ async function refreshDashboardData(linkEl) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RESET PRACTICE DATA — director-only rehearsal tool, added 2026-09-12.
 // Clears session_feedback (candidate ratings/red-flags/strong-weak flags)
-// and decisions (Pass/Defer/Fail calls) so a rehearsal of this dashboard
-// doesn't leave fake data sitting on top of the real thing later. The
-// button that calls this is only shown before the event start date (see
-// boot, above) as a second safeguard against wiping genuine feedback.
-// Does NOT touch session_quality, participant_feedback, itc_summaries, or
-// any other collection — only the two this page's Overview/Feedback tabs
-// actually populate from rated candidates and CD decisions.
+// so a rehearsal of this dashboard doesn't leave fake data sitting on top
+// of the real thing later. The button that calls this is only shown
+// before the event start date (see boot, above) as a second safeguard
+// against wiping genuine feedback. Does NOT touch session_quality,
+// participant_feedback, itc_summaries, or any other collection — only
+// the one this page's Overview/Feedback tabs actually populate from rated
+// candidates.
 // ─────────────────────────────────────────────────────────────────────────────
 async function resetPracticeData() {
-  let feedbackSnap, decisionsSnap;
+  let feedbackSnap;
   try {
-    [feedbackSnap, decisionsSnap] = await Promise.all([
-      db.collection("session_feedback").get(),
-      db.collection("decisions").get()
-    ]);
+    feedbackSnap = await db.collection("session_feedback").get();
   } catch (e) {
     alert(`Couldn't check what's there to reset: ${e.message}`);
     return;
   }
 
-  const fbCount  = feedbackSnap.size;
-  const decCount = decisionsSnap.size;
-  if (!fbCount && !decCount) {
-    alert("Nothing to reset — no candidate ratings or decisions recorded yet.");
+  const fbCount = feedbackSnap.size;
+  if (!fbCount) {
+    alert("Nothing to reset — no candidate ratings recorded yet.");
     return;
   }
 
@@ -1873,14 +2035,13 @@ async function resetPracticeData() {
   const preview = names.slice(0, 8).join(", ") + (names.length > 8 ? `, +${names.length - 8} more` : "");
   const ok = confirm(
     `Delete ALL practice data from this dashboard?\n\n` +
-    `${fbCount} candidate rating${fbCount === 1 ? "" : "s"} (${preview || "none"})\n` +
-    `${decCount} Pass/Defer/Fail decision${decCount === 1 ? "" : "s"}\n\n` +
+    `${fbCount} candidate rating${fbCount === 1 ? "" : "s"} (${preview || "none"})\n\n` +
     `This cannot be undone. Only do this between rehearsals — never once the real weekend has started.`
   );
   if (!ok) return;
 
   try {
-    const allDocs = [...feedbackSnap.docs, ...decisionsSnap.docs];
+    const allDocs = feedbackSnap.docs;
     // Firestore batches cap at 500 writes — chunk defensively even though
     // today's practice runs are nowhere near that.
     for (let i = 0; i < allDocs.length; i += 400) {
@@ -1889,13 +2050,13 @@ async function resetPracticeData() {
       await batch.commit();
     }
   } catch (e) {
-    alert(`Reset failed partway through: ${e.message}. Check the session_feedback and decisions collections directly before trying again.`);
+    alert(`Reset failed partway through: ${e.message}. Check the session_feedback collection directly before trying again.`);
   }
 
-  await Promise.all([loadFeedback(), loadDecisions()]);
+  await loadFeedback();
   renderOverview();
   renderFeedback(currentFeedbackDay || "saturday");
-  alert(`Done — cleared ${fbCount} rating${fbCount === 1 ? "" : "s"} and ${decCount} decision${decCount === 1 ? "" : "s"}.`);
+  alert(`Done — cleared ${fbCount} rating${fbCount === 1 ? "" : "s"}.`);
 }
 
 function esc(s) {

@@ -26,6 +26,14 @@
     .resource-link:hover { background:#eef2f6; border-color:var(--rmd-blue); }
     .resource-link .icon { font-size:18px; }
     .section-label { font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); font-weight:700; margin:0 0 10px; }
+    select { width:100%; padding:12px; border:2px solid #ccd6dd; border-radius:8px; font-size:15px; font-family:var(--font); margin-bottom:12px; background:white; }
+    .room-hint { font-size:13px; color:var(--rmd-muted); line-height:1.5; margin-bottom:16px; }
+    .room-result { border-radius:8px; padding:16px; margin-top:14px; font-size:14px; line-height:1.5; display:none; }
+    .room-result.found { background:#e1efe3; border:1px solid #1a6e31; color:#14531f; }
+    .room-result.pending { background:#fff3cd; border:1px solid #ffd700; color:#856404; }
+    .room-result.notfound { background:#fce8e6; border:1px solid #f5b8b0; color:#b7410e; }
+    .room-result .room-value { font-size:22px; font-weight:900; display:block; margin:4px 0 2px; }
+    .room-loading { display:none; text-align:center; padding:10px; color:var(--rmd-muted); font-size:13px; }
   </style>
 </head>
 <body>
@@ -52,6 +60,21 @@
 
     <div class="card hidden" id="resourcesCard">
       <div class="card-body">
+        <div class="section-label">Find your room</div>
+        <p class="room-hint">Pick your course and confirm your name and email exactly as you registered — your room allocation will be confirmed before you attend, and definitely by the time your course starts on the first Monday, so if nothing shows yet, check back nearer the time rather than worrying.</p>
+        <select id="courseSelect">
+          <option value="">Select your course…</option>
+        </select>
+        <input type="text" id="lookupName" placeholder="Full name" autocomplete="name">
+        <input type="text" id="lookupEmail" placeholder="Email address" autocomplete="email">
+        <button class="btn-primary" id="findRoomBtn" onclick="findRoom()">Find my room</button>
+        <div class="room-loading" id="roomLoading">Checking…</div>
+        <div class="room-result" id="roomResult"></div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="bslCard">
+      <div class="card-body">
         <div class="section-label">BLS reference material</div>
         <div class="resource-grid">
           <a class="resource-link" href="resources/provider/bls-algorithm.pdf" target="_blank" rel="noopener"><span class="icon">📄</span>BLS Algorithm</a>
@@ -72,16 +95,102 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<!-- functions-compat added 2026-10-02 for the "find your room" lookup
+     (lookupCandidateRoom in functions/index.js) — App Check (already
+     loaded above) is what guards this callable, same as the rest of this
+     page; candidates never sign in, so there's no auth-compat.js here. -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
 initFirebase();
+const fns = firebase.functions();
 
 const STORAGE_KEY = "rmdCandidateAccessGranted";
+let enteredAccessCode = ""; // kept in memory only, so findRoom() can re-send it server-side without asking twice
 
 function showResources() {
   document.getElementById("gateCard").classList.add("hidden");
   document.getElementById("resourcesCard").classList.remove("hidden");
+  document.getElementById("bslCard").classList.remove("hidden");
+  loadCourseOptions();
+}
+
+// Course dropdown reads config/stage1_course_dates directly (public read —
+// see firestore.rules, same pattern as config/candidate_access) rather
+// than going through a callable, since it's not personal data. Sorted by
+// date so "Course 1" etc. line up chronologically even if typed out of
+// order on Stage 1 Settings.
+async function loadCourseOptions() {
+  const sel = document.getElementById("courseSelect");
+  try {
+    const snap = await db.collection("config").doc("stage1_course_dates").get();
+    const courses = (snap.exists && snap.data().courses ? snap.data().courses : [])
+      .filter(c => c.name)
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+    courses.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.name;
+      opt.textContent = c.name;
+      sel.appendChild(opt);
+    });
+  } catch (err) {
+    console.warn("Couldn't load course list:", err);
+  }
+}
+
+// Requires name + email + course together, confirming identity rather than
+// just searching (2026-10-02, Jon: "They will need to confirm name, email
+// address & course"). Calls lookupCandidateRoom, which re-checks the
+// access code server-side against config/candidate_access before matching
+// against stage1_candidates — see functions/index.js for why this can't
+// just be a direct client-side Firestore read (that collection is
+// director/faculty-only).
+async function findRoom() {
+  const course = document.getElementById("courseSelect").value;
+  const name = document.getElementById("lookupName").value.trim();
+  const email = document.getElementById("lookupEmail").value.trim();
+  const resultEl = document.getElementById("roomResult");
+  const loadingEl = document.getElementById("roomLoading");
+  const btn = document.getElementById("findRoomBtn");
+
+  resultEl.style.display = "none";
+  resultEl.className = "room-result";
+
+  if (!course) { showRoomResult("notfound", "Select your course first."); return; }
+  if (!name) { showRoomResult("notfound", "Enter your full name."); return; }
+  if (!email) { showRoomResult("notfound", "Enter your email address."); return; }
+
+  btn.disabled = true;
+  loadingEl.style.display = "block";
+  try {
+    const lookup = fns.httpsCallable("lookupCandidateRoom");
+    const res = await lookup({ code: enteredAccessCode, course, name, email });
+    const data = res.data || {};
+    if (!data.found) {
+      showRoomResult("notfound", "No match for that name, email and course. Double-check they're entered exactly as you registered, or ask your instructor.");
+    } else if (data.room) {
+      showRoomResult("found", `Your room:<span class="room-value">${escapeHtml(data.room)}</span>`);
+    } else {
+      showRoomResult("pending", "You're on this course, but your room hasn't been confirmed yet. It will be confirmed before you attend, and definitely by the time the course starts on the first Monday — check back nearer the time.");
+    }
+  } catch (err) {
+    showRoomResult("notfound", "Couldn't check that right now — try again in a moment.");
+  } finally {
+    btn.disabled = false;
+    loadingEl.style.display = "none";
+  }
+}
+
+function showRoomResult(kind, html) {
+  const resultEl = document.getElementById("roomResult");
+  resultEl.className = "room-result " + kind;
+  resultEl.innerHTML = html;
+  resultEl.style.display = "block";
+}
+
+function escapeHtml(v) {
+  return String(v == null ? "" : v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
 async function checkCode() {
@@ -94,7 +203,11 @@ async function checkCode() {
     const snap = await db.collection("config").doc("candidate_access").get();
     const realCode = (snap.exists && snap.data().code ? String(snap.data().code) : "").trim().toLowerCase();
     if (realCode && entered === realCode) {
-      localStorage.setItem(STORAGE_KEY, "1");
+      enteredAccessCode = entered;
+      // Stores the actual code, not just a boolean flag (2026-10-02) — a
+      // return visit needs the real code in hand to call
+      // lookupCandidateRoom, not just permission to skip the gate screen.
+      localStorage.setItem(STORAGE_KEY, entered);
       showResources();
     } else {
       errorEl.style.display = "block";
@@ -105,8 +218,13 @@ async function checkCode() {
   }
 }
 
-// Skip the gate on a return visit from the same device/browser.
-if (localStorage.getItem(STORAGE_KEY) === "1") {
+// Skip the gate on a return visit from the same device/browser. Older
+// visits stored a plain "1" flag rather than the real code (pre-2026-10-02,
+// before the room lookup needed the code itself) — those get the gate once
+// more rather than risking an empty code reaching lookupCandidateRoom.
+const storedCode = localStorage.getItem(STORAGE_KEY);
+if (storedCode && storedCode !== "1") {
+  enteredAccessCode = storedCode;
   showResources();
 }
 

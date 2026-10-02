@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comms — Bulk Email — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 820px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin:4px 0 10px; line-height:1.5; }
+    select, input[type=text], textarea {
+      width:100%; padding:10px; border:2px solid #ccd6dd; border-radius:6px;
+      font-size:14px; font-family:var(--font); margin-bottom:10px; color:var(--rmd-navy); background:white;
+    }
+    textarea { min-height:160px; resize:vertical; }
+    label.field-label { font-size:12px; font-weight:700; color:var(--rmd-navy); text-transform:uppercase; letter-spacing:0.4px; display:block; margin-bottom:4px; }
+    .btn-primary { padding:11px 18px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:disabled { background:#aab8c2; cursor:default; }
+    .btn-secondary { padding:10px 16px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:13px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger { padding:11px 18px; background:#b7410e; color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-danger:disabled { background:#aab8c2; cursor:default; }
+    .recipient-count { font-size:13px; font-weight:700; color:var(--rmd-navy); margin:8px 0; }
+    .recipient-list { max-height:220px; overflow-y:auto; border:1px solid #e8edf2; border-radius:6px; }
+    .recipient-row { padding:6px 12px; font-size:13px; border-top:1px solid #f0f3f6; }
+    .recipient-row:first-child { border-top:none; }
+    .recipient-row .name { font-weight:700; color:var(--rmd-navy); }
+    .recipient-row .email { color:var(--rmd-muted); font-family:monospace; font-size:11px; margin-left:8px; }
+    .group-list { max-height:280px; overflow-y:auto; border:1px solid #e8edf2; border-radius:6px; }
+    .group-row { display:flex; align-items:flex-start; gap:10px; padding:9px 12px; font-size:13px; border-top:1px solid #f0f3f6; cursor:pointer; }
+    .group-row:first-child { border-top:none; }
+    .group-row:hover { background:#f8fafc; }
+    .group-row input[type=checkbox] { width:16px; height:16px; margin:2px 0 0; flex-shrink:0; }
+    .group-row .glabel { color:var(--rmd-navy); }
+    .group-row.combo { background:#f4f8fc; }
+    .group-row.combo .glabel { font-weight:700; }
+    .group-divider { padding:7px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); background:#f8fafc; border-top:1px solid #f0f3f6; }
+    .group-divider:first-child { border-top:none; }
+    .group-category { border-top:1px solid #f0f3f6; }
+    .group-category:first-child { border-top:none; }
+    .group-category > summary { padding:7px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); background:#f8fafc; cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
+    .group-category > summary::-webkit-details-marker { display:none; }
+    .group-category > summary::before { content:"\25B8"; font-size:10px; }
+    .group-category[open] > summary::before { content:"\25BE"; }
+    .group-subcat { margin-left:16px; border-top:1px solid #f0f3f6; }
+    .group-subcat:first-of-type { border-top:none; }
+    .group-subcat > summary { padding:6px 12px; font-size:12px; font-weight:600; color:var(--rmd-navy); cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
+    .group-subcat > summary::-webkit-details-marker { display:none; }
+    .group-subcat > summary::before { content:"\25B8"; font-size:9px; }
+    .group-subcat[open] > summary::before { content:"\25BE"; }
+    .selected-summary { font-size:12px; color:var(--rmd-muted); margin:6px 0 2px; }
+    .template-actions { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 10px 38px; border-top:1px solid #f0f3f6; margin-top:-1px; background:#fafbfd; }
+    .tmpl-btn { padding:5px 10px; font-size:11.5px; font-weight:700; border-radius:6px; border:1.5px solid #ccd6dd; background:#fff; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
+    .tmpl-btn:hover { background:#eef2f6; border-color:var(--rmd-blue); }
+    .tmpl-btn:disabled { color:#b0b8cc; border-color:#e8edf2; cursor:default; background:#fff; }
+    .confirm-box { display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:14px 0; }
+    .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
+    .log-line { font-size:13px; padding:4px 0; }
+    .log-line.ok  { color:#1a6e31; }
+    .log-line.err { color:#b7410e; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Comms — Bulk Email</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">1. Choose group(s)</div>
+    <div class="card-body">
+      <label class="field-label">Groups</label>
+      <div class="group-list" id="groupList">
+        <div class="empty-state">Loading groups…</div>
+      </div>
+      <div class="selected-summary" id="selectedSummary"></div>
+      <p class="hint">Tick as many as you need. Recipients from every ticked group are combined and de-duplicated by email, so nobody gets it twice even if they're in more than one group you pick.</p>
+      <p class="hint">Sends from <strong>rmdbirmingham@rmd.uk.com</strong> (replies go to the monitored RMD Birmingham inbox), same address every automated reminder on this site already uses.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">2. Write the message</div>
+    <div class="card-body">
+      <label class="field-label">Subject</label>
+      <input type="text" id="subjectInput" placeholder="e.g. Important update about your course">
+      <label class="field-label">Message</label>
+      <textarea id="messageInput" placeholder="Hi {{first_name}},&#10;&#10;…"></textarea>
+      <p class="hint">Use <code>{{first_name}}</code> or <code>{{name}}</code> anywhere in the message and it's swapped in per recipient. Plain text only, sent one email per person (not a group "to" list) — nobody sees anyone else's address.</p>
+      <button class="btn-secondary" onclick="previewRecipients()">👁 Preview recipients</button>
+    </div>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none;">
+    <div class="card-header">3. Review &amp; send</div>
+    <div class="card-body">
+      <div class="recipient-count" id="recipientCount"></div>
+      <div class="recipient-list" id="recipientList"></div>
+
+      <label class="confirm-box">
+        <input type="checkbox" id="confirmBox" onchange="document.getElementById('sendBtn').disabled = !this.checked">
+        I've reviewed the recipient list and the message above. Send it.
+      </label>
+      <button class="btn-danger" id="sendBtn" onclick="sendNow()" disabled>✉ Send now</button>
+
+      <div id="log" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const fns = firebase.functions();
+
+// ── Group definitions ───────────────────────────────────────────────────────
+// Two data sources: Stage 1 evening-course candidates (grouped by their
+// `course` field, same collection/field admin-stage1-candidates.html uses),
+// and Instructor Weekend roles — mou_roster for Instructor Candidates /
+// Assessors & Senior Instructors / RMD Student & Senior Faculty (the
+// official roster), faculty_responses (attendanceStatus === "confirmed"
+// only) for Instructor Trainers / ITCs / Assessor Faculty / Faculty, since
+// those roles don't live on mou_roster at all (2026-10-02, Jon).
+let groups = []; // [{ id, label, people: [{name,email}] }]
+let currentGroup = null;
+let courseDatesConfig = {}; // course name -> stored date (exam night) from config/stage1_course_dates
+
+function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+
+function dedupe(people) {
+  const map = new Map();
+  people.forEach(p => { if (p && p.email) map.set(p.email.toLowerCase(), p); });
+  return Array.from(map.values());
+}
+
+function courseSort(a, b) {
+  const an = parseInt((a.match(/\d+/) || [])[0], 10);
+  const bn = parseInt((b.match(/\d+/) || [])[0], 10);
+  if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
+  return a.localeCompare(b);
+}
+
+async function loadGroups() {
+  groups = [];
+
+  // Exam-night dates per course, for the per-course "Allocation email"
+  // template button (2026-10-02, Jon). Same config admin-stage1-settings.html
+  // writes to; stored date IS the exam/assessment night, confirmed with Jon
+  // — session 1 is 14 days earlier, session 2 is 7 days earlier.
+  try {
+    const courseDatesSnap = await db.collection("config").doc("stage1_course_dates").get();
+    const courseDatesList = courseDatesSnap.exists ? (courseDatesSnap.data().courses || []) : [];
+    courseDatesConfig = Object.fromEntries(courseDatesList.filter(c => c.name && c.date).map(c => [c.name, c.date]));
+  } catch (err) {
+    courseDatesConfig = {};
+  }
+
+  // Stage 1 candidates, grouped by course
+  const stage1Snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+  const stage1 = stage1Snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const courses = Array.from(new Set(stage1.filter(c => c.course).map(c => c.course))).sort(courseSort);
+  courses.forEach(course => {
+    const people = stage1.filter(c => c.course === course && c.email).map(c => ({ name: c.name, email: c.email }));
+    groups.push({ id: "stage1_" + course, label: `${course} (${people.length})`, people, category: "stage1", courseName: course });
+  });
+  const allStage1 = stage1.filter(c => c.email).map(c => ({ name: c.name, email: c.email }));
+  groups.push({ id: "stage1_all", label: `All candidates, any course (${allStage1.length})`, people: allStage1, category: "stage1", isAllLeaf: true });
+
+  // IW roster-based groups
+  const rosterSnap = await db.collection(COLLECTIONS.mouRoster).get();
+  const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const rosterGroup = (label, roles) => {
+    const people = roster.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
+    groups.push({ id: "roster_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "iw" });
+  };
+  rosterGroup("Instructor Candidates", ["Instructor"]);
+  rosterGroup("Assessors & Senior Instructors", ["Assessor", "Senior Instructor"]);
+  rosterGroup("RMD Student Faculty", ["RMD Student Faculty"]);
+  rosterGroup("RMD Senior Faculty", ["RMD Senior Faculty"]);
+
+  // Same mou_roster roles as above, listed again under Stage 1 Courses —
+  // 2026-10-02, Jon: wants "all instructors / all Senior Instructors / all
+  // assessors" as options alongside the per-course Stage 1 groups, split out
+  // of the combined "Assessors & Senior Instructors" roster group rather than
+  // a separate data source (confirmed explicitly). Same people, same email —
+  // just a second, differently-labelled way to find them from this tool.
+  const stage1RoleGroup = (label, roles) => {
+    const people = roster.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
+    groups.push({ id: "stage1role_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "stage1", isRoleGroup: true });
+  };
+  stage1RoleGroup("All Instructors", ["Instructor"]);
+  stage1RoleGroup("All Senior Instructors", ["Senior Instructor"]);
+  stage1RoleGroup("All Assessors", ["Assessor"]);
+
+  // IW faculty_responses-based groups — confirmed attendees only, same
+  // scoping admin-iw-registrations.html uses when pulling from this source.
+  const facSnap = await db.collection("faculty_responses").where("attendanceStatus", "==", "confirmed").get();
+  const fac = facSnap.docs.map(d => ({ id: d.id, ...d.data() })).map(d => ({
+    name: [d.firstName, d.lastName].filter(Boolean).join(" ") || d.name || d.email, email: d.email, role: d.role
+  }));
+  const facGroup = (label, roles) => {
+    const people = fac.filter(m => roles.includes(m.role) && m.email);
+    groups.push({ id: "fac_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "iw" });
+  };
+  facGroup("Instructor Trainers", ["Instructor Trainer"]);
+  facGroup("Instructor Trainer Candidates (ITC)", ["Instructor Trainer Candidate", "ITC"]);
+  facGroup("Assessor Faculty", ["Assessor Faculty"]);
+  facGroup("Faculty", ["Faculty"]);
+  facGroup("Directors", ["Director"]);
+
+  // Combined convenience groups — built from the individual IW groups above,
+  // shown first and marked distinctly (2026-10-02, Jon: "want to choose some
+  // more groups eg 'all faculty for instructor weekend' and others").
+  const combos = [];
+  const allFacultyPeople = dedupe(fac.filter(m => m.email && ["Instructor Trainer", "Instructor Trainer Candidate", "ITC", "Assessor Faculty", "Faculty", "Director"].includes(m.role)));
+  combos.push({ id: "combo_all_faculty", label: `IW — All Faculty: Instructor Trainers, Assessor Faculty, Faculty, ITC & Directors (${allFacultyPeople.length})`, people: allFacultyPeople, combo: true });
+
+  const everyoneIW = dedupe([
+    ...roster.filter(m => m.email).map(m => ({ name: m.name, email: m.email })),
+    ...fac.filter(m => m.email),
+  ]);
+  combos.push({ id: "combo_everyone_iw", label: `IW — Everyone, every role & stream (${everyoneIW.length})`, people: everyoneIW, combo: true });
+
+  groups = [...combos, ...groups];
+
+  renderGroupList();
+}
+
+// Trailing-number stripped from a course name so same-stem courses (e.g.
+// "Monday Course 1" / "Monday Course 2") nest under one expandable header —
+// Jon 2026-10-02: "expands from core stems eg 'Monday courses', 'instructor
+// weekend' etc" rather than one long flat checkbox list. Falls back to the
+// full name when there's nothing to strip, so an unrecognised naming scheme
+// just doesn't get sub-grouped rather than breaking.
+function courseStem(courseName) {
+  const stripped = String(courseName || "").replace(/[\s\-_]*\d+[a-z]*\s*$/i, "").trim();
+  return stripped || courseName;
+}
+
+function categorySection(title, innerHtml, open) {
+  return `<details class="group-category"${open ? " open" : ""}><summary>${title}</summary>${innerHtml}</details>`;
+}
+
+function renderGroupList() {
+  const list = document.getElementById("groupList");
+  const combos        = groups.filter(g => g.combo);
+  const iwGroups       = groups.filter(g => g.category === "iw");
+  const stage1Courses = groups.filter(g => g.category === "stage1" && !g.isAllLeaf && !g.isRoleGroup);
+  const stage1All     = groups.filter(g => g.category === "stage1" && g.isAllLeaf);
+  const stage1Roles    = groups.filter(g => g.category === "stage1" && g.isRoleGroup);
+
+  let html = "";
+  if (combos.length) {
+    html += `<div class="group-divider">Combined groups</div>` + combos.map(groupRowHtml).join("");
+  }
+  if (iwGroups.length) {
+    html += categorySection("🎓 Instructor Weekend", iwGroups.map(groupRowHtml).join(""), false);
+  }
+  if (stage1Courses.length || stage1All.length || stage1Roles.length) {
+    const stems = Array.from(new Set(stage1Courses.map(g => courseStem(g.courseName)))).sort();
+    let inner = stage1All.map(groupRowHtml).join("") + stage1Roles.map(groupRowHtml).join("");
+    const courseRowHtml = g => groupRowHtml(g) + templateActionsHtml(g);
+    if (stems.length > 1) {
+      stems.forEach(stem => {
+        const members = stage1Courses.filter(g => courseStem(g.courseName) === stem);
+        inner += `<details class="group-subcat"><summary>${esc(stem)} (${members.length})</summary>${members.map(courseRowHtml).join("")}</details>`;
+      });
+    } else {
+      inner += stage1Courses.map(courseRowHtml).join("");
+    }
+    html += categorySection("📚 Stage 1 Courses", inner, false);
+  }
+  list.innerHTML = html || `<div class="empty-state">No groups available.</div>`;
+}
+
+function formatLongDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + "T12:00:00Z");
+  if (isNaN(d)) return null;
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+// Session 1 = exam night − 14 days, Session 2 = − 7 days, Session 3 = exam
+// night itself (the stored date) — confirmed with Jon 2026-10-02.
+function computeCourseSessionDates(courseName) {
+  const examIso = courseDatesConfig[courseName];
+  if (!examIso) return null;
+  const exam = new Date(examIso + "T12:00:00Z");
+  if (isNaN(exam)) return null;
+  const s1 = new Date(exam); s1.setUTCDate(exam.getUTCDate() - 14);
+  const s2 = new Date(exam); s2.setUTCDate(exam.getUTCDate() - 7);
+  return { session1: formatLongDate(s1.toISOString().slice(0, 10)), session2: formatLongDate(s2.toISOString().slice(0, 10)), exam: formatLongDate(examIso) };
+}
+
+// Template library — "allocation" is live, the rest are placeholders Jon
+// asked to leave in (2026-10-02: "there will be others, could leave
+// placeholders for now") so the UI shape is there without guessing content
+// for templates that haven't been drafted yet.
+const COURSE_TEMPLATES = [
+  { key: "allocation", label: "📧 Allocation email", ready: true },
+  { key: "reminder",   label: "📅 Reminder",         ready: false },
+  { key: "precourse",  label: "📋 Pre-course info",   ready: false },
+];
+
+function templateActionsHtml(g) {
+  const buttons = COURSE_TEMPLATES.map(t => t.ready
+    ? `<button type="button" class="tmpl-btn" onclick="applyCourseTemplate('${t.key}','${esc(g.id)}','${esc(g.courseName)}')">${t.label}</button>`
+    : `<button type="button" class="tmpl-btn" disabled title="Not built yet">${t.label} (soon)</button>`
+  ).join("");
+  return `<div class="template-actions">${buttons}</div>`;
+}
+
+// Ticks this course's recipient checkbox and fills in the message —
+// doesn't send anything, same review-before-send flow as filling it in by
+// hand. Room allocation line points candidates at the "Find your room"
+// tool on candidate-resources.html (2026-10-02) — built after the "Open
+// issue" in Stage1_Course_Allocation_Email_Template.md was resolved;
+// candidates confirm name, email and course there and get their room if
+// it's been set, or a message that it'll be confirmed before the course.
+function applyCourseTemplate(kind, groupId, courseName) {
+  if (kind !== "allocation") return; // other keys are placeholders, not wired up
+  const dates = computeCourseSessionDates(courseName);
+  if (!dates) {
+    alert(`No date saved for "${courseName}" in Settings yet — add it on admin-stage1-settings.html first, then try this template again.`);
+    return;
+  }
+  const cb = document.querySelector(`#groupList input[type=checkbox][value="${CSS.escape(groupId)}"]`);
+  if (cb) { cb.checked = true; onGroupChange(); }
+
+  document.getElementById("subjectInput").value = `Your BLS Course — ${courseName}: Dates & Room Allocation`;
+  document.getElementById("messageInput").value =
+`Dear {{first_name}},
+
+We look forward to welcoming you for your BLS course commencing on ${dates.session1}.
+
+Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night
+
+All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.
+
+Instructions for your examination night (session 3) will be sent in the week before.
+
+Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at rmd.uk.com/candidate-resources.html — use the same access code you were given, then "Find your room" with your name, email and course. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.
+
+If you are unable to attend your BLS session, please email us (colmds-c-rmdbirmingham@adf.bham.ac.uk) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.
+
+Kind regards,
+BLS Administrative Team
+RMD Birmingham
+
+RMD Birmingham - Basic Life Support Faculty
+colmds-c-rmdbirmingham@adf.bham.ac.uk
+Instagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
+
+  document.getElementById("subjectInput").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function groupRowHtml(g) {
+  return `<label class="group-row${g.combo ? " combo" : ""}">
+    <input type="checkbox" value="${esc(g.id)}" onchange="onGroupChange()">
+    <span class="glabel">${esc(g.label)}</span>
+  </label>`;
+}
+
+function getSelectedGroups() {
+  return Array.from(document.querySelectorAll('#groupList input[type=checkbox]:checked'))
+    .map(cb => groups.find(g => g.id === cb.value))
+    .filter(Boolean);
+}
+
+function onGroupChange() {
+  const selected = getSelectedGroups();
+  const summary = document.getElementById("selectedSummary");
+  summary.textContent = selected.length
+    ? `${selected.length} group${selected.length > 1 ? "s" : ""} selected: ${selected.map(g => g.label.replace(/\s*\(\d+\)$/, "")).join(", ")}`
+    : "";
+  document.getElementById("previewCard").style.display = "none";
+  document.getElementById("confirmBox").checked = false;
+  document.getElementById("sendBtn").disabled = true;
+}
+
+function previewRecipients() {
+  const selected = getSelectedGroups();
+  const subject = document.getElementById("subjectInput").value.trim();
+  const message = document.getElementById("messageInput").value.trim();
+  if (!selected.length) { alert("Choose at least one group first."); return; }
+  if (!subject || !message) { alert("Write a subject and a message first."); return; }
+
+  currentGroup = {
+    label: selected.map(g => g.label).join(" + "),
+    people: dedupe(selected.flatMap(g => g.people)),
+  };
+  const wrap = document.getElementById("previewCard");
+  wrap.style.display = "block";
+  document.getElementById("confirmBox").checked = false;
+  document.getElementById("sendBtn").disabled = true;
+  document.getElementById("log").innerHTML = "";
+
+  if (!currentGroup.people.length) {
+    document.getElementById("recipientCount").textContent = "Nobody in this group has an email on file — nothing to send.";
+    document.getElementById("recipientList").innerHTML = "";
+    return;
+  }
+
+  document.getElementById("recipientCount").textContent = `${currentGroup.people.length} recipient(s) — ${currentGroup.label}`;
+  document.getElementById("recipientList").innerHTML = currentGroup.people
+    .map(p => `<div class="recipient-row"><span class="name">${esc(p.name)}</span><span class="email">${esc(p.email)}</span></div>`)
+    .join("");
+}
+
+async function sendNow() {
+  if (!currentGroup || !currentGroup.people.length) return;
+  const subject = document.getElementById("subjectInput").value.trim();
+  const message = document.getElementById("messageInput").value.trim();
+  const btn = document.getElementById("sendBtn");
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  document.getElementById("log").innerHTML = "";
+
+  try {
+    const res = await fns.httpsCallable("sendBulkComms")({
+      recipients: currentGroup.people,
+      subject, message,
+      groupLabel: currentGroup.label,
+      dryRun: false
+    });
+    const { sent, failed, failedEmails } = res.data;
+    const log = document.getElementById("log");
+    const okLine = document.createElement("div");
+    okLine.className = "log-line ok";
+    okLine.textContent = `✅ Sent ${sent} of ${currentGroup.people.length}.`;
+    log.appendChild(okLine);
+    if (failed) {
+      const errLine = document.createElement("div");
+      errLine.className = "log-line err";
+      errLine.textContent = `⚠ ${failed} failed: ${failedEmails.join(", ")}`;
+      log.appendChild(errLine);
+    }
+    btn.textContent = "✅ Sent";
+  } catch (err) {
+    document.getElementById("log").innerHTML = `<div class="log-line err">Send failed: ${esc(err.message)}</div>`;
+    btn.disabled = false;
+    btn.textContent = "✉ Send now";
+  }
+}
+
+requireDirectorOrFaculty("timetable.html").then(() => loadGroups());
+</script>
+</body>
+</html>

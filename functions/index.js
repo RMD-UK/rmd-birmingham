@@ -107,6 +107,7 @@ const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const Anthropic = require("@anthropic-ai/sdk");
 const { Resend } = require("resend");
+const { GoogleAuth } = require("google-auth-library");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -138,6 +139,21 @@ async function callerIsDirector(auth) {
     if (person.exists && person.data().role === "director") return true;
   } catch (e) { /* fall through */ }
   return false;
+}
+
+// callerFacultyRosterGroup(auth) -> "student" | "senior" | null
+// Server-side mirror of myFacultyRosterGroup() in firestore.rules /
+// js/firebase-config.js: looks up the caller's own faculty_roster doc
+// (keyed by lowercased email) and returns its group field. Added
+// 2026-10-01 for sendBulkComms, the first callable that non-directors
+// need to pass.
+async function callerFacultyRosterGroup(auth) {
+  const email = (auth.token.email || "").toLowerCase();
+  if (!email) return null;
+  try {
+    const snap = await db.collection("faculty_roster").doc(email).get();
+    return snap.exists ? (snap.data().group || null) : null;
+  } catch (e) { return null; }
 }
 
 
@@ -249,8 +265,9 @@ const SFR_REMINDERS_COLLECTION  = "senior_faculty_review_reminders";
 // routed to the monitored RMD Birmingham inbox via replyTo. Shared with
 // sendAccountCreationReminders below — one verified domain for all
 // automated reminders.
-const FROM_EMAIL  = "RMD Birmingham <reminders@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
+const FROM_EMAIL  = "RMD Birmingham <rmdbirmingham@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
 const REPLY_TO     = "rmdbirmingham@googlemail.com";
+const COMMS_BCC    = "colmds-c-rmdbirmingham@adf.bham.ac.uk"; // 2026-10-02, Jon: one summary copy per admin-comms.html send, not a bcc on every individual email (he explicitly ruled that out — too much volume at one-email-per-recipient)
 const JON_BCC      = "j.hulme.1@bham.ac.uk"; // Jon wants a copy of every IW RSVP invite sent (2026-08-27) — see sendIwRsvpInvites
 const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 
@@ -2385,6 +2402,187 @@ exports.syncIwRegistrationToPeople = onDocumentWritten(
 );
 
 /**
+ * syncStage1CourseToSheet: Firestore trigger (v2, onDocumentWritten) on
+ * stage1_candidates/{candidateId}. Mirrors a candidate's allocated course
+ * into the "Allocated course" column (G) of the team's master import
+ * Google Sheet, matching rows by email (column C, case-insensitive).
+ *
+ * One-way only, by design (2026-10-01, Jon) — the website stays the single
+ * place that decides who's on which course; this just lets the team see
+ * that result in the sheet they already paste candidates from, without a
+ * second copy of the allocation logic living in Apps Script or anywhere
+ * else. If a matching row can't be found (candidate not yet in the sheet,
+ * or pasted after the Sheet was last refreshed), it logs and skips rather
+ * than guessing at a row.
+ *
+ * One-time setup needed OUTSIDE this repo before this does anything:
+ *  1. Enable the Google Sheets API on the rmd-instructor-weekend GCP
+ *     project (console.cloud.google.com → APIs & Services → Library →
+ *     "Google Sheets API" → Enable).
+ *  2. Share the master import Sheet with this project's Cloud Functions
+ *     runtime service account as an Editor (Share → paste its email,
+ *     found on any function's "Details" tab in the Cloud Console under
+ *     Runtime service account → Editor). No key file or secret needed —
+ *     it authenticates as itself via Application Default Credentials.
+ * Until both are done, this function will log a 403/404 and skip; it
+ * won't block candidate imports or course allocation either way.
+ */
+const STAGE1_SHEET_ID = "1vLFVFM3inl3iE-_8NnMzLjEiGrxlJo5wq-DXXyxLBLQ";
+const STAGE1_SHEET_TAB = "Candidates"; // update here if the tab is ever renamed
+const STAGE1_SHEET_COURSE_COL = "G"; // "Allocated course" — 7th column, after Year of study
+
+let stage1SheetsAuth = null;
+async function stage1SheetsAccessToken() {
+  if (!stage1SheetsAuth) {
+    stage1SheetsAuth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
+  }
+  const client = await stage1SheetsAuth.getClient();
+  const { token } = await client.getAccessToken();
+  return token;
+}
+
+async function stage1SheetsApiFetch(path, options = {}) {
+  const token = await stage1SheetsAccessToken();
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${STAGE1_SHEET_ID}${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(options.headers || {}) }
+  });
+  if (!res.ok) throw new Error(`Sheets API ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+exports.syncStage1CourseToSheet = onDocumentWritten(
+  { document: "stage1_candidates/{candidateId}", region: "us-central1" },
+  async (event) => {
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    if (!after || !after.email || !after.course) return; // nothing to mirror yet
+
+    const before = event.data?.before?.exists ? event.data.before.data() : null;
+    if (before && before.course === after.course && before.email === after.email) return; // unchanged
+
+    const email = String(after.email).trim().toLowerCase();
+    if (!email) return;
+
+    try {
+      const colData = await stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!C2:C`);
+      const rows = colData.values || [];
+      const rowIndex = rows.findIndex(r => (r[0] || "").trim().toLowerCase() === email);
+      if (rowIndex === -1) {
+        console.log(`syncStage1CourseToSheet: no row found for ${email} in the import sheet — skipped.`);
+        return;
+      }
+      const sheetRow = rowIndex + 2; // +1 for the header row, +1 to move from 0-index to 1-index
+      await stage1SheetsApiFetch(
+        `/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}${sheetRow}?valueInputOption=RAW`,
+        { method: "PUT", body: JSON.stringify({ values: [[after.course]] }) }
+      );
+      console.log(`syncStage1CourseToSheet: wrote "${after.course}" for ${email} at row ${sheetRow}.`);
+    } catch (err) {
+      console.error(`syncStage1CourseToSheet: failed to sync ${email}`, err.message);
+    }
+  }
+);
+
+/**
+ * recomputeInstructorIwScore: Firestore trigger (v2, onDocumentWritten) on
+ * BOTH session_feedback/{docId} and assessor_feedback/{docId}. Whenever a
+ * traffic-light rating is submitted, edited, or removed, recomputes the
+ * rated person's Instructor Weekend average score and writes ONLY the
+ * finished result, never the raw ratings, to people/{candidateId}
+ * .iwRatingSummary.
+ *
+ * Why this exists server-side at all (2026-10-01, Jon): session_feedback
+ * and assessor_feedback are deliberately blind — readable only by the
+ * director and whoever submitted a given rating (see firestore.rules) — so
+ * faculty can rate honestly without a comeback. Course Room & Instructor
+ * Allocation needs a strong/standard/weak read on each instructor to avoid
+ * pairing up two weak instructors, but its users (director, RMD
+ * Student/Senior Faculty, widened 2026-10-01) must never see the raw
+ * ratings behind that read. Running the aggregation here, with the
+ * function's own admin privileges, is what makes that possible — it can
+ * read everything, but only ever writes out the averaged summary, never
+ * the source rows.
+ *
+ * Scoring (kept in sync with cd-dashboard.html's identical client-side
+ * copy — iwEntryScore()/candidateIwScore() there, which computes this live
+ * for the director, who already has full access to the raw feed and so
+ * doesn't need to wait on this function):
+ *   green=2, amber=1, red=0, +1 for a "notably strong" flag, -1 for
+ *   "notably weak", on top of whichever base it was paired with. Averaged
+ *   (not summed) across every entry for that person, so someone with 3
+ *   ratings isn't penalised or boosted next to someone with 10.
+ *   average >= 1.5 -> "strong", average < 0.5 -> "weak", else "standard".
+ * A person with zero ratings never gets this field at all (or has it
+ * removed if their last rating is deleted) — read a missing field as "not
+ * yet rated", same as the dashboard does.
+ */
+const IW_RATING_BASE = { green: 2, amber: 1, red: 0 };
+function iwEntryScore(data) {
+  const base = IW_RATING_BASE[data.rating];
+  if (base === undefined) return null;
+  return base + (data.strong ? 1 : 0) - (data.weak ? 1 : 0);
+}
+function iwTierFromAverage(average) {
+  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+}
+
+async function recomputeAndWriteIwScore(candidateId) {
+  if (!candidateId) return;
+  const [sessionSnap, assessorSnap] = await Promise.all([
+    db.collection("session_feedback").where("candidateId", "==", candidateId).get(),
+    db.collection("assessor_feedback").where("candidateId", "==", candidateId).get()
+  ]);
+  const scores = [...sessionSnap.docs, ...assessorSnap.docs]
+    .map((d) => iwEntryScore(d.data()))
+    .filter((s) => s !== null);
+
+  const peopleRef = db.collection("people").doc(candidateId);
+  if (!scores.length) {
+    // Nothing left to rate them on (last entry removed, or never rated) —
+    // clear the field rather than leaving a stale summary behind. update()
+    // rejects if the person doc is somehow already gone; that's fine, there
+    // is nothing to clean up in that case either.
+    await peopleRef.update({ iwRatingSummary: admin.firestore.FieldValue.delete() }).catch(() => {});
+    return;
+  }
+  const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  await peopleRef.set({
+    iwRatingSummary: {
+      average: Math.round(average * 100) / 100,
+      tier: iwTierFromAverage(average),
+      count: scores.length,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }
+  }, { merge: true });
+}
+
+exports.recomputeIwScoreOnSessionFeedback = onDocumentWritten(
+  { document: "session_feedback/{docId}", region: "us-central1" },
+  async (event) => {
+    const data = event.data?.after?.exists ? event.data.after.data() : event.data?.before?.data();
+    const candidateId = data?.candidateId;
+    try {
+      await recomputeAndWriteIwScore(candidateId);
+    } catch (err) {
+      console.error(`recomputeIwScoreOnSessionFeedback: failed for ${candidateId}`, err.message);
+    }
+  }
+);
+
+exports.recomputeIwScoreOnAssessorFeedback = onDocumentWritten(
+  { document: "assessor_feedback/{docId}", region: "us-central1" },
+  async (event) => {
+    const data = event.data?.after?.exists ? event.data.after.data() : event.data?.before?.data();
+    const candidateId = data?.candidateId;
+    try {
+      await recomputeAndWriteIwScore(candidateId);
+    } catch (err) {
+      console.error(`recomputeIwScoreOnAssessorFeedback: failed for ${candidateId}`, err.message);
+    }
+  }
+);
+
+/**
  * sendIwRsvpInvites — director-only.
  *
  * Emails every Assessor/Senior Instructor on iw_registrations who is still
@@ -2843,4 +3041,169 @@ exports.syncIwRegistrationsToPeople = onCall({ region: "us-central1" }, async (r
   }
 
   return { dryRun, ...results };
+});
+
+/**
+ * sendBulkComms - director, RMD Student Faculty or RMD Senior Faculty
+ * (widened 2026-10-01, Jon: "I want all RMD student faculty & RMD senior
+ * faculty to be able to use this") - same faculty_roster.group check as
+ * requireDirectorOrFaculty() in js/firebase-config.js / myFacultyRosterGroup()
+ * in firestore.rules, done server-side here since this is a callable, not a
+ * direct Firestore write.
+ *
+ * Generic bulk-email tool for admin-comms.html (2026-10-02, Jon: "bulk email
+ * all candidates allocated to a particular course... could be separate comms
+ * page & have button for bulk email of several groups... eg candidates per
+ * course, all assessors, all instructors, etc"). Deliberately generic: the
+ * caller works out WHO the recipients are (Stage 1 candidates by course, IW
+ * roster by role, etc, see admin-comms.html) and this function just sends
+ * to whatever { name, email } list it's given, same Resend/FROM_EMAIL
+ * pipeline as every other platform email. Supports {{first_name}} / {{name}}
+ * merge fields in the message body. dryRun returns the recipient count with
+ * nothing sent, for admin-comms.html's preview-before-send step.
+ */
+exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const isDirector = await callerIsDirector(auth);
+  const rosterGroup = isDirector ? null : await callerFacultyRosterGroup(auth);
+  if (!isDirector && rosterGroup !== "student" && rosterGroup !== "senior") {
+    throw new HttpsError("permission-denied", "Course Directors, RMD Student Faculty or RMD Senior Faculty only.");
+  }
+
+  const recipients  = Array.isArray(request.data?.recipients) ? request.data.recipients : [];
+  const subject     = (request.data?.subject || "").trim();
+  const message     = (request.data?.message || "").trim();
+  const groupLabel  = (request.data?.groupLabel || "").trim();
+  const dryRun      = !!request.data?.dryRun;
+
+  const valid = recipients.filter(r => r && r.email);
+  if (!subject) throw new HttpsError("invalid-argument", "Subject is required.");
+  if (!message) throw new HttpsError("invalid-argument", "Message is required.");
+  if (!valid.length) throw new HttpsError("invalid-argument", "No recipients with an email address.");
+
+  if (dryRun) {
+    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [] };
+  }
+
+  const resend = new Resend(resendApiKey.value());
+  let sent = 0;
+  const failedEmails = [];
+  const sentTo = [];
+
+  for (const person of valid) {
+    const firstName = (person.name || "").trim().split(" ")[0] || "there";
+    const personalised = message
+      .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
+      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
+    try {
+      const { error } = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: person.email,
+        replyTo: COMMS_BCC, // 2026-10-02, Jon: comms-tool templates (e.g. course allocation emails) tell recipients to email colmds-c-rmdbirmingham@adf.bham.ac.uk directly — replyTo now matches what the message body actually says, instead of the old generic REPLY_TO Gmail address
+        subject,
+        text: personalised
+      });
+      if (error) throw new Error(error.message || JSON.stringify(error));
+      sent++;
+      sentTo.push(person.email);
+    } catch (err) {
+      console.error(`sendBulkComms: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+
+  await db.collection("comms_log").add({
+    groupLabel, subject, message,
+    recipientCount: valid.length, sent, failedEmails, sentTo,
+    sentAt: admin.firestore.FieldValue.serverTimestamp(),
+    sentByUid: auth.uid,
+    sentByEmail: (auth.token.email || "").toLowerCase()
+  });
+
+  // One summary copy to COMMS_BCC — not a per-recipient bcc (that's one email
+  // per recipient, which Jon explicitly didn't want). States exactly which
+  // addresses were actually sent to, and any that failed.
+  try {
+    const summaryLines = [
+      `Group: ${groupLabel || "(none)"}`,
+      `Sent by: ${(auth.token.email || auth.uid)}`,
+      `Recipients: ${sent} sent${failedEmails.length ? `, ${failedEmails.length} failed` : ""}`,
+      "",
+      "--- Original subject ---",
+      subject,
+      "",
+      "--- Original message ---",
+      message,
+      "",
+      "--- Sent to ---",
+      ...sentTo,
+    ];
+    if (failedEmails.length) {
+      summaryLines.push("", "--- Failed ---", ...failedEmails);
+    }
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: COMMS_BCC,
+      replyTo: REPLY_TO,
+      subject: `[RMD Comms copy] ${subject} — ${sent} sent${groupLabel ? ` (${groupLabel})` : ""}`,
+      text: summaryLines.join("\n")
+    });
+  } catch (err) {
+    console.error("sendBulkComms: summary copy to COMMS_BCC failed", err.message);
+  }
+
+  return { sent, failed: failedEmails.length, failedEmails };
+});
+
+
+/**
+ * lookupCandidateRoom - candidate-resources.html's "find your room" tool
+ * (2026-10-02, Jon). Deliberately NOT a direct client-side Firestore read
+ * of stage1_candidates — that collection is director/Student-Senior-Faculty
+ * read-only in firestore.rules (Section 3.5) specifically because it holds
+ * every candidate's email and degree alongside their room, and opening it
+ * to public read to get at the room field would expose all of that too.
+ * This callable instead checks the shared access code server-side (the
+ * client-side check on the page proves nothing to the server by itself —
+ * it's just UI, not security) against the same config/candidate_access doc,
+ * then confirms name + email + course together (Jon, 2026-10-02: "they
+ * will need to confirm name, email address & course") before returning a
+ * match — all three normalised and matched exactly, not a name search, so
+ * this can't be used to fish for someone else's room with just a guessed
+ * name. Returns only that one candidate's name+room, nothing else. No
+ * Firebase Auth — candidates never sign in anywhere on this site — App
+ * Check (already loaded on this page) is what guards this callable from
+ * abuse instead.
+ */
+exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) => {
+  const code = (request.data?.code || "").trim().toLowerCase();
+  const course = (request.data?.course || "").trim();
+  const name = (request.data?.name || "").trim().toLowerCase();
+  const email = (request.data?.email || "").trim().toLowerCase();
+
+  if (!code) throw new HttpsError("invalid-argument", "Access code required.");
+  if (!course) throw new HttpsError("invalid-argument", "Course required.");
+  if (!name) throw new HttpsError("invalid-argument", "Name required.");
+  if (!email) throw new HttpsError("invalid-argument", "Email required.");
+
+  const codeSnap = await db.collection("config").doc("candidate_access").get();
+  const realCode = (codeSnap.exists && codeSnap.data().code ? String(codeSnap.data().code) : "").trim().toLowerCase();
+  if (!realCode || code !== realCode) {
+    throw new HttpsError("permission-denied", "That access code isn't right.");
+  }
+
+  // email is already stored lowercase at import (admin-stage1-candidates.html
+  // confirmImport()), so the equality check matches as-is.
+  const snap = await db.collection("stage1_candidates")
+    .where("course", "==", course)
+    .where("email", "==", email)
+    .get();
+
+  const match = snap.docs
+    .map(d => d.data())
+    .find(c => (c.name || "").trim().toLowerCase() === name);
+
+  if (!match) return { found: false };
+  return { found: true, name: match.name || "", room: match.room || null };
 });

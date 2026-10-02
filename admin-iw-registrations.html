@@ -213,7 +213,7 @@
 
 <!-- Top bar -->
 <div class="top-bar">
-  <a href="timetable.html" title="Back to programme" style="background:none;padding:0;">
+  <a href="member-menu.html" title="Back to programme" style="background:none;padding:0;">
     <img src="assets/rmd-logo.png" alt="RMD" style="cursor:pointer;opacity:1;transition:opacity 0.15s;" onmouseover="this.style.opacity=0.75" onmouseout="this.style.opacity=1">
   </a>
   <div class="top-bar-title">IW Registrations — Attendee Management</div>
@@ -529,8 +529,45 @@ async function loadAll() {
     .filter(r => r.status === "confirmed")
     .map(async (r) => { r.canonical = await resolveCanonicalName(r.email); }));
 
+  // Role drift against faculty_responses (2026-10-02, Jon: "how can we
+  // sanity check the consistency... rather than having them flagged to
+  // me"). importFromFaculty() only ever ADDS a registration — it never
+  // revisits role on a later resubmission, so iw_registrations.role can
+  // silently go stale against the person's latest faculty_responses
+  // submission (this is how Naveed Kordmahalleh and Emily
+  // Bracegirdle-Morais ended up showing the wrong role here). Confirmed
+  // only, same reasoning as the canonical-name check above. Folded into
+  // the existing "Needs attention" pill/filter below rather than a new
+  // one, so this surfaces the same way syncFlag issues already do.
+  const facultyRoleMap = await loadFacultyRoleMap();
+  allRegistrations
+    .filter(r => r.status === "confirmed")
+    .forEach(r => { r.facultyRole = facultyRoleMap[(r.email||"").toLowerCase()] || null; });
+
   updateSummary();
   renderTable();
+}
+
+// email(lowercase) -> role, read fresh from faculty_responses each load —
+// see the role-drift block in loadAll() above.
+async function loadFacultyRoleMap() {
+  const map = {};
+  try {
+    const snap = await db.collection("faculty_responses").get();
+    snap.forEach(doc => {
+      const d = doc.data();
+      const email = (d.email || doc.id || "").toLowerCase();
+      if (email && d.role) map[email] = d.role;
+    });
+  } catch (e) { console.warn("faculty_responses role map load failed:", e.message); }
+  return map;
+}
+
+// True when this registration's role has drifted from their latest
+// faculty_responses submission — the single source both renderNameCell's
+// sibling badge and the "Needs attention" pill/filter read from.
+function hasRoleMismatch(r) {
+  return !!(r.facultyRole && r.facultyRole !== r.role);
 }
 
 function renderNameCell(r) {
@@ -590,7 +627,7 @@ function updateSummary() {
   document.getElementById("sum-faculty").textContent    = r.filter(x => x.source === "faculty").length;
   document.getElementById("sum-assessorFaculty").textContent = r.filter(x => x.role === "Assessor Faculty").length;
   document.getElementById("sum-itc").textContent         = r.filter(x => x.role === "Instructor Trainer Candidate").length;
-  document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role").length;
+  document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role" || hasRoleMismatch(x)).length;
 }
 
 // ── Table ────────────────────────────────────────────────────────────────────
@@ -624,11 +661,34 @@ function getFiltered() {
     case "faculty":     rows = allRegistrations.filter(r => r.source === "faculty"); break;
     case "assessorFaculty": rows = allRegistrations.filter(r => r.role === "Assessor Faculty"); break;
     case "itc":         rows = allRegistrations.filter(r => r.role === "Instructor Trainer Candidate"); break;
-    case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role"); break;
+    case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role" || hasRoleMismatch(r)); break;
     case "total":       rows = allRegistrations; break;
     default:            rows = allRegistrations;
   }
   return sortByStatusThenName(rows);
+}
+
+function roleMismatchBadge(r) {
+  if (!hasRoleMismatch(r)) return "";
+  const safeFacultyRole = r.facultyRole.replace(/'/g, "\\'");
+  return ` <span style="color:#b7410e;font-size:11px;" title="Registration says &quot;${r.role||"–"}&quot;, their latest faculty form submission says &quot;${r.facultyRole}&quot; — this drifts whenever someone resubmits with a different role after already being imported.">⚠ differs from faculty form: ${r.facultyRole}</span> <a href="#" onclick="event.preventDefault();syncRoleToFacultyResponse('${r.id}','${safeFacultyRole}')" style="font-size:11px;" title="Overwrite this registration's role with their latest faculty form submission.">⟳ sync</a>`;
+}
+
+// Section 0.1 follow-up: director-driven fix, mirrors syncNameToAccount —
+// only ever copies faculty_responses' role onto the registration, never
+// the reverse.
+async function syncRoleToFacultyResponse(docId, newRole) {
+  const r = allRegistrations.find(x => x.id === docId);
+  if (!r) return;
+  if (!confirm(`Update this registration's role from "${r.role || ""}" to "${newRole}" (their latest faculty form submission)?`)) return;
+  try {
+    await db.collection(IW_COLL).doc(docId).update({ role: newRole });
+    r.role = newRole;
+    updateSummary();
+    renderTable();
+  } catch (err) {
+    alert("Failed to update role: " + err.message);
+  }
 }
 
 function roleBadge(role) {
@@ -660,7 +720,7 @@ function renderTable() {
     return `<tr class="${isDecl?"status-declined":""}">
       <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
-      <td>${roleBadge(r.role)}</td>
+      <td>${roleBadge(r.role)}${roleMismatchBadge(r)}</td>
       <td>${statusBadge(r.status)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">
         ${r.notes||""}

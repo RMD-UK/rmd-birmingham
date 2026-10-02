@@ -38,19 +38,19 @@
 <div class="page">
 
   <div class="top-bar">
-    <a href="admin-global-tools.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
     <div style="flex:1;">
       <div class="top-bar-title">Stage 1 Settings</div>
       <div class="top-bar-sub">RMD Birmingham · Director only</div>
     </div>
     <a href="admin-stage1-candidates.html" class="top-bar-link">👤 Stage 1 Candidates</a>
-    <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation (3.6)</a>
+    <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation</a>
   </div>
 
   <div class="card">
     <div class="card-header">Programme assessment deadlines</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">The date each programme needs its students' Stage 1 assessment completed by, for this academic year. Used to work out which course session a newly imported candidate should be put on — see "This year's course sessions" below. Leave a programme blank if it has no deadline yet; candidates on it just won't get auto-assigned until you set one.</p>
+      <p class="hint" style="margin-top:0;">The date each programme needs its students' Stage 1 assessment completed by, for this academic year. Used to work out which course session a newly imported candidate should be put on — see "This year's assessment evenings" below. Leave a programme blank if it has no deadline yet; candidates on it just won't get auto-assigned until you set one.</p>
       <table class="settings-table" id="deadlinesTable">
         <thead><tr><th>Programme</th><th style="width:220px;">Deadline</th></tr></thead>
         <tbody></tbody>
@@ -61,11 +61,11 @@
   </div>
 
   <div class="card">
-    <div class="card-header">This year's course sessions</div>
+    <div class="card-header">This year's assessment evenings</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">The Stage 1 evening courses running this year, in the order they happen. <strong>Name</strong> is exactly what will appear as the candidate's "course" — keep it consistent with what you've used before (e.g. "Course 1") so old and new records line up. <strong>Date</strong> is when that course's assessment evening falls, used to auto-fit candidates against the deadlines above.</p>
+      <p class="hint" style="margin-top:0;">The Stage 1 evening courses running this year, in the order they happen. <strong>Name</strong> is exactly what will appear as the candidate's "course" — keep it consistent with what you've used before (e.g. "Course 1") so old and new records line up. <strong>Date</strong> is when that course's assessment evening falls, used to auto-fit candidates against the deadlines above. <strong>Capacity</strong> is <strong>per room</strong>, not a total headcount for the session — auto-fit multiplies it by the number of Stage 1 teaching rooms to get the real cap (e.g. 12/room × 18 rooms = 216 for that session). This is now applied automatically, by default, without needing to type anything here: the earliest-dated course gets filled first, up to 12/room, then everyone else spreads as evenly as possible across the remaining courses, up to 10/room each. Leave capacity blank on a row to use that default — type a number only if a specific course needs a different cap (fewer rooms available that date, say). Once every eligible course is full, auto-fit asks for permission before placing anyone over cap rather than just flagging them.</p>
       <table class="settings-table" id="coursesTable">
-        <thead><tr><th>Name</th><th style="width:200px;">Date</th><th style="width:50px;"></th></tr></thead>
+        <thead><tr><th>Name</th><th style="width:200px;">Date</th><th style="width:110px;">Capacity</th><th style="width:50px;"></th></tr></thead>
         <tbody></tbody>
       </table>
       <button class="btn-secondary" onclick="addCourseRow()">+ Add course session</button>
@@ -145,42 +145,82 @@ async function loadCourses() {
     document.getElementById("coursesStatus").className = "status-line err";
     courseRows = [];
   }
-  if (!courseRows.length) courseRows = [{ name: "", date: "" }];
+  if (!courseRows.length) {
+    // Brand new year, nothing saved yet — Jon always wants six named
+    // Course 1..6 to start from rather than one blank row (2026-10-01).
+    // Capacity left blank — the 12/room-course-1, 10/room-rest default is
+    // now built into the allocation logic itself (buildEffectiveCapacities
+    // on admin-stage1-candidates.html), applied automatically whenever a
+    // row's capacity is blank, so there's nothing to pre-fill here any
+    // more (2026-10-02, Jon).
+    courseRows = Array.from({ length: 6 }, (_, i) => ({ name: `Course ${i + 1}`, date: "", capacity: "" }));
+  }
   renderCourses();
 }
 
 function renderCourses() {
   const tbody = document.querySelector("#coursesTable tbody");
-  tbody.innerHTML = courseRows.map((c, i) => `
+  // Which row is the "earliest" one for default-capacity purposes — by
+  // DATE, same as buildEffectiveCapacities() on admin-stage1-candidates.html
+  // actually computes it, not just whichever row happens to be listed
+  // first (rows aren't guaranteed to be typed in date order). Used only to
+  // make the placeholder text say the right number (2026-10-02, Jon caught
+  // the old "no cap" placeholder being flat wrong now that blank means
+  // "use the default", not "unlimited").
+  const datedSorted = courseRows.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const earliestRow = datedSorted[0];
+  tbody.innerHTML = courseRows.map((c, i) => {
+    const isEarliest = earliestRow && c === earliestRow;
+    const capPlaceholder = !earliestRow ? "default" : (isEarliest ? "default: 12/room" : "default: 10/room");
+    return `
     <tr>
       <td><input type="text" data-idx="${i}" data-field="name" value="${esc(c.name)}" placeholder="e.g. Course 1"></td>
       <td><input type="date" data-idx="${i}" data-field="date" value="${esc(c.date)}"></td>
+      <td><input type="number" min="0" step="1" data-idx="${i}" data-field="capacity" value="${c.capacity || c.capacity === 0 ? esc(String(c.capacity)) : ""}" placeholder="${capPlaceholder}"></td>
       <td><button class="btn-danger-sm" onclick="removeCourseRow(${i})">✕</button></td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   tbody.querySelectorAll("input").forEach(inp => {
     inp.addEventListener("change", () => {
-      courseRows[Number(inp.dataset.idx)][inp.dataset.field] = inp.value;
+      const val = inp.dataset.field === "capacity" ? (inp.value === "" ? "" : Number(inp.value)) : inp.value;
+      courseRows[Number(inp.dataset.idx)][inp.dataset.field] = val;
     });
   });
 }
 
 function addCourseRow() {
-  courseRows.push({ name: "", date: "" });
+  courseRows.push({ name: "", date: "", capacity: "" });
   renderCourses();
 }
 
+// Capacity's actual default behaviour (course 1 priority-filled to
+// 12/room, everyone else spread evenly up to 10/room) now lives in
+// autoFitCourse() / buildEffectiveCapacities() on
+// admin-stage1-candidates.html, applied automatically at allocation time
+// whenever a row here is left blank (2026-10-02, Jon: "no need for the
+// split across courses button - this should be the default of what's done
+// when courses allocated"). Nothing to run here any more — just leave
+// Capacity blank unless a specific course needs a different number.
+
 function removeCourseRow(i) {
   courseRows.splice(i, 1);
-  if (!courseRows.length) courseRows = [{ name: "", date: "" }];
+  if (!courseRows.length) courseRows = [{ name: "", date: "", capacity: "" }];
   renderCourses();
 }
 
 async function saveCourses() {
   const statusEl = document.getElementById("coursesStatus");
-  const clean = courseRows.filter(c => c.name && c.date);
+  // Capacity is optional — a row with no capacity typed just omits the
+  // field, which autoFitCourse() on admin-stage1-candidates.html treats as
+  // no cap at all, not zero.
+  const clean = courseRows.filter(c => c.name && c.date).map(c => {
+    const row = { name: c.name, date: c.date };
+    if (c.capacity || c.capacity === 0) row.capacity = Number(c.capacity);
+    return row;
+  });
   try {
     await db.collection("config").doc("stage1_course_dates").set({ courses: clean }, { merge: true });
-    courseRows = clean.length ? clean : [{ name: "", date: "" }];
+    courseRows = clean.length ? clean : [{ name: "", date: "", capacity: "" }];
     renderCourses();
     statusEl.textContent = "Saved.";
     statusEl.className = "status-line ok";
