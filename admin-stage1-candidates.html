@@ -299,11 +299,14 @@ function buildEffectiveCapacities() {
 // remaining eligible course currently has the fewest people — NOT a
 // sequential course-by-course fill (2026-10-02, Jon: "the split across
 // courses 2-6 is expected to be as even as possible on initial
-// allocation"). allowOverCap, set only once permission's been given for a
-// batch that didn't all fit within capacity, picks the least-loaded
-// eligible course regardless of cap, course 1 included, rather than
-// flagging the candidate.
-function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCapacities, allowOverCap) {
+// allocation"). Capacity is a hard limit (2026-10-02, Jon, after testing
+// showed over-cap placement dumping whole cohorts onto Course 1: "Cannot
+// put all students into course 1, max 12 per room" / "make sure that we
+// keep to these numbers") — there used to be an allowOverCap path here
+// that let a candidate through regardless of cap once permission had been
+// given for the batch; it's gone. Nobody is ever placed past a course's
+// real room capacity — anyone who doesn't fit comes back flagged instead.
+function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCapacities) {
   if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for", atCapacity: false };
   const deadline = programmeDeadlines[degreeExact];
   if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings`, atCapacity: false };
@@ -320,12 +323,6 @@ function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCap
   const counts = runningCounts || {};
   const capOf = s => caps[s.name] ? caps[s.name] * ROOMS.length : null;
   const countOf = s => counts[s.name] != null ? counts[s.name] : allCandidates.filter(c => c.course === s.name).length;
-
-  if (allowOverCap) {
-    let best = eligible[0], bestCount = countOf(best);
-    eligible.forEach(s => { const n = countOf(s); if (n < bestCount) { best = s; bestCount = n; } });
-    return { course: best.name, reason: null, atCapacity: false };
-  }
 
   const hasRoom = s => { const cap = capOf(s); return cap == null || countOf(s) < cap; };
   const earliestOverall = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1)[0];
@@ -1352,7 +1349,6 @@ async function allocateAllNow() {
 
   const toWrite = [];
   const flagged = [];
-  const capFlagged = []; // flagged purely because every eligible course is full — not degree/deadline/clash issues
   // Seeded from already-committed data, then incremented as each candidate
   // in THIS run is provisionally assigned — see autoFitCourse's comment on
   // why this has to happen here rather than re-scanning allCandidates.
@@ -1361,41 +1357,14 @@ async function allocateAllNow() {
   const effectiveCapacities = buildEffectiveCapacities();
   ready.forEach(c => {
     const resolved = resolveStage1Degree(c.degree);
-    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, false);
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities);
     if (fit.course) {
       toWrite.push({ c, course: fit.course });
       runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
-    } else if (fit.atCapacity) {
-      capFlagged.push(c);
     } else {
       flagged.push({ c, reason: fit.reason });
     }
   });
-
-  // Permission check, asked once for the whole batch rather than per
-  // candidate (2026-10-02, Jon: "if need more per room, can do that with
-  // permission - check?") — only for candidates who couldn't be placed
-  // purely because every course session they're eligible for is already at
-  // capacity; anyone flagged for a different reason (no deadline set, no
-  // eligible session, placement clash) is never offered this, since going
-  // over cap wouldn't fix that anyway.
-  if (capFlagged.length) {
-    const goOverCap = confirm(`${capFlagged.length} candidate(s) couldn't be placed because every course session they're eligible for is already at its capacity.\n\nAllow these to go over cap and be placed anyway? They'll be spread across their eligible courses to keep numbers as even as possible, rather than all landing on one.`);
-    capFlagged.forEach(c => {
-      if (!goOverCap) {
-        flagged.push({ c, reason: "every course session they're eligible for is at capacity (over-cap placement declined)" });
-        return;
-      }
-      const resolved = resolveStage1Degree(c.degree);
-      const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, true);
-      if (fit.course) {
-        toWrite.push({ c, course: fit.course });
-        runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
-      } else {
-        flagged.push({ c, reason: fit.reason || "couldn't be placed even over cap" });
-      }
-    });
-  }
 
   // Room-split, course by course, against everyone already ON that course
   // (including anyone already roomed there from an earlier run) so numbers
