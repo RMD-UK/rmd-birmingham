@@ -57,6 +57,10 @@
     .group-subcat > summary::before { content:"\25B8"; font-size:9px; }
     .group-subcat[open] > summary::before { content:"\25BE"; }
     .selected-summary { font-size:12px; color:var(--rmd-muted); margin:6px 0 2px; }
+    .template-actions { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 10px 38px; border-top:1px solid #f0f3f6; margin-top:-1px; background:#fafbfd; }
+    .tmpl-btn { padding:5px 10px; font-size:11.5px; font-weight:700; border-radius:6px; border:1.5px solid #ccd6dd; background:#fff; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
+    .tmpl-btn:hover { background:#eef2f6; border-color:var(--rmd-blue); }
+    .tmpl-btn:disabled { color:#b0b8cc; border-color:#e8edf2; cursor:default; background:#fff; }
     .confirm-box { display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:14px 0; }
     .empty-state { padding:16px; text-align:center; color:var(--rmd-muted); font-size:13px; }
     .log-line { font-size:13px; padding:4px 0; }
@@ -139,6 +143,7 @@ const fns = firebase.functions();
 // those roles don't live on mou_roster at all (2026-10-02, Jon).
 let groups = []; // [{ id, label, people: [{name,email}] }]
 let currentGroup = null;
+let courseDatesConfig = {}; // course name -> stored date (exam night) from config/stage1_course_dates
 
 function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
 
@@ -157,6 +162,18 @@ function courseSort(a, b) {
 
 async function loadGroups() {
   groups = [];
+
+  // Exam-night dates per course, for the per-course "Allocation email"
+  // template button (2026-10-02, Jon). Same config admin-stage1-settings.html
+  // writes to; stored date IS the exam/assessment night, confirmed with Jon
+  // — session 1 is 14 days earlier, session 2 is 7 days earlier.
+  try {
+    const courseDatesSnap = await db.collection("config").doc("stage1_course_dates").get();
+    const courseDatesList = courseDatesSnap.exists ? (courseDatesSnap.data().courses || []) : [];
+    courseDatesConfig = Object.fromEntries(courseDatesList.filter(c => c.name && c.date).map(c => [c.name, c.date]));
+  } catch (err) {
+    courseDatesConfig = {};
+  }
 
   // Stage 1 candidates, grouped by course
   const stage1Snap = await db.collection(COLLECTIONS.stage1Candidates).get();
@@ -262,17 +279,100 @@ function renderGroupList() {
   if (stage1Courses.length || stage1All.length || stage1Roles.length) {
     const stems = Array.from(new Set(stage1Courses.map(g => courseStem(g.courseName)))).sort();
     let inner = stage1All.map(groupRowHtml).join("") + stage1Roles.map(groupRowHtml).join("");
+    const courseRowHtml = g => groupRowHtml(g) + templateActionsHtml(g);
     if (stems.length > 1) {
       stems.forEach(stem => {
         const members = stage1Courses.filter(g => courseStem(g.courseName) === stem);
-        inner += `<details class="group-subcat"><summary>${esc(stem)} (${members.length})</summary>${members.map(groupRowHtml).join("")}</details>`;
+        inner += `<details class="group-subcat"><summary>${esc(stem)} (${members.length})</summary>${members.map(courseRowHtml).join("")}</details>`;
       });
     } else {
-      inner += stage1Courses.map(groupRowHtml).join("");
+      inner += stage1Courses.map(courseRowHtml).join("");
     }
     html += categorySection("📚 Stage 1 Courses", inner, false);
   }
   list.innerHTML = html || `<div class="empty-state">No groups available.</div>`;
+}
+
+function formatLongDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + "T12:00:00Z");
+  if (isNaN(d)) return null;
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+// Session 1 = exam night − 14 days, Session 2 = − 7 days, Session 3 = exam
+// night itself (the stored date) — confirmed with Jon 2026-10-02.
+function computeCourseSessionDates(courseName) {
+  const examIso = courseDatesConfig[courseName];
+  if (!examIso) return null;
+  const exam = new Date(examIso + "T12:00:00Z");
+  if (isNaN(exam)) return null;
+  const s1 = new Date(exam); s1.setUTCDate(exam.getUTCDate() - 14);
+  const s2 = new Date(exam); s2.setUTCDate(exam.getUTCDate() - 7);
+  return { session1: formatLongDate(s1.toISOString().slice(0, 10)), session2: formatLongDate(s2.toISOString().slice(0, 10)), exam: formatLongDate(examIso) };
+}
+
+// Template library — "allocation" is live, the rest are placeholders Jon
+// asked to leave in (2026-10-02: "there will be others, could leave
+// placeholders for now") so the UI shape is there without guessing content
+// for templates that haven't been drafted yet.
+const COURSE_TEMPLATES = [
+  { key: "allocation", label: "📧 Allocation email", ready: true },
+  { key: "reminder",   label: "📅 Reminder",         ready: false },
+  { key: "precourse",  label: "📋 Pre-course info",   ready: false },
+];
+
+function templateActionsHtml(g) {
+  const buttons = COURSE_TEMPLATES.map(t => t.ready
+    ? `<button type="button" class="tmpl-btn" onclick="applyCourseTemplate('${t.key}','${esc(g.id)}','${esc(g.courseName)}')">${t.label}</button>`
+    : `<button type="button" class="tmpl-btn" disabled title="Not built yet">${t.label} (soon)</button>`
+  ).join("");
+  return `<div class="template-actions">${buttons}</div>`;
+}
+
+// Ticks this course's recipient checkbox and fills in the message —
+// doesn't send anything, same review-before-send flow as filling it in by
+// hand. Room allocation line is left as an obvious placeholder — see the
+// "Open issue" in Stage1_Course_Allocation_Email_Template.md — not
+// resolved yet, so this never silently sends an empty/wrong promise.
+function applyCourseTemplate(kind, groupId, courseName) {
+  if (kind !== "allocation") return; // other keys are placeholders, not wired up
+  const dates = computeCourseSessionDates(courseName);
+  if (!dates) {
+    alert(`No date saved for "${courseName}" in Settings yet — add it on admin-stage1-settings.html first, then try this template again.`);
+    return;
+  }
+  const cb = document.querySelector(`#groupList input[type=checkbox][value="${CSS.escape(groupId)}"]`);
+  if (cb) { cb.checked = true; onGroupChange(); }
+
+  document.getElementById("subjectInput").value = `Your BLS Course — ${courseName}: Dates & Room Allocation`;
+  document.getElementById("messageInput").value =
+`Dear {{first_name}},
+
+We look forward to welcoming you for your BLS course commencing on ${dates.session1}.
+
+Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night
+
+All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.
+
+Instructions for your examination night (session 3) will be sent in the week before.
+
+[ROOM ALLOCATION — placeholder, not resolved yet: see "Open issue" in Stage1_Course_Allocation_Email_Template.md before sending]
+
+If you are unable to attend your BLS session, please email us (colmds-c-rmdbirmingham@adf.bham.ac.uk) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.
+
+Kind regards,
+BLS Administrative Team
+RMD Birmingham
+
+RMD Birmingham - Basic Life Support Faculty
+colmds-c-rmdbirmingham@adf.bham.ac.uk
+Instagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
+
+  document.getElementById("subjectInput").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function groupRowHtml(g) {
