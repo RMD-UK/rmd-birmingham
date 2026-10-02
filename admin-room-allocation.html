@@ -195,9 +195,12 @@
     </div>
 
     <div class="itc-section">
-      <div class="itc-sec-head">Step 2 — Assign a room per session block</div>
+      <div class="itc-sec-head">
+        Step 2 — Assign a room per session block
+        <button class="ra-btn" id="itcAutoBtn" onclick="autoAllocateITCs()" style="background:rgba(255,255,255,.14);color:var(--rmd-navy);border:1.5px solid var(--rmd-navy);">⚡ Auto-allocate</button>
+      </div>
       <div class="itc-sec-body">
-        <p style="font-size:13px;color:#505878;margin:0 0 12px">Each ITC gets a different room for each block. Leave blank if an ITC is not rotating in that block.</p>
+        <p style="font-size:13px;color:#505878;margin:0 0 12px">Each ITC gets a different room for each block. Leave blank if an ITC is not rotating in that block. <b>Auto-allocate</b> fills the whole grid in one go: each block gets every selected ITC in a different room (never two ITCs sharing a room in the same block), and rotates each ITC through a different room each block, same as picking it by hand.</p>
         <div class="itc-grid-wrap" id="itcGridWrap">
           <p style="color:#b0b8cc;font-size:13px;">Select ITCs in Step 1 first.</p>
         </div>
@@ -650,6 +653,39 @@ function setITCRoom(email, sessionKey, roomId) {
   }
   if (!itcSchedule[email]) itcSchedule[email] = {};
   itcSchedule[email][sessionKey] = roomId;
+}
+
+// One-button fill for the whole Step 2 grid. Uses a rotating offset so, for
+// ITC index i and block index b, the room slot is (i + b) % n — a bijection
+// within each block (so no two ITCs ever land on the same room that block,
+// same hard rule setITCRoom() enforces by hand) and a different slot for
+// every ITC from one block to the next (so nobody sits in the same room
+// twice running, matching "they rotate through rooms" above). If there are
+// more selected ITCs than rooms, whoever's slot lands past the last room
+// sits that block out — same rotating offset means it's a different person
+// each time, not always the same ones left out.
+function autoAllocateITCs() {
+  const itcs = allITC.filter(p => itcSet.has(p.email));
+  const n = itcs.length;
+  if (!n) { showStatus("Select ITCs in Step 1 first.", "err"); return; }
+
+  const hasExisting = itcs.some(itc => {
+    const sched = itcSchedule[itc.email] || {};
+    return ITC_SESSIONS.some(s => sched[s.key]);
+  });
+  if (hasExisting && !confirm("This replaces every room already assigned below for the selected ITCs. Continue?")) return;
+
+  const numRooms = ROOMS.length;
+  itcs.forEach((itc, i) => {
+    if (!itcSchedule[itc.email]) itcSchedule[itc.email] = {};
+    ITC_SESSIONS.forEach((s, b) => {
+      const slot = (i + b) % n;
+      itcSchedule[itc.email][s.key] = slot < numRooms ? ROOMS[slot] : "";
+    });
+  });
+
+  renderITCGrid();
+  showStatus(`Auto-allocated ${n} ITC${n === 1 ? "" : "s"} across ${ITC_SESSIONS.length} blocks — remember to Save all.`, "ok");
 }
 
 // ── Save ───────────────────────────────────────────────────────────────────

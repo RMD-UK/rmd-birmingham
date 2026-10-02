@@ -82,6 +82,19 @@ function isTestName(name) {
   const n = (name || "").trim().toLowerCase();
   return n.startsWith("iw test") || n === "instructor trainer test" || n === "instructor trainer candidate test";
 }
+// faculty_responses (and iw_registrations) docs don't carry a flat `name`
+// field like people/mouRoster do — faculty_responses splits it into
+// firstName/lastName, iw_registrations already has `name`. This normalises
+// either shape before handing off to isTestName(), which is the actual bug
+// that let 15 faculty_responses test docs survive every previous run of
+// this tool (it was always checking an undefined `.name` on those docs).
+function docDisplayName(d) {
+  if (d.name) return d.name;
+  return [d.firstName, d.lastName].filter(Boolean).join(" ");
+}
+function isTestDoc(d) {
+  return isTestName(docDisplayName(d));
+}
 function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
 function logLine(msg, cls) {
   const el = document.createElement("div");
@@ -91,7 +104,7 @@ function logLine(msg, cls) {
 }
 
 let scan = {
-  people: [], facultyResponses: [], mouRoster: [], attendance: [],
+  people: [], facultyResponses: [], mouRoster: [], attendance: [], iwRegistrations: [],
   groupsByRoom: {}, // roomId -> { candidates:[removed], instructors:[removed] }
   teachingFacultyRemoved: [], itcRemoved: []
 };
@@ -100,18 +113,20 @@ async function runScan() {
   const summaryEl = document.getElementById("scanSummary");
   const resultsEl = document.getElementById("scanResults");
 
-  const [peopleSnap, facSnap, rosterSnap, groupsSnap, tfDoc, itcDoc] = await Promise.all([
+  const [peopleSnap, facSnap, rosterSnap, groupsSnap, tfDoc, itcDoc, regSnap] = await Promise.all([
     db.collection(COLLECTIONS.people).get(),
     db.collection("faculty_responses").get(),
     db.collection(COLLECTIONS.mouRoster).get(),
     db.collection(COLLECTIONS.groups).get(),
     db.collection("config").doc("teaching_faculty").get(),
-    db.collection("config").doc("itc_schedule").get()
+    db.collection("config").doc("itc_schedule").get(),
+    db.collection(COLLECTIONS.iwRegistrations).get()
   ]);
 
-  scan.people           = peopleSnap.docs.filter(d => isTestName(d.data().name)).map(d => ({ id: d.id, ...d.data() }));
-  scan.facultyResponses = facSnap.docs.filter(d => isTestName(d.data().name)).map(d => ({ id: d.id, ...d.data() }));
-  scan.mouRoster        = rosterSnap.docs.filter(d => isTestName(d.data().name)).map(d => ({ id: d.id, ...d.data() }));
+  scan.people           = peopleSnap.docs.filter(d => isTestDoc(d.data())).map(d => ({ id: d.id, ...d.data() }));
+  scan.facultyResponses = facSnap.docs.filter(d => isTestDoc(d.data())).map(d => ({ id: d.id, ...d.data() }));
+  scan.mouRoster        = rosterSnap.docs.filter(d => isTestDoc(d.data())).map(d => ({ id: d.id, ...d.data() }));
+  scan.iwRegistrations  = regSnap.docs.filter(d => isTestDoc(d.data())).map(d => ({ id: d.id, ...d.data() }));
 
   const testPeopleIds = new Set(scan.people.map(p => p.id));
   const attSnap = await db.collection(COLLECTIONS.attendance).get();
@@ -133,7 +148,8 @@ async function runScan() {
   scan.itcDataRaw = itcData;
 
   const totalRecords = scan.people.length + scan.facultyResponses.length + scan.mouRoster.length +
-    scan.attendance.length + Object.keys(scan.groupsByRoom).length + scan.teachingFacultyRemoved.length + scan.itcRemoved.length;
+    scan.attendance.length + Object.keys(scan.groupsByRoom).length + scan.teachingFacultyRemoved.length + scan.itcRemoved.length +
+    scan.iwRegistrations.length;
 
   if (!totalRecords) {
     summaryEl.textContent = "Nothing found — no record anywhere matches the test-data naming. Looks already clean.";
@@ -148,7 +164,8 @@ async function runScan() {
     scan.attendance.length ? "attendance" : null,
     Object.keys(scan.groupsByRoom).length ? "groups" : null,
     scan.teachingFacultyRemoved.length ? "config/teaching_faculty" : null,
-    scan.itcRemoved.length ? "config/itc_schedule" : null
+    scan.itcRemoved.length ? "config/itc_schedule" : null,
+    scan.iwRegistrations.length ? "iw_registrations" : null
   ].filter(Boolean).join(", ")}.`;
 
   const section = (title, items, renderItem) => !items || !items.length ? "" : `
@@ -160,6 +177,7 @@ async function runScan() {
   let html = "";
   html += section(`people`, scan.people, p => `<div class="row"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.email || p.id)}</span></div>`);
   html += section(`faculty_responses`, scan.facultyResponses, p => `<div class="row"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.email || p.id)}</span></div>`);
+  html += section(`iw_registrations`, scan.iwRegistrations, p => `<div class="row"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.email || p.id)}</span></div>`);
   html += section(`mou_roster`, scan.mouRoster, p => `<div class="row"><span class="name">${esc(p.name)}</span><span class="meta">${esc(p.email || p.id)}</span></div>`);
   html += section(`attendance (stray check-ins)`, scan.attendance, a => `<div class="row"><span class="name">${esc((scan.people.find(p=>p.id===a.id)||{}).name || a.id)}</span></div>`);
   const roomEntries = Object.keys(scan.groupsByRoom).map(rid => ({ rid, ...scan.groupsByRoom[rid] }));
@@ -181,7 +199,8 @@ async function runCleanup() {
       ...scan.people.map(p => db.collection(COLLECTIONS.people).doc(p.id)),
       ...scan.facultyResponses.map(p => db.collection("faculty_responses").doc(p.id)),
       ...scan.mouRoster.map(p => db.collection(COLLECTIONS.mouRoster).doc(p.id)),
-      ...scan.attendance.map(a => db.collection(COLLECTIONS.attendance).doc(a.id))
+      ...scan.attendance.map(a => db.collection(COLLECTIONS.attendance).doc(a.id)),
+      ...scan.iwRegistrations.map(p => db.collection(COLLECTIONS.iwRegistrations).doc(p.id))
     ];
     let batch = db.batch(), n = 0;
     for (const ref of toDelete) {
@@ -190,7 +209,7 @@ async function runCleanup() {
       if (n >= 400) { await batch.commit(); batch = db.batch(); n = 0; }
     }
     if (n > 0) await batch.commit();
-    logLine(`Deleted ${scan.people.length} people, ${scan.facultyResponses.length} faculty_responses, ${scan.mouRoster.length} mou_roster, ${scan.attendance.length} attendance doc(s).`, "ok");
+    logLine(`Deleted ${scan.people.length} people, ${scan.facultyResponses.length} faculty_responses, ${scan.mouRoster.length} mou_roster, ${scan.attendance.length} attendance, ${scan.iwRegistrations.length} iw_registrations doc(s).`, "ok");
 
     // 2. groups — filter the candidates/instructors arrays per room, write back
     const roomIds = Object.keys(scan.groupsByRoom);
