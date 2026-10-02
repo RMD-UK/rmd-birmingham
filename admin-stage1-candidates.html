@@ -265,50 +265,78 @@ function placementClashesWithCourse(placementBlocks, assessmentDate) {
 // reason explains why (shown as a preview flag, never silently dropped).
 // placementBlocks (optional) rules out any session that clashes with a
 // known placement date before picking the latest remaining one.
-function autoFitCourse(degreeExact, placementBlocks, runningCounts) {
-  if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for" };
+// Effective per-room capacity for every course session, computed once per
+// allocateAllNow() run (2026-10-02, Jon: "fill up course 1 with 12 per
+// room, then distribute others across the other courses with 10 per room
+// if possible... no need for the split across courses button - this
+// should be the default of what's done when courses allocated"). A course
+// with an explicit capacity typed on Stage 1 Settings keeps that number;
+// anything left blank gets the built-in default — 12/room for the
+// earliest-dated course, 10/room for every other one — so this is applied
+// automatically at allocation time, not a step Jon has to run first.
+function buildEffectiveCapacities() {
+  const sorted = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const effective = {};
+  sorted.forEach((c, i) => {
+    effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : (i === 0 ? 12 : 10);
+  });
+  // Any course missing a date (shouldn't happen — Stage 1 Settings always
+  // asks for one) still gets a sane fallback rather than being left out.
+  courseSessions.forEach(c => { if (!(c.name in effective)) effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : 10; });
+  return effective;
+}
+
+// Course 1 (the earliest-dated session overall) is the priority fill, up to
+// its own cap; everyone else spreads as evenly as possible across whichever
+// remaining eligible course currently has the fewest people — NOT a
+// sequential course-by-course fill (2026-10-02, Jon: "the split across
+// courses 2-6 is expected to be as even as possible on initial
+// allocation"). allowOverCap, set only once permission's been given for a
+// batch that didn't all fit within capacity, picks the least-loaded
+// eligible course regardless of cap, course 1 included, rather than
+// flagging the candidate.
+function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCapacities, allowOverCap) {
+  if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for", atCapacity: false };
   const deadline = programmeDeadlines[degreeExact];
-  if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings` };
-  if (!courseSessions.length) return { course: null, reason: "no course sessions configured — add this year's dates on Stage 1 Settings" };
-  let eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? 1 : -1);
-  if (!eligible.length) return { course: null, reason: `no course session falls on or before the ${deadline} deadline` };
+  if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings`, atCapacity: false };
+  if (!courseSessions.length) return { course: null, reason: "no course sessions configured — add this year's dates on Stage 1 Settings", atCapacity: false };
+  let eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? -1 : 1);
+  if (!eligible.length) return { course: null, reason: `no course session falls on or before the ${deadline} deadline`, atCapacity: false };
   if (placementBlocks && placementBlocks.length) {
     const clashFree = eligible.filter(c => !placementClashesWithCourse(placementBlocks, c.date));
-    if (!clashFree.length) return { course: null, reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead` };
+    if (!clashFree.length) return { course: null, reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead`, atCapacity: false };
     eligible = clashFree;
   }
-  // Capacity (set per course on Stage 1 Settings) is PER ROOM, not a total
-  // headcount — ROOMS.length teaching rooms run in parallel each session,
-  // so the real ceiling for a session is capacity × ROOMS.length (2026-10-02,
-  // Jon: "does capacity refer to the number per room? ... you know the
-  // number of rooms so can work out total number").
-  //
-  // Try the latest eligible session first (most teaching time before the
-  // deadline, Jon's confirmed rule), falling back to the next-earlier
-  // eligible one only once a session is actually full, instead of flagging
-  // the candidate the moment the single latest session is full. This is
-  // also what spreads candidates across all 6 courses roughly evenly
-  // instead of everyone piling onto whichever one is latest-but-still-
-  // eligible for most people (2026-10-02, Jon: "allocation should have
-  // roughly same number of students across all 6 courses").
-  //
-  // runningCounts lets the caller track course headcount DURING a single
-  // allocateAllNow() run, not just against already-committed Firestore data
-  // — without this, capacity was never actually enforced within one big
-  // batch, since nothing updates allCandidates until after every candidate
-  // in the batch has already been decided.
+
+  const caps = effectiveCapacities || {};
   const counts = runningCounts || {};
-  for (const session of eligible) {
-    const totalCap = session.capacity ? session.capacity * ROOMS.length : null;
-    if (totalCap != null) {
-      const onIt = counts[session.name] != null ? counts[session.name] : allCandidates.filter(c => c.course === session.name).length;
-      if (onIt >= totalCap) continue; // full — try the next-eligible (earlier) session
-    }
-    return { course: session.name, reason: null };
+  const capOf = s => caps[s.name] ? caps[s.name] * ROOMS.length : null;
+  const countOf = s => counts[s.name] != null ? counts[s.name] : allCandidates.filter(c => c.course === s.name).length;
+
+  if (allowOverCap) {
+    let best = eligible[0], bestCount = countOf(best);
+    eligible.forEach(s => { const n = countOf(s); if (n < bestCount) { best = s; bestCount = n; } });
+    return { course: best.name, reason: null, atCapacity: false };
   }
-  const first = eligible[0];
-  const capNote = first.capacity ? ` (capacity ${first.capacity}/room × ${ROOMS.length} rooms = ${first.capacity * ROOMS.length})` : "";
-  return { course: null, reason: `every course session on or before the ${deadline} deadline is already at capacity${capNote} — pick one manually (this can go over the cap)` };
+
+  const hasRoom = s => { const cap = capOf(s); return cap == null || countOf(s) < cap; };
+  const earliestOverall = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1)[0];
+  const courseOne = earliestOverall && eligible.find(s => s.name === earliestOverall.name);
+
+  if (courseOne && hasRoom(courseOne)) {
+    return { course: courseOne.name, reason: null, atCapacity: false };
+  }
+
+  const rest = eligible.filter(s => !courseOne || s.name !== courseOne.name).filter(hasRoom);
+  if (!rest.length) {
+    const ref = courseOne || eligible[0];
+    const cap = caps[ref.name];
+    const capNote = cap ? ` (capacity ${cap}/room × ${ROOMS.length} rooms = ${cap * ROOMS.length})` : "";
+    return { course: null, reason: `every course session on or before the ${deadline} deadline is already at capacity${capNote}`, atCapacity: true };
+  }
+  let best = rest[0], bestCount = countOf(best);
+  rest.forEach(s => { const n = countOf(s); if (n < bestCount) { best = s; bestCount = n; } });
+  return { course: best.name, reason: null, atCapacity: false };
 }
 
 function populateCourseFilter() {
@@ -1239,21 +1267,50 @@ async function allocateAllNow() {
 
   const toWrite = [];
   const flagged = [];
+  const capFlagged = []; // flagged purely because every eligible course is full — not degree/deadline/clash issues
   // Seeded from already-committed data, then incremented as each candidate
   // in THIS run is provisionally assigned — see autoFitCourse's comment on
   // why this has to happen here rather than re-scanning allCandidates.
   const runningCourseCounts = {};
   allCandidates.forEach(c => { if (c.course) runningCourseCounts[c.course] = (runningCourseCounts[c.course] || 0) + 1; });
+  const effectiveCapacities = buildEffectiveCapacities();
   ready.forEach(c => {
     const resolved = resolveStage1Degree(c.degree);
-    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts);
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, false);
     if (fit.course) {
       toWrite.push({ c, course: fit.course });
       runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
+    } else if (fit.atCapacity) {
+      capFlagged.push(c);
     } else {
       flagged.push({ c, reason: fit.reason });
     }
   });
+
+  // Permission check, asked once for the whole batch rather than per
+  // candidate (2026-10-02, Jon: "if need more per room, can do that with
+  // permission - check?") — only for candidates who couldn't be placed
+  // purely because every course session they're eligible for is already at
+  // capacity; anyone flagged for a different reason (no deadline set, no
+  // eligible session, placement clash) is never offered this, since going
+  // over cap wouldn't fix that anyway.
+  if (capFlagged.length) {
+    const goOverCap = confirm(`${capFlagged.length} candidate(s) couldn't be placed because every course session they're eligible for is already at its capacity.\n\nAllow these to go over cap and be placed anyway? They'll be spread across their eligible courses to keep numbers as even as possible, rather than all landing on one.`);
+    capFlagged.forEach(c => {
+      if (!goOverCap) {
+        flagged.push({ c, reason: "every course session they're eligible for is at capacity (over-cap placement declined)" });
+        return;
+      }
+      const resolved = resolveStage1Degree(c.degree);
+      const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, true);
+      if (fit.course) {
+        toWrite.push({ c, course: fit.course });
+        runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
+      } else {
+        flagged.push({ c, reason: fit.reason || "couldn't be placed even over cap" });
+      }
+    });
+  }
 
   // Room-split, course by course, against everyone already ON that course
   // (including anyone already roomed there from an earlier run) so numbers
