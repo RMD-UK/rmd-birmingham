@@ -55,6 +55,12 @@
   .s-helpers-label { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:#6b7696; margin-right:2px; }
   .s-helper-select { width:160px; padding:5px 8px; border:1.5px solid #d0d5e0; border-radius:6px; font-family:var(--font); font-size:12px; color:var(--rmd-navy); background:white; }
   .s-helper-select.filled { border-color:#1a6e31; background:#f0fdf4; }
+  .s-select.dirty, .s-helper-select.dirty { border-color:#c17a00; border-style:dashed; }
+  .unsaved-dot { font-size:10.5px; font-weight:800; color:#c17a00; white-space:nowrap; margin-left:6px; }
+  .ra-btn.save.has-pending { background:#c17a00; }
+  .ra-btn.save.has-pending:hover { background:#a86600; }
+  .ra-btn.save:disabled { background:rgba(255,255,255,.1); color:rgba(255,255,255,.45); cursor:default; }
+  .ra-btn.save:disabled:hover { background:rgba(255,255,255,.1); }
 
   .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
   #authMsg { font-size:15px; opacity:.7; }
@@ -72,7 +78,7 @@
   <a href="cd-dashboard.html" class="ra-back">← Dashboard</a>
   <h1 class="ra-title">Lecture Allocation — Instructor Weekend 2026</h1>
   <span id="saveStatus"></span>
-  <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
+  <button class="ra-btn save" id="saveBtn" onclick="saveAll()">✓ All changes saved</button>
 </div>
 
 <div class="wrap">
@@ -237,7 +243,8 @@ function renderAll() {
       const wrap = document.createElement("div");
       wrap.className = "s-lead-wrap";
       const select = document.createElement("select");
-      select.className = "s-select " + (lead ? "assigned" : "unassigned");
+      const leadDirty = pendingChanges[s.id] && pendingChanges[s.id].lead !== undefined;
+      select.className = "s-select " + (lead ? "assigned" : "unassigned") + (leadDirty ? " dirty" : "");
 
       const blankOpt = document.createElement("option");
       blankOpt.value = "";
@@ -264,6 +271,12 @@ function renderAll() {
       });
 
       wrap.appendChild(select);
+      if (leadDirty) {
+        const dot = document.createElement("span");
+        dot.className = "unsaved-dot";
+        dot.textContent = "● unsaved";
+        wrap.appendChild(dot);
+      }
       topRow.appendChild(timeEl);
       topRow.appendChild(mainEl);
       topRow.appendChild(wrap);
@@ -283,11 +296,12 @@ function renderAll() {
         helpersRow.appendChild(label);
 
         const helpers = currentHelpers(s);
+        const helpersDirty = pendingChanges[s.id] && pendingChanges[s.id].helpers !== undefined;
 
         for (let slot = 0; slot < MAX_HELPERS; slot++) {
           const current = helpers[slot] || "";
           const hSelect = document.createElement("select");
-          hSelect.className = "s-helper-select" + (current ? " filled" : "");
+          hSelect.className = "s-helper-select" + (current ? " filled" : "") + (helpersDirty ? " dirty" : "");
 
           const hBlank = document.createElement("option");
           hBlank.value = "";
@@ -315,6 +329,13 @@ function renderAll() {
           helpersRow.appendChild(hSelect);
         }
 
+        if (helpersDirty) {
+          const hDot = document.createElement("span");
+          hDot.className = "unsaved-dot";
+          hDot.textContent = "● unsaved";
+          helpersRow.appendChild(hDot);
+        }
+
         row.appendChild(helpersRow);
       }
 
@@ -325,6 +346,31 @@ function renderAll() {
   document.getElementById("statAssigned").textContent = assigned;
   document.getElementById("statUnassigned").textContent = total - assigned;
   document.getElementById("statTotal").textContent = total;
+  updateSaveButton();
+}
+
+// 2026-10-02 (Jon: "how do I tell if I've saved them already — only shows
+// 'Save all'") — the button used to read the same thing whether there were
+// unsaved edits or not, and a filled-in dropdown looked identical whether
+// it came from Firestore or from a pick you'd just made but not saved yet.
+// This makes both states visible: the button names the pending count (or
+// confirms everything's saved), and each dirty field gets a dashed amber
+// border plus an "● unsaved" badge until Save all is clicked.
+function updateSaveButton() {
+  const n = Object.keys(pendingChanges).filter(id => {
+    const p = pendingChanges[id];
+    return p && (p.lead !== undefined || p.helpers !== undefined);
+  }).length;
+  const btn = document.getElementById("saveBtn");
+  if (n > 0) {
+    btn.textContent = `💾 Save all (${n} unsaved)`;
+    btn.classList.add("has-pending");
+    btn.disabled = false;
+  } else {
+    btn.textContent = "✓ All changes saved";
+    btn.classList.remove("has-pending");
+    btn.disabled = true;
+  }
 }
 
 // ── Save ───────────────────────────────────────────────────────────────────
@@ -356,6 +402,7 @@ async function saveAll() {
     await batch.commit();
     pendingChanges = {};
     showStatus(`Saved ${ids.length} change${ids.length===1?"":"s"}`, "ok");
+    renderAll();
   } catch(e) {
     showStatus("Save failed: " + e.message, "err");
   }
