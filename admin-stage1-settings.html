@@ -63,12 +63,13 @@
   <div class="card">
     <div class="card-header">This year's assessment evenings</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">The Stage 1 evening courses running this year, in the order they happen. <strong>Name</strong> is exactly what will appear as the candidate's "course" — keep it consistent with what you've used before (e.g. "Course 1") so old and new records line up. <strong>Date</strong> is when that course's assessment evening falls, used to auto-fit candidates against the deadlines above. <strong>Capacity</strong> caps how many candidates auto-fit will place on that session — once it's full, new candidates are flagged for you to place by hand instead (manual placement can still go over the cap). Leave capacity blank for no cap.</p>
+      <p class="hint" style="margin-top:0;">The Stage 1 evening courses running this year, in the order they happen. <strong>Name</strong> is exactly what will appear as the candidate's "course" — keep it consistent with what you've used before (e.g. "Course 1") so old and new records line up. <strong>Date</strong> is when that course's assessment evening falls, used to auto-fit candidates against the deadlines above. <strong>Capacity</strong> is <strong>per room</strong>, not a total headcount for the session — auto-fit multiplies it by the number of Stage 1 teaching rooms to get the real cap (e.g. 12/room × 18 rooms = 216 for that session). Once a session is full, auto-fit tries the next-eligible session before giving up, and anyone it still can't place is flagged for you to place by hand (manual placement can still go over the cap). Leave capacity blank for no cap on that session — but note an uncapped session will keep absorbing candidates past it, so if you want roughly equal numbers across all 6 courses, set a capacity on every row (not just some), not just the busier ones.</p>
       <table class="settings-table" id="coursesTable">
         <thead><tr><th>Name</th><th style="width:200px;">Date</th><th style="width:110px;">Capacity</th><th style="width:50px;"></th></tr></thead>
         <tbody></tbody>
       </table>
       <button class="btn-secondary" onclick="addCourseRow()">+ Add course session</button>
+      <button class="btn-secondary" onclick="splitCapacityEvenly()" style="margin-left:10px;">⚖️ Split capacity evenly across all courses</button>
       <button class="btn-primary" onclick="saveCourses()" style="margin-left:10px;">Save course sessions</button>
       <div class="status-line" id="coursesStatus"></div>
     </div>
@@ -177,6 +178,52 @@ function renderCourses() {
 function addCourseRow() {
   courseRows.push({ name: "", date: "", capacity: "" });
   renderCourses();
+}
+
+// Sets every named course's capacity so the total known candidate count
+// splits as evenly as possible across however many courses are listed
+// (2026-10-02, Jon: "take the total number of people that you know and
+// then divide them across the courses 1 to 6 as equal as you can"). Counts
+// stage1_candidates directly rather than trusting a figure typed in, so it
+// stays right even as candidates are added/removed. Capacity here is
+// PER ROOM (see the hint above) — ROOMS.length teaching rooms run each
+// session, so each course's per-room figure is its even-split target
+// divided by that, rounded UP so the real cap (capacity × rooms) never
+// comes in under the target. Only fills in the numbers — still has to be
+// confirmed with "Save course sessions" below, same as any other edit on
+// this table.
+async function splitCapacityEvenly() {
+  const statusEl = document.getElementById("coursesStatus");
+  statusEl.textContent = "Counting candidates…";
+  statusEl.className = "status-line";
+  let total = 0;
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    total = snap.size;
+  } catch (err) {
+    statusEl.textContent = "Couldn't count candidates — reload and try again.";
+    statusEl.className = "status-line err";
+    return;
+  }
+  const named = courseRows.filter(c => c.name && c.name.trim());
+  if (!named.length) {
+    statusEl.textContent = "Add at least one named course first.";
+    statusEl.className = "status-line err";
+    return;
+  }
+  const k = named.length;
+  const base = Math.floor(total / k);
+  const remainder = total % k; // first `remainder` courses get one extra, so it's as equal as an integer split can be
+  let extraGiven = 0;
+  named.forEach(c => {
+    const target = base + (extraGiven < remainder ? 1 : 0);
+    if (extraGiven < remainder) extraGiven++;
+    c.capacity = Math.ceil(target / STAGE1_TEACHING_ROOMS.length);
+  });
+  renderCourses();
+  const spread = remainder ? `${base}-${base + 1}` : `${base}`;
+  statusEl.textContent = `${total} known candidate(s) ÷ ${k} course(s) ≈ ${spread} each — capacity filled in per room below (not saved yet — click "Save course sessions").`;
+  statusEl.className = "status-line ok";
 }
 
 function removeCourseRow(i) {

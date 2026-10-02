@@ -131,7 +131,9 @@
       <div class="summary-line" id="summaryLine"></div>
       <div id="candidatesWrap"></div>
       <div style="margin-top:16px;border-top:1px solid #f0f3f6;padding-top:14px;">
-        <p class="hint" style="margin-top:0;">For clearing out a prepped-but-not-yet-allocated batch — test rows, or a real batch you've decided not to run with — before it's been through Step 3. Anyone already allocated (has a course) is never touched by this, allocated or not doesn't matter once Delete all unallocated runs, it only ever looks at who's still unallocated.</p>
+        <p class="hint" style="margin-top:0;"><strong>Recovers from a bad "Allocate now" run</strong> — clears the course and room off every allocated candidate so they go back to unallocated and can be run through Step 3 again. Nobody's record is deleted, nothing from Step 1 or Step 2 (name, email, degree, placement dates) is touched or lost — only course and room are cleared. Needs typing a confirmation phrase, on top of the usual two "are you sure" prompts, since this is the one that undoes a big run in one click.</p>
+        <button class="btn-danger" id="unallocateAllBtn" onclick="unallocateAllCandidates()">↩️ Un-allocate all (clear course &amp; room)</button>
+        <p class="hint" style="margin:14px 0 6px;">For clearing out a prepped-but-not-yet-allocated batch — test rows, or a real batch you've decided not to run with — before it's been through Step 3. Anyone already allocated (has a course) is never touched by this, allocated or not doesn't matter once Delete all unallocated runs, it only ever looks at who's still unallocated.</p>
         <button class="btn-danger" id="deleteUnallocatedBtn" onclick="deleteAllUnallocated()">🗑 Delete all unallocated</button>
         <p class="hint" style="margin:14px 0 6px;">For clearing out practice data regardless of allocation status — matches anyone whose email contains <code>.test@</code>, which is how every test batch generated for this site has been addressed. Real candidates never match this, so it's safe to run even once some test rows have been allocated.</p>
         <button class="btn-danger" id="deleteTestBtn" onclick="deleteTestCandidates()">🧪 Delete test candidates</button>
@@ -263,7 +265,7 @@ function placementClashesWithCourse(placementBlocks, assessmentDate) {
 // reason explains why (shown as a preview flag, never silently dropped).
 // placementBlocks (optional) rules out any session that clashes with a
 // known placement date before picking the latest remaining one.
-function autoFitCourse(degreeExact, placementBlocks) {
+function autoFitCourse(degreeExact, placementBlocks, runningCounts) {
   if (!degreeExact) return { course: null, reason: "no recognised programme to look up a deadline for" };
   const deadline = programmeDeadlines[degreeExact];
   if (!deadline) return { course: null, reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings` };
@@ -275,20 +277,38 @@ function autoFitCourse(degreeExact, placementBlocks) {
     if (!clashFree.length) return { course: null, reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead` };
     eligible = clashFree;
   }
-  const best = eligible[0];
-  // Capacity is a soft cap on auto-fit only (2026-10-01, Jon) — hitting it
-  // never bumps a candidate onto a different, earlier session automatically;
-  // they go unassigned with a flag instead, same as any other "couldn't
-  // auto-fit" case, so a director places them by hand. That manual
-  // placement is explicitly allowed to go over the cap. A session with no
-  // capacity set (blank on Stage 1 Settings) has no limit.
-  if (best.capacity) {
-    const onIt = allCandidates.filter(c => c.course === best.name).length;
-    if (onIt >= best.capacity) {
-      return { course: null, reason: `"${best.name}" is already at its cap of ${best.capacity} — pick a course manually (this can go over the cap)` };
+  // Capacity (set per course on Stage 1 Settings) is PER ROOM, not a total
+  // headcount — ROOMS.length teaching rooms run in parallel each session,
+  // so the real ceiling for a session is capacity × ROOMS.length (2026-10-02,
+  // Jon: "does capacity refer to the number per room? ... you know the
+  // number of rooms so can work out total number").
+  //
+  // Try the latest eligible session first (most teaching time before the
+  // deadline, Jon's confirmed rule), falling back to the next-earlier
+  // eligible one only once a session is actually full, instead of flagging
+  // the candidate the moment the single latest session is full. This is
+  // also what spreads candidates across all 6 courses roughly evenly
+  // instead of everyone piling onto whichever one is latest-but-still-
+  // eligible for most people (2026-10-02, Jon: "allocation should have
+  // roughly same number of students across all 6 courses").
+  //
+  // runningCounts lets the caller track course headcount DURING a single
+  // allocateAllNow() run, not just against already-committed Firestore data
+  // — without this, capacity was never actually enforced within one big
+  // batch, since nothing updates allCandidates until after every candidate
+  // in the batch has already been decided.
+  const counts = runningCounts || {};
+  for (const session of eligible) {
+    const totalCap = session.capacity ? session.capacity * ROOMS.length : null;
+    if (totalCap != null) {
+      const onIt = counts[session.name] != null ? counts[session.name] : allCandidates.filter(c => c.course === session.name).length;
+      if (onIt >= totalCap) continue; // full — try the next-eligible (earlier) session
     }
+    return { course: session.name, reason: null };
   }
-  return { course: best.name, reason: null };
+  const first = eligible[0];
+  const capNote = first.capacity ? ` (capacity ${first.capacity}/room × ${ROOMS.length} rooms = ${first.capacity * ROOMS.length})` : "";
+  return { course: null, reason: `every course session on or before the ${deadline} deadline is already at capacity${capNote} — pick one manually (this can go over the cap)` };
 }
 
 function populateCourseFilter() {
@@ -1159,11 +1179,20 @@ async function allocateAllNow() {
 
   const toWrite = [];
   const flagged = [];
+  // Seeded from already-committed data, then incremented as each candidate
+  // in THIS run is provisionally assigned — see autoFitCourse's comment on
+  // why this has to happen here rather than re-scanning allCandidates.
+  const runningCourseCounts = {};
+  allCandidates.forEach(c => { if (c.course) runningCourseCounts[c.course] = (runningCourseCounts[c.course] || 0) + 1; });
   ready.forEach(c => {
     const resolved = resolveStage1Degree(c.degree);
-    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || []);
-    if (fit.course) toWrite.push({ c, course: fit.course });
-    else flagged.push({ c, reason: fit.reason });
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts);
+    if (fit.course) {
+      toWrite.push({ c, course: fit.course });
+      runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
+    } else {
+      flagged.push({ c, reason: fit.reason });
+    }
   });
 
   // Room-split, course by course, against everyone already ON that course
@@ -1203,18 +1232,44 @@ async function allocateAllNow() {
     }
     toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; });
 
-    let report = `Allocated ${toWrite.length} candidate(s) to a course and a room.`;
+    // In-page result panel instead of alert() (2026-10-02, Jon: "need to be
+    // shown which candidate this refers to — how to review?") — a native
+    // alert can't hold a clickable link, so anyone flagged as "couldn't be
+    // auto-fit" is listed here instead, each one a link straight to their
+    // row in All candidates below (see reviewFlaggedCandidate()).
+    let summaryHtml = `<div style="background:#e1efe3;border:1px solid #1a6e31;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:#1a6e31;font-size:13px;font-weight:700;">Allocated ${toWrite.length} candidate(s) to a course and a room.</div>`;
     if (flagged.length) {
-      report += `\n\n${flagged.length} couldn't be auto-fit — pick a course for these by hand:\n` +
-        flagged.map(f => `- ${f.c.name}: ${f.reason}`).join("\n");
+      summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${flagged.length} couldn't be auto-fit — pick a course for ${flagged.length === 1 ? "this one" : "these"} by hand. Click a name to find them in All candidates below:</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${flagged.map(f => `<a href="javascript:void(0)" onclick="reviewFlaggedCandidate('${f.c.id}')" style="color:#856404;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer;">${esc(f.c.name)}</a><span style="font-size:11px;color:#856404;margin:-4px 0 2px;">${esc(f.reason)}</span>`).join("")}
+        </div>
+      </div>`;
     }
-    if (notChecked.length) report += `\n\n${notChecked.length} skipped — not yet checked for placement dates.`;
-    alert(report);
+    if (notChecked.length) summaryHtml += `<p class="hint" style="margin:0 0 12px;">${notChecked.length} skipped — not yet checked for placement dates.</p>`;
+    const summaryEl = document.getElementById("allocationSummary");
+    summaryEl.innerHTML = summaryHtml;
+    summaryEl.scrollIntoView({ behavior: "smooth", block: "start" });
     renderCandidates();
     populateCourseFilter();
   } catch (err) {
     alert("Allocation failed: " + err.message);
   }
+}
+
+// Jumps to a flagged candidate's row in All candidates (2026-10-02) — fills
+// the search box with their email (falls back to name if they have none)
+// and clears the course filter, since a flagged candidate has no course to
+// filter by yet, then scrolls the table into view.
+function reviewFlaggedCandidate(candidateId) {
+  const c = allCandidates.find(x => x.id === candidateId);
+  if (!c) return;
+  const courseSel = document.getElementById("courseFilter");
+  if (courseSel) courseSel.value = "";
+  const search = document.getElementById("searchBox");
+  if (search) { search.value = c.email || c.name; renderCandidates(); }
+  const wrap = document.getElementById("candidatesWrap");
+  if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function linkRepeat(candidateId) {
@@ -1300,6 +1355,48 @@ async function deleteCandidate(id) {
     renderCandidates();
   } catch (err) {
     alert("Delete failed: " + err.message);
+  }
+}
+
+// Rescue button for a bad "Allocate now" run (2026-10-02, Jon: "Allocation
+// not gone as i needed (made a mistake). Need button (with lots of
+// protection layers) to delete all allocated candidates"). Built as an
+// UN-allocate, not a record delete — it only clears course and room on
+// every candidate that has them, same two fields allocateAllNow() sets, so
+// everyone goes back to the unallocated pool with their name, email,
+// degree and placement-date work from Steps 1 and 2 completely intact and
+// ready to be run through Step 3 again. A real record delete would lose
+// all of that and can't be the recovery path for a MIS-allocation (as
+// opposed to deleteAllUnallocated/deleteTestCandidates below, which are
+// for records that should never have existed at all). Three layers of
+// protection, heavier than the other bulk buttons on this page since this
+// one can undo a run of well over a thousand candidates in a single click:
+// a count-bearing confirm, a second are-you-sure, then typing the word
+// UNALLOCATE to actually fire.
+async function unallocateAllCandidates() {
+  const targets = allCandidates.filter(c => c.course);
+  if (!targets.length) { alert("Nothing to un-allocate — no candidate currently has a course."); return; }
+  if (!confirm(`Clear course and room off all ${targets.length} currently-allocated candidate(s)?\n\nThis does NOT delete any candidate record — names, emails, degrees and placement-date work are untouched. It only clears course and room so you can re-run "Allocate now" from Step 3.\n\nThis cannot be undone once confirmed.`)) return;
+  if (!confirm(`Really clear course/room from ${targets.length} record(s)? Last chance to back out.`)) return;
+  const typed = prompt(`Type UNALLOCATE (all capitals) to confirm clearing ${targets.length} candidate(s)' course and room:`);
+  if (typed !== "UNALLOCATE") { alert("Didn't match — nothing was changed."); return; }
+  try {
+    const CHUNK = 400; // Firestore batch write limit is 500; leave headroom
+    for (let start = 0; start < targets.length; start += CHUNK) {
+      const batch = db.batch();
+      targets.slice(start, start + CHUNK).forEach(c => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course: null, room: null });
+      });
+      await batch.commit();
+    }
+    targets.forEach(c => { c.course = null; c.room = null; });
+    populateCourseFilter();
+    renderCandidates();
+    const summaryEl = document.getElementById("allocationSummary");
+    if (summaryEl) summaryEl.innerHTML = `<div style="background:#e8f0fe;border:1px solid #b8d4f5;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:var(--rmd-navy);font-size:13px;font-weight:700;">Cleared course and room from ${targets.length} candidate(s) — they're back in the unallocated pool, ready for Step 3.</div>`;
+    alert(`Done — ${targets.length} candidate(s) un-allocated.`);
+  } catch (err) {
+    alert("Un-allocate failed: " + err.message);
   }
 }
 

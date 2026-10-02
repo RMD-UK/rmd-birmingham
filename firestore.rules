@@ -541,6 +541,19 @@ service cloud.firestore {
       allow write: if isSuperUser();
     }
 
+    // ── Stage 1 course dates (2026-10-02) ───────────────────────────────────
+    // Session dates per Stage 1 course (admin-stage1-settings.html), used to
+    // populate the course dropdown on candidate-resources.html's public,
+    // no-login room-lookup. Public/unauthenticated read is intentional, same
+    // reasoning as config/candidate_access and config/instructor_eoi above —
+    // this document holds only course names/dates/capacity, nothing personal,
+    // and every other config/* document still requires isSignedIn() via the
+    // wildcard rule. Write stays super-user only.
+    match /config/stage1_course_dates {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+
     // ── MOU responses ───────────────────────────────────────────────────────
     // Create: authenticated — member submits their own MOU form response
     // Read/update/delete: director only — only directors review submissions

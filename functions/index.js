@@ -3156,3 +3156,54 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
   return { sent, failed: failedEmails.length, failedEmails };
 });
 
+
+/**
+ * lookupCandidateRoom - candidate-resources.html's "find your room" tool
+ * (2026-10-02, Jon). Deliberately NOT a direct client-side Firestore read
+ * of stage1_candidates — that collection is director/Student-Senior-Faculty
+ * read-only in firestore.rules (Section 3.5) specifically because it holds
+ * every candidate's email and degree alongside their room, and opening it
+ * to public read to get at the room field would expose all of that too.
+ * This callable instead checks the shared access code server-side (the
+ * client-side check on the page proves nothing to the server by itself —
+ * it's just UI, not security) against the same config/candidate_access doc,
+ * then confirms name + email + course together (Jon, 2026-10-02: "they
+ * will need to confirm name, email address & course") before returning a
+ * match — all three normalised and matched exactly, not a name search, so
+ * this can't be used to fish for someone else's room with just a guessed
+ * name. Returns only that one candidate's name+room, nothing else. No
+ * Firebase Auth — candidates never sign in anywhere on this site — App
+ * Check (already loaded on this page) is what guards this callable from
+ * abuse instead.
+ */
+exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) => {
+  const code = (request.data?.code || "").trim().toLowerCase();
+  const course = (request.data?.course || "").trim();
+  const name = (request.data?.name || "").trim().toLowerCase();
+  const email = (request.data?.email || "").trim().toLowerCase();
+
+  if (!code) throw new HttpsError("invalid-argument", "Access code required.");
+  if (!course) throw new HttpsError("invalid-argument", "Course required.");
+  if (!name) throw new HttpsError("invalid-argument", "Name required.");
+  if (!email) throw new HttpsError("invalid-argument", "Email required.");
+
+  const codeSnap = await db.collection("config").doc("candidate_access").get();
+  const realCode = (codeSnap.exists && codeSnap.data().code ? String(codeSnap.data().code) : "").trim().toLowerCase();
+  if (!realCode || code !== realCode) {
+    throw new HttpsError("permission-denied", "That access code isn't right.");
+  }
+
+  // email is already stored lowercase at import (admin-stage1-candidates.html
+  // confirmImport()), so the equality check matches as-is.
+  const snap = await db.collection("stage1_candidates")
+    .where("course", "==", course)
+    .where("email", "==", email)
+    .get();
+
+  const match = snap.docs
+    .map(d => d.data())
+    .find(c => (c.name || "").trim().toLowerCase() === name);
+
+  if (!match) return { found: false };
+  return { found: true, name: match.name || "", room: match.room || null };
+});
