@@ -125,6 +125,7 @@
   <span id="saveStatus"></span>
   <button class="ra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
   <button class="ra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly sort Instructor Candidates</button>
+  <button class="ra-btn" id="autoInstBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate Instructor Trainers</button>
   <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
 </div>
 
@@ -448,6 +449,7 @@ function makeCard(person, source, roleType) {
 // ── Rooms ──────────────────────────────────────────────────────────────────
 function renderRooms() {
   document.getElementById("autoBtn").style.display = "";
+  document.getElementById("autoInstBtn").style.display = "";
   document.getElementById("roomsGrid").innerHTML = ROOMS.map(rid => {
     const g     = groups[rid];
     const total = g.candidates.length + g.instructors.length;
@@ -569,7 +571,7 @@ function removeFromRoom(rid, email, roleType, event) {
   renderPool(); renderRooms(); updateStats();
 }
 
-// ── Randomize (Instructor Candidates only — Instructor Trainers are placed deliberately) ──
+// ── Randomize (Instructor Candidates) ──
 function randomizeCandidates() {
   if (!allCandidates.length) { showStatus("No candidates loaded — check mou_roster data","err"); return; }
   const assigned = assignedEmails();
@@ -578,6 +580,24 @@ function randomizeCandidates() {
   pool.sort(()=>Math.random()-.5).forEach(person => {
     const smallest = ROOMS.slice().sort((a,b)=>(groups[a].candidates.length+groups[a].instructors.length)-(groups[b].candidates.length+groups[b].instructors.length))[0];
     groups[smallest].candidates.push(person);
+  });
+  renderPool(); renderRooms(); updateStats();
+}
+
+// ── Randomize (Instructor Trainers) — added 2026-10-02 per Jon; the candidate
+// randomizer above used to be scoped "Instructor Trainers are placed deliberately",
+// so check the spread this produces rather than assuming it matches whatever
+// manual logic that comment was protecting. Balances by instructor count per
+// room (not total headcount) so trainers spread evenly across all rooms. ──
+function randomizeInstructors() {
+  const selInst = selectedInstructors();
+  if (!selInst.length) { showStatus("No Instructor Trainers selected — pick them on the Teaching Faculty tab first","err"); return; }
+  const assigned = assignedEmails();
+  const pool = selInst.filter(p=>!assigned.has(p.email));
+  if (!pool.length) { showStatus("All selected Instructor Trainers already assigned","ok"); return; }
+  pool.sort(()=>Math.random()-.5).forEach(person => {
+    const smallest = ROOMS.slice().sort((a,b)=>groups[a].instructors.length-groups[b].instructors.length)[0];
+    groups[smallest].instructors.push(person);
   });
   renderPool(); renderRooms(); updateStats();
 }
