@@ -44,7 +44,7 @@
       <div class="top-bar-sub">RMD Birmingham · Director only</div>
     </div>
     <a href="admin-stage1-candidates.html" class="top-bar-link">👤 Stage 1 Candidates</a>
-    <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation (3.6)</a>
+    <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation</a>
   </div>
 
   <div class="card">
@@ -160,13 +160,26 @@ async function loadCourses() {
 
 function renderCourses() {
   const tbody = document.querySelector("#coursesTable tbody");
-  tbody.innerHTML = courseRows.map((c, i) => `
+  // Which row is the "earliest" one for default-capacity purposes — by
+  // DATE, same as buildEffectiveCapacities() on admin-stage1-candidates.html
+  // actually computes it, not just whichever row happens to be listed
+  // first (rows aren't guaranteed to be typed in date order). Used only to
+  // make the placeholder text say the right number (2026-10-02, Jon caught
+  // the old "no cap" placeholder being flat wrong now that blank means
+  // "use the default", not "unlimited").
+  const datedSorted = courseRows.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const earliestRow = datedSorted[0];
+  tbody.innerHTML = courseRows.map((c, i) => {
+    const isEarliest = earliestRow && c === earliestRow;
+    const capPlaceholder = !earliestRow ? "default" : (isEarliest ? "default: 12/room" : "default: 10/room");
+    return `
     <tr>
       <td><input type="text" data-idx="${i}" data-field="name" value="${esc(c.name)}" placeholder="e.g. Course 1"></td>
       <td><input type="date" data-idx="${i}" data-field="date" value="${esc(c.date)}"></td>
-      <td><input type="number" min="0" step="1" data-idx="${i}" data-field="capacity" value="${c.capacity || c.capacity === 0 ? esc(String(c.capacity)) : ""}" placeholder="no cap"></td>
+      <td><input type="number" min="0" step="1" data-idx="${i}" data-field="capacity" value="${c.capacity || c.capacity === 0 ? esc(String(c.capacity)) : ""}" placeholder="${capPlaceholder}"></td>
       <td><button class="btn-danger-sm" onclick="removeCourseRow(${i})">✕</button></td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
   tbody.querySelectorAll("input").forEach(inp => {
     inp.addEventListener("change", () => {
       const val = inp.dataset.field === "capacity" ? (inp.value === "" ? "" : Number(inp.value)) : inp.value;
