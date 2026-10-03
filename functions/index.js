@@ -2545,15 +2545,91 @@ async function stage1SheetsAccessToken() {
   return token;
 }
 
-async function stage1SheetsApiFetch(path, options = {}) {
+// 2026-10-05, Jon: diagnosed why "Allocated course" wasn't showing up for
+// most of Course 1 — allocating a whole course writes ~230 candidate docs
+// in quick succession, and onDocumentWritten fires once per candidate, so
+// that's ~230 near-simultaneous Sheets API calls (a read + a write each).
+// Easily enough to trip Sheets' per-minute rate limit in one burst — a
+// scattered ~25/230 getting through before the 429s started is exactly
+// what a burst like that looks like. One retry with backoff on 429/503
+// covers it for future allocations; backfillStage1CourseToSheet below
+// recovers what already fell through before this fix existed.
+async function stage1SheetsApiFetch(path, options = {}, attempt = 0) {
   const token = await stage1SheetsAccessToken();
   const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${STAGE1_SHEET_ID}${path}`, {
     ...options,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", ...(options.headers || {}) }
   });
-  if (!res.ok) throw new Error(`Sheets API ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    if ((res.status === 429 || res.status === 503) && attempt < 3) {
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+      return stage1SheetsApiFetch(path, options, attempt + 1);
+    }
+    throw new Error(`Sheets API ${res.status}: ${await res.text()}`);
+  }
   return res.json();
 }
+
+// One-off repair for candidates whose course got allocated before the
+// retry fix above existed, and so never made it into the sheet (and for
+// anyone the per-candidate trigger still somehow misses later). Director-
+// only, same preview-before-commit shape as everything else in this
+// codebase that writes in bulk: dryRun:true reports what WOULD change,
+// nothing is written until dryRun:false. Deliberately ONE read of the
+// email column, ONE read of the existing "Allocated course" column, and
+// AT MOST one batched write for everything that's actually wrong — however
+// many candidates this covers, it's the same 2-3 API calls, never one call
+// per candidate, so it can't re-trip the exact rate limit it exists to
+// recover from.
+exports.backfillStage1CourseToSheet = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+  const dryRun = !!request.data?.dryRun;
+
+  const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+  const candidates = snap.docs
+    .map(d => d.data())
+    .filter(c => c.email && c.course);
+
+  const [colData, gData] = await Promise.all([
+    stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!C2:C`),
+    stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}2:${STAGE1_SHEET_COURSE_COL}`),
+  ]);
+
+  const rowByEmail = new Map();
+  (colData.values || []).forEach((r, i) => {
+    const email = (r[0] || "").trim().toLowerCase();
+    if (email) rowByEmail.set(email, i + 2); // +1 header row, +1 to move from 0- to 1-indexed
+  });
+  const currentG = gData.values || [];
+
+  const updates = []; // {range, values}
+  const notFoundEmails = [];
+  for (const c of candidates) {
+    const email = String(c.email).trim().toLowerCase();
+    const row = rowByEmail.get(email);
+    if (!row) { notFoundEmails.push(c.email); continue; }
+    const existing = (currentG[row - 2] && currentG[row - 2][0]) || "";
+    if (existing === c.course) continue; // already correct — don't touch it
+    updates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_COURSE_COL}${row}`, values: [[c.course]] });
+  }
+
+  if (dryRun) {
+    return { dryRun: true, wouldUpdate: updates.length, notFound: notFoundEmails.length, notFoundEmails, checked: candidates.length };
+  }
+
+  if (updates.length) {
+    await stage1SheetsApiFetch(`/values:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({ valueInputOption: "RAW", data: updates }),
+    });
+  }
+
+  return { dryRun: false, updated: updates.length, notFound: notFoundEmails.length, notFoundEmails, checked: candidates.length };
+});
 
 exports.syncStage1CourseToSheet = onDocumentWritten(
   { document: "stage1_candidates/{candidateId}", region: "us-central1" },
