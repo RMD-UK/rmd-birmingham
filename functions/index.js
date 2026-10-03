@@ -3178,24 +3178,40 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
   let sent = 0;
   const failedEmails = [];
   const sentTo = [];
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+  // 2026-10-05, Jon: a 228-recipient send came back 205/228 — nothing wrong
+  // with the 23 addresses themselves, so this reads as Resend throttling a
+  // long back-to-back loop rather than bad data. A small gap between sends
+  // plus one retry on whatever failed gives each request room before
+  // Resend's rate limiter does, without materially slowing a batch this size
+  // (228 recipients x ~150ms is well under a minute).
   for (const person of valid) {
     const firstName = (person.name || "").trim().split(" ")[0] || "there";
     const personalised = message
       .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
       .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
+    const payload = {
+      from: FROM_EMAIL,
+      to: person.email,
+      replyTo: COMMS_BCC, // 2026-10-02, Jon: comms-tool templates (e.g. course allocation emails) tell recipients to email colmds-c-rmdbirmingham@adf.bham.ac.uk directly — replyTo now matches what the message body actually says, instead of the old generic REPLY_TO Gmail address
+      subject,
+      text: personalised,
+      html: buildBrandedHtmlEmail(personalised) // 2026-10-03, Jon: logo + strapline on comms emails; text above stays as the non-HTML fallback
+    };
     try {
-      const { error } = await resend.emails.send({
-        from: FROM_EMAIL,
-        to: person.email,
-        replyTo: COMMS_BCC, // 2026-10-02, Jon: comms-tool templates (e.g. course allocation emails) tell recipients to email colmds-c-rmdbirmingham@adf.bham.ac.uk directly — replyTo now matches what the message body actually says, instead of the old generic REPLY_TO Gmail address
-        subject,
-        text: personalised,
-        html: buildBrandedHtmlEmail(personalised) // 2026-10-03, Jon: logo + strapline on comms emails; text above stays as the non-HTML fallback
-      });
-      if (error) throw new Error(error.message || JSON.stringify(error));
+      let result = await resend.emails.send(payload);
+      if (result.error) {
+        // One retry after a longer pause — covers a transient rate-limit
+        // rejection without masking a genuinely bad address, which would
+        // fail the same way twice.
+        await sleep(800);
+        result = await resend.emails.send(payload);
+      }
+      if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
       sent++;
       sentTo.push(person.email);
+      await sleep(150);
     } catch (err) {
       console.error(`sendBulkComms: failed to send to ${person.email}`, err.message);
       failedEmails.push(person.email);
