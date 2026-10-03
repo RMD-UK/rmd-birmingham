@@ -271,6 +271,60 @@ const COMMS_BCC    = "colmds-c-rmdbirmingham@adf.bham.ac.uk"; // 2026-10-02, Jon
 const JON_BCC      = "j.hulme.1@bham.ac.uk"; // Jon wants a copy of every IW RSVP invite sent (2026-08-27) — see sendIwRsvpInvites
 const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 
+// Added 2026-10-03, Jon: wants the RMD logo + "Resuscitation | Mentorship |
+// Development" strapline on comms emails. RMD_LOGO_URL is served from
+// Hosting (confirmed publicly reachable, no auth, image/png) so email
+// clients can fetch it unauthenticated. buildBrandedHtmlEmail() wraps a
+// plain-text body (the same text already sent via the `text` field) in a
+// branded HTML shell; the `text` field stays alongside `html` on every send
+// as the fallback for clients that don't render HTML.
+const RMD_LOGO_URL = "https://rmd.uk.com/assets/rmd-logo.png";
+
+function escapeHtmlForEmail(str) {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildBrandedHtmlEmail(bodyText) {
+  const paragraphs = String(bodyText || "")
+    .split(/\n{2,}/)
+    .map(p => `<p style="margin:0 0 16px;">${escapeHtmlForEmail(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+  return `<!DOCTYPE html>
+<html>
+  <body style="margin:0;padding:0;background:#f4f4f6;font-family:'Inter','Segoe UI',Arial,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" style="max-width:600px;background:#ffffff;border-radius:8px;overflow:hidden;" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="background:#44247C;padding:24px 32px;text-align:center;">
+                <img src="${RMD_LOGO_URL}" alt="RMD Birmingham" width="160" style="display:block;margin:0 auto 10px;max-width:160px;height:auto;">
+                <div style="color:#ffffff;font-size:13px;letter-spacing:.06em;text-transform:uppercase;">Resuscitation&nbsp;|&nbsp;Mentorship&nbsp;|&nbsp;Development</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;color:#1a1a1a;font-size:15px;line-height:1.55;">
+                ${paragraphs}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 32px;background:#f0eef5;color:#6b6b76;font-size:12px;text-align:center;">
+                RMD Birmingham &middot; <a href="https://rmd.uk.com" style="color:#0067A4;text-decoration:none;">rmd.uk.com</a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 exports.sendSeniorFacultyReminders = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -3102,7 +3156,8 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
         to: person.email,
         replyTo: COMMS_BCC, // 2026-10-02, Jon: comms-tool templates (e.g. course allocation emails) tell recipients to email colmds-c-rmdbirmingham@adf.bham.ac.uk directly — replyTo now matches what the message body actually says, instead of the old generic REPLY_TO Gmail address
         subject,
-        text: personalised
+        text: personalised,
+        html: buildBrandedHtmlEmail(personalised) // 2026-10-03, Jon: logo + strapline on comms emails; text above stays as the non-HTML fallback
       });
       if (error) throw new Error(error.message || JSON.stringify(error));
       sent++;

@@ -144,6 +144,7 @@ const fns = firebase.functions();
 let groups = []; // [{ id, label, people: [{name,email}] }]
 let currentGroup = null;
 let courseDatesConfig = {}; // course name -> stored date (exam night) from config/stage1_course_dates
+let candidateAccessCode = ""; // config/candidate_access.code — same doc admin-stage1-candidates.html's access-code card reads/writes, fetched live (2026-10-04, Jon: "include the actual access code within it") rather than hardcoded, so the template always has whatever code is actually set, even if it's rotated later
 
 function esc(s) { const d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
 
@@ -173,6 +174,13 @@ async function loadGroups() {
     courseDatesConfig = Object.fromEntries(courseDatesList.filter(c => c.name && c.date).map(c => [c.name, c.date]));
   } catch (err) {
     courseDatesConfig = {};
+  }
+
+  try {
+    const accessSnap = await db.collection("config").doc("candidate_access").get();
+    candidateAccessCode = accessSnap.exists ? (accessSnap.data().code || "") : "";
+  } catch (err) {
+    candidateAccessCode = "";
   }
 
   // Stage 1 candidates, grouped by course
@@ -344,6 +352,10 @@ function applyCourseTemplate(kind, groupId, courseName) {
     alert(`No date saved for "${courseName}" in Settings yet — add it on admin-stage1-settings.html first, then try this template again.`);
     return;
   }
+  if (!candidateAccessCode) {
+    alert('No candidate access code is set — add one on the "Candidate resource access code" card on Stage 1 Candidates first, then try this template again.');
+    return;
+  }
   const cb = document.querySelector(`#groupList input[type=checkbox][value="${CSS.escape(groupId)}"]`);
   if (cb) { cb.checked = true; onGroupChange(); }
 
@@ -362,7 +374,9 @@ All teaching will be in the evening and will be held on-campus, in the Medical S
 
 Instructions for your examination night (session 3) will be sent in the week before.
 
-Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at rmd.uk.com/candidate-resources.html — use the same access code you were given, then "Find your room" with your name, email and course. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.
+Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at rmd.uk.com/candidate-resources.html — the access code is ${candidateAccessCode}, then "Find your room" with your name, email and course. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.
+
+The same page also has the BLS reference material (the algorithm and AED guidance) — please take a look before your course starts.
 
 If you are unable to attend your BLS session, please email us (colmds-c-rmdbirmingham@adf.bham.ac.uk) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.
 
