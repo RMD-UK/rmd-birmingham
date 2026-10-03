@@ -34,6 +34,13 @@
     .room-result.notfound { background:#fce8e6; border:1px solid #f5b8b0; color:#b7410e; }
     .room-result .room-value { font-size:22px; font-weight:900; display:block; margin:4px 0 2px; }
     .room-loading { display:none; text-align:center; padding:10px; color:var(--rmd-muted); font-size:13px; }
+    .room-result.confirm { background:#eef4fb; border:1px solid #0067A4; color:#044a73; }
+    .confirm-actions { display:flex; gap:10px; margin-top:12px; }
+    .confirm-actions button { flex:1; padding:10px; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; border:none; }
+    .btn-confirm-yes { background:var(--rmd-blue); color:white; }
+    .btn-confirm-yes:hover { background:var(--rmd-navy); }
+    .btn-confirm-no { background:#f0f3f6; color:var(--rmd-muted); border:1px solid #ccd6dd; }
+    .btn-confirm-no:hover { background:#e4e9ee; }
   </style>
 </head>
 <body>
@@ -108,6 +115,7 @@ const fns = firebase.functions();
 
 const STORAGE_KEY = "rmdCandidateAccessGranted";
 let enteredAccessCode = ""; // kept in memory only, so findRoom() can re-send it server-side without asking twice
+let pendingCloseMatch = null; // { course, email, suggestedName } while a "did you mean X?" prompt is up — 2026-10-03
 
 function showResources() {
   document.getElementById("gateCard").classList.add("hidden");
@@ -151,8 +159,6 @@ async function findRoom() {
   const name = document.getElementById("lookupName").value.trim();
   const email = document.getElementById("lookupEmail").value.trim();
   const resultEl = document.getElementById("roomResult");
-  const loadingEl = document.getElementById("roomLoading");
-  const btn = document.getElementById("findRoomBtn");
 
   resultEl.style.display = "none";
   resultEl.className = "room-result";
@@ -161,18 +167,41 @@ async function findRoom() {
   if (!name) { showRoomResult("notfound", "Enter your full name."); return; }
   if (!email) { showRoomResult("notfound", "Enter your email address."); return; }
 
+  await runRoomLookup(course, name, email);
+}
+
+// Shared by findRoom() (first attempt, typed name) and confirmCloseMatch()
+// (second attempt, after the candidate confirms a suggested near-match
+// name) — same call either way, just a different name going in. 2026-10-03.
+async function runRoomLookup(course, name, email) {
+  const loadingEl = document.getElementById("roomLoading");
+  const btn = document.getElementById("findRoomBtn");
+
   btn.disabled = true;
   loadingEl.style.display = "block";
   try {
     const lookup = fns.httpsCallable("lookupCandidateRoom");
     const res = await lookup({ code: enteredAccessCode, course, name, email });
     const data = res.data || {};
-    if (!data.found) {
-      showRoomResult("notfound", "No match for that name, email and course. Double-check they're entered exactly as you registered, or ask your instructor.");
-    } else if (data.room) {
-      showRoomResult("found", `Your room:<span class="room-value">${escapeHtml(data.room)}</span>`);
+    if (data.found) {
+      if (data.room) {
+        showRoomResult("found", `Your room:<span class="room-value">${escapeHtml(data.room)}</span>`);
+      } else {
+        showRoomResult("pending", "You're on this course, but your room hasn't been confirmed yet. It will be confirmed before you attend, and definitely by the time the course starts on the first Monday — check back nearer the time.");
+      }
+    } else if (data.closeMatch && data.suggestedName) {
+      // Name didn't match exactly, but course + email matched exactly one
+      // candidate whose name is a close match — confirm before showing
+      // anything (2026-10-03, Jon).
+      pendingCloseMatch = { course, email, suggestedName: data.suggestedName };
+      showRoomResult("confirm",
+        `We found <strong>${escapeHtml(data.suggestedName)}</strong> on this course with that email — is that you?` +
+        `<div class="confirm-actions">` +
+          `<button type="button" class="btn-confirm-yes" onclick="confirmCloseMatch()">Yes, that's me</button>` +
+          `<button type="button" class="btn-confirm-no" onclick="cancelCloseMatch()">No, that's not me</button>` +
+        `</div>`);
     } else {
-      showRoomResult("pending", "You're on this course, but your room hasn't been confirmed yet. It will be confirmed before you attend, and definitely by the time the course starts on the first Monday — check back nearer the time.");
+      showRoomResult("notfound", "No match for that name, email and course. Double-check they're entered exactly as you registered, or ask your instructor.");
     }
   } catch (err) {
     showRoomResult("notfound", "Couldn't check that right now — try again in a moment.");
@@ -180,6 +209,18 @@ async function findRoom() {
     btn.disabled = false;
     loadingEl.style.display = "none";
   }
+}
+
+async function confirmCloseMatch() {
+  if (!pendingCloseMatch) return;
+  const { course, email, suggestedName } = pendingCloseMatch;
+  pendingCloseMatch = null;
+  await runRoomLookup(course, suggestedName, email);
+}
+
+function cancelCloseMatch() {
+  pendingCloseMatch = null;
+  showRoomResult("notfound", "No match for that name, email and course. Double-check they're entered exactly as you registered, or ask your instructor.");
 }
 
 function showRoomResult(kind, html) {

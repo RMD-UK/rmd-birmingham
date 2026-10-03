@@ -3236,6 +3236,60 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
 });
 
 
+// Added 2026-10-03, Jon: a candidate who mistypes their name (extra
+// initial, surname-first, a letter or two off) was getting a flat "no
+// match" even though they're genuinely registered. normalizeNameForMatch +
+// levenshteinDistance back isCloseNameMatch() below — deliberately only
+// ever called against the single candidate record (if any) that already
+// matched course+email EXACTLY, never a broader name search, so this
+// can't be used to fish for someone else's room by guessing names. Email
+// stays the strict gate (Jon, 2026-10-03: keep it exact) — only the name
+// gets this tolerance.
+function normalizeNameForMatch(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "") // strip accents
+    .replace(/[^a-z0-9\s]/g, "") // strip punctuation (apostrophes, hyphens, ...)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshteinDistance(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1,     // deletion
+        curr[j - 1] + 1, // insertion
+        prev[j - 1] + cost // substitution
+      );
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+function isCloseNameMatch(typed, stored) {
+  const a = normalizeNameForMatch(typed);
+  const b = normalizeNameForMatch(stored);
+  if (!a || !b || a === b) return false; // exact (or blank) handled separately
+  // Word-order swap — "Hussain Sameerah" vs "Sameerah Hussain" — a common
+  // real typo, not caught by edit distance on the full string.
+  if (a.split(" ").sort().join(" ") === b.split(" ").sort().join(" ")) return true;
+  // Otherwise a scaled edit-distance threshold — generous enough for a
+  // dropped/swapped letter or a missed middle initial, tight enough that
+  // two genuinely different names won't pass.
+  const threshold = Math.max(2, Math.round(Math.max(a.length, b.length) * 0.2));
+  return levenshteinDistance(a, b) <= threshold;
+}
+
 /**
  * lookupCandidateRoom - candidate-resources.html's "find your room" tool
  * (2026-10-02, Jon). Deliberately NOT a direct client-side Firestore read
@@ -3248,12 +3302,16 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
  * it's just UI, not security) against the same config/candidate_access doc,
  * then confirms name + email + course together (Jon, 2026-10-02: "they
  * will need to confirm name, email address & course") before returning a
- * match — all three normalised and matched exactly, not a name search, so
- * this can't be used to fish for someone else's room with just a guessed
- * name. Returns only that one candidate's name+room, nothing else. No
- * Firebase Auth — candidates never sign in anywhere on this site — App
- * Check (already loaded on this page) is what guards this callable from
- * abuse instead.
+ * match — email and course matched exactly, name matched exactly OR a
+ * close typo-tolerant match (2026-10-03, Jon — see isCloseNameMatch above;
+ * a close-name result doesn't return the room, it returns `closeMatch` +
+ * the real stored name for the client to confirm first). Never a name
+ * search on its own — email+course always narrows to this one candidate
+ * before name is even considered, so this can't be used to fish for
+ * someone else's room with just a guessed name. Returns only that one
+ * candidate's name+room, nothing else. No Firebase Auth — candidates
+ * never sign in anywhere on this site — App Check (already loaded on this
+ * page) is what guards this callable from abuse instead.
  */
 exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) => {
   const code = (request.data?.code || "").trim().toLowerCase();
@@ -3279,10 +3337,13 @@ exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) 
     .where("email", "==", email)
     .get();
 
-  const match = snap.docs
-    .map(d => d.data())
-    .find(c => (c.name || "").trim().toLowerCase() === name);
+  const candidates = snap.docs.map(d => d.data());
 
-  if (!match) return { found: false };
-  return { found: true, name: match.name || "", room: match.room || null };
+  const exact = candidates.find(c => (c.name || "").trim().toLowerCase() === name);
+  if (exact) return { found: true, name: exact.name || "", room: exact.room || null };
+
+  const close = candidates.find(c => isCloseNameMatch(name, c.name || ""));
+  if (close) return { found: false, closeMatch: true, suggestedName: close.name || "" };
+
+  return { found: false };
 });
