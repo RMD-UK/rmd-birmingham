@@ -186,6 +186,7 @@ let allCandidates   = [];
 let allInstructors  = [];
 let allAllocDocs    = [];
 let defaultAllocDoc = null;
+let hasFullAccess   = false; // Director / RMD Student Faculty / RMD Senior Faculty — sees every candidate. Anyone else only sees candidates on a room they're actually teaching (instructorTeamUids) — see loadData() and firestore.rules.
 
 let currentUser = null;
 let myName = "";
@@ -214,11 +215,26 @@ window.addEventListener("load", () => {
       isStudentFaculty(email),
       isSeniorFaculty(email)
     ]);
-    if (role !== "director" && !studentFac && !seniorFac) {
-      const msg = document.getElementById("authMsg");
-      if (msg) msg.textContent = "RMD Senior/Student Faculty and Directors only.";
-      setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
-      return;
+    hasFullAccess = role === "director" || studentFac || seniorFac;
+
+    // Not Director/Student Faculty/Senior Faculty — still let them in if
+    // they're actually on a candidate's room team (instructorTeamUids,
+    // written by Course Room & Instructor Allocation's saveAll() — see
+    // firestore.rules for the matching read/write rules, 2026-10-03). This
+    // probe is the same query loadData() uses, just capped to 1 result.
+    if (!hasFullAccess) {
+      let onATeam = false;
+      try {
+        const probe = await db.collection(COLLECTIONS.stage1Candidates)
+          .where("instructorTeamUids", "array-contains", user.uid).limit(1).get();
+        onATeam = !probe.empty;
+      } catch (e) { console.warn("room-team check failed:", e.message); }
+      if (!onATeam) {
+        const msg = document.getElementById("authMsg");
+        if (msg) msg.textContent = "RMD Senior/Student Faculty, Directors, and instructors assigned to a teaching room only.";
+        setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+        return;
+      }
     }
 
     try {
@@ -237,7 +253,10 @@ window.addEventListener("load", () => {
 
 async function loadData() {
   try {
-    const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    const snap = hasFullAccess
+      ? await db.collection(COLLECTIONS.stage1Candidates).get()
+      : await db.collection(COLLECTIONS.stage1Candidates)
+          .where("instructorTeamUids", "array-contains", currentUser.uid).get();
     allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (e) { console.warn("stage1_candidates load failed:", e.message); }
 

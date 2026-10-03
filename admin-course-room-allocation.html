@@ -867,21 +867,38 @@ async function saveAll() {
   if (!currentCourse) return;
   showStatus("Saving…", "");
   try {
-    const batch = db.batch();
     const uid = auth.currentUser?.uid;
     const ts  = firebase.firestore.FieldValue.serverTimestamp();
 
-    courseCandidates.forEach(c => {
-      const original = allCandidates.find(x => x.id === c.id);
-      if (!original) return;
-      const originalRoom = ROOMS.includes(original.room) ? original.room : (original.room || null);
-      if ((c.room || null) !== (originalRoom || null)) {
-        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { room: c.room || null });
-      }
-    });
-
     const instructorTeams = {};
     ROOMS.forEach(r => { instructorTeams[r] = (roomTeams[r]?.uids || []).slice(); });
+
+    // Each candidate also gets a flat copy of their own room's team written
+    // onto their own stage1_candidates doc (instructorTeamUids) — this is
+    // what lets OPIS (opis-rating.html) and its Firestore rules recognise
+    // "this signed-in person is actually teaching this specific candidate"
+    // without needing to re-derive a course-name slug or re-read
+    // course_allocations from inside a security rule. Written for EVERY
+    // candidate on this course on every save, not just ones whose room
+    // changed, since the team itself can change without any candidate's
+    // room changing. Chunked at 500 (Firestore's batch limit, matching the
+    // CHUNK pattern used elsewhere for bulk writes) since this now issues
+    // one write per candidate regardless of what changed.
+    const CHUNK = 400;
+    for (let start = 0; start < courseCandidates.length; start += CHUNK) {
+      const batch = db.batch();
+      courseCandidates.slice(start, start + CHUNK).forEach(c => {
+        const original = allCandidates.find(x => x.id === c.id);
+        if (!original) return;
+        const originalRoom = ROOMS.includes(original.room) ? original.room : (original.room || null);
+        const update = { instructorTeamUids: c.room ? (instructorTeams[c.room] || []) : [] };
+        if ((c.room || null) !== (originalRoom || null)) update.room = c.room || null;
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), update);
+      });
+      await batch.commit();
+    }
+
+    const batch = db.batch();
     batch.set(db.collection(COLLECTIONS.courseAllocations).doc(slugify(currentCourse)), {
       course: currentCourse, instructorTeams, updatedAt: ts, updatedBy: uid || null
     });
