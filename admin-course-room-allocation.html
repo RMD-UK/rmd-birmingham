@@ -104,11 +104,9 @@
   <span id="saveStatus"></span>
   <button class="cra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
   <button class="cra-btn" id="autoAllBtn" onclick="randomizeAllCandidatesAllCourses()">🎲 Allocate all candidates to rooms (every course)</button>
-  <button class="cra-btn" id="rebalanceBtn" onclick="rebalanceAllRooms()">🔁 Rebalance rooms (fix uneven split)</button>
   <button class="cra-btn" id="autoInstrBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate unassigned instructors</button>
   <button class="cra-btn" id="restoreBtn" onclick="restoreSaved()" style="display:none">↩ Restore saved</button>
   <button class="cra-btn" id="setDefaultBtn" onclick="setAsDefault()" style="display:none">⭐ Set as default for all courses</button>
-  <button class="cra-btn" id="resetCandBtn" onclick="resetCandidates()" style="display:none">↺ Reset candidates to unallocated</button>
   <button class="cra-btn" id="resetInstrBtn" onclick="resetInstructors()" style="display:none">↺ Reset instructors to unallocated</button>
   <button class="cra-btn save" id="saveBtn" onclick="saveAll()" style="display:none">💾 Save all</button>
 </div>
@@ -293,7 +291,6 @@ function selectCourse(course) {
   document.getElementById("autoInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("restoreBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("setDefaultBtn").style.display = currentCourse ? "" : "none";
-  document.getElementById("resetCandBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("resetInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("saveBtn").style.display  = currentCourse ? "" : "none";
   document.getElementById("noCourse").style.display  = currentCourse ? "none" : "";
@@ -374,21 +371,18 @@ function restoreSaved() {
   showStatus("Restored to last saved", "ok");
 }
 
-// ── Reset to unallocated (in-memory only ─────────────────────────────────────────
-// Both of these only touch the working copy in memory (courseCandidates /
-// roomTeams). Nothing is written to Firestore here, so the last saved
-// version is untouched — "↩ Restore saved" still recovers exactly what
-// was last saved even after one of these is used. Save afterwards to make
-// the empty state permanent.
-function resetCandidates() {
-  if (!currentCourse) return;
-  if (!courseCandidates.length) { showStatus("No candidates on this course", "ok"); return; }
-  if (!confirm(`Move all candidates on "${currentCourse}" back to Unassigned?\n\nThis only changes what's on screen — nothing is saved until you click 💾 Save all, and it does not touch the last saved version.`)) return;
-  courseCandidates.forEach(c => { c.room = null; });
-  clearSelection();
-  render();
-  showStatus("Candidates reset to unallocated (not yet saved)", "ok");
-}
+// ── Reset instructors to unallocated (in-memory only) ──────────────────
+// Only touches the working copy in memory (roomTeams). Nothing is written
+// to Firestore here, so the last saved version is untouched — "↩ Restore
+// saved" still recovers exactly what was last saved even after this is
+// used. Save afterwards to make the empty state permanent.
+//
+// 2026-10-03, Jon: the matching "Reset candidates to unallocated" button
+// was removed — candidate↔course allocation already has its own
+// allocate/undo flow on the Stage 1 course-allocation page, and a
+// one-click bulk clear of a course's whole room layout here, with no
+// server-side undo once saved, was more risk than it was worth. Individual
+// corrections are still possible by dragging a candidate off a room.
 function resetInstructors() {
   if (!currentCourse) return;
   const anyAssigned = ROOMS.some(r => (roomTeams[r]?.uids || []).length);
@@ -738,6 +732,13 @@ function randomizeCandidates() {
 // Only ever touches candidates with no room yet — anyone already placed,
 // on any course, is left exactly where they are, same "don't disturb a
 // manual placement" rule the old per-course button followed.
+//
+// 2026-10-03, Jon: this function itself still had the biased
+// sort(() => Math.random()-.5) tie-break that caused the uneven-rooms bug
+// (the "Rebalance rooms" one-time repair button existed to clean up after
+// it). Patched here to the same Fisher-Yates + least-loaded fix as
+// assignRoomsForWrites() — the rebalance button is no longer needed and
+// has been removed.
 async function randomizeAllCandidatesAllCourses() {
   const courses = courseList();
   if (!courses.length) { showStatus("No courses found yet", "ok"); return; }
@@ -753,25 +754,48 @@ async function randomizeAllCandidatesAllCourses() {
   showStatus("Allocating…", "");
   const updates = []; // { id, room }
 
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
   courses.forEach(course => {
     const inCourse = byCourse[course];
-    // Working room-of-candidate map for THIS course only — rooms are
-    // per-course, so one course's counts never affect another's.
-    const roomOf = {};
-    inCourse.forEach(c => { if (ROOMS.includes(c.room)) roomOf[c.id] = c.room; });
-    const pool = inCourse.filter(c => !roomOf[c.id]);
-    pool.sort(() => Math.random() - .5).forEach(c => {
+    // Counts for THIS course only — rooms are per-course, so one course's
+    // counts never affect another's. Fisher-Yates shuffle + least-loaded
+    // room pick — the same fix Stage 1 Course Allocation's
+    // assignRoomsForWrites() got for the 2026-10-03 uneven-rooms bug (a
+    // sort() comparator using Math.random()-.5 is not a fair shuffle and
+    // biases toward whatever ordering the engine's sort settles on).
+    const totalCount = {};
+    const sameCount = {};
+    ROOMS.forEach(r => { totalCount[r] = 0; });
+    inCourse.forEach(c => {
+      if (!ROOMS.includes(c.room)) return;
+      totalCount[c.room]++;
+      const k = `${c.room}|${degreeKey(c)}`;
+      sameCount[k] = (sameCount[k] || 0) + 1;
+    });
+    const pool = inCourse.filter(c => !ROOMS.includes(c.room));
+    shuffle(pool).forEach(c => {
       const dk = degreeKey(c);
-      const best = ROOMS.slice().sort((a, b) => {
-        const aSame = inCourse.filter(x => roomOf[x.id] === a && degreeKey(x) === dk).length;
-        const bSame = inCourse.filter(x => roomOf[x.id] === b && degreeKey(x) === dk).length;
-        if (aSame !== bSame) return aSame - bSame;
-        const aTotal = inCourse.filter(x => roomOf[x.id] === a).length;
-        const bTotal = inCourse.filter(x => roomOf[x.id] === b).length;
-        if (aTotal !== bTotal) return aTotal - bTotal;
-        return Math.random() - .5;
-      })[0];
-      roomOf[c.id] = best;
+      let bestRooms = [], bestSame = Infinity, bestTotal = Infinity;
+      ROOMS.forEach(r => {
+        const same = sameCount[`${r}|${dk}`] || 0;
+        const total = totalCount[r];
+        if (same < bestSame || (same === bestSame && total < bestTotal)) {
+          bestSame = same; bestTotal = total; bestRooms = [r];
+        } else if (same === bestSame && total === bestTotal) {
+          bestRooms.push(r);
+        }
+      });
+      const best = bestRooms[Math.floor(Math.random() * bestRooms.length)];
+      totalCount[best]++;
+      sameCount[`${best}|${dk}`] = (sameCount[`${best}|${dk}`] || 0) + 1;
       updates.push({ id: c.id, room: best });
     });
   });
@@ -802,96 +826,6 @@ async function randomizeAllCandidatesAllCourses() {
   } catch (e) {
     console.error(e);
     alert("Allocation failed: " + e.message);
-  }
-}
-
-// ── Rebalance rooms — fix for the 2026-10-04 uneven-split bug ───────────
-// randomizeAllCandidatesAllCourses() above (and Stage 1 Candidates'
-// assignRoomsForWrites()) only ever fill candidates with NO room yet, so
-// once every allocated candidate already has *a* room — even a badly
-// skewed one — neither button touches them again. The actual bug (Jon,
-// 2026-10-04: "very uneven distribution across rooms") was a biased
-// Math.random()-.5 sort tie-break, compounded in assignRoomsForWrites()'s
-// case by a stale snapshot that never saw this same batch's own
-// placements — so a from-scratch allocation could land anywhere from ~4
-// to ~28 in a 19-room split that should land ~10-12 each. This button
-// recomputes a fresh, correctly-balanced split for EVERY already-allocated
-// candidate across every course (ignoring their current room entirely,
-// since the current values are the skewed ones) using the fixed
-// least-loaded algorithm, and writes the corrected rooms straight to
-// Firestore. One-time repair — once this has been run and
-// assignRoomsForWrites() is deployed with the same fix, this button isn't
-// needed for normal operation, just left in case it's ever needed again.
-async function rebalanceAllRooms() {
-  const courses = courseList();
-  if (!courses.length) { showStatus("No courses found yet", "ok"); return; }
-
-  const allocatedTotal = courses.reduce((n, course) => n + allCandidates.filter(c => c.course === course).length, 0);
-  if (!allocatedTotal) { showStatus("Nobody allocated to a course yet", "ok"); return; }
-
-  if (!confirm(`Recompute room assignments for ALL ${allocatedTotal} already-allocated candidate(s) across ${courses.length} course(s)?\n\nThis REPLACES every current room assignment (even ones that happen to already be fine) with a freshly, evenly balanced split — it's the fix for the uneven-rooms bug. Anyone not yet allocated to a course is untouched. Saves straight to the database.`)) return;
-
-  showStatus("Rebalancing…", "");
-
-  function shuffle(arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-
-  const updates = []; // { id, room }
-  courses.forEach(course => {
-    const inCourse = allCandidates.filter(c => c.course === course);
-    const totalCount = {};
-    const sameCount = {};
-    ROOMS.forEach(r => { totalCount[r] = 0; });
-    shuffle(inCourse).forEach(c => {
-      const dk = degreeKey(c);
-      let bestRooms = [], bestSame = Infinity, bestTotal = Infinity;
-      ROOMS.forEach(r => {
-        const same = sameCount[`${r}|${dk}`] || 0;
-        const total = totalCount[r];
-        if (same < bestSame || (same === bestSame && total < bestTotal)) {
-          bestSame = same; bestTotal = total; bestRooms = [r];
-        } else if (same === bestSame && total === bestTotal) {
-          bestRooms.push(r);
-        }
-      });
-      const best = bestRooms[Math.floor(Math.random() * bestRooms.length)];
-      totalCount[best]++;
-      sameCount[`${best}|${dk}`] = (sameCount[`${best}|${dk}`] || 0) + 1;
-      if (c.room !== best) updates.push({ id: c.id, room: best });
-    });
-  });
-
-  if (!updates.length) { showStatus("Already balanced — nothing to change", "ok"); return; }
-
-  try {
-    const CHUNK = 400;
-    for (let start = 0; start < updates.length; start += CHUNK) {
-      const batch = db.batch();
-      updates.slice(start, start + CHUNK).forEach(u => {
-        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(u.id), { room: u.room });
-      });
-      await batch.commit();
-    }
-    updates.forEach(u => {
-      const rec = allCandidates.find(x => x.id === u.id);
-      if (rec) rec.room = u.room;
-      if (currentCourse) {
-        const cc = courseCandidates.find(x => x.id === u.id);
-        if (cc) cc.room = u.room;
-      }
-    });
-    populateCourseDropdown();
-    if (currentCourse) render();
-    showStatus(`✓ Rebalanced ${updates.length} candidate(s) across ${courses.length} course(s)`, "ok");
-  } catch (e) {
-    console.error(e);
-    alert("Rebalance failed: " + e.message);
   }
 }
 

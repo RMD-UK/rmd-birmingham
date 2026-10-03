@@ -54,6 +54,10 @@
     .link-badge { display:inline-block; background:#e8f0fe; color:var(--rmd-blue); font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:6px; }
     .btn-link-sm { padding:6px 12px; background:white; color:var(--rmd-blue); border:2px solid #b8d4f5; border-radius:8px; font-size:11px; font-weight:700; font-family:var(--font); cursor:pointer; }
     .btn-link-sm:hover { background:#e8f0fe; }
+    summary.card-header { cursor:pointer; list-style:none; display:flex; align-items:center; justify-content:space-between; }
+    summary.card-header::-webkit-details-marker { display:none; }
+    summary.card-header::after { content:"▸ show"; font-size:10px; opacity:0.85; letter-spacing:0.5px; }
+    details[open] > summary.card-header::after { content:"▾ hide"; }
   </style>
 </head>
 <body>
@@ -118,7 +122,8 @@
   </div>
 
   <div class="card">
-    <div class="card-header">All candidates</div>
+    <details id="allCandidatesDetails">
+    <summary class="card-header">All candidates</summary>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">A coloured dot before a name means that candidate shares a surname and course with at least one other candidate below — matching colours mark the same group. Hover a dot to see who it matches. Same soft "check, don't auto-exclude" flag as the Add candidates preview above, just kept visible once records are saved.</p>
       <div class="filters">
@@ -137,6 +142,7 @@
         <button class="btn-danger" id="deleteTestBtn" onclick="deleteTestCandidates()">🧪 Delete test candidates</button>
       </div>
     </div>
+    </details>
   </div>
 
   <div class="card">
@@ -1235,6 +1241,11 @@ async function markAllNoPlacementDates() {
 function applyFindQueryParam() {
   const find = new URLSearchParams(window.location.search).get("find");
   if (!find) return;
+  // All candidates is collapsed by default (2026-10-03, Jon) — a flagged-
+  // candidate link from Course/Assessment allocation has to open it first,
+  // or the match it just filled in would be invisible.
+  const details = document.getElementById("allCandidatesDetails");
+  if (details) details.open = true;
   const courseSel = document.getElementById("courseFilter");
   if (courseSel) courseSel.value = "";
   const search = document.getElementById("searchBox");
