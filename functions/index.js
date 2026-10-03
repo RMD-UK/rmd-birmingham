@@ -289,10 +289,34 @@ function escapeHtmlForEmail(str) {
     .replace(/'/g, "&#39;");
 }
 
+// Added 2026-10-03, Jon: wants plain-text URLs/emails in comms emails to be
+// clickable. Runs on already-escaped text (safe — URLs/emails never contain
+// &, <, >, ", ' so escaping doesn't touch them). Matches a bare domain
+// (rmd.uk.com/...), a full http(s) URL, or an email address, trims any
+// trailing sentence punctuation caught by the match (a closing paren, a
+// comma) off the link so "(colmds-c-rmdbirmingham@adf.bham.ac.uk)" links
+// just the address, not the bracket.
+function linkifyForEmail(escapedText) {
+  const re = /((?:https?:\/\/)?(?:www\.)?[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)*\.(?:com|co\.uk|org\.uk|ac\.uk|uk\.com|org|net|edu)(?:\/[^\s<]*)?)|([A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+  return escapedText.replace(re, (match, urlPart, emailPart) => {
+    let core = match;
+    let trail = "";
+    const trailMatch = core.match(/[).,;:]+$/);
+    if (trailMatch) { trail = trailMatch[0]; core = core.slice(0, -trail.length); }
+    if (!core) return match;
+    const style = "color:#0067A4;text-decoration:underline;";
+    if (emailPart) {
+      return `<a href="mailto:${core}" style="${style}">${core}</a>${trail}`;
+    }
+    const href = /^https?:\/\//i.test(core) ? core : `https://${core}`;
+    return `<a href="${href}" style="${style}">${core}</a>${trail}`;
+  });
+}
+
 function buildBrandedHtmlEmail(bodyText) {
   const paragraphs = String(bodyText || "")
     .split(/\n{2,}/)
-    .map(p => `<p style="margin:0 0 16px;">${escapeHtmlForEmail(p).replace(/\n/g, "<br>")}</p>`)
+    .map(p => `<p style="margin:0 0 16px;">${linkifyForEmail(escapeHtmlForEmail(p)).replace(/\n/g, "<br>")}</p>`)
     .join("");
   return `<!DOCTYPE html>
 <html>
