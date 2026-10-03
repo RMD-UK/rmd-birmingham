@@ -58,6 +58,19 @@
 
     .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
     #authMsg { font-size:15px; opacity:.7; }
+
+    /* ── Candidate search (2026-10-03, Jon: a quick lookup for faculty/
+       directors who already have an account, so they don't have to pick a
+       course first just to find one candidate's room) ── */
+    .search-bar { background:#fff; border-bottom:2px solid #e0e4ee; padding:12px 14px; position:relative; }
+    .search-bar input { width:100%; padding:10px 12px; border:1.5px solid #d0d5e0; border-radius:7px; font-size:14px; font-family:var(--font); }
+    .search-results { position:absolute; left:14px; right:14px; top:100%; background:#fff; border:1.5px solid #d0d5e0; border-top:none; border-radius:0 0 8px 8px; box-shadow:0 4px 10px rgba(0,0,0,.12); max-height:280px; overflow-y:auto; z-index:150; }
+    .search-result { padding:10px 12px; border-top:1px solid #eef1f8; cursor:pointer; font-size:13px; }
+    .search-result:first-child { border-top:none; }
+    .search-result:hover { background:#f4f6fb; }
+    .search-result .sr-name { font-weight:700; color:var(--rmd-navy); }
+    .search-result .sr-meta { font-size:11px; color:#8893b0; margin-top:1px; }
+    .ccard.highlight { outline:3px solid #f5a623; outline-offset:1px; }
   </style>
 </head>
 <body>
@@ -74,6 +87,11 @@
     <span class="top-bar-sub">RMD Birmingham — Stage 1 Provider Courses</span>
   </div>
   <a class="top-bar-back" href="member-menu.html">← Menu</a>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="candSearch" placeholder="Find a candidate by name…" autocomplete="off" oninput="onSearchInput()">
+  <div id="searchResults" class="search-results" style="display:none"></div>
 </div>
 
 <div class="course-bar">
@@ -250,7 +268,7 @@ function selectCourse(course) {
         const inRoom = candidates.filter(c => c.room === rid);
         const chips = (teams[rid] || []).map(uid => `<span class="instr-chip">${esc(instructorName(uid))}</span>`).join("");
         const cards = inRoom.length
-          ? inRoom.map(c => `<div class="ccard"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`).join("")
+          ? inRoom.map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`).join("")
           : `<div class="room-empty">No candidates assigned</div>`;
         return `<div class="room-col">
                   <div class="room-head">
@@ -265,9 +283,68 @@ function selectCourse(course) {
   const unassigned = candidates.filter(c => !c.room);
   document.getElementById("unassignedWrap").style.display = unassigned.length ? "" : "none";
   document.getElementById("unassignedGrid").innerHTML = unassigned
-    .map(c => `<div class="ccard"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`)
+    .map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`)
     .join("");
 }
+
+// Candidate search — looks across every course at once (allCandidates
+// already holds everyone, loaded once at startup), so faculty can find
+// someone without first knowing which course they're on. Picking a result
+// selects that course, renders it, then scrolls to and briefly highlights
+// the matching card — same card whether the candidate has a room yet or is
+// still in the "not yet assigned" list below the grid.
+function onSearchInput() {
+  const q = document.getElementById("candSearch").value.trim().toLowerCase();
+  const resultsEl = document.getElementById("searchResults");
+  if (q.length < 2) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; return; }
+
+  const matches = allCandidates
+    .filter(c => (c.name || "").toLowerCase().includes(q))
+    .slice(0, 20); // cap — a short query against 1000+ candidates could otherwise list hundreds
+
+  if (!matches.length) {
+    resultsEl.innerHTML = `<div class="search-result" style="color:#8893b0;cursor:default">No match</div>`;
+    resultsEl.style.display = "block";
+    return;
+  }
+
+  resultsEl.innerHTML = matches.map(c => {
+    const where = c.course
+      ? (ROOMS.includes(c.room) ? `${esc(c.course)} — Room ${esc(c.room)}` : `${esc(c.course)} — not yet assigned a room`)
+      : "Not yet on a course";
+    return `<div class="search-result" onclick="jumpToCandidate('${esc(c.id)}')">
+              <div class="sr-name">${esc(c.name || "(no name)")}</div>
+              <div class="sr-meta">${where}</div>
+            </div>`;
+  }).join("");
+  resultsEl.style.display = "block";
+}
+
+function jumpToCandidate(id) {
+  const c = allCandidates.find(x => x.id === id);
+  document.getElementById("searchResults").style.display = "none";
+  document.getElementById("candSearch").value = c ? (c.name || "") : "";
+  if (!c || !c.course) return;
+
+  document.getElementById("courseSelect").value = c.course;
+  selectCourse(c.course);
+
+  setTimeout(() => {
+    const card = document.querySelector(`[data-cid="${CSS.escape(id)}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.add("highlight");
+      setTimeout(() => card.classList.remove("highlight"), 3000);
+    }
+  }, 50);
+}
+
+document.addEventListener("click", (e) => {
+  const bar = document.querySelector(".search-bar");
+  if (bar && !bar.contains(e.target)) {
+    document.getElementById("searchResults").style.display = "none";
+  }
+});
 
 </script>
 </body>
