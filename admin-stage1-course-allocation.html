@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Allocation — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 1000px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .top-bar-link { color:white; background:rgba(255,255,255,0.12); border:2px solid rgba(255,255,255,0.4); border-radius:8px; padding:8px 14px; font-size:12px; font-weight:700; text-decoration:none; white-space:nowrap; }
+    .top-bar-link:hover { background:rgba(255,255,255,0.22); border-color:white; }
+    .director-note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:16px; line-height:1.5; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .hint { font-size:12px; color:var(--rmd-muted); margin-top:8px; line-height:1.5; }
+    .btn-primary { padding:12px 20px; background:var(--rmd-blue); color:white; border:none; border-radius:8px; font-size:14px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-primary:disabled { background:#aab8c2; cursor:default; }
+    .btn-primary:hover:not(:disabled) { background:var(--rmd-navy); }
+    .btn-secondary { padding:8px 14px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-secondary:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="admin-stage1-candidates.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Course Allocation</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only</div>
+    </div>
+    <a href="admin-stage1-candidates.html" class="top-bar-link">👤 Stage 1 Candidates</a>
+    <a href="admin-stage1-assessment-allocation.html" class="top-bar-link">🗓 Assessment allocation</a>
+    <a href="admin-stage1-settings.html" class="top-bar-link">⚙️ Settings</a>
+  </div>
+
+  <div class="director-note">
+    Gives every checked candidate (added in Step 1, checked in Step 2 on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a>) a course session and a teaching room in one go. Run this once everyone for the round is in and checked — anyone added afterwards just needs another pass. Flagged candidates link straight back to their row on Stage 1 Candidates.
+  </div>
+
+  <div class="card">
+    <div class="card-header">Deadline feasibility check</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Before you allocate: for each course date below, this adds up every unallocated, checked candidate whose programme deadline falls on or before that date (so they'd need to have started Stage 1 by then), and compares that against the total room capacity available across all courses up to that point. A shortfall means there are more deadline-bound candidates than Stage 1 can physically seat in time — worth knowing before you hit "Allocate now" in Step 3, not after. Pharmacy candidates with a placement-date clash on file aren't included (their eligible courses vary clash by clash, so they don't fit this simple running total) — check those individually.</p>
+      <div id="deadlineFeasibility"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Step 3 — Allocate to courses</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Tick the box below and click "Allocate now" to give every checked candidate a course and a room in one go. Only candidates checked in Step 2 on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a> are included (real placement-dates match, or ticked "no placement dates"). Anyone not yet checked is left alone — check them there first if they're missing from the result. Anyone the system can't fit within capacity comes back named below — Step 4 below handles placing them over capacity; anyone stuck for another reason (deadline, programme, clash) still needs fixing by hand.</p>
+      <div id="allocationSummary"></div>
+      <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:4px 0 14px;">
+        <input type="checkbox" id="confirmAllAddedCheckbox" onchange="updateAllocateButtonState()" style="margin-top:2px; width:16px; height:16px;">
+        I confirm every candidate for this round has been added on Stage 1 Candidates — nobody known about is still missing.
+      </label>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn-primary" id="allocateNowBtn" onclick="allocateAllNow()" disabled>Allocate now</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Step 4 — Place extras over capacity</div>
+    <div class="card-body">
+      <div id="overCapCard"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+requireDirector("timetable.html");
+
+let allCandidates = [];
+// STAGE1_TEACHING_ROOMS is declared once in js/firebase-config.js — do not
+// duplicate the list here, same rule admin-course-room-allocation.html and
+// admin-stage1-candidates.html follow.
+const ROOMS = STAGE1_TEACHING_ROOMS;
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+async function loadCandidates() {
+  const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+  allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  renderAllocationSummary();
+  renderDeadlineFeasibility();
+  renderOverCapCard();
+}
+
+// ── Course auto-fit (2026-09-27, Jon; no longer runs at import as of
+// 2026-10-01; moved to its own page 2026-10-03, Jon: "make links so that
+// clean set up to enter course allocation or assessment allocation")
+// ────────────────────────────────────────────
+// Works out the LATEST configured course session still on/before a
+// candidate's programme's assessment deadline (Jon's confirmed rule — most
+// possible teaching time before their deadline, over rushing them into the
+// earliest slot). Both inputs are director-maintained on
+// admin-stage1-settings.html:
+//   config/stage1_programme_deadlines.deadlines  { "Nursing MSc": "2027-03-01", ... }
+//   config/stage1_course_dates.courses            [{ name, date }, ...]
+// Only ever called from allocateAllNow() (Step 3) — importing a candidate
+// (Step 1, on Stage 1 Candidates) always leaves them unallocated, so
+// placement dates get a chance to be checked (Step 2) first. If no
+// deadline is set for that programme, or no session falls on/before the
+// deadline, the candidate is left unallocated and flagged with the reason
+// instead of guessing.
+let programmeDeadlines = {};
+let courseSessions = [];
+
+async function loadAutoFitSettings() {
+  try {
+    const dSnap = await db.collection("config").doc("stage1_programme_deadlines").get();
+    programmeDeadlines = dSnap.exists ? (dSnap.data().deadlines || {}) : {};
+  } catch (err) { programmeDeadlines = {}; }
+  try {
+    const cSnap = await db.collection("config").doc("stage1_course_dates").get();
+    courseSessions = cSnap.exists ? (cSnap.data().courses || []) : [];
+  } catch (err) { courseSessions = []; }
+  renderAllocationSummary();
+  renderDeadlineFeasibility();
+  renderOverCapCard();
+}
+
+// ── Placement-date clash checking (2026-10-01, Jon) ────────────
+// Some candidates — currently Pharmacy, via their placement leads — have
+// dates during the year they're on clinical placement and can't be on an
+// RMD course at all. A course only actually runs on 3 Monday evenings — two
+// teaching sessions and the week-3 assessment evening — so a clash means
+// one of THOSE THREE DATES falls inside a placement block, not any day in
+// the three-week span between them. The assessment date on Stage 1 Settings
+// is itself always a Monday, so the other two Mondays are just 7 and 14
+// days earlier — no day-of-week rounding needed.
+function courseMondays(assessmentDate) {
+  const d = new Date(assessmentDate + "T00:00:00");
+  const mondays = [];
+  for (let weeksBack = 2; weeksBack >= 0; weeksBack--) {
+    const m = new Date(d);
+    m.setDate(m.getDate() - weeksBack * 7);
+    mondays.push(m.toISOString().slice(0, 10));
+  }
+  return mondays; // [first session, second session, assessment evening]
+}
+// True if any of a course's 3 Monday sessions falls inside one of a
+// candidate's placement blocks — inclusive both ends.
+function placementClashesWithCourse(placementBlocks, assessmentDate) {
+  if (!placementBlocks || !placementBlocks.length || !assessmentDate) return false;
+  const mondays = courseMondays(assessmentDate);
+  return placementBlocks.some(b =>
+    b.start && b.end && mondays.some(m => m >= b.start && m <= b.end));
+}
+
+// Effective per-room capacity for every course session, computed once per
+// allocateAllNow() run (2026-10-02, Jon: "fill up course 1 with 12 per
+// room, then distribute others across the other courses with 10 per room
+// if possible"). A course with an explicit capacity typed on Stage 1
+// Settings keeps that number; anything left blank gets the built-in
+// default — 12/room for the earliest-dated course, 10/room for every
+// other one.
+function buildEffectiveCapacities() {
+  const sorted = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const effective = {};
+  sorted.forEach((c, i) => {
+    effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : (i === 0 ? 12 : 10);
+  });
+  courseSessions.forEach(c => { if (!(c.name in effective)) effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : 10; });
+  return effective;
+}
+
+// Shared by autoFitCourse(), eligibleCourseCountFor() (priority ordering)
+// and placeExtrasOverCapacity() (Step 4). Deliberately never applies a
+// capacity check — that's each caller's own job.
+function eligibleCoursesIgnoringCapacity(degreeExact, placementBlocks) {
+  if (!degreeExact) return { eligible: [], reason: "no recognised programme to look up a deadline for" };
+  const deadline = programmeDeadlines[degreeExact];
+  if (!deadline) return { eligible: [], reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings` };
+  if (!courseSessions.length) return { eligible: [], reason: "no course sessions configured — add this year's dates on Stage 1 Settings" };
+  let eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? -1 : 1);
+  if (!eligible.length) return { eligible: [], reason: `no course session falls on or before the ${deadline} deadline` };
+  if (placementBlocks && placementBlocks.length) {
+    const clashFree = eligible.filter(c => !placementClashesWithCourse(placementBlocks, c.date));
+    if (!clashFree.length) return { eligible: [], reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead` };
+    eligible = clashFree;
+  }
+  return { eligible, reason: null };
+}
+
+function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCapacities) {
+  const elig = eligibleCoursesIgnoringCapacity(degreeExact, placementBlocks);
+  if (!elig.eligible.length) return { course: null, reason: elig.reason, atCapacity: false };
+  const eligible = elig.eligible;
+  const deadline = programmeDeadlines[degreeExact];
+
+  const caps = effectiveCapacities || {};
+  const counts = runningCounts || {};
+  const capOf = s => caps[s.name] ? caps[s.name] * ROOMS.length : null;
+  const countOf = s => counts[s.name] != null ? counts[s.name] : allCandidates.filter(c => c.course === s.name).length;
+
+  const hasRoom = s => { const cap = capOf(s); return cap == null || countOf(s) < cap; };
+  const earliestOverall = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1)[0];
+  const courseOne = earliestOverall && eligible.find(s => s.name === earliestOverall.name);
+
+  if (courseOne && hasRoom(courseOne)) {
+    return { course: courseOne.name, reason: null, atCapacity: false };
+  }
+
+  const rest = eligible.filter(s => !courseOne || s.name !== courseOne.name).filter(hasRoom);
+  if (!rest.length) {
+    const ref = courseOne || eligible[0];
+    const cap = caps[ref.name];
+    const capNote = cap ? ` (capacity ${cap}/room × ${ROOMS.length} rooms = ${cap * ROOMS.length})` : "";
+    return { course: null, reason: `every course session on or before the ${deadline} deadline is already at capacity${capNote}`, atCapacity: true };
+  }
+  let best = rest[0], bestCount = countOf(best);
+  rest.forEach(s => { const n = countOf(s); if (n < bestCount) { best = s; bestCount = n; } });
+  return { course: best.name, reason: null, atCapacity: false };
+}
+
+// Used only to ORDER allocation — a candidate with few eligible course
+// sessions (deadline falls early) gets first claim on Course 1's limited
+// seats, instead of losing out to someone with more flexibility.
+function eligibleCourseCountFor(c) {
+  const resolved = resolveStage1Degree(c.degree);
+  return eligibleCoursesIgnoringCapacity(resolved ? resolved.exact : null, c.placementBlocks || []).eligible.length;
+}
+
+// Same degree-balancing key admin-course-room-allocation.html's room
+// randomizer uses (kept in sync deliberately, not shared via import, since
+// these pages don't share a module system).
+function degreeKey(c) {
+  const match = resolveStage1Degree(c.degree);
+  return match ? ("group:" + match.group) : ("raw:" + (c.degree || "").trim().toLowerCase());
+}
+
+// Degree-balanced, numbers-balanced room split for a batch of {c, course}
+// writes, against everyone already ON that course. Fisher-Yates shuffle —
+// NOT sort(() => Math.random()-.5), which biases toward whichever ordering
+// the engine's sort happens to settle on for an inconsistent comparator
+// (the 2026-10-03 uneven-rooms bug).
+function assignRoomsForWrites(toWrite) {
+  const byCourse = {};
+  toWrite.forEach(({ c, course }) => { (byCourse[course] = byCourse[course] || []).push(c); });
+  const roomFor = new Map();
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  Object.keys(byCourse).forEach(course => {
+    const existingOnCourse = allCandidates.filter(x => x.course === course);
+    const totalCount = {};
+    const sameCount = {};
+    ROOMS.forEach(r => { totalCount[r] = 0; });
+    existingOnCourse.forEach(x => {
+      if (!ROOMS.includes(x.room)) return;
+      totalCount[x.room]++;
+      const k = `${x.room}|${degreeKey(x)}`;
+      sameCount[k] = (sameCount[k] || 0) + 1;
+    });
+
+    shuffle(byCourse[course]).forEach(c => {
+      const dk = degreeKey(c);
+      let bestRooms = [];
+      let bestSame = Infinity, bestTotal = Infinity;
+      ROOMS.forEach(r => {
+        const same = sameCount[`${r}|${dk}`] || 0;
+        const total = totalCount[r];
+        if (same < bestSame || (same === bestSame && total < bestTotal)) {
+          bestSame = same; bestTotal = total; bestRooms = [r];
+        } else if (same === bestSame && total === bestTotal) {
+          bestRooms.push(r);
+        }
+      });
+      const best = bestRooms[Math.floor(Math.random() * bestRooms.length)];
+      totalCount[best]++;
+      sameCount[`${best}|${dk}`] = (sameCount[`${best}|${dk}`] || 0) + 1;
+      roomFor.set(c.id, best);
+    });
+  });
+  return roomFor;
+}
+
+// Live counts, so the state of play is obvious before anyone touches the
+// Allocate button.
+function renderAllocationSummary() {
+  const el = document.getElementById("allocationSummary");
+  if (!el) return;
+  const total = allCandidates.length;
+  const allocated = allCandidates.filter(c => c.course).length;
+  const unallocated = allCandidates.filter(c => !c.course);
+  const ready = unallocated.filter(c => c.placementChecked).length;
+  const notChecked = unallocated.filter(c => !c.placementChecked).length;
+
+  const tile = (n, label, warn) => `
+    <div style="flex:1;min-width:130px;background:${warn && n ? "#fff4e5" : "#f4f6fa"};border:1.5px solid ${warn && n ? "#f0b860" : "#e0e4ee"};border-radius:10px;padding:12px 14px;">
+      <div style="font-size:26px;font-weight:800;color:${warn && n ? "#8a5a00" : "var(--rmd-navy)"};font-variant-numeric:tabular-nums;">${n}</div>
+      <div style="font-size:12px;color:#5a6478;font-weight:700;">${label}</div>
+    </div>`;
+
+  el.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 16px;">
+    ${tile(total, "Total candidates added")}
+    ${tile(allocated, "Already allocated")}
+    ${tile(ready, "Checked — ready to allocate")}
+    ${tile(notChecked, "Not yet checked", true)}
+  </div>`;
+}
+
+function renderDeadlineFeasibility() {
+  const el = document.getElementById("deadlineFeasibility");
+  if (!el) return;
+  if (!courseSessions.length) { el.innerHTML = `<p class="hint" style="margin:0;">No course sessions configured yet — add this year's dates on <a href="admin-stage1-settings.html">Stage 1 Settings</a> first.</p>`; return; }
+
+  const ready = allCandidates.filter(c => !c.course && c.placementChecked);
+  if (!ready.length) { el.innerHTML = `<p class="hint" style="margin:0;">No unallocated, checked candidates yet — nothing to check against deadlines.</p>`; return; }
+
+  const sortedCourses = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const effectiveCapacities = buildEffectiveCapacities();
+
+  const withClash = [];
+  const unresolved = [];
+  const assessable = [];
+  ready.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const deadline = resolved ? programmeDeadlines[resolved.exact] : null;
+    if (!resolved || !deadline) { unresolved.push(c); return; }
+    if (c.placementBlocks && c.placementBlocks.length) { withClash.push(c); return; }
+    assessable.push({ c, deadline });
+  });
+
+  const allocatedCountOf = name => allCandidates.filter(c => c.course === name).length;
+
+  let cumCap = 0;
+  const rows = sortedCourses.map(course => {
+    const cap = (effectiveCapacities[course.name] || 10) * ROOMS.length;
+    const remaining = Math.max(0, cap - allocatedCountOf(course.name));
+    cumCap += remaining;
+    const cumDemand = assessable.filter(x => x.deadline <= course.date).length;
+    const shortfall = Math.max(0, cumDemand - cumCap);
+    return { name: course.name, date: course.date, cumCap, cumDemand, shortfall };
+  });
+
+  let noteHtml = `<p class="hint" style="margin:0 0 10px;">${assessable.length} candidate(s) checked against deadlines below.`;
+  if (withClash.length) noteHtml += ` ${withClash.length} Pharmacy candidate(s) with a placement clash excluded — check those individually.`;
+  if (unresolved.length) noteHtml += ` ${unresolved.length} skipped — no recognised programme or no deadline set yet.`;
+  noteHtml += `</p>`;
+
+  el.innerHTML = noteHtml + `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="text-align:left;border-bottom:2px solid #e0e4ee;">
+        <th style="padding:6px 8px;">Course</th>
+        <th style="padding:6px 8px;">Date</th>
+        <th style="padding:6px 8px;">Remaining capacity so far</th>
+        <th style="padding:6px 8px;">Must be placed by now</th>
+        <th style="padding:6px 8px;">Shortfall</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r => `<tr style="border-bottom:1px solid #eef0f5;${r.shortfall ? "background:#fff4e5;" : ""}">
+          <td style="padding:6px 8px;font-weight:700;">${esc(r.name)}</td>
+          <td style="padding:6px 8px;">${esc(r.date)}</td>
+          <td style="padding:6px 8px;font-variant-numeric:tabular-nums;">${r.cumCap}</td>
+          <td style="padding:6px 8px;font-variant-numeric:tabular-nums;">${r.cumDemand}</td>
+          <td style="padding:6px 8px;font-weight:700;color:${r.shortfall ? "#8a5a00" : "#1a6e31"};">${r.shortfall ? `⚠ short by ${r.shortfall}` : "OK"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
+
+function updateAllocateButtonState() {
+  const cb = document.getElementById("confirmAllAddedCheckbox");
+  const btn = document.getElementById("allocateNowBtn");
+  if (cb && btn) btn.disabled = !cb.checked;
+}
+
+async function allocateAllNow() {
+  const confirmCb = document.getElementById("confirmAllAddedCheckbox");
+  if (!confirmCb || !confirmCb.checked) {
+    alert('Tick "I confirm every candidate for this round has been added" first — that\u2019s what stops a mass allocation running before everyone\u2019s actually on the system.');
+    return;
+  }
+  const unallocated = allCandidates.filter(c => !c.course);
+  if (!unallocated.length) { alert("No unallocated candidates — everyone already has a course."); return; }
+
+  const notChecked = unallocated.filter(c => !c.placementChecked);
+  const ready = unallocated.filter(c => c.placementChecked)
+    .sort((a, b) => eligibleCourseCountFor(a) - eligibleCourseCountFor(b));
+
+  if (!ready.length) {
+    alert(`${notChecked.length} unallocated candidate(s), but none have been checked for placement dates yet. Check them on Stage 1 Candidates before allocating.`);
+    return;
+  }
+
+  let confirmMsg = `Allocate ${ready.length} checked candidate(s) to courses AND rooms now?`;
+  if (notChecked.length) confirmMsg += `\n\n${notChecked.length} unallocated candidate(s) will be skipped — not yet checked for placement dates.`;
+  confirmMsg += `\n\nThis is a single step — anyone who gets a course also gets a room in the same pass, split to balance degree mix and room numbers. There's no review screen in between; check the result on Course Room & Instructor Allocation afterwards.`;
+  if (!confirm(confirmMsg)) return;
+
+  const toWrite = [];
+  const flagged = [];
+  const runningCourseCounts = {};
+  allCandidates.forEach(c => { if (c.course) runningCourseCounts[c.course] = (runningCourseCounts[c.course] || 0) + 1; });
+  const effectiveCapacities = buildEffectiveCapacities();
+  ready.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities);
+    if (fit.course) {
+      toWrite.push({ c, course: fit.course });
+      runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
+    } else {
+      flagged.push({ c, reason: fit.reason });
+    }
+  });
+
+  const roomFor = assignRoomsForWrites(toWrite);
+
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < toWrite.length; start += CHUNK) {
+      const batch = db.batch();
+      toWrite.slice(start, start + CHUNK).forEach(({ c, course }) => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null });
+      });
+      await batch.commit();
+    }
+    toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; });
+
+    renderAllocationSummary();
+    renderDeadlineFeasibility();
+    renderOverCapCard();
+
+    let summaryHtml = `<div style="background:#e1efe3;border:1px solid #1a6e31;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:#1a6e31;font-size:13px;font-weight:700;">Allocated ${toWrite.length} candidate(s) to a course and a room.</div>`;
+    if (flagged.length) {
+      summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${flagged.length} couldn't be auto-fit — pick a course for ${flagged.length === 1 ? "this one" : "these"} by hand on Stage 1 Candidates, or see Step 4 below if it's a capacity problem:</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${flagged.map(f => `<a href="javascript:void(0)" onclick="reviewFlaggedCandidate('${f.c.id}')" style="color:#856404;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer;">${esc(f.c.name)}</a><span style="font-size:11px;color:#856404;margin:-4px 0 2px;">${esc(f.reason)}</span>`).join("")}
+        </div>
+      </div>`;
+    }
+    if (notChecked.length) summaryHtml += `<p class="hint" style="margin:0 0 12px;">${notChecked.length} skipped — not yet checked for placement dates.</p>`;
+    const summaryEl = document.getElementById("allocationSummary");
+    if (summaryEl) { summaryEl.innerHTML = summaryHtml; summaryEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  } catch (err) {
+    alert("Allocation failed: " + err.message);
+  }
+}
+
+function renderOverCapCard() {
+  const wrap = document.getElementById("overCapCard");
+  if (!wrap) return;
+  if (!courseSessions.length) { wrap.innerHTML = `<p class="hint" style="margin:0;">No course sessions configured yet.</p>`; return; }
+
+  const sorted = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const earliestName = sorted.length ? sorted[0].name : null;
+
+  const existing = {};
+  wrap.querySelectorAll("#overCapCourseBoxes input[type=checkbox]").forEach(cb => { existing[cb.value] = cb.checked; });
+
+  const boxesHtml = sorted.map(s => {
+    const checked = existing.hasOwnProperty(s.name) ? existing[s.name] : (s.name !== earliestName);
+    return `<label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--rmd-navy);margin:0 14px 8px 0;">
+      <input type="checkbox" value="${esc(s.name)}" ${checked ? "checked" : ""}> ${esc(s.name)} (${esc(s.date)})
+    </label>`;
+  }).join("");
+
+  const stuck = allCandidates.filter(c => !c.course && c.placementChecked);
+  const runningCourseCounts = {};
+  allCandidates.forEach(c => { if (c.course) runningCourseCounts[c.course] = (runningCourseCounts[c.course] || 0) + 1; });
+  const effectiveCapacities = buildEffectiveCapacities();
+  const capacityStuck = [], otherStuck = [];
+  stuck.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities);
+    if (fit.course) return;
+    (fit.atCapacity ? capacityStuck : otherStuck).push({ c, reason: fit.reason });
+  });
+
+  let html = `<p class="hint" style="margin-top:0;">${capacityStuck.length} candidate(s) are checked and deadline-eligible but don't fit any course's configured room capacity. Tick which courses may take extras over capacity, then place them. This never bypasses anyone's deadline or a placement-date clash — only the room-capacity limit, and only for courses ticked below. The capacity numbers are real room sizes, not a quota — check the rooms can actually hold the extra people before using this.</p>`;
+  html += `<div id="overCapCourseBoxes" style="margin-bottom:12px;">${boxesHtml || `<span class="hint">No course sessions configured.</span>`}</div>`;
+  html += `<button class="btn-primary" id="placeOverCapBtn" onclick="placeExtrasOverCapacity()" ${capacityStuck.length ? "" : "disabled"}>Place ${capacityStuck.length} extra${capacityStuck.length === 1 ? "" : "s"} over capacity</button>`;
+
+  if (otherStuck.length) {
+    html += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-top:14px;">
+      <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${otherStuck.length} more can't be helped by this button — the problem isn't capacity:</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${otherStuck.map(f => `<a href="javascript:void(0)" onclick="reviewFlaggedCandidate('${f.c.id}')" style="color:#856404;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer;">${esc(f.c.name)}</a><span style="font-size:11px;color:#856404;margin:-4px 0 2px;">${esc(f.reason)}</span>`).join("")}
+      </div>
+    </div>`;
+  }
+  if (!capacityStuck.length && !otherStuck.length) {
+    html = `<p class="hint" style="margin:0;">Nobody's currently stuck — nothing for this step to do.</p>`;
+  }
+
+  wrap.innerHTML = html;
+}
+
+async function placeExtrasOverCapacity() {
+  const wrap = document.getElementById("overCapCard");
+  const selected = Array.from(wrap.querySelectorAll("#overCapCourseBoxes input[type=checkbox]:checked")).map(cb => cb.value);
+  if (!selected.length) { alert("Tick at least one course first — nothing is selected to place extras into."); return; }
+
+  const stuck = allCandidates.filter(c => !c.course && c.placementChecked);
+  const runningCourseCounts = {};
+  allCandidates.forEach(c => { if (c.course) runningCourseCounts[c.course] = (runningCourseCounts[c.course] || 0) + 1; });
+
+  const toWrite = [];
+  const stillStuck = [];
+  stuck.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const elig = eligibleCoursesIgnoringCapacity(resolved ? resolved.exact : null, c.placementBlocks || []);
+    const options = elig.eligible.filter(s => selected.includes(s.name));
+    if (!options.length) {
+      stillStuck.push({ c, reason: elig.eligible.length
+        ? `their deadline allows ${elig.eligible.map(s => s.name).join(", ")}, but none of those are ticked for over-capacity placement`
+        : elig.reason });
+      return;
+    }
+    let best = options[0], bestCount = runningCourseCounts[best.name] || 0;
+    options.forEach(s => { const n = runningCourseCounts[s.name] || 0; if (n < bestCount) { best = s; bestCount = n; } });
+    toWrite.push({ c, course: best.name });
+    runningCourseCounts[best.name] = bestCount + 1;
+  });
+
+  if (!toWrite.length) { alert("None of the stuck candidates have an eligible course among the ones ticked — nothing to place."); return; }
+
+  if (!confirm(`Place ${toWrite.length} candidate(s) over capacity, spread across ${selected.join(", ")}?\n\nThis puts more people in those courses' rooms than the configured per-room limit allows. The 12/10-per-room numbers are real room sizes — confirm your rooms can actually fit the extra people before continuing.\n\nThis never bypasses anyone's deadline or a placement-date clash — only the room-capacity limit.`)) return;
+
+  const roomFor = assignRoomsForWrites(toWrite);
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < toWrite.length; start += CHUNK) {
+      const batch = db.batch();
+      toWrite.slice(start, start + CHUNK).forEach(({ c, course }) => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null, overCapacity: true });
+      });
+      await batch.commit();
+    }
+    toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; c.overCapacity = true; });
+
+    renderAllocationSummary();
+    renderDeadlineFeasibility();
+
+    let summaryHtml = `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:#8a5a00;font-size:13px;font-weight:700;">Placed ${toWrite.length} candidate(s) over capacity across ${selected.join(", ")}. They're flagged ⚠ over capacity everywhere they show up.</div>`;
+    if (stillStuck.length) {
+      summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${stillStuck.length} still couldn't be placed:</div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          ${stillStuck.map(f => `<a href="javascript:void(0)" onclick="reviewFlaggedCandidate('${f.c.id}')" style="color:#856404;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer;">${esc(f.c.name)}</a><span style="font-size:11px;color:#856404;margin:-4px 0 2px;">${esc(f.reason)}</span>`).join("")}
+        </div>
+      </div>`;
+    }
+    const summaryEl = document.getElementById("allocationSummary");
+    if (summaryEl) { summaryEl.innerHTML = summaryHtml; summaryEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    renderOverCapCard();
+  } catch (err) {
+    alert("Over-capacity placement failed: " + err.message);
+  }
+}
+
+// Jumps to a flagged candidate on Stage 1 Candidates — that page now holds
+// the only "All candidates" list (2026-10-03, split into separate
+// allocation subpages), so this opens it with ?find= set to their email
+// (falls back to name) rather than filling a search box in place.
+function reviewFlaggedCandidate(candidateId) {
+  const c = allCandidates.find(x => x.id === candidateId);
+  if (!c) return;
+  window.open(`admin-stage1-candidates.html?find=${encodeURIComponent(c.email || c.name)}`, "_blank");
+}
+
+loadCandidates();
+loadAutoFitSettings();
+
+</script>
+</body>
+</html>
