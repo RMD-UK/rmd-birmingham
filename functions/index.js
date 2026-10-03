@@ -276,11 +276,14 @@ const COMMS_BCC    = "colmds-c-rmdbirmingham@adf.bham.ac.uk"; // 2026-10-02, Jon
 // Resend plan was ruled out as too expensive, so sendBulkComms below caps
 // what it sends in one call and queues the rest (comms_queue collection) for
 // processCommsQueueDaily to keep sending, a safe batch per day, until done.
-// 60/day, not 100 — leaves headroom for every other automated email this
-// project might fire on the same day; tune down further if a day with a
-// queue batch running ever still trips the quota.
+// 85/day, not 100 — Jon asked for more than 60; 85 leaves 15/day of headroom
+// for every other automated email this project might fire the same day
+// (password resets, MOU reminders etc. are normally low-volume, so this
+// should comfortably cover them). Tune down if a day with a queue batch
+// running ever still trips the quota, tune up if 15 proves more headroom
+// than is ever actually needed.
 const COMMS_QUEUE_COLLECTION = "comms_queue";
-const COMMS_DAILY_SAFE_LIMIT = 60;
+const COMMS_DAILY_SAFE_LIMIT = 85;
 const JON_BCC      = "j.hulme.1@bham.ac.uk"; // Jon wants a copy of every IW RSVP invite sent (2026-08-27) — see sendIwRsvpInvites
 const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 

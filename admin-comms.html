@@ -117,7 +117,6 @@
       <button class="btn-danger" id="sendBtn" onclick="sendNow()" disabled>✉ Send now</button>
 
       <div id="log" style="margin-top:14px;"></div>
-      <div id="retryWrap" style="display:none;margin-top:10px;"></div>
     </div>
   </div>
 
@@ -479,25 +478,11 @@ async function sendNow() {
       queuedLine.textContent = `⏳ ${queued} more queued — Resend's free plan caps sending at a safe daily batch, so these will go out automatically over the next few days, no further action needed.`;
       log.appendChild(queuedLine);
     }
-    const retryWrap = document.getElementById("retryWrap");
     if (failed) {
       const errLine = document.createElement("div");
       errLine.className = "log-line err";
       errLine.textContent = `⚠ ${failed} failed: ${failedEmails.join(", ")}`;
       log.appendChild(errLine);
-      // 2026-10-05, Jon: a batch send can partially fail (seen: 23/228,
-      // likely Resend rate-limiting a long sequential loop — nothing about
-      // the failed addresses themselves looked wrong). Re-sending the whole
-      // group again would double-email everyone who already got it, which
-      // Jon doesn't want, so offer a resend scoped to exactly the failed
-      // addresses instead, resolved back to {name,email} from the group
-      // already in memory so {{first_name}} still personalises correctly.
-      lastFailedPeople = currentGroup.people.filter(p => failedEmails.includes(p.email));
-      retryWrap.style.display = "block";
-      retryWrap.innerHTML = `<button class="btn-secondary" onclick="resendFailedOnly()">🔁 Resend to just the ${lastFailedPeople.length} that failed</button>`;
-    } else {
-      retryWrap.style.display = "none";
-      retryWrap.innerHTML = "";
     }
     btn.textContent = "✅ Sent";
   } catch (err) {
@@ -505,27 +490,6 @@ async function sendNow() {
     btn.disabled = false;
     btn.textContent = "✉ Send now";
   }
-}
-
-let lastFailedPeople = [];
-
-// Scopes currentGroup down to only the addresses that failed last time,
-// then re-opens the normal review step (same confirm checkbox, same
-// sendNow()) rather than sending immediately — a resend is still a send
-// and gets the same review gate as the original.
-function resendFailedOnly() {
-  if (!lastFailedPeople.length) return;
-  currentGroup = { label: `${currentGroup.label} — resend of ${lastFailedPeople.length} failed`, people: lastFailedPeople.slice() };
-  document.getElementById("recipientCount").textContent = `${currentGroup.people.length} recipient(s) — ${currentGroup.label}`;
-  document.getElementById("recipientList").innerHTML = currentGroup.people
-    .map(p => `<div class="recipient-row"><span class="name">${esc(p.name)}</span><span class="email">${esc(p.email)}</span></div>`)
-    .join("");
-  document.getElementById("confirmBox").checked = false;
-  document.getElementById("sendBtn").disabled = true;
-  document.getElementById("sendBtn").textContent = "✉ Send now";
-  document.getElementById("log").innerHTML = "";
-  document.getElementById("retryWrap").style.display = "none";
-  document.getElementById("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 requireDirectorOrFaculty("timetable.html").then(() => loadGroups());
