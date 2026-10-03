@@ -74,6 +74,18 @@
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-header">Assessment rooms</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Rooms used on Stage 1 assessment evenings. Step 5 on the Candidates page allocates each first-time candidate one 15-minute slot (18:30–21:30) in one of these rooms, one candidate per room per slot. One room per line.</p>
+      <textarea id="assessRoomsText" rows="12" style="width:100%;padding:9px;border:2px solid #ccd6dd;border-radius:6px;font-size:13px;font-family:var(--font);"></textarea>
+      <div style="margin-top:10px;">
+        <button class="btn-primary" onclick="saveAssessRooms()">Save assessment rooms</button>
+      </div>
+      <div class="status-line" id="assessRoomsStatus"></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Firebase SDK -->
@@ -230,8 +242,48 @@ async function saveCourses() {
   }
 }
 
+// ── Assessment rooms (config/stage1_assessment_rooms) ────────────────────────
+// Room list for Stage 1 assessment evenings, kept separate from
+// STAGE1_TEACHING_ROOMS/STAGE1_EXAM_ROOMS (js/firebase-config.js) — those
+// are teaching-night constants, left untouched. This is the live, editable
+// list Step 5 (admin-stage1-candidates.html) actually allocates against.
+// Confirmed by Jon 2026-10-03.
+async function loadAssessRooms() {
+  let rooms = [];
+  try {
+    const snap = await db.collection("config").doc("stage1_assessment_rooms").get();
+    rooms = snap.exists ? (snap.data().rooms || []) : [];
+  } catch (err) {
+    document.getElementById("assessRoomsStatus").textContent = "Couldn't load saved assessment rooms — reload and try again.";
+    document.getElementById("assessRoomsStatus").className = "status-line err";
+  }
+  if (!rooms.length) {
+    // Starting list given by Jon 2026-10-03 for the actual assessment-night
+    // room set.
+    rooms = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
+  }
+  document.getElementById("assessRoomsText").value = rooms.join("\n");
+}
+
+async function saveAssessRooms() {
+  const statusEl = document.getElementById("assessRoomsStatus");
+  const rooms = document.getElementById("assessRoomsText").value
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  try {
+    await db.collection("config").doc("stage1_assessment_rooms").set({ rooms }, { merge: true });
+    statusEl.textContent = `Saved — ${rooms.length} room${rooms.length === 1 ? "" : "s"}.`;
+    statusEl.className = "status-line ok";
+  } catch (err) {
+    statusEl.textContent = "Couldn't save — this needs super-user access, not just director. Check with whoever set up your account if this keeps failing.";
+    statusEl.className = "status-line err";
+  }
+}
+
 loadDeadlines();
 loadCourses();
+loadAssessRooms();
 
 </script>
 </body>
