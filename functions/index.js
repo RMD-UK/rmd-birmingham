@@ -3202,7 +3202,11 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
 
   // One summary copy to COMMS_BCC — not a per-recipient bcc (that's one email
   // per recipient, which Jon explicitly didn't want). States exactly which
-  // addresses were actually sent to, and any that failed.
+  // addresses were actually sent to, and any that failed. 2026-10-03, Jon:
+  // the "Sent to" list needs to be paste-ready for a To: field, not one
+  // address per line — semicolon-joined on one line, same separator used
+  // elsewhere on this site for Outlook-pasteable lists (see
+  // outlook_email_copy_semicolons in admin pages' "Copy emails" buttons).
   try {
     const summaryLines = [
       `Group: ${groupLabel || "(none)"}`,
@@ -3215,11 +3219,11 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
       "--- Original message ---",
       message,
       "",
-      "--- Sent to ---",
-      ...sentTo,
+      "--- Sent to (paste into a To: field) ---",
+      sentTo.join("; "),
     ];
     if (failedEmails.length) {
-      summaryLines.push("", "--- Failed ---", ...failedEmails);
+      summaryLines.push("", "--- Failed ---", failedEmails.join("; "));
     }
     await resend.emails.send({
       from: FROM_EMAIL,
