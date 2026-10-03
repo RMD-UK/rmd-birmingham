@@ -82,6 +82,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
 
@@ -392,6 +393,23 @@ function updateAllocateButtonState() {
   if (cb && btn) btn.disabled = !cb.checked;
 }
 
+// After any bulk course/room write, push the change to the linked Google
+// Sheet in one shot rather than relying on the per-document Firestore
+// trigger — a bulk allocation fires one trigger per candidate almost
+// simultaneously, which reliably outruns the Sheets API's per-caller rate
+// limit (see rmd_website course-sheet-sync fix, Oct 2026). This reuses the
+// same director-only backfill function as a routine post-allocation sync,
+// not just a one-off repair tool.
+async function syncCourseSheetAfterAllocation() {
+  try {
+    const res = await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: false });
+    return { ok: true, updated: res.data.updated };
+  } catch (err) {
+    console.error("Course sheet sync failed:", err.code, err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 async function allocateAllNow() {
   const confirmCb = document.getElementById("confirmAllAddedCheckbox");
   if (!confirmCb || !confirmCb.checked) {
@@ -444,11 +462,16 @@ async function allocateAllNow() {
     }
     toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; });
 
+    const sheetSync = await syncCourseSheetAfterAllocation();
+
     renderAllocationSummary();
     renderDeadlineFeasibility();
     renderOverCapCard();
 
     let summaryHtml = `<div style="background:#e1efe3;border:1px solid #1a6e31;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:#1a6e31;font-size:13px;font-weight:700;">Allocated ${toWrite.length} candidate(s) to a course and a room.</div>`;
+    summaryHtml += sheetSync.ok
+      ? `<p class="hint" style="margin:0 0 12px;">Google Sheet synced (${sheetSync.updated} row${sheetSync.updated === 1 ? "" : "s"} updated).</p>`
+      : `<p class="hint" style="margin:0 0 12px;color:#b00020;">⚠ Google Sheet sync failed — course allocations are saved, but the sheet may be out of date. Run the backfill from the console, or ask Claude.</p>`;
     if (flagged.length) {
       summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
         <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${flagged.length} couldn't be auto-fit — pick a course for ${flagged.length === 1 ? "this one" : "these"} by hand on Stage 1 Candidates, or see Step 4 below if it's a capacity problem:</div>
@@ -557,10 +580,15 @@ async function placeExtrasOverCapacity() {
     }
     toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; c.overCapacity = true; });
 
+    const sheetSync = await syncCourseSheetAfterAllocation();
+
     renderAllocationSummary();
     renderDeadlineFeasibility();
 
     let summaryHtml = `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:#8a5a00;font-size:13px;font-weight:700;">Placed ${toWrite.length} candidate(s) over capacity across ${selected.join(", ")}. They're flagged ⚠ over capacity everywhere they show up.</div>`;
+    summaryHtml += sheetSync.ok
+      ? `<p class="hint" style="margin:0 0 12px;">Google Sheet synced (${sheetSync.updated} row${sheetSync.updated === 1 ? "" : "s"} updated).</p>`
+      : `<p class="hint" style="margin:0 0 12px;color:#b00020;">⚠ Google Sheet sync failed — course allocations are saved, but the sheet may be out of date. Run the backfill from the console, or ask Claude.</p>`;
     if (stillStuck.length) {
       summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
         <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${stillStuck.length} still couldn't be placed:</div>
