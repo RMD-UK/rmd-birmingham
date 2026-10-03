@@ -41,6 +41,8 @@
     .btn-confirm-yes:hover { background:var(--rmd-navy); }
     .btn-confirm-no { background:#f0f3f6; color:var(--rmd-muted); border:1px solid #ccd6dd; }
     .btn-confirm-no:hover { background:#e4e9ee; }
+    .assessment-line { margin-top:12px; padding-top:12px; border-top:1px solid rgba(0,0,0,0.12); }
+    .assessment-line .room-value { font-size:18px; margin:2px 0 0; }
   </style>
 </head>
 <body>
@@ -173,6 +175,23 @@ async function findRoom() {
 // Shared by findRoom() (first attempt, typed name) and confirmCloseMatch()
 // (second attempt, after the candidate confirms a suggested near-match
 // name) — same call either way, just a different name going in. 2026-10-03.
+// Assessment room/slot line, appended under the room result (2026-10-03,
+// Jon: "build some tool for candidates to look up when their assessment
+// will be... if they have not been allocated, show message"). A repeat
+// assessment-taker (firstTimeAssessment === false) is managed separately by
+// RMD faculty — told that rather than a bare "not allocated yet", which
+// would read as a mistake rather than how the process actually works for
+// them.
+function assessmentLineHtml(data) {
+  if (data.firstTimeAssessment === false) {
+    return `<div class="assessment-line">Your assessment is being managed separately by RMD faculty — check with them for your date and time.</div>`;
+  }
+  if (data.assessmentRoom && data.assessmentSlot) {
+    return `<div class="assessment-line">Your assessment:<span class="room-value">${escapeHtml(data.assessmentRoom)} at ${escapeHtml(data.assessmentSlot)}</span></div>`;
+  }
+  return `<div class="assessment-line">You don't have an assessment slot allocated yet — check back nearer the time.</div>`;
+}
+
 async function runRoomLookup(course, name, email) {
   const loadingEl = document.getElementById("roomLoading");
   const btn = document.getElementById("findRoomBtn");
@@ -185,9 +204,9 @@ async function runRoomLookup(course, name, email) {
     const data = res.data || {};
     if (data.found) {
       if (data.room) {
-        showRoomResult("found", `Your room:<span class="room-value">${escapeHtml(data.room)}</span>`);
+        showRoomResult("found", `Your room:<span class="room-value">${escapeHtml(data.room)}</span>` + assessmentLineHtml(data));
       } else {
-        showRoomResult("pending", "You're on this course, but your room hasn't been confirmed yet. It will be confirmed before you attend, and definitely by the time the course starts on the first Monday — check back nearer the time.");
+        showRoomResult("pending", "You're on this course, but your room hasn't been confirmed yet. It will be confirmed before you attend, and definitely by the time the course starts on the first Monday — check back nearer the time." + assessmentLineHtml(data));
       }
     } else if (data.closeMatch && data.suggestedName) {
       // Name didn't match exactly, but course + email matched exactly one

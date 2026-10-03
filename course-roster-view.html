@@ -150,6 +150,17 @@ function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 }
 
+// Assessment room/slot summary for a candidate card or search result
+// (2026-10-03, Jon: "useful to have it as look up function within evening
+// course rosters page", for the new assessment-allocation feature).
+// Mirrors lookupCandidateRoom's own firstTimeAssessment !== false check so
+// staff see the same "managed separately" framing candidates do.
+function assessmentMetaStr(c) {
+  if (c.firstTimeAssessment === false) return "Assessment: repeat — managed separately by faculty";
+  if (c.assessmentRoom && c.assessmentSlot) return `Assessment: ${c.assessmentRoom} @ ${c.assessmentSlot}`;
+  return "Assessment: not yet allocated";
+}
+
 initFirebase();
 
 window.addEventListener("load", () => {
@@ -239,7 +250,10 @@ function selectCourse(course) {
     name: c.name || "(no name)",
     email: c.email || "",
     degree: c.degree || "",
-    room: ROOMS.includes(c.room) ? c.room : null
+    room: ROOMS.includes(c.room) ? c.room : null,
+    assessmentRoom: c.assessmentRoom || null,
+    assessmentSlot: c.assessmentSlot || null,
+    firstTimeAssessment: c.firstTimeAssessment
   }));
 
   const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
@@ -268,7 +282,7 @@ function selectCourse(course) {
         const inRoom = candidates.filter(c => c.room === rid);
         const chips = (teams[rid] || []).map(uid => `<span class="instr-chip">${esc(instructorName(uid))}</span>`).join("");
         const cards = inRoom.length
-          ? inRoom.map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`).join("")
+          ? inRoom.map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div><div class="ccard-meta">${esc(assessmentMetaStr(c))}</div></div>`).join("")
           : `<div class="room-empty">No candidates assigned</div>`;
         return `<div class="room-col">
                   <div class="room-head">
@@ -283,7 +297,7 @@ function selectCourse(course) {
   const unassigned = candidates.filter(c => !c.room);
   document.getElementById("unassignedWrap").style.display = unassigned.length ? "" : "none";
   document.getElementById("unassignedGrid").innerHTML = unassigned
-    .map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div></div>`)
+    .map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div><div class="ccard-meta">${esc(assessmentMetaStr(c))}</div></div>`)
     .join("");
 }
 
@@ -315,6 +329,7 @@ function onSearchInput() {
     return `<div class="search-result" onclick="jumpToCandidate('${esc(c.id)}')">
               <div class="sr-name">${esc(c.name || "(no name)")}</div>
               <div class="sr-meta">${where}</div>
+              <div class="sr-meta">${esc(c.course ? assessmentMetaStr(c) : "")}</div>
             </div>`;
   }).join("");
   resultsEl.style.display = "block";

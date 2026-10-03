@@ -3354,7 +3354,20 @@ exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) 
   const candidates = snap.docs.map(d => d.data());
 
   const exact = candidates.find(c => (c.name || "").trim().toLowerCase() === name);
-  if (exact) return { found: true, name: exact.name || "", room: exact.room || null };
+  if (exact) return {
+    found: true,
+    name: exact.name || "",
+    room: exact.room || null,
+    // Assessment room/slot (Step 5, admin-stage1-assessment-allocation.html,
+    // 2026-10-03). Null for anyone not yet allocated an assessment slot —
+    // the client shows "not allocated yet" rather than treating that as an
+    // error. firstTimeAssessment !== false mirrors the allocator's own
+    // eligibility check, so a repeat assessment-taker (managed separately by
+    // RMD faculty) sees that explained instead of a bare "not allocated yet".
+    assessmentRoom: exact.assessmentRoom || null,
+    assessmentSlot: exact.assessmentSlot || null,
+    firstTimeAssessment: exact.firstTimeAssessment !== false,
+  };
 
   const close = candidates.find(c => isCloseNameMatch(name, c.name || ""));
   if (close) return { found: false, closeMatch: true, suggestedName: close.name || "" };
