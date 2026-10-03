@@ -3303,6 +3303,13 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
       `Group: ${groupLabel || "(none)"}`,
       `Sent by: ${(auth.token.email || auth.uid)}`,
       `Recipients: ${sent} sent today${failedEmails.length ? `, ${failedEmails.length} failed` : ""}${deferred.length ? `, ${deferred.length} queued (${COMMS_DAILY_SAFE_LIMIT}/day, Resend's free-plan quota — will finish automatically over the next few days)` : ""}`,
+      // 2026-10-05, Jon: this email is the one confirmation that a group's
+      // send is actually done — it always fires after every recipient in
+      // this call has been attempted, never before, so "all sent" here is
+      // never a lie-in-advance. Only said when nothing was deferred; a
+      // split send gets the "queued" line above instead, and its own true
+      // "all sent" comes from processCommsQueueDaily once the queue empties.
+      ...(deferred.length ? [] : [`✅ All emails to "${groupLabel || "this group"}" have now been sent.`]),
     ];
     await resend.emails.send({
       from: FROM_EMAIL,
@@ -3384,6 +3391,10 @@ exports.processCommsQueueDaily = onSchedule(
             `Queued by: ${job.createdByEmail || job.createdByUid}`,
             `Total recipients: ${cumulativeSentTo.length + cumulativeFailed.length}`,
             `Sent: ${cumulativeSentTo.length}${cumulativeFailed.length ? `, Failed: ${cumulativeFailed.length}` : ""}`,
+            // This only fires once stillRemaining is empty (nowCompleted),
+            // i.e. after every recipient in the job has been attempted — so,
+            // same as sendBulkComms's version, never sent before it's true.
+            `✅ All emails to "${job.groupLabel || "this group"}" have now been sent.`,
           ];
           await resend.emails.send({
             from: FROM_EMAIL,
