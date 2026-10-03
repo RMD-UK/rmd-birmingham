@@ -461,12 +461,24 @@ async function sendNow() {
       groupLabel: currentGroup.label,
       dryRun: false
     });
-    const { sent, failed, failedEmails } = res.data;
+    const { sent, failed, failedEmails, queued } = res.data;
     const log = document.getElementById("log");
     const okLine = document.createElement("div");
     okLine.className = "log-line ok";
     okLine.textContent = `✅ Sent ${sent} of ${currentGroup.people.length}.`;
     log.appendChild(okLine);
+    // 2026-10-05, Jon: Resend's free-plan 100/day quota means a group bigger
+    // than the daily-safe batch can't all go out today — sendBulkComms now
+    // sends what fits and queues the rest for processCommsQueueDaily to keep
+    // sending automatically, a batch a day, until it's done. Surface that
+    // here so "where did the rest go" has an answer on screen, not just in
+    // the admin summary email.
+    if (queued) {
+      const queuedLine = document.createElement("div");
+      queuedLine.className = "log-line ok";
+      queuedLine.textContent = `⏳ ${queued} more queued — Resend's free plan caps sending at a safe daily batch, so these will go out automatically over the next few days, no further action needed.`;
+      log.appendChild(queuedLine);
+    }
     const retryWrap = document.getElementById("retryWrap");
     if (failed) {
       const errLine = document.createElement("div");

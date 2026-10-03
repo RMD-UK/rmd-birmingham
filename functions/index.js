@@ -268,6 +268,19 @@ const SFR_REMINDERS_COLLECTION  = "senior_faculty_review_reminders";
 const FROM_EMAIL  = "RMD Birmingham <rmdbirmingham@rmd.uk.com>"; // requires rmd.uk.com verified in Resend — see deploy note above
 const REPLY_TO     = "rmdbirmingham@googlemail.com";
 const COMMS_BCC    = "colmds-c-rmdbirmingham@adf.bham.ac.uk"; // 2026-10-02, Jon: one summary copy per admin-comms.html send, not a bcc on every individual email (he explicitly ruled that out — too much volume at one-email-per-recipient)
+
+// 2026-10-05, Jon: a 228-recipient allocation email send came back 205/228,
+// root cause traced to Resend's free-plan quota — 100 emails/day, shared
+// across EVERYTHING this project sends via Resend (password resets, MOU
+// reminders, faculty invites, this comms tool, all one pool). Upgrading the
+// Resend plan was ruled out as too expensive, so sendBulkComms below caps
+// what it sends in one call and queues the rest (comms_queue collection) for
+// processCommsQueueDaily to keep sending, a safe batch per day, until done.
+// 60/day, not 100 — leaves headroom for every other automated email this
+// project might fire on the same day; tune down further if a day with a
+// queue batch running ever still trips the quota.
+const COMMS_QUEUE_COLLECTION = "comms_queue";
+const COMMS_DAILY_SAFE_LIMIT = 60;
 const JON_BCC      = "j.hulme.1@bham.ac.uk"; // Jon wants a copy of every IW RSVP invite sent (2026-08-27) — see sendIwRsvpInvites
 const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 
@@ -3150,6 +3163,69 @@ exports.syncIwRegistrationsToPeople = onCall({ region: "us-central1" }, async (r
  * merge fields in the message body. dryRun returns the recipient count with
  * nothing sent, for admin-comms.html's preview-before-send step.
  */
+// Shared by sendBulkComms (today, up to the daily-safe batch) and
+// processCommsQueueDaily (every subsequent day's batch of whatever's left
+// in the queue) — personalises and sends one list of {name,email} people
+// through Resend. Retry-once-on-failure + a small inter-send pause stay
+// from the 2026-10-05 fix attempt — reasonable insurance against a genuine
+// transient blip, even though the real cause turned out to be the daily
+// quota below, not request pacing.
+async function sendPersonalisedBatch(resend, { subject, message, people }) {
+  let sent = 0;
+  const failedEmails = [];
+  const sentTo = [];
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  for (const person of people) {
+    const firstName = (person.name || "").trim().split(" ")[0] || "there";
+    const personalised = message
+      .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
+      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
+    const payload = {
+      from: FROM_EMAIL,
+      to: person.email,
+      replyTo: COMMS_BCC, // 2026-10-02, Jon: comms-tool templates (e.g. course allocation emails) tell recipients to email colmds-c-rmdbirmingham@adf.bham.ac.uk directly — replyTo now matches what the message body actually says, instead of the old generic REPLY_TO Gmail address
+      subject,
+      text: personalised,
+      html: buildBrandedHtmlEmail(personalised) // 2026-10-03, Jon: logo + strapline on comms emails; text above stays as the non-HTML fallback
+    };
+    try {
+      let result = await resend.emails.send(payload);
+      if (result.error) {
+        await sleep(800);
+        result = await resend.emails.send(payload);
+      }
+      if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
+      sent++;
+      sentTo.push(person.email);
+      await sleep(150);
+    } catch (err) {
+      console.error(`sendPersonalisedBatch: failed to send to ${person.email}`, err.message);
+      failedEmails.push(person.email);
+    }
+  }
+  return { sent, sentTo, failedEmails };
+}
+
+// Builds the paste-ready admin summary copy text shared by sendBulkComms
+// and processCommsQueueDaily's completion step — same shape either way,
+// just different framing lines at the top.
+function buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }) {
+  const lines = [
+    ...headerLines,
+    "",
+    "--- Original subject ---",
+    subject,
+    "",
+    "--- Original message ---",
+    message,
+    "",
+    "--- Sent to (paste into a To: field) ---",
+    sentTo.join("; "),
+  ];
+  if (failedEmails.length) lines.push("", "--- Failed ---", failedEmails.join("; "));
+  return lines.join("\n");
+}
+
 exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -3171,56 +3247,42 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
   if (!valid.length) throw new HttpsError("invalid-argument", "No recipients with an email address.");
 
   if (dryRun) {
-    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [] };
+    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [], queued: 0 };
   }
 
   const resend = new Resend(resendApiKey.value());
-  let sent = 0;
-  const failedEmails = [];
-  const sentTo = [];
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  // 2026-10-05, Jon: a 228-recipient send came back 205/228 — nothing wrong
-  // with the 23 addresses themselves, so this reads as Resend throttling a
-  // long back-to-back loop rather than bad data. A small gap between sends
-  // plus one retry on whatever failed gives each request room before
-  // Resend's rate limiter does, without materially slowing a batch this size
-  // (228 recipients x ~150ms is well under a minute).
-  for (const person of valid) {
-    const firstName = (person.name || "").trim().split(" ")[0] || "there";
-    const personalised = message
-      .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
-      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
-    const payload = {
-      from: FROM_EMAIL,
-      to: person.email,
-      replyTo: COMMS_BCC, // 2026-10-02, Jon: comms-tool templates (e.g. course allocation emails) tell recipients to email colmds-c-rmdbirmingham@adf.bham.ac.uk directly — replyTo now matches what the message body actually says, instead of the old generic REPLY_TO Gmail address
-      subject,
-      text: personalised,
-      html: buildBrandedHtmlEmail(personalised) // 2026-10-03, Jon: logo + strapline on comms emails; text above stays as the non-HTML fallback
-    };
-    try {
-      let result = await resend.emails.send(payload);
-      if (result.error) {
-        // One retry after a longer pause — covers a transient rate-limit
-        // rejection without masking a genuinely bad address, which would
-        // fail the same way twice.
-        await sleep(800);
-        result = await resend.emails.send(payload);
-      }
-      if (result.error) throw new Error(result.error.message || JSON.stringify(result.error));
-      sent++;
-      sentTo.push(person.email);
-      await sleep(150);
-    } catch (err) {
-      console.error(`sendBulkComms: failed to send to ${person.email}`, err.message);
-      failedEmails.push(person.email);
-    }
+  // 2026-10-05, Jon: root cause of the 205/228 partial failure was Resend's
+  // free-plan 100/day quota (shared across every automated email this
+  // project sends), not bad addresses or a transient rate limit — a
+  // 228-recipient send simply can't go out in one call on this plan, and
+  // upgrading was ruled out as too expensive. So: send what fits safely
+  // today, queue the rest, and let processCommsQueueDaily keep sending a
+  // safe batch every day until the queue's empty. One button press still
+  // means "it'll all go out" — just not all today.
+  const now = valid.slice(0, COMMS_DAILY_SAFE_LIMIT);
+  const deferred = valid.slice(COMMS_DAILY_SAFE_LIMIT);
+
+  const { sent, sentTo, failedEmails } = await sendPersonalisedBatch(resend, { subject, message, people: now });
+
+  let queueId = null;
+  if (deferred.length) {
+    const queueDoc = await db.collection(COMMS_QUEUE_COLLECTION).add({
+      subject, message, groupLabel,
+      remaining: deferred,
+      sentTo: [], failedEmails: [],
+      status: "active",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdByUid: auth.uid,
+      createdByEmail: (auth.token.email || "").toLowerCase(),
+    });
+    queueId = queueDoc.id;
   }
 
   await db.collection("comms_log").add({
     groupLabel, subject, message,
     recipientCount: valid.length, sent, failedEmails, sentTo,
+    queuedCount: deferred.length, queueId,
     sentAt: admin.firestore.FieldValue.serverTimestamp(),
     sentByUid: auth.uid,
     sentByEmail: (auth.token.email || "").toLowerCase()
@@ -3228,42 +3290,112 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
 
   // One summary copy to COMMS_BCC — not a per-recipient bcc (that's one email
   // per recipient, which Jon explicitly didn't want). States exactly which
-  // addresses were actually sent to, and any that failed. 2026-10-03, Jon:
-  // the "Sent to" list needs to be paste-ready for a To: field, not one
-  // address per line — semicolon-joined on one line, same separator used
-  // elsewhere on this site for Outlook-pasteable lists (see
-  // outlook_email_copy_semicolons in admin pages' "Copy emails" buttons).
+  // addresses were actually sent to, and any that failed, plus how many are
+  // queued for later days if this had to split. 2026-10-03, Jon: the
+  // "Sent to" list needs to be paste-ready for a To: field — semicolon-
+  // joined on one line, same separator used elsewhere on this site for
+  // Outlook-pasteable lists (see outlook_email_copy_semicolons).
   try {
-    const summaryLines = [
+    const headerLines = [
       `Group: ${groupLabel || "(none)"}`,
       `Sent by: ${(auth.token.email || auth.uid)}`,
-      `Recipients: ${sent} sent${failedEmails.length ? `, ${failedEmails.length} failed` : ""}`,
-      "",
-      "--- Original subject ---",
-      subject,
-      "",
-      "--- Original message ---",
-      message,
-      "",
-      "--- Sent to (paste into a To: field) ---",
-      sentTo.join("; "),
+      `Recipients: ${sent} sent today${failedEmails.length ? `, ${failedEmails.length} failed` : ""}${deferred.length ? `, ${deferred.length} queued (${COMMS_DAILY_SAFE_LIMIT}/day, Resend's free-plan quota — will finish automatically over the next few days)` : ""}`,
     ];
-    if (failedEmails.length) {
-      summaryLines.push("", "--- Failed ---", failedEmails.join("; "));
-    }
     await resend.emails.send({
       from: FROM_EMAIL,
       to: COMMS_BCC,
       replyTo: REPLY_TO,
-      subject: `[RMD Comms copy] ${subject} — ${sent} sent${groupLabel ? ` (${groupLabel})` : ""}`,
-      text: summaryLines.join("\n")
+      subject: `[RMD Comms copy] ${subject} — ${sent} sent${deferred.length ? `, ${deferred.length} queued` : ""}${groupLabel ? ` (${groupLabel})` : ""}`,
+      text: buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails })
     });
   } catch (err) {
     console.error("sendBulkComms: summary copy to COMMS_BCC failed", err.message);
   }
 
-  return { sent, failed: failedEmails.length, failedEmails };
+  return { sent, failed: failedEmails.length, failedEmails, queued: deferred.length, queueId };
 });
+
+// 2026-10-05, Jon — runs once a day, well before sendMouRemindersScheduled's
+// 08:00 slot, to clear whatever sendBulkComms above had to queue. Pulls
+// active comms_queue jobs oldest-first and sends up to COMMS_DAILY_SAFE_LIMIT
+// total across all of them combined (not per job) — if two big sends are
+// queued at once, they share one day's quota rather than each assuming the
+// full amount is theirs alone. Marks a job completed once its remaining
+// list is empty, and only then sends the final admin summary copy, with the
+// full cumulative sent/failed lists from every day of that send.
+exports.processCommsQueueDaily = onSchedule(
+  { schedule: "0 6 * * *", timeZone: "Europe/London", secrets: [resendApiKey], region: "us-central1" },
+  async () => {
+    const resend = new Resend(resendApiKey.value());
+    let budgetLeft = COMMS_DAILY_SAFE_LIMIT;
+
+    // Plain equality filter only — ordering done in JS below rather than
+    // via .orderBy(), which would need a composite index Firestore doesn't
+    // have yet. This runs on a schedule with nobody around to click the
+    // "create index" link a missing one would otherwise surface.
+    const snap = await db.collection(COMMS_QUEUE_COLLECTION).where("status", "==", "active").get();
+    const docsOldestFirst = snap.docs.slice().sort((a, b) => {
+      const at = a.data().createdAt?.toMillis?.() || 0;
+      const bt = b.data().createdAt?.toMillis?.() || 0;
+      return at - bt;
+    });
+    for (const doc of docsOldestFirst) {
+      if (budgetLeft <= 0) break;
+      const job = doc.data();
+      const remaining = job.remaining || [];
+      if (!remaining.length) { await doc.ref.update({ status: "completed" }); continue; }
+
+      const batch = remaining.slice(0, budgetLeft);
+      const stillRemaining = remaining.slice(budgetLeft);
+      budgetLeft -= batch.length;
+
+      const { sent, sentTo, failedEmails } = await sendPersonalisedBatch(resend, { subject: job.subject, message: job.message, people: batch });
+
+      const cumulativeSentTo = [...(job.sentTo || []), ...sentTo];
+      const cumulativeFailed = [...(job.failedEmails || []), ...failedEmails];
+      const nowCompleted = stillRemaining.length === 0;
+
+      await doc.ref.update({
+        remaining: stillRemaining,
+        sentTo: cumulativeSentTo,
+        failedEmails: cumulativeFailed,
+        status: nowCompleted ? "completed" : "active",
+        lastRunAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      await db.collection("comms_log").add({
+        groupLabel: job.groupLabel, subject: job.subject, message: job.message,
+        recipientCount: batch.length, sent, failedEmails, sentTo,
+        queueId: doc.id, queueBatch: true, queueCompleted: nowCompleted,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        sentByUid: job.createdByUid || null,
+        sentByEmail: job.createdByEmail || null,
+      });
+
+      console.log(`processCommsQueueDaily: queue ${doc.id} — sent ${sent}, failed ${failedEmails.length}, ${stillRemaining.length} left`);
+
+      if (nowCompleted) {
+        try {
+          const headerLines = [
+            `Group: ${job.groupLabel || "(none)"} — final batch of a staggered send`,
+            `Queued by: ${job.createdByEmail || job.createdByUid}`,
+            `Total recipients: ${cumulativeSentTo.length + cumulativeFailed.length}`,
+            `Sent: ${cumulativeSentTo.length}${cumulativeFailed.length ? `, Failed: ${cumulativeFailed.length}` : ""}`,
+          ];
+          await resend.emails.send({
+            from: FROM_EMAIL,
+            to: COMMS_BCC,
+            replyTo: REPLY_TO,
+            subject: `[RMD Comms copy] ${job.subject} — staggered send complete, ${cumulativeSentTo.length} sent`,
+            text: buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed })
+          });
+        } catch (err) {
+          console.error("processCommsQueueDaily: completion summary failed", err.message);
+        }
+      }
+    }
+  }
+);
 
 
 // Added 2026-10-03, Jon: a candidate who mistypes their name (extra
