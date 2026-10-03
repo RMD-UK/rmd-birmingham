@@ -280,6 +280,16 @@ const FORM_URL   = "https://rmd.uk.com/senior-faculty-review.html";
 // as the fallback for clients that don't render HTML.
 const RMD_LOGO_URL = "https://rmd.uk.com/assets/rmd-logo.png";
 
+// Added 2026-10-03, Jon: the first time "BLS" appears in a bulk comms
+// message body, spell it out as "Basic Life Support (BLS)" so a reader who
+// doesn't already know the abbreviation gets it once — every later mention
+// in the same message stays as plain "BLS". Whole-word match only (so it
+// never touches something like "BLSx"), and only the FIRST match (no /g)
+// since String.replace without the global flag stops after one.
+function expandFirstBls(text) {
+  return String(text || "").replace(/\bBLS\b/, "Basic Life Support (BLS)");
+}
+
 function escapeHtmlForEmail(str) {
   return String(str || "")
     .replace(/&/g, "&amp;")
@@ -3151,7 +3161,7 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
 
   const recipients  = Array.isArray(request.data?.recipients) ? request.data.recipients : [];
   const subject     = (request.data?.subject || "").trim();
-  const message     = (request.data?.message || "").trim();
+  const message     = expandFirstBls((request.data?.message || "").trim());
   const groupLabel  = (request.data?.groupLabel || "").trim();
   const dryRun      = !!request.data?.dryRun;
 
