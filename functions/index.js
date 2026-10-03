@@ -2589,7 +2589,7 @@ exports.backfillStage1CourseToSheet = onCall({ region: "us-central1" }, async (r
   }
   const dryRun = !!request.data?.dryRun;
 
-  const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+  const snap = await db.collection("stage1_candidates").get();
   const candidates = snap.docs
     .map(d => d.data())
     .filter(c => c.email && c.course);
