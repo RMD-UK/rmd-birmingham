@@ -104,6 +104,7 @@
   <span id="saveStatus"></span>
   <button class="cra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
   <button class="cra-btn" id="autoAllBtn" onclick="randomizeAllCandidatesAllCourses()">🎲 Allocate all candidates to rooms (every course)</button>
+  <button class="cra-btn" id="rebalanceBtn" onclick="rebalanceAllRooms()">🔁 Rebalance rooms (fix uneven split)</button>
   <button class="cra-btn" id="autoInstrBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate unassigned instructors</button>
   <button class="cra-btn" id="restoreBtn" onclick="restoreSaved()" style="display:none">↩ Restore saved</button>
   <button class="cra-btn" id="setDefaultBtn" onclick="setAsDefault()" style="display:none">⭐ Set as default for all courses</button>
@@ -801,6 +802,96 @@ async function randomizeAllCandidatesAllCourses() {
   } catch (e) {
     console.error(e);
     alert("Allocation failed: " + e.message);
+  }
+}
+
+// ── Rebalance rooms — fix for the 2026-10-04 uneven-split bug ───────────
+// randomizeAllCandidatesAllCourses() above (and Stage 1 Candidates'
+// assignRoomsForWrites()) only ever fill candidates with NO room yet, so
+// once every allocated candidate already has *a* room — even a badly
+// skewed one — neither button touches them again. The actual bug (Jon,
+// 2026-10-04: "very uneven distribution across rooms") was a biased
+// Math.random()-.5 sort tie-break, compounded in assignRoomsForWrites()'s
+// case by a stale snapshot that never saw this same batch's own
+// placements — so a from-scratch allocation could land anywhere from ~4
+// to ~28 in a 19-room split that should land ~10-12 each. This button
+// recomputes a fresh, correctly-balanced split for EVERY already-allocated
+// candidate across every course (ignoring their current room entirely,
+// since the current values are the skewed ones) using the fixed
+// least-loaded algorithm, and writes the corrected rooms straight to
+// Firestore. One-time repair — once this has been run and
+// assignRoomsForWrites() is deployed with the same fix, this button isn't
+// needed for normal operation, just left in case it's ever needed again.
+async function rebalanceAllRooms() {
+  const courses = courseList();
+  if (!courses.length) { showStatus("No courses found yet", "ok"); return; }
+
+  const allocatedTotal = courses.reduce((n, course) => n + allCandidates.filter(c => c.course === course).length, 0);
+  if (!allocatedTotal) { showStatus("Nobody allocated to a course yet", "ok"); return; }
+
+  if (!confirm(`Recompute room assignments for ALL ${allocatedTotal} already-allocated candidate(s) across ${courses.length} course(s)?\n\nThis REPLACES every current room assignment (even ones that happen to already be fine) with a freshly, evenly balanced split — it's the fix for the uneven-rooms bug. Anyone not yet allocated to a course is untouched. Saves straight to the database.`)) return;
+
+  showStatus("Rebalancing…", "");
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  const updates = []; // { id, room }
+  courses.forEach(course => {
+    const inCourse = allCandidates.filter(c => c.course === course);
+    const totalCount = {};
+    const sameCount = {};
+    ROOMS.forEach(r => { totalCount[r] = 0; });
+    shuffle(inCourse).forEach(c => {
+      const dk = degreeKey(c);
+      let bestRooms = [], bestSame = Infinity, bestTotal = Infinity;
+      ROOMS.forEach(r => {
+        const same = sameCount[`${r}|${dk}`] || 0;
+        const total = totalCount[r];
+        if (same < bestSame || (same === bestSame && total < bestTotal)) {
+          bestSame = same; bestTotal = total; bestRooms = [r];
+        } else if (same === bestSame && total === bestTotal) {
+          bestRooms.push(r);
+        }
+      });
+      const best = bestRooms[Math.floor(Math.random() * bestRooms.length)];
+      totalCount[best]++;
+      sameCount[`${best}|${dk}`] = (sameCount[`${best}|${dk}`] || 0) + 1;
+      if (c.room !== best) updates.push({ id: c.id, room: best });
+    });
+  });
+
+  if (!updates.length) { showStatus("Already balanced — nothing to change", "ok"); return; }
+
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < updates.length; start += CHUNK) {
+      const batch = db.batch();
+      updates.slice(start, start + CHUNK).forEach(u => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(u.id), { room: u.room });
+      });
+      await batch.commit();
+    }
+    updates.forEach(u => {
+      const rec = allCandidates.find(x => x.id === u.id);
+      if (rec) rec.room = u.room;
+      if (currentCourse) {
+        const cc = courseCandidates.find(x => x.id === u.id);
+        if (cc) cc.room = u.room;
+      }
+    });
+    populateCourseDropdown();
+    if (currentCourse) render();
+    showStatus(`✓ Rebalanced ${updates.length} candidate(s) across ${courses.length} course(s)`, "ok");
+  } catch (e) {
+    console.error(e);
+    alert("Rebalance failed: " + e.message);
   }
 }
 
