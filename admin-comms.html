@@ -317,8 +317,56 @@ function templateActionsHtml(g) {
 // issue" in Stage1_Course_Allocation_Email_Template.md was resolved;
 // candidates confirm name, email and course there and get their room if
 // it's been set, or a message that it'll be confirmed before the course.
+// ── Shared pieces for EVERY course email (2026-10-05, Jon: "Courses 2-6
+// should always have same formatting as course 1 ... same principle for all
+// emails we send from the bulk comms"). Each course template is built from
+// the same opening, links and sign-off below, so no course (and no future
+// email type) can drift from the others. URLs are always written as full
+// https:// addresses so they are clickable even in plain-text mail clients;
+// the server also upgrades any bare address and links every URL/email in
+// whatever is sent (see ensureFullUrls / linkifyForEmail in functions).
+const CANDIDATE_RESOURCES_URL = "https://rmd.uk.com/candidate-resources.html";
+const BLS_ADMIN_EMAIL = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
+const INSTAGRAM_URL = "https://www.instagram.com/rmdbirmingham/";
+
+function emailOpening() { return "Dear {{first_name}},"; }
+
+function emailSignoff() {
+  return `Kind regards,
+BLS Administrative Team
+RMD Birmingham
+
+RMD Birmingham - Basic Life Support Faculty
+${BLS_ADMIN_EMAIL}
+Instagram: @RMDBirmingham (${INSTAGRAM_URL})`;
+}
+
+// One builder per email type. Every builder returns { subject, body } and
+// must use emailOpening() / emailSignoff() so formatting is identical across
+// all six courses and all email types.
+const COURSE_EMAIL_BUILDERS = {
+  allocation: (courseName, dates, accessCode) => ({
+    subject: `Your BLS Course — ${courseName}: Dates & Room Allocation`,
+    body: [
+      emailOpening(),
+      `We look forward to welcoming you for your BLS course commencing on ${dates.session1}.`,
+      `Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night`,
+      `All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.`,
+      `Instructions for your examination night (session 3) will be sent in the week before.`,
+      `Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at ${CANDIDATE_RESOURCES_URL} — the access code is ${accessCode}, then "Find your room" with your name, email and course. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.`,
+      `The same page also has the BLS reference material (the algorithm and AED guidance) — please take a look before your course starts.`,
+      `If you are unable to attend your BLS session, please email us (${BLS_ADMIN_EMAIL}) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.`,
+      emailSignoff(),
+    ].join("\n\n"),
+  }),
+};
+
 function applyCourseTemplate(kind, groupId, courseName) {
-  if (kind !== "allocation") return; // other keys are placeholders, not wired up
+  const builder = COURSE_EMAIL_BUILDERS[kind];
+  if (!builder) return; // other keys are placeholders, not wired up
   const dates = computeCourseSessionDates(courseName);
   if (!dates) {
     alert(`No date saved for "${courseName}" in Settings yet — add it on admin-stage1-settings.html first, then try this template again.`);
@@ -338,34 +386,9 @@ function applyCourseTemplate(kind, groupId, courseName) {
     for (let d = cb.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
   }
 
-  document.getElementById("subjectInput").value = `Your BLS Course — ${courseName}: Dates & Room Allocation`;
-  document.getElementById("messageInput").value =
-`Dear {{first_name}},
-
-We look forward to welcoming you for your BLS course commencing on ${dates.session1}.
-
-Course Dates
-- ${dates.session1}
-- ${dates.session2}
-- ${dates.exam} = Exam Night
-
-All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.
-
-Instructions for your examination night (session 3) will be sent in the week before.
-
-Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at https://rmd.uk.com/candidate-resources.html — the access code is ${candidateAccessCode}, then "Find your room" with your name, email and course. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.
-
-The same page also has the BLS reference material (the algorithm and AED guidance) — please take a look before your course starts.
-
-If you are unable to attend your BLS session, please email us (colmds-c-rmdbirmingham@adf.bham.ac.uk) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.
-
-Kind regards,
-BLS Administrative Team
-RMD Birmingham
-
-RMD Birmingham - Basic Life Support Faculty
-colmds-c-rmdbirmingham@adf.bham.ac.uk
-Instagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
+  const built = builder(courseName, dates, candidateAccessCode);
+  document.getElementById("subjectInput").value = built.subject;
+  document.getElementById("messageInput").value = built.body;
 
   document.getElementById("subjectInput").scrollIntoView({ behavior: "smooth", block: "center" });
 }

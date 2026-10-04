@@ -339,6 +339,23 @@ function linkifyForEmail(escapedText) {
   });
 }
 
+// 2026-10-05, Jon: "all relevant URLs hyperlinked" in EVERY comms-hub email.
+// linkifyForEmail covers the HTML part; this makes the plain-text part
+// clickable too by upgrading any bare address (rmd.uk.com/page) to a full
+// https:// URL in the message itself, before both versions are built. Leaves
+// existing http(s) URLs and email addresses untouched.
+function ensureFullUrls(text) {
+  const re = /((?:https?:\/\/)?(?:www\.)?[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)*\.(?:com|co\.uk|org\.uk|ac\.uk|uk\.com|org|net|edu)(?:\/[^\s<]*)?)|([A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+  return String(text || "").replace(re, (match, urlPart, emailPart) => {
+    if (emailPart) return match;
+    let core = match, trail = "";
+    const trailMatch = core.match(/[).,;:]+$/);
+    if (trailMatch) { trail = trailMatch[0]; core = core.slice(0, -trail.length); }
+    if (!core || /^https?:\/\//i.test(core)) return match;
+    return `https://${core}${trail}`;
+  });
+}
+
 function buildBrandedHtmlEmail(bodyText) {
   const paragraphs = String(bodyText || "")
     .split(/\n{2,}/)
@@ -3256,9 +3273,9 @@ async function sendPersonalisedBatch(resend, { subject, message, people }) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   for (const person of people) {
     const firstName = (person.name || "").trim().split(" ")[0] || "there";
-    const personalised = message
+    const personalised = ensureFullUrls(message
       .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
-      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
+      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there"));
     const payload = {
       from: FROM_EMAIL,
       to: person.email,
