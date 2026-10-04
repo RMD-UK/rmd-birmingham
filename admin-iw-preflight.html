@@ -154,9 +154,9 @@ let PLATFORM_ADMINS = new Set();
 let filter = "action";
 let reasonFilter = null;
 const REASON_LABEL = {
-  noaccount_rater: "faculty-side attendee with no account", pagesvsrules: "page and rules disagree",
+  noaccount_rater: "faculty-side attendee with no people record", pagesvsrules: "page and rules disagree",
   rolemismatch: "people.role not what the registration implies", refused: "rules refuse a needed write",
-  noemail: "registration has no email", noaccount_other: "candidate or other: no account found",
+  noemail: "registration has no email", noaccount_other: "candidate or other: no people record",
   duplicate: "duplicate people records", orphan: "ID does not look like a sign-in ID",
   asgdiffers: "iw_assignments differs from registration", testdata: "leftover test data", unmapped: "unmapped role"
 };
@@ -221,7 +221,8 @@ async function load() {
       let hint = "";
       alt = (byName.get(nameKey(r.name)) || []).filter(a => norm(a.email) && norm(a.email) !== email);
       if (alt.length) hint = " A person with the same name exists under " + alt.map(a => a.email || a.id).join(", ") + ".";
-      (isRater ? P : C)(isRater ? "noaccount_rater" : "noaccount_other", "No account found for this email in people." + hint);
+      if (expected === "director" && PLATFORM_ADMINS.has(email)) I("dirplatform", "No people record, but this email is on the platform directors list, so the rules treat them as a director anyway. They just will not appear in people-based lists.");
+      else (isRater ? P : C)(isRater ? "noaccount_rater" : "noaccount_other", "No people record found for this email. This page cannot see sign-in accounts, so they may already have a login and just lack a record." + hint);
     } else {
       if (matches.length > 1) C("duplicate", matches.length + " people records share this email (duplicates).");
       if (p.id.length !== 28) C("orphan", "people ID is " + p.id.length + " characters; sign-in IDs are normally 28, so this may be an orphan record, not a real account.");
@@ -299,7 +300,7 @@ function renderReasons() {
 
 function canCell(can, need) {
   const names = [["session", "S"], ["assess", "A"], ["itc", "I"], ["assessor", "R"]];
-  if (!can) return '<span class="dim">no account</span>';
+  if (!can) return '<span class="dim">no record</span>';
   return names.map(([k, l]) => {
     const has = can[k];
     if (need && need[k]) return `<span class="${has ? "yes" : "no"}" title="${k}">${l} ${has ? "✓" : "✗"}</span>`;
@@ -327,7 +328,7 @@ function renderRows() {
       <td><div class="nm">${esc(x.r.name)}</div><div class="em">${esc(x.r.email)}</div></td>
       <td>${esc(x.r.role)}</td>
       <td><span class="tag na">${esc(x.r.status || "")}</span></td>
-      <td>${x.p ? esc(x.actual || "blank") : '<span class="dim">no account</span>'}</td>
+      <td>${x.p ? esc(x.actual || "blank") : '<span class="dim">no record</span>'}</td>
       <td>${x.asg ? esc(x.asg) : '<span class="dim">none</span>'}</td>
       <td>${esc(x.expected || "?")}</td>
       <td class="can">${canCell(x.can, need)}${need ? "" : ""}</td>
@@ -411,7 +412,7 @@ function renderHelp() {
   noAcc.forEach(x => { (byRole[x.expected] = byRole[x.expected] || []).push(x.email); });
   const roles = Object.keys(byRole);
   if (roles.length) {
-    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">1. No account at all</h4><p class="hint" style="margin:0 0 8px;">Create logins in <a href="admin-bulk-users.html">Bulk User Setup</a> (card "Add Faculty Accounts"). Pick the role shown, paste the emails, create. Each person gets a set-your-password email, and the page also writes their role and this year\'s assignment, so they come out correct. Do one role at a time.</p>'
+    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">1. No people record</h4><p class="hint" style="margin:0 0 8px;"><b>Step A (do this first):</b> in <a href="admin-iw-registrations.html">IW Registrations</a> open the grey "Sync to People (backup only)" button at the right of the action bar. It looks each confirmed person up by email. Anyone who already has a login but no record is listed under "new to sync": press Sync, then Re-check here. Anyone who has no login at all is the group below.<br><b>Step B:</b> for the ones the sync could not find, create logins in <a href="admin-bulk-users.html">Bulk User Setup</a> (card "Add Faculty Accounts"). Pick the role shown, paste the emails, create. Each person gets a set-your-password email, and the page also writes their role and this year\'s assignment. Do one role at a time. Before creating, search the name in <a href="admin-dedupe-people.html">Duplicate People &amp; Account Cleanup</a> so you do not make a second account for someone who signed up under another address.</p>'
       + roles.map(r => { HELP_COPY["c_" + r] = byRole[r].join("\n");
         return `<div style="margin-bottom:8px;"><b>${esc(CREATABLE[r])}</b> (${byRole[r].length}): <button class="btn-secondary" onclick="copyText('c_${r}', this)">Copy ${byRole[r].length} email(s)</button></div>`; }).join("")
       + '<p class="hint" style="margin:0 0 16px;">Directors are not listed here on purpose. Candidates are not listed either: they use QR codes and do not need a login.</p>');
