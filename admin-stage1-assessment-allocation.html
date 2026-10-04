@@ -41,18 +41,19 @@
     <a href="admin-stage1-candidates.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
     <div style="flex:1;">
       <div class="top-bar-title">Assessment Allocation</div>
-      <div class="top-bar-sub">RMD Birmingham · Director only</div>
+      <div class="top-bar-sub" id="topBarSub">RMD Birmingham · Directors and RMD Senior/Student Faculty</div>
     </div>
-    <a href="admin-stage1-candidates.html" class="top-bar-link">👤 Stage 1 Candidates</a>
-    <a href="admin-stage1-course-allocation.html" class="top-bar-link">📋 Course allocation</a>
-    <a href="admin-stage1-settings.html" class="top-bar-link">⚙️ Settings</a>
+    <a href="course-roster-view.html" class="top-bar-link">📋 Course rosters</a>
+    <a href="admin-stage1-candidates.html" class="top-bar-link dir-only">👤 Stage 1 Candidates</a>
+    <a href="admin-stage1-course-allocation.html" class="top-bar-link dir-only">📋 Course allocation</a>
+    <a href="admin-stage1-settings.html" class="top-bar-link dir-only">⚙️ Settings</a>
   </div>
 
-  <div class="director-note">
+  <div class="director-note dir-only">
     Step 5 — gives every <strong>first-time</strong> candidate on a course an assessment room and a 15-minute time slot (18:30–21:30), one candidate per room per slot. Run this once that course has been through Course allocation. Mark someone as a repeat assessment-taker on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a> to exclude them — RMD faculty manage their assessment separately.
   </div>
 
-  <div class="card">
+  <div class="card dir-only">
     <div class="card-header">Choose a course</div>
     <div class="card-body">
       <select id="courseSelect" onchange="onCourseChange()"><option value="">Loading courses…</option></select>
@@ -61,6 +62,15 @@
   </div>
 
   <div class="card">
+    <div class="card-header">Find a candidate - first sit or not</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Search any candidate by name or email (across every course). <strong>Not first sit</strong> takes them out of the standard first-sit assessment stream, so they are not given a room or slot automatically and RMD faculty arrange their assessment separately. <strong>Cannot attend</strong> is for someone who will not be at the assessment (for example, absent from the course); it also frees any slot they already hold. Both can be reversed here at any time.</p>
+      <input type="text" id="excludeSearch" placeholder="Type at least 2 letters of a name or email…" autocomplete="off" oninput="renderExcludeLookup()" style="width:100%;padding:10px;border:2px solid #ccd6dd;border-radius:6px;font-size:14px;font-family:var(--font);box-sizing:border-box;">
+      <div id="excludeResults"></div>
+    </div>
+  </div>
+
+  <div class="card dir-only">
     <div class="card-header">Allocate assessment slots</div>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">Allocates every eligible candidate on the chosen course who doesn't already have an assessment slot — one room, one 15-minute slot each, filled earliest-slot-first across every room so the whole group finishes as early as possible. Rooms are shuffled unbiased (Fisher-Yates), same as room allocation elsewhere on this site. Already-slotted candidates are left untouched; re-running only fills in anyone new.</p>
@@ -72,7 +82,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card dir-only">
     <div class="card-header">Assessment schedule for this course</div>
     <div class="card-body">
       <div id="scheduleWrap"><div class="empty-state">Choose a course above.</div></div>
@@ -90,7 +100,35 @@
 <script>
 
 initFirebase();
-requireDirector("timetable.html");
+// Directors get the whole page. RMD Senior/Student Faculty (2026-10-04, Jon)
+// get only the "Find a candidate" lookup - allocation, clearing slots and
+// the schedule stay Director-only, hidden for everyone else. The Firestore
+// rules already let Student/Senior Faculty change just firstTimeAssessment,
+// assessmentAbsent, assessmentRoom and assessmentSlot on a candidate.
+let isDirectorUser = false;
+const authReady = new Promise(resolve => {
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "signin.html"; return; }
+    const role = await resolveRole(user.uid, user.email || "");
+    let allowed = role === ROLES.DIRECTOR;
+    if (allowed) isDirectorUser = true;
+    else {
+      const group = await myFacultyRosterGroup(user.email || "");
+      allowed = group === "student" || group === "senior";
+    }
+    if (!allowed) {
+      const msg = document.getElementById("authMsg");
+      if (msg) msg.textContent = "Directors and RMD Senior/Student Faculty only.";
+      setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+      return;
+    }
+    if (!isDirectorUser) {
+      document.querySelectorAll(".dir-only").forEach(el => { el.style.display = "none"; });
+      document.getElementById("topBarSub").textContent = "RMD Birmingham · Senior/Student Faculty";
+    }
+    resolve();
+  });
+});
 
 function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
@@ -148,6 +186,75 @@ function candidatesForSelectedCourse() {
   return allCandidates.filter(c => c.course === course);
 }
 
+// Lookup-and-exclude (2026-10-04, Jon: "look up tool to find people we want
+// to exclude from assessment"). Searches every candidate, not just the chosen
+// course. Same two writes as course-roster-view.html: repeat sets
+// firstTimeAssessment:false; unable-to-attend sets assessmentAbsent:true and
+// nulls any booked room/slot in the same write.
+function renderExcludeLookup() {
+  const q = document.getElementById("excludeSearch").value.trim().toLowerCase();
+  const el = document.getElementById("excludeResults");
+  if (q.length < 2) { el.innerHTML = ""; return; }
+  const hits = allCandidates.filter(c =>
+    (c.name || "").toLowerCase().includes(q) || (c.email || "").toLowerCase().includes(q)).slice(0, 15);
+  if (!hits.length) { el.innerHTML = `<div class="empty-state">No candidate matches.</div>`; return; }
+  el.innerHTML = `<table class="data-table" style="margin-top:10px;">
+    <thead><tr><th>Name</th><th>Course</th><th>Assessment status</th><th></th></tr></thead>
+    <tbody>${hits.map(c => {
+      const status = [];
+      if (c.assessmentAbsent === true) status.push("cannot attend");
+      if (c.firstTimeAssessment === false) status.push("not first sit");
+      if (c.assessmentRoom && c.assessmentSlot) status.push(`slot: ${esc(c.assessmentRoom)} @ ${esc(c.assessmentSlot)}`);
+      if (!status.length) status.push("first sit, can attend");
+      const repeatBtn = c.firstTimeAssessment === false
+        ? `<button class="btn-secondary" onclick="excludeToggleRepeat('${esc(c.id)}', true)">Back to first sit</button>`
+        : `<button class="btn-secondary" onclick="excludeToggleRepeat('${esc(c.id)}', false)">Not first sit</button>`;
+      const absentBtn = c.assessmentAbsent === true
+        ? `<button class="btn-secondary" onclick="excludeToggleAbsent('${esc(c.id)}', false)">Can attend again</button>`
+        : `<button class="btn-secondary" style="color:#b23b3b;" onclick="excludeToggleAbsent('${esc(c.id)}', true)">Cannot attend</button>`;
+      return `<tr>
+        <td><strong>${esc(c.name)}</strong><br><span class="hint" style="margin:0;">${esc(c.email) || "no email"}</span></td>
+        <td>${esc(c.course) || "–"}</td>
+        <td style="font-size:12px;">${status.join(", ")}</td>
+        <td style="white-space:nowrap;">${repeatBtn} ${absentBtn}</td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+}
+
+function afterExcludeChange() {
+  renderExcludeLookup();
+  if (isDirectorUser && document.getElementById("courseSelect").value) onCourseChange();
+}
+
+async function excludeToggleRepeat(id, makeFirstTime) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(makeFirstTime
+    ? `Put ${c.name} back in the first-sit stream? They'll be included in automatic assessment allocation again.`
+    : `Mark ${c.name} as NOT first sit? They'll be left out of automatic assessment allocation and RMD faculty arrange their assessment separately.`)) return;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ firstTimeAssessment: makeFirstTime });
+    c.firstTimeAssessment = makeFirstTime;
+    afterExcludeChange();
+  } catch (err) { alert("Failed: " + err.message); }
+}
+
+async function excludeToggleAbsent(id, makeAbsent) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c) return;
+  const hadSlot = !!(c.assessmentRoom && c.assessmentSlot);
+  if (!confirm(makeAbsent
+    ? (hadSlot ? `Mark ${c.name} as unable to attend? Their booked slot (${c.assessmentRoom} @ ${c.assessmentSlot}) will be cleared and freed.` : `Mark ${c.name} as unable to attend?`)
+    : `Mark ${c.name} as able to attend again? They'll need a slot allocating if they are first sit.`)) return;
+  const update = { assessmentAbsent: makeAbsent };
+  if (makeAbsent && hadSlot) { update.assessmentRoom = null; update.assessmentSlot = null; }
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update(update);
+    Object.assign(c, update);
+    afterExcludeChange();
+  } catch (err) { alert("Failed: " + err.message); }
+}
+
 function onCourseChange() {
   const course = document.getElementById("courseSelect").value;
   const summaryEl = document.getElementById("courseSummary");
@@ -164,8 +271,14 @@ function onCourseChange() {
   }
 
   const onCourse = candidatesForSelectedCourse();
-  const eligible = onCourse.filter(c => c.firstTimeAssessment !== false);
-  const repeatCount = onCourse.length - eligible.length;
+  // 2026-10-03, Jon: candidates faculty have marked unable to attend are
+  // excluded from auto-allocation the same way repeats already are —
+  // otherwise a re-run of Step 5 could hand them a slot they were just
+  // marked as not needing.
+  const notAbsent = onCourse.filter(c => c.assessmentAbsent !== true);
+  const absentCount = onCourse.length - notAbsent.length;
+  const eligible = notAbsent.filter(c => c.firstTimeAssessment !== false);
+  const repeatCount = notAbsent.length - eligible.length;
   const slotted = eligible.filter(c => c.assessmentRoom && c.assessmentSlot);
   const toDo = eligible.length - slotted.length;
   const capacity = assessmentRooms.length * ASSESSMENT_SLOTS.length;
@@ -173,6 +286,7 @@ function onCourseChange() {
   summaryEl.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 0;">
     ${[
       [onCourse.length, "On this course"],
+      [absentCount, "Unable to attend — excluded"],
       [eligible.length, "Eligible (first-time)"],
       [repeatCount, "Repeat — excluded"],
       [slotted.length, "Already slotted"],
@@ -208,7 +322,7 @@ async function runAssessmentAllocation() {
   if (!assessmentRooms.length) { alert("No assessment rooms configured — add the room list on Stage 1 Settings first."); return; }
 
   const onCourse = candidatesForSelectedCourse();
-  const eligible = onCourse.filter(c => c.firstTimeAssessment !== false);
+  const eligible = onCourse.filter(c => c.assessmentAbsent !== true && c.firstTimeAssessment !== false);
   const alreadySlotted = eligible.filter(c => c.assessmentRoom && c.assessmentSlot);
   const toAllocate = eligible.filter(c => !(c.assessmentRoom && c.assessmentSlot));
 
@@ -314,7 +428,8 @@ function renderSchedule() {
 }
 
 (async function init() {
-  await loadAssessmentRooms();
+  await authReady;
+  if (isDirectorUser) await loadAssessmentRooms();
   await loadCandidates();
 })();
 

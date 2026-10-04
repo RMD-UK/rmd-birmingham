@@ -891,7 +891,17 @@ async function saveAll() {
         const original = allCandidates.find(x => x.id === c.id);
         if (!original) return;
         const originalRoom = ROOMS.includes(original.room) ? original.room : (original.room || null);
-        const update = { instructorTeamUids: c.room ? (instructorTeams[c.room] || []) : [] };
+        const teamUids = c.room ? (instructorTeams[c.room] || []) : [];
+        // instructorTeamNames rides alongside instructorTeamUids purely so
+        // OPIS can show teammate names to a room-team instructor without
+        // needing broader read access to course_allocations or people
+        // (both stay Director/Faculty-only — this avoids widening either,
+        // see [[rmd_role_definitions]] / 2026-10-03 OPIS access work).
+        const teamNames = teamUids.map(uid => {
+          const inst = allInstructors.find(i => i.uid === uid);
+          return inst ? inst.name : uid;
+        });
+        const update = { instructorTeamUids: teamUids, instructorTeamNames: teamNames };
         if ((c.room || null) !== (originalRoom || null)) update.room = c.room || null;
         batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), update);
       });

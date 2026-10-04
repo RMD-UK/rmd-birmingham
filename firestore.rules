@@ -685,8 +685,21 @@ service cloud.firestore {
       // now writes that alongside room in the same update() call, so
       // Student/Senior Faculty saving a course's room teams would
       // otherwise get rejected the moment that field is touched.
+      // 2026-10-03: instructorTeamNames added alongside instructorTeamUids
+      // — a display-name copy so OPIS can show teammates to a room-team
+      // instructor without needing people-collection access.
+      // 2026-10-03 (second widening, same day): firstTimeAssessment and
+      // assessmentAbsent added for course-roster-view.html's two new
+      // Faculty actions (mark repeat / mark unable to attend) — Jon:
+      // "need way for faculty to confirm who will not be able to attend
+      // assessment" and "who is not first sit". assessmentRoom/
+      // assessmentSlot added alongside assessmentAbsent so marking someone
+      // absent can also clear their booked slot in the same write, freeing
+      // it for someone else (Jon: "if allocated but then marked, remove
+      // and make free slot") — Faculty can only ever null these two via
+      // the page's own code, never set them to an arbitrary room/slot.
       allow update: if (isStudentFaculty() || isSeniorFaculty()) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'instructorTeamUids']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'instructorTeamUids', 'instructorTeamNames', 'firstTimeAssessment', 'assessmentAbsent', 'assessmentRoom', 'assessmentSlot']);
     }
 
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────

@@ -88,6 +88,33 @@
     </a>
   </div>
 
+  <div style="margin:4px 0 10px;padding-top:4px;">
+    <div style="font-size:12px;font-weight:700;color:var(--rmd-muted);text-transform:uppercase;letter-spacing:0.6px;">Before assessment allocation</div>
+  </div>
+  <div class="card">
+    <div class="card-header">Mark repeat assessment-takers (not first sit)</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Paste the candidates who are <strong>not</strong> sitting the assessment for the first time, <strong>one email per line</strong> (a spreadsheet column pasted straight in works; anything after the email on a line is ignored, and a header row is skipped). They are excluded from Step 5's assessment-room auto-allocation; RMD faculty manage their assessment separately. Matched by email against the candidates already added. Nothing is saved until you confirm. You can also tick people individually with <strong>Mark repeat assessment</strong> in the list below, or Faculty can do it on the course roster page.</p>
+      <textarea id="repeatPasteBox" placeholder="j.smith@bham.ac.uk&#10;t.jones@bham.ac.uk"></textarea>
+      <button class="btn-primary" id="repeatParseBtn" onclick="parseRepeatPreview()">Parse &amp; preview</button>
+      <div id="repeatPreviewWrap"></div>
+    </div>
+  </div>
+
+  <div style="margin:4px 0 10px;padding-top:4px;">
+    <div style="font-size:12px;font-weight:700;color:var(--rmd-muted);text-transform:uppercase;letter-spacing:0.6px;">Later — once a course has actually run</div>
+  </div>
+  <div class="card">
+    <div class="card-header">Import assessment outcomes (after the course has run)</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">A separate, later task — not part of adding, checking or allocating candidates above. Once a course has actually run, paste rows from your outcomes sheet: <strong>email, pass/fail, more than 2 attempts</strong>. Matched by email against the candidates already added above. Pass/fail accepts "pass", "fail", "passed", "failed", "exempt" (case doesn't matter) — anything else is flagged so it's not silently guessed. Attempts accepts a number (e.g. <code>3</code>) or yes/no. Nothing is saved until you confirm.</p>
+      <textarea id="outcomesPasteBox" placeholder="j.smith@bham.ac.uk, pass, no&#10;t.jones@bham.ac.uk, fail, 3"></textarea>
+      <button class="btn-primary" id="outcomesParseBtn" onclick="parseOutcomesPreview()">Parse &amp; preview</button>
+      <div id="outcomesPreviewWrap"></div>
+    </div>
+  </div>
+
+
   <div class="card">
     <div class="card-header">Candidate resource access code</div>
     <div class="card-body">
@@ -143,16 +170,6 @@
       </div>
     </div>
     </details>
-  </div>
-
-  <div class="card">
-    <div class="card-header">Import assessment outcomes (after the course has run)</div>
-    <div class="card-body">
-      <p class="hint" style="margin-top:0;">A separate, later task — not part of adding, checking or allocating candidates above. Once a course has actually run, paste rows from your outcomes sheet: <strong>email, pass/fail, more than 2 attempts</strong>. Matched by email against the candidates already added above. Pass/fail accepts "pass", "fail", "passed", "failed", "exempt" (case doesn't matter) — anything else is flagged so it's not silently guessed. Attempts accepts a number (e.g. <code>3</code>) or yes/no. Nothing is saved until you confirm.</p>
-      <textarea id="outcomesPasteBox" placeholder="j.smith@bham.ac.uk, pass, no&#10;t.jones@bham.ac.uk, fail, 3"></textarea>
-      <button class="btn-primary" id="outcomesParseBtn" onclick="parseOutcomesPreview()">Parse &amp; preview</button>
-      <div id="outcomesPreviewWrap"></div>
-    </div>
   </div>
 
 </div>
@@ -1041,7 +1058,7 @@ function renderCandidates() {
         <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
         <tbody>${filtered.map(c => c.id === editCandidateId ? editRowHtml(c) : `
           <tr>
-            <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}</td>
+            <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}${possibleRepeatBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(c.course) || "–"}</td>
@@ -1170,6 +1187,153 @@ function assessmentRepeatBadgeHtml(c) {
     return ` <span class="dup-warning" style="display:inline;background:#e8f0fe;border-color:#b8d4f5;color:var(--rmd-blue);" title="Excluded from Step 5's assessment-room auto-allocation">🔁 repeat assessment <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="toggleFirstTimeAssessment('${c.id}', true)">Mark first-time</button></span>`;
   }
   return ` <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="toggleFirstTimeAssessment('${c.id}', false)" title="Exclude from Step 5's assessment-room auto-allocation — RMD faculty manage repeat assessments separately">Mark repeat assessment</button>`;
+}
+
+// Suggested repeat (2026-10-04, Jon: "can you auto mark these as repeat
+// Assessment?"). Deliberately a SUGGESTION, not a silent write: someone can
+// fail and then not repeat, and a wrong auto-mark would quietly drop them
+// from Step 5's allocation. A record is flagged when another record with the
+// same email has outcome "Failed" (set by the outcomes import), the two
+// aren't linked yet, this record hasn't been marked repeat already, and this
+// record has no outcome of its own yet (i.e. it is the newer attempt). One
+// click links the pair AND sets firstTimeAssessment:false in a single batch.
+// Paste-list of repeat assessment-takers (2026-10-04, Jon: "paste box ... to
+// submit list of candidates who are not first sit"). Matches by email like the
+// outcomes importer. If an email matches two records (a repeat attempt on a
+// later course), the one with no outcome yet is preselected as the newer
+// attempt; otherwise the user picks. Only ever sets firstTimeAssessment:false.
+let parsedRepeatRows = null;
+
+function parseRepeatPreview() {
+  const lines = document.getElementById("repeatPasteBox").value.split("\n").map(l => l.trim()).filter(Boolean);
+  const wrap = document.getElementById("repeatPreviewWrap");
+  if (!lines.length) { wrap.innerHTML = `<div class="empty-state">Nothing to preview - paste some emails above.</div>`; parsedRepeatRows = null; return; }
+
+  const seen = new Set();
+  const rows = [];
+  lines.forEach((line, i) => {
+    const cell = line.split(/\t|,|;/).map(s => s.trim()).find(s => s.includes("@"));
+    if (!cell) { if (i === 0) return; rows.push({ lineNo: i + 1, email: "", raw: line, matches: [], chosenId: null }); return; }
+    const email = cell.toLowerCase();
+    if (seen.has(email)) return;
+    seen.add(email);
+    const matches = allCandidates.filter(c => (c.email || "").trim().toLowerCase() === email);
+    let chosenId = null;
+    if (matches.length === 1) chosenId = matches[0].id;
+    else if (matches.length > 1) {
+      const noOutcome = matches.filter(m => !m.outcome);
+      if (noOutcome.length === 1) chosenId = noOutcome[0].id;
+    }
+    rows.push({ lineNo: i + 1, email, raw: line, matches, chosenId });
+  });
+  parsedRepeatRows = rows;
+  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No emails found in what you pasted.</div>`; return; }
+
+  const unmatched = rows.filter(r => r.matches.length === 0);
+  const rowHtml = r => {
+    let cell;
+    if (!r.email) cell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no email on this line</span>`;
+    else if (!r.matches.length) cell = `<span class="dup-warning dup-exact" style="display:inline;">⚠ no candidate found with this email</span>`;
+    else if (r.matches.length === 1) cell = repeatMatchLabel(r.matches[0]);
+    else cell = `<span class="dup-warning" style="display:inline;">⚠ ${r.matches.length} records share this email - pick the one taking the assessment:</span><br>
+      <select onchange="chooseRepeatMatch(${r.lineNo}, this.value)">
+        <option value="">Choose…</option>
+        ${r.matches.map(m => `<option value="${esc(m.id)}"${m.id === r.chosenId ? " selected" : ""}>${esc(m.name)} - ${esc(m.course) || "no course"}${m.outcome ? " (outcome: " + esc(m.outcome) + ")" : ""}</option>`).join("")}
+      </select>`;
+    return `<tr><td>${esc(r.email) || "<em>none</em>"}</td><td>${cell}</td></tr>`;
+  };
+  const readyCount = rows.filter(r => r.chosenId).length;
+  wrap.innerHTML = `
+    ${unmatched.length ? `<div class="error-list">⚠ ${unmatched.length} line${unmatched.length === 1 ? "" : "s"} couldn't be matched - shown below but skipped on import.</div>` : ""}
+    <table class="preview-table">
+      <thead><tr><th>Email</th><th>Match</th></tr></thead>
+      <tbody>${rows.map(rowHtml).join("")}</tbody>
+    </table>
+    <div style="margin-top:12px;">
+      <button class="btn-primary" id="repeatApplyBtn" onclick="confirmRepeatImport()">Mark as repeat assessment</button>
+      <span class="hint" style="margin-left:10px;">${readyCount} of ${rows.length} ready. Anyone already holding an assessment slot keeps it until you free it.</span>
+    </div>`;
+}
+
+function repeatMatchLabel(m) {
+  const extras = [];
+  if (m.firstTimeAssessment === false) extras.push("already marked repeat");
+  if (m.assessmentAbsent === true) extras.push("marked unable to attend");
+  if (m.assessmentRoom) extras.push("holds a booked slot");
+  return `${esc(m.name)} <span class="hint" style="margin:0;">(${esc(m.course) || "no course"}${extras.length ? " - " + extras.join(", ") : ""})</span>`;
+}
+
+function chooseRepeatMatch(lineNo, id) {
+  const r = (parsedRepeatRows || []).find(x => x.lineNo === lineNo);
+  if (r) r.chosenId = id || null;
+}
+
+async function confirmRepeatImport() {
+  if (!parsedRepeatRows) return;
+  const ambiguous = parsedRepeatRows.filter(r => r.matches.length > 1 && !r.chosenId);
+  if (ambiguous.length) { alert(`${ambiguous.length} line(s) with several matching records still need one chosen.`); return; }
+  const ids = [...new Set(parsedRepeatRows.filter(r => r.chosenId).map(r => r.chosenId))];
+  const toChange = ids.filter(id => { const c = allCandidates.find(x => x.id === id); return c && c.firstTimeAssessment !== false; });
+  if (!toChange.length) { alert("Nothing to change - everyone matched is already marked as repeat (or nobody matched)."); return; }
+  if (!confirm(`Mark ${toChange.length} candidate${toChange.length === 1 ? "" : "s"} as repeat assessment-takers? They will be excluded from Step 5's assessment-room auto-allocation.`)) return;
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < toChange.length; start += CHUNK) {
+      const batch = db.batch();
+      toChange.slice(start, start + CHUNK).forEach(id => batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(id), { firstTimeAssessment: false }));
+      await batch.commit();
+    }
+    document.getElementById("repeatPasteBox").value = "";
+    document.getElementById("repeatPreviewWrap").innerHTML = `<div class="empty-state">Marked ${toChange.length} candidate(s) as repeat assessment-takers.</div>`;
+    parsedRepeatRows = null;
+    await loadCandidates();
+  } catch (err) {
+    alert("Failed: " + err.message);
+  }
+}
+
+function possibleRepeatSources(c) {
+  if (c.linkedCandidateId || c.firstTimeAssessment === false) return [];
+  if (c.outcome) return [];
+  const email = (c.email || "").trim().toLowerCase();
+  if (!email) return [];
+  return allCandidates.filter(x =>
+    x.id !== c.id &&
+    !x.linkedCandidateId &&
+    x.outcome === "Failed" &&
+    (x.email || "").trim().toLowerCase() === email &&
+    !(x.course && c.course && x.course === c.course));
+}
+
+function possibleRepeatBadgeHtml(c) {
+  const sources = possibleRepeatSources(c);
+  if (!sources.length) return "";
+  if (sources.length > 1) {
+    return ` <span class="dup-warning" style="display:inline;background:#fff3cd;border-color:#f0b860;color:#8a5a00;" title="More than one earlier record with this email has a Failed outcome - use Link repeat to pick the right one">⚠ possible repeat (${sources.length} earlier fails)</span>`;
+  }
+  const s = sources[0];
+  return ` <span class="dup-warning" style="display:inline;background:#fff3cd;border-color:#f0b860;color:#8a5a00;" title="Same email as an earlier record with outcome Failed">⚠ possible repeat of ${esc(s.course || "earlier course")} <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="confirmSuggestedRepeat('${c.id}', '${s.id}')">Link &amp; mark repeat</button></span>`;
+}
+
+async function confirmSuggestedRepeat(id, otherId) {
+  const c = allCandidates.find(x => x.id === id);
+  const other = allCandidates.find(x => x.id === otherId);
+  if (!c || !other) return;
+  if (c.linkedCandidateId || other.linkedCandidateId) { alert("One of these records has been linked since the page loaded - refresh and check."); return; }
+  if (!confirm(`Link these as the same person's repeat attempts AND mark the newer one as a repeat assessment-taker?\n\nEarlier: ${other.name} - ${other.course || "no course"} (outcome: Failed)\nNewer: ${c.name} - ${c.course || "no course"}\n\nThe newer record will be excluded from Step 5's assessment-room auto-allocation; RMD faculty manage repeat assessments separately.`)) return;
+  try {
+    const linkedAt = firebase.firestore.FieldValue.serverTimestamp();
+    const batch = db.batch();
+    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { linkedCandidateId: other.id, linkedAt, firstTimeAssessment: false });
+    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(other.id), { linkedCandidateId: c.id, linkedAt });
+    await batch.commit();
+    c.linkedCandidateId = other.id;
+    c.firstTimeAssessment = false;
+    other.linkedCandidateId = c.id;
+    renderCandidates();
+  } catch (err) {
+    alert("Failed: " + err.message);
+  }
 }
 
 async function toggleFirstTimeAssessment(id, makeFirstTime) {

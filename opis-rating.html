@@ -304,17 +304,41 @@ function populateCourseDropdown() {
 
 function instructorName(uid) {
   const i = allInstructors.find(x => x.uid === uid);
-  return i ? i.name : uid;
+  if (i) return i.name;
+  // allInstructors is empty for a room-team-only user (people collection
+  // isn't readable to them) — fall back to the denormalized name carried
+  // on their own candidates' instructorTeamNames, same order as
+  // instructorTeamUids, so this still resolves to a real name rather than
+  // the raw uid.
+  for (const c of allCandidates) {
+    if (Array.isArray(c.instructorTeamUids) && Array.isArray(c.instructorTeamNames)) {
+      const idx = c.instructorTeamUids.indexOf(uid);
+      if (idx !== -1 && c.instructorTeamNames[idx]) return c.instructorTeamNames[idx];
+    }
+  }
+  return uid;
 }
 
 function courseTeams(course) {
-  const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
   const teams = {};
   ROOMS.forEach(r => { teams[r] = []; });
-  if (own && own.instructorTeams) {
-    ROOMS.forEach(r => { teams[r] = (own.instructorTeams[r] || []).slice(); });
-  } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {
-    ROOMS.forEach(r => { teams[r] = (defaultAllocDoc.instructorTeams[r] || []).slice(); });
+  if (hasFullAccess) {
+    const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
+    if (own && own.instructorTeams) {
+      ROOMS.forEach(r => { teams[r] = (own.instructorTeams[r] || []).slice(); });
+    } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {
+      ROOMS.forEach(r => { teams[r] = (defaultAllocDoc.instructorTeams[r] || []).slice(); });
+    }
+  } else {
+    // Room-team-only instructor: course_allocations isn't readable to them,
+    // so pull the team straight off their own candidates' instructorTeamUids
+    // / instructorTeamNames instead — every candidate in a room carries the
+    // same team, so the first one found in each room has it.
+    candidatesForCourse(course).forEach(c => {
+      if (!c.room || teams[c.room].length) return;
+      const full = allCandidates.find(x => x.id === c.id);
+      if (full && Array.isArray(full.instructorTeamUids)) teams[c.room] = full.instructorTeamUids.slice();
+    });
   }
   return teams;
 }

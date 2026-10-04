@@ -47,6 +47,9 @@
     .ccard { border:1.5px solid #dde2ed; border-radius:6px; padding:6px 8px; margin-bottom:4px; font-size:13px; background:#f7f9fc; }
     .ccard-name { font-weight:700; color:var(--rmd-navy); }
     .ccard-meta { font-size:11px; color:#8893b0; margin-top:1px; }
+    .ccard-actions { margin-top:4px; display:flex; gap:10px; }
+    .ccard-actions button { background:none; border:none; padding:0; font-size:11px; font-weight:700; color:var(--rmd-blue); cursor:pointer; text-decoration:underline; }
+    .ccard-actions button.is-warning { color:#b23b3b; }
     .room-empty { text-align:center; color:#c8cede; font-size:12px; padding:14px 8px; }
 
     /* ── Unassigned ── */
@@ -86,6 +89,7 @@
     Evening Course Rosters
     <span class="top-bar-sub">RMD Birmingham — Stage 1 Provider Courses</span>
   </div>
+  <a class="top-bar-back" href="admin-stage1-assessment-allocation.html">Assessment lookup</a>
   <a class="top-bar-back" href="member-menu.html">← Menu</a>
 </div>
 
@@ -156,9 +160,66 @@ function esc(s) {
 // Mirrors lookupCandidateRoom's own firstTimeAssessment !== false check so
 // staff see the same "managed separately" framing candidates do.
 function assessmentMetaStr(c) {
+  if (c.assessmentAbsent === true) return "Assessment: marked unable to attend";
   if (c.firstTimeAssessment === false) return "Assessment: repeat — managed separately by faculty";
   if (c.assessmentRoom && c.assessmentSlot) return `Assessment: ${c.assessmentRoom} @ ${c.assessmentSlot}`;
   return "Assessment: not yet allocated";
+}
+
+// Faculty assessment-attendance actions (2026-10-03, Jon: "need way for
+// faculty to confirm who will not be able to attend assessment" and "who
+// is not first sit"). Deliberately added to THIS page, not the full admin
+// editor — see the file-header comment: a small, narrowly-scoped page
+// beats opening the drag-and-drop editor just for two toggles. Hidden
+// until a candidate has a course, since neither toggle means anything
+// before that.
+function assessmentActionsHtml(c) {
+  if (!c.id) return "";
+  const repeatBtn = c.firstTimeAssessment === false
+    ? `<button type="button" onclick="toggleFirstTimeAssessment('${esc(c.id)}', true)">Mark first-time</button>`
+    : `<button type="button" onclick="toggleFirstTimeAssessment('${esc(c.id)}', false)">Mark repeat assessment</button>`;
+  const absentBtn = c.assessmentAbsent === true
+    ? `<button type="button" onclick="toggleAssessmentAbsent('${esc(c.id)}', false)">Mark able to attend</button>`
+    : `<button type="button" class="is-warning" onclick="toggleAssessmentAbsent('${esc(c.id)}', true)">Mark unable to attend</button>`;
+  return `<div class="ccard-actions">${repeatBtn}${absentBtn}</div>`;
+}
+
+function refreshRoster() {
+  const sel = document.getElementById("courseSelect");
+  if (sel && sel.value) selectCourse(sel.value);
+}
+
+async function toggleFirstTimeAssessment(id, makeFirstTime) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c) return;
+  const msg = makeFirstTime
+    ? `Mark ${c.name} as first-time for assessment? They'll be included in Step 5's auto-allocation again.`
+    : `Mark ${c.name} as a repeat assessment-taker? They'll be excluded from Step 5's assessment-room auto-allocation — RMD faculty manage their assessment separately.`;
+  if (!confirm(msg)) return;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ firstTimeAssessment: makeFirstTime });
+    c.firstTimeAssessment = makeFirstTime;
+    refreshRoster();
+  } catch (err) { alert("Failed: " + err.message); }
+}
+
+async function toggleAssessmentAbsent(id, makeAbsent) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c) return;
+  const hadSlot = !!(c.assessmentRoom && c.assessmentSlot);
+  const msg = makeAbsent
+    ? (hadSlot
+        ? `Mark ${c.name} as unable to attend assessment? Their booked slot (${c.assessmentRoom} @ ${c.assessmentSlot}) will be cleared and made available for someone else.`
+        : `Mark ${c.name} as unable to attend assessment?`)
+    : `Mark ${c.name} as able to attend again? If they need a room and slot, assign one on Assessment allocation (Step 5).`;
+  if (!confirm(msg)) return;
+  const update = { assessmentAbsent: makeAbsent };
+  if (makeAbsent && hadSlot) { update.assessmentRoom = null; update.assessmentSlot = null; }
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update(update);
+    Object.assign(c, update);
+    refreshRoster();
+  } catch (err) { alert("Failed: " + err.message); }
 }
 
 initFirebase();
@@ -253,7 +314,8 @@ function selectCourse(course) {
     room: ROOMS.includes(c.room) ? c.room : null,
     assessmentRoom: c.assessmentRoom || null,
     assessmentSlot: c.assessmentSlot || null,
-    firstTimeAssessment: c.firstTimeAssessment
+    firstTimeAssessment: c.firstTimeAssessment,
+    assessmentAbsent: c.assessmentAbsent === true
   }));
 
   const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
@@ -282,7 +344,7 @@ function selectCourse(course) {
         const inRoom = candidates.filter(c => c.room === rid);
         const chips = (teams[rid] || []).map(uid => `<span class="instr-chip">${esc(instructorName(uid))}</span>`).join("");
         const cards = inRoom.length
-          ? inRoom.map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div><div class="ccard-meta">${esc(assessmentMetaStr(c))}</div></div>`).join("")
+          ? inRoom.map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div><div class="ccard-meta">${esc(assessmentMetaStr(c))}</div>${assessmentActionsHtml(c)}</div>`).join("")
           : `<div class="room-empty">No candidates assigned</div>`;
         return `<div class="room-col">
                   <div class="room-head">
@@ -297,7 +359,7 @@ function selectCourse(course) {
   const unassigned = candidates.filter(c => !c.room);
   document.getElementById("unassignedWrap").style.display = unassigned.length ? "" : "none";
   document.getElementById("unassignedGrid").innerHTML = unassigned
-    .map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div><div class="ccard-meta">${esc(assessmentMetaStr(c))}</div></div>`)
+    .map(c => `<div class="ccard" data-cid="${esc(c.id)}"><div class="ccard-name">${esc(c.name)}</div><div class="ccard-meta">${esc(c.degree || "—")} · ${esc(c.email || "no email on file")}</div><div class="ccard-meta">${esc(assessmentMetaStr(c))}</div>${assessmentActionsHtml(c)}</div>`)
     .join("");
 }
 
