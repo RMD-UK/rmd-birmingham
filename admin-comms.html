@@ -197,8 +197,6 @@ async function loadGroups() {
     const people = stage1.filter(c => c.course === course && c.email).map(c => ({ name: c.name, email: c.email }));
     groups.push({ id: "stage1_" + course, label: `${course} (${people.length})`, people, category: "stage1", courseName: course });
   });
-  const allStage1 = stage1.filter(c => c.email).map(c => ({ name: c.name, email: c.email }));
-  groups.push({ id: "stage1_all", label: `All candidates, any course (${allStage1.length})`, people: allStage1, category: "stage1", isAllLeaf: true });
 
   const rosterSnap = await db.collection(COLLECTIONS.mouRoster).get();
   const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -256,14 +254,13 @@ function categorySection(title, innerHtml, open) {
 function renderGroupList() {
   const list = document.getElementById("groupList");
   const courseGroups = groups.filter(g => g.category === "stage1" && g.courseName);
-  const allLeaf = groups.find(g => g.isAllLeaf);
   const staff = groups.filter(g => g.category === "staff");
   const iw = groups.filter(g => g.category === "iw");
 
   // 2026-10-05, Jon: three clear sections, in this order - Stage 1 (Monday
   // evening) courses (each course its own expandable stem, with its email
   // types inside), RMD staff groups, Instructor weekend.
-  let s1 = allLeaf ? groupRowHtml(allLeaf) : "";
+  let s1 = "";
   courseGroups.forEach(g => {
     s1 += `<details class="group-subcat"><summary>${esc(g.courseName)}</summary>${groupRowHtml(g)}${templateActionsHtml(g)}</details>`;
   });
