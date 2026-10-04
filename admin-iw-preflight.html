@@ -159,7 +159,7 @@ const REASON_LABEL = {
   rolemismatch: "people.role not what the registration implies", refused: "rules refuse a needed write",
   noemail: "registration has no email", noaccount_other: "candidate or other: no people record",
   duplicate: "duplicate people records", orphan: "ID does not look like a sign-in ID",
-  asgdiffers: "iw_assignments differs from registration",
+  asgdiffers: "iw_assignments differs from registration", candidate_nologin: "candidate with no sign-in (normal)",
   nologin_rater: "faculty-side: no sign-in at registered email", nologin_other: "candidate or other: no sign-in at registered email",
   needsync: "has sign-in, needs Sync to People", recordunmatched: "record exists but cannot be matched here",
   emailfield: "people record found by name only (email field blank or different)", testdata: "leftover test data", unmapped: "unmapped role"
@@ -258,7 +258,18 @@ async function load() {
     } else {
       if (matchedBy === "name") C("emailfield", "Found by name: this person's people record has a blank or different email field, so it cannot be matched by email. Role shown is from that record.");
       if (matches.length > 1) C("duplicate", matches.length + " people records share this email (duplicates).");
-      if (p.id.length !== 28) C("orphan", "people ID is " + p.id.length + " characters; sign-in IDs are normally 28, so this may be an orphan record, not a real account.");
+      // Use the server's view of sign-ins, not the ID length. Candidates check in by QR code and
+      // normally have no login, so a record with an auto-generated ID is expected for them.
+      if (SYNC) {
+        if (SYNC.noAuth.has(email)) {
+          if (isRater) P("nologin_rater", "A people record exists, but there is no sign-in at this email. Ratings need a sign-in, so they cannot submit anything until one exists.");
+          else I("candidate_nologin", "No sign-in at this email. Normal for candidates, who check in by QR code.");
+        } else if (SYNC.toSync.has(email)) {
+          C("needsync", "Has a sign-in, but its own people record is missing (only this older record matched). Press Sync in IW Registrations, then check for a duplicate.");
+        }
+      } else if (p.id.length !== 28) {
+        C("orphan", "people ID is " + p.id.length + " characters; sign-in IDs are normally 28, so this may be an orphan record, not a real account. (Sync lookup unavailable, so this is a guess.)");
+      }
       if (expected && actual !== expected) {
         const msg = "people.role is \"" + (actual || "blank") + "\", expected \"" + expected + "\".";
         ((isRater || (actual && RATERS.includes(actual))) ? P : C)("rolemismatch", msg);
@@ -287,7 +298,7 @@ async function load() {
       else if (actual === "director" || PLATFORM_ADMINS.has(email)) fixWhy = "Not changed here: this person is a director or super-user, and changing the role would remove that.";
       else if (matchedBy !== "email") fixWhy = "Not changed here: matched by name only, so check the record by hand first.";
       else if (matches.length > 1) fixWhy = "Not changed here: duplicate people records, so which one to edit is unclear.";
-      else if (p.id.length !== 28) fixWhy = "Not changed here: the record ID does not look like a sign-in ID.";
+      else if (isRater && p.id.length !== 28) fixWhy = "Not changed here: the record ID does not look like a sign-in ID, so changing it may not affect what the rules see.";
       else fixable = true;
     }
     const level = problems.length ? "bad" : (cautions.length ? "warn" : "ok");
@@ -460,7 +471,7 @@ function renderHelp() {
       + '<div style="height:10px;"></div>');
   }
   // 3. Duplicates and odd IDs.
-  const dups = ROWS.filter(x => x.matchCount > 1 || (x.p && x.p.id.length !== 28));
+  const dups = ROWS.filter(x => x.matchCount > 1);
   if (dups.length) {
     out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">3. Duplicate or odd records</h4><p class="hint" style="margin:0 0 8px;">Open <a href="admin-dedupe-people.html">Duplicate People &amp; Account Cleanup</a>. It only offers to delete the older record with no login and keeps the one tied to the real sign-in, and nothing is deleted until you tick it and confirm. Affected here: '
       + dups.map(x => esc(x.r.name)).join(", ") + '. Then press Re-check.</p>');
