@@ -3285,6 +3285,15 @@ async function sendPersonalisedBatch(resend, { subject, message, people }) {
   return { sent, sentTo, failedEmails };
 }
 
+// 2026-10-05, Jon: every URL/email in every comms-hub email must be a link.
+// The admin summary copy was text-only, so its URLs and addresses were not
+// clickable. This renders the same summary text as simple HTML (line breaks
+// kept, links added); the plain text stays alongside as the fallback.
+function buildCommsSummaryHtml(text) {
+  const body = linkifyForEmail(escapeHtmlForEmail(text));
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${body}</div>`;
+}
+
 // Builds the paste-ready admin summary copy text shared by sendBulkComms
 // and processCommsQueueDaily's completion step — same shape either way,
 // just different framing lines at the top.
@@ -3392,7 +3401,8 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
       to: COMMS_BCC,
       replyTo: REPLY_TO,
       subject: `[RMD Comms copy] ${subject} — ${sent} sent${deferred.length ? `, ${deferred.length} queued` : ""}${groupLabel ? ` (${groupLabel})` : ""}`,
-      text: buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails })
+      text: buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }),
+      html: buildCommsSummaryHtml(buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }))
     });
   } catch (err) {
     console.error("sendBulkComms: summary copy to COMMS_BCC failed", err.message);
@@ -3477,7 +3487,8 @@ exports.processCommsQueueDaily = onSchedule(
             to: COMMS_BCC,
             replyTo: REPLY_TO,
             subject: `[RMD Comms copy] ${job.subject} — staggered send complete, ${cumulativeSentTo.length} sent`,
-            text: buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed })
+            text: buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed }),
+            html: buildCommsSummaryHtml(buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed }))
           });
         } catch (err) {
           console.error("processCommsQueueDaily: completion summary failed", err.message);
