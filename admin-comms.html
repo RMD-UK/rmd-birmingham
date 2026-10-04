@@ -356,6 +356,9 @@ function applyCourseTemplate(kind, groupId, courseName) {
     alert('No candidate access code is set — add one on the "Candidate resource access code" card on Stage 1 Candidates first, then try this template again.');
     return;
   }
+  // 2026-10-05: untick every other group first - the template is for ONE
+  // course, so a leftover ticked group must never ride along with it.
+  document.querySelectorAll('#groupList input[type=checkbox]').forEach(x => { x.checked = false; });
   const cb = document.querySelector(`#groupList input[type=checkbox][value="${CSS.escape(groupId)}"]`);
   if (cb) { cb.checked = true; onGroupChange(); }
 
@@ -413,6 +416,27 @@ function onGroupChange() {
   document.getElementById("previewCard").style.display = "none";
   document.getElementById("confirmBox").checked = false;
   document.getElementById("sendBtn").disabled = true;
+  currentGroup = null; // 2026-10-05: never keep a recipient group from an earlier preview
+}
+
+// 2026-10-05, Jon: a Course 3 message went to Course 1 candidates. Guard: if
+// the subject/message names "Course N" and any ticked course group is a
+// different course, refuse. Only applies when at least one ticked group is a
+// Stage 1 course group; messages naming no course are never blocked.
+function courseMismatchProblem(subject, message, selected) {
+  const tickedCourses = selected.filter(g => g.courseName);
+  if (!tickedCourses.length) return null;
+  const tickedNums = new Set();
+  tickedCourses.forEach(g => (String(g.courseName).match(/\d+/g) || []).forEach(n => tickedNums.add(n)));
+  const mentioned = new Set();
+  const re = /\bcourse\s+(\d+)\b/gi;
+  let m;
+  const text = subject + "\n" + message;
+  while ((m = re.exec(text)) !== null) mentioned.add(m[1]);
+  const wrong = [...mentioned].filter(n => !tickedNums.has(n));
+  if (!wrong.length) return null;
+  return `Stopped: the subject/message mentions Course ${wrong.join(", Course ")} but the ticked group is ${tickedCourses.map(g => g.courseName).join(" + ")}. ` +
+    `Check you have the right template loaded and the right group ticked (nothing has been sent).`;
 }
 
 function previewRecipients() {
@@ -421,6 +445,8 @@ function previewRecipients() {
   const message = document.getElementById("messageInput").value.trim();
   if (!selected.length) { alert("Choose at least one group first."); return; }
   if (!subject || !message) { alert("Write a subject and a message first."); return; }
+  const mismatch = courseMismatchProblem(subject, message, selected);
+  if (mismatch) { alert(mismatch); return; }
 
   currentGroup = {
     label: selected.map(g => g.label).join(" + "),
@@ -448,6 +474,14 @@ async function sendNow() {
   if (!currentGroup || !currentGroup.people.length) return;
   const subject = document.getElementById("subjectInput").value.trim();
   const message = document.getElementById("messageInput").value.trim();
+  // 2026-10-05: re-check at the moment of sending, against what is ticked NOW.
+  const selectedNow = getSelectedGroups();
+  if (selectedNow.map(g => g.label).join(" + ") !== currentGroup.label) {
+    alert("Stopped: the ticked groups no longer match the preview. Click Preview recipients again (nothing has been sent).");
+    return;
+  }
+  const mismatchNow = courseMismatchProblem(subject, message, selectedNow);
+  if (mismatchNow) { alert(mismatchNow); return; }
   const btn = document.getElementById("sendBtn");
   btn.disabled = true;
   btn.textContent = "Sending…";
