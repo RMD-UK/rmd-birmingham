@@ -45,6 +45,11 @@
     .dim { color:#aab8c2; }
     .why { font-size:11.5px; color:#8f3309; line-height:1.45; margin-top:3px; }
     .why.soft { color:#856404; }
+    .why.info { color:#8a97a3; }
+    .reasons { font-size:12.5px; margin:0 0 14px; padding:10px 14px; background:#f5f7fa; border-radius:8px; line-height:1.9; }
+    .reasons b { color:var(--rmd-navy); }
+    .rs { display:inline-block; margin-right:14px; cursor:pointer; border-bottom:1px dotted #aab8c2; }
+    .rs.active { border-bottom:2px solid var(--rmd-blue); }
     code { background:#eef1f4; padding:1px 5px; border-radius:4px; font-size:11.5px; }
   </style>
 </head>
@@ -73,6 +78,7 @@
     <div class="card-body">
       <div class="hint" id="status" style="margin-bottom:10px;">Loading...</div>
       <div class="pills" id="pills"></div>
+      <div class="reasons" id="reasons"></div>
       <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn-secondary" onclick="copyProblemEmails()">Copy emails of rows needing action</button>
         <span class="hint" id="copyMsg" style="align-self:center;"></span>
@@ -137,6 +143,14 @@ const RATERS = Object.keys(NEEDS);
 
 let ROWS = [];
 let filter = "action";
+let reasonFilter = null;
+const REASON_LABEL = {
+  noaccount_rater: "faculty-side attendee with no account", pagesvsrules: "page and rules disagree",
+  rolemismatch: "people.role not what the registration implies", refused: "rules refuse a needed write",
+  noemail: "registration has no email", noaccount_other: "candidate or other: no account found",
+  duplicate: "duplicate people records", orphan: "ID does not look like a sign-in ID",
+  asgdiffers: "iw_assignments differs from registration", testdata: "leftover test data", unmapped: "unmapped role"
+};
 
 function isTestName(name) {
   const n = norm(name);
@@ -182,27 +196,32 @@ async function load() {
     const asg = p ? (assign[p.id] || null) : null;
     const problems = [];   // hard: will break something
     const cautions = [];   // soft: worth a look
+    const infos = [];      // harmless, shown in grey, not counted
+    const P = (code, msg) => problems.push({ code, msg });
+    const C = (code, msg) => cautions.push({ code, msg });
+    const I = (code, msg) => infos.push({ code, msg });
     const isRater = expected && RATERS.includes(expected);
 
-    if (!expected) cautions.push("Registered role \"" + (r.role || "none") + "\" has no mapping, so it cannot be checked.");
-    if (!email) problems.push("No email on the registration, so no account can be matched.");
+    if (!expected) C("unmapped", "Registered role \"" + (r.role || "none") + "\" has no mapping, so it cannot be checked.");
+    if (!email) P("noemail", "No email on the registration, so no account can be matched.");
     else if (!p) {
       let hint = "";
       const alt = byName.get(nameKey(r.name)) || [];
       if (alt.length) hint = " A person with the same name exists under " + alt.map(a => a.email || a.id).join(", ") + ".";
-      (isRater ? problems : cautions).push("No account found for this email in people." + hint);
+      (isRater ? P : C)(isRater ? "noaccount_rater" : "noaccount_other", "No account found for this email in people." + hint);
     } else {
-      if (matches.length > 1) cautions.push(matches.length + " people records share this email (duplicates).");
-      if (p.id.length !== 28) cautions.push("people ID is " + p.id.length + " characters; sign-in IDs are normally 28, so this may be an orphan record, not a real account.");
+      if (matches.length > 1) C("duplicate", matches.length + " people records share this email (duplicates).");
+      if (p.id.length !== 28) C("orphan", "people ID is " + p.id.length + " characters; sign-in IDs are normally 28, so this may be an orphan record, not a real account.");
       if (expected && actual !== expected) {
         const msg = "people.role is \"" + (actual || "blank") + "\", expected \"" + expected + "\".";
-        (isRater || (actual && RATERS.includes(actual)) ? problems : cautions).push(msg);
+        ((isRater || (actual && RATERS.includes(actual))) ? P : C)("rolemismatch", msg);
       }
-      if (asg && expected && asg !== expected) cautions.push("iw_assignments says \"" + asg + "\", expected \"" + expected + "\".");
-      if (isRater && asg && actual && asg !== actual) problems.push("Pages use \"" + asg + "\" but rules use \"" + actual + "\": the page will let them in and the save will be refused.");
-      if (isRater && !asg) cautions.push("No iw_assignments record for " + CURRENT_IW_YEAR + " (falls back to people.role, which is fine if that is correct).");
+      if (asg && expected && asg !== expected) C("asgdiffers", "iw_assignments says \"" + asg + "\", expected \"" + expected + "\".");
+      if (isRater && asg && actual && asg !== actual) P("pagesvsrules", "Pages use \"" + asg + "\" but rules use \"" + actual + "\": the page will let them in and the save will be refused.");
+      if (isRater && !asg && actual === expected) I("noasg", "No iw_assignments record for " + CURRENT_IW_YEAR + ". Harmless: pages fall back to people.role, which is correct.");
+      else if (isRater && !asg) I("noasg", "No iw_assignments record for " + CURRENT_IW_YEAR + " (falls back to people.role).");
     }
-    if (isTestName(r.name) || (p && isTestName(p.name))) cautions.push("Looks like leftover test data (see admin-iw-test-cleanup.html).");
+    if (isTestName(r.name) || (p && isTestName(p.name))) C("testdata", "Looks like leftover test data (see admin-iw-test-cleanup.html).");
 
     const can = actual == null ? null : {
       session: CAN.session(actual), assess: CAN.assess(actual), itc: CAN.itc(actual), assessor: CAN.assessor(actual)
@@ -211,10 +230,10 @@ async function load() {
     if (isRater && can) {
       const need = NEEDS[expected];
       const lacking = Object.keys(need).filter(k => need[k] && !can[k]);
-      if (lacking.length && !problems.some(x => x.startsWith("people.role is"))) problems.push("Rules will refuse: " + lacking.join(", ") + ".");
+      if (lacking.length && !problems.some(x => x.code === "rolemismatch")) P("refused", "Rules will refuse: " + lacking.join(", ") + ".");
     }
     const level = problems.length ? "bad" : (cautions.length ? "warn" : "ok");
-    return { r, p, email, expected, actual, asg, can, problems, cautions, level, isRater };
+    return { r, p, email, expected, actual, asg, can, problems, cautions, infos, level, isRater };
   });
 
   ROWS.sort((a, b) => {
@@ -226,7 +245,7 @@ async function load() {
   document.getElementById("status").textContent =
     ROWS.length + " attendees checked for Instructor Weekend " + CURRENT_IW_YEAR + " (" + declined + " declined, not shown). "
     + (nBad ? nBad + " will fail at least one thing they need." : "No hard failures found.");
-  renderPills(); renderRows(); renderExtra(people, regs);
+  renderPills(); renderReasons(); renderRows(); renderExtra(people, regs);
 }
 
 function renderPills() {
@@ -240,7 +259,20 @@ function renderPills() {
     mk("okraters", "Raters fully OK", c.okraters, "good") +
     mk("all", "Everyone", c.all);
 }
-function setFilter(k) { filter = k; renderPills(); renderRows(); }
+function setFilter(k) { filter = k; reasonFilter = null; renderPills(); renderReasons(); renderRows(); }
+function setReason(c) { reasonFilter = (reasonFilter === c ? null : c); filter = "all"; renderPills(); renderReasons(); renderRows(); }
+function renderReasons() {
+  const n = {}, hard = {};
+  ROWS.forEach(x => {
+    x.problems.forEach(t => { n[t.code] = (n[t.code] || 0) + 1; hard[t.code] = true; });
+    x.cautions.forEach(t => { n[t.code] = (n[t.code] || 0) + 1; });
+  });
+  const keys = Object.keys(n).sort((a, b) => (hard[b] ? 1 : 0) - (hard[a] ? 1 : 0) || n[b] - n[a]);
+  const noasg = ROWS.filter(x => x.infos.some(i => i.code === "noasg")).length;
+  document.getElementById("reasons").innerHTML = "<b>Why rows are flagged</b> (click to filter; red = hard failure):<br>"
+    + (keys.map(c => `<span class="rs ${reasonFilter === c ? "active" : ""}" onclick="setReason('${c}')"><b style="color:${hard[c] ? "#b7410e" : "#856404"}">${n[c]}</b> ${esc(REASON_LABEL[c] || c)}</span>`).join("") || "Nothing flagged.")
+    + (noasg ? `<br><span class="hint">Not counted: ${noasg} faculty-side attendee(s) have no iw_assignments record. That is harmless while their people.role is right.</span>` : "");
+}
 
 function canCell(can, need) {
   const names = [["session", "S"], ["assess", "A"], ["itc", "I"], ["assessor", "R"]];
@@ -254,7 +286,8 @@ function canCell(can, need) {
 
 function renderRows() {
   let rows = ROWS;
-  if (filter === "action") rows = rows.filter(x => x.level !== "ok");
+  if (reasonFilter) rows = rows.filter(x => x.problems.concat(x.cautions).some(t => t.code === reasonFilter));
+  else if (filter === "action") rows = rows.filter(x => x.level !== "ok");
   else if (filter === "bad") rows = rows.filter(x => x.level === "bad");
   else if (filter === "raters") rows = rows.filter(x => x.isRater);
   else if (filter === "okraters") rows = rows.filter(x => x.isRater && x.level === "ok");
@@ -263,7 +296,7 @@ function renderRows() {
   el.innerHTML = rows.map(x => {
     const need = x.expected ? (NEEDS[x.expected] || null) : null;
     const tag = x.level === "bad" ? '<span class="tag bad">Will fail</span>' : x.level === "warn" ? '<span class="tag warn">Check</span>' : '<span class="tag ok">OK</span>';
-    const why = x.problems.map(t => `<div class="why">${esc(t)}</div>`).join("") + x.cautions.map(t => `<div class="why soft">${esc(t)}</div>`).join("");
+    const why = x.problems.map(t => `<div class="why">${esc(t.msg)}</div>`).join("") + x.cautions.map(t => `<div class="why soft">${esc(t.msg)}</div>`).join("") + x.infos.map(t => `<div class="why info">${esc(t.msg)}</div>`).join("");
     return `<tr>
       <td><div class="nm">${esc(x.r.name)}</div><div class="em">${esc(x.r.email)}</div></td>
       <td>${esc(x.r.role)}</td>
