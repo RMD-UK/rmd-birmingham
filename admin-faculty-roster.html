@@ -150,6 +150,7 @@ Jon Hulme, j.hulme.1@bham.ac.uk, senior, Course Director, , jon-hulme.jpg"></tex
     <h2>Current roster (live)</h2>
     <p class="hint">Search, edit, or remove one person at a time here — no need to re-paste the whole roster for a single change. Editing pre-fills the form below; Remove deletes that person from both the public page and the roster immediately (no undo).</p>
     <div class="summary-strip" id="currentSummary"><div class="sum-pill"><div class="val">–</div><div class="lbl">Loading</div></div></div>
+    <div id="idFixWrap"></div>
     <input type="text" class="roster-search" id="rosterSearch" placeholder="Search by name, team or email…" oninput="renderCurrentRosterTable()">
     <div class="roster-table-wrap">
       <table class="roster-table">
@@ -270,11 +271,84 @@ async function loadCurrentRoster() {
     renderCurrentSummary();
     renderCurrentRosterTable();
     populateTeamOptions();
+    renderIdFix();
   } catch (err) {
     document.getElementById("currentSummary").innerHTML =
       `<div style="color:var(--rmd-warn);font-size:13px;">Could not load current roster: ${err.message}</div>`;
     document.getElementById("currentRosterBody").innerHTML =
       `<tr><td colspan="6" style="color:var(--rmd-warn);">Could not load: ${err.message}</td></tr>`;
+  }
+}
+
+// 2026-10-05: Student/Senior Faculty access (firestore.rules and the site's
+// "Standing" label) finds a person by a roster doc whose ID is their LOWERCASE
+// sign-in email. Rows that have an email but are still stored under an old
+// "noemail_..." (or mixed-case) ID are invisible to that lookup, so those
+// people show "Not yet confirmed" and miss their access. This finds them and
+// moves each one to the right ID in one atomic batch (new doc written, old
+// doc deleted, for both faculty_roster and faculty_directory). Nothing runs
+// until the Director clicks the button and confirms.
+function rosterIdMismatches() {
+  return currentRosterCache.filter(r => r.email && r.docId !== String(r.email).trim().toLowerCase());
+}
+
+function renderIdFix() {
+  const wrap = document.getElementById("idFixWrap");
+  if (!wrap) return;
+  const bad = rosterIdMismatches();
+  if (!bad.length) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = `<div style="background:#fff7e0;border:1.5px solid #f0b860;border-radius:8px;padding:12px 14px;margin:10px 0;font-size:13px;color:#6b4a00;">
+    <strong>${bad.length} roster ${bad.length === 1 ? "entry is" : "entries are"} stored under the wrong ID</strong>, so ${bad.length === 1 ? "that person shows" : "those people show"} "Not yet confirmed" and ${bad.length === 1 ? "doesn't" : "don't"} get Student/Senior Faculty access when signing in.
+    This moves each one to the correct ID. Names, teams and photos are unchanged.
+    <div style="margin-top:8px;"><button class="btn-action" id="idFixBtn" onclick="fixRosterIds()">Fix ${bad.length} ${bad.length === 1 ? "entry" : "entries"}</button> <span id="idFixMsg" style="margin-left:8px;"></span></div>
+  </div>`;
+}
+
+async function fixRosterIds() {
+  const bad = rosterIdMismatches();
+  if (!bad.length) return;
+  const takenIds = new Set(currentRosterCache.map(r => r.docId));
+  let dirMap;
+  try {
+    const dirSnap = await db.collection(COLLECTIONS.facultyDirectory).get();
+    dirMap = new Map(dirSnap.docs.map(d => [d.id, d.data()]));
+  } catch (err) { alert("Couldn't read the public directory: " + err.message); return; }
+
+  const todo = [], skipped = [];
+  bad.forEach(r => {
+    const newId = String(r.email).trim().toLowerCase();
+    if (takenIds.has(newId) || dirMap.has(newId) || todo.some(t => t.newId === newId)) skipped.push(r);
+    else todo.push({ r, newId });
+  });
+  if (!todo.length) { alert("Nothing could be moved automatically - every one already has a record under its email. Check the skipped names by editing them individually."); return; }
+
+  const lines = todo.map(t => `${t.r.name}  ->  ${t.newId}`).join("\n");
+  if (!confirm(`Move ${todo.length} roster ${todo.length === 1 ? "entry" : "entries"} to the correct ID?\n\n${lines}${skipped.length ? `\n\nSkipped (a record already exists under that email): ${skipped.map(r => r.name).join(", ")}` : ""}\n\nThe old entries are deleted as part of the move.`)) return;
+
+  const btn = document.getElementById("idFixBtn");
+  const msg = document.getElementById("idFixMsg");
+  if (btn) btn.disabled = true;
+  try {
+    const CHUNK = 90; // 4 writes per person, well under Firestore's 500 limit
+    for (let start = 0; start < todo.length; start += CHUNK) {
+      const batch = db.batch();
+      todo.slice(start, start + CHUNK).forEach(({ r, newId }) => {
+        const { docId, ...rest } = r;
+        batch.set(db.collection(COLLECTIONS.facultyRoster).doc(newId), { ...rest, email: newId });
+        const oldDir = dirMap.get(docId);
+        const { email: _drop, ...publicFields } = rest;
+        batch.set(db.collection(COLLECTIONS.facultyDirectory).doc(newId), oldDir ? oldDir : publicFields);
+        batch.delete(db.collection(COLLECTIONS.facultyRoster).doc(docId));
+        batch.delete(db.collection(COLLECTIONS.facultyDirectory).doc(docId));
+      });
+      await batch.commit();
+    }
+    await loadCurrentRoster();
+    const m = document.getElementById("idFixMsg");
+    if (m) m.textContent = `Moved ${todo.length}.${skipped.length ? " Skipped " + skipped.length + "." : ""}`;
+  } catch (err) {
+    if (msg) msg.textContent = "Failed: " + err.message + " (nothing in the failed batch was changed)";
+    if (btn) btn.disabled = false;
   }
 }
 
