@@ -112,6 +112,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
@@ -158,7 +159,10 @@ const REASON_LABEL = {
   rolemismatch: "people.role not what the registration implies", refused: "rules refuse a needed write",
   noemail: "registration has no email", noaccount_other: "candidate or other: no people record",
   duplicate: "duplicate people records", orphan: "ID does not look like a sign-in ID",
-  asgdiffers: "iw_assignments differs from registration", testdata: "leftover test data", unmapped: "unmapped role"
+  asgdiffers: "iw_assignments differs from registration",
+  nologin_rater: "faculty-side: no sign-in at registered email", nologin_other: "candidate or other: no sign-in at registered email",
+  needsync: "has sign-in, needs Sync to People", recordunmatched: "record exists but cannot be matched here",
+  emailfield: "people record found by name only (email field blank or different)", testdata: "leftover test data", unmapped: "unmapped role"
 };
 
 function isTestName(name) {
@@ -182,6 +186,15 @@ async function load() {
     return;
   }
 
+  // Ask the server which registered emails have a real sign-in (read-only dry run of the existing
+  // sync; writes nothing). This is what the "Sync to People" panel reads, so the two agree.
+  let SYNC = null;
+  try {
+    const res = await firebase.functions().httpsCallable("syncIwRegistrationsToPeople")({ dryRun: true });
+    const d = res.data || {};
+    const set = a => new Set((a || []).map(x => norm(x.email)));
+    SYNC = { already: set(d.alreadySynced), toSync: set(d.synced), noAuth: set(d.noAuthAccount) };
+  } catch (e) { console.warn("Sync dry run unavailable:", e.message); }
   const cfg = cfgSnap.exists ? cfgSnap.data() : {};
   PLATFORM_ADMINS = new Set([].concat(cfg.directors || [], cfg.superUsers || []).map(norm));
   const people = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -203,7 +216,16 @@ async function load() {
     const email = norm(r.email);
     const expected = EXPECTED_ROLE[r.role] || null;
     const matches = email ? (byEmail.get(email) || []) : [];
-    const p = matches[0] || null;
+    let p = matches[0] || null;
+    let matchedBy = p ? "email" : null;
+    // Has a real sign-in and a uid-keyed record, but the record's email field is blank or different:
+    // fall back to a unique name match so the role can still be checked.
+    if (!p && email && SYNC && SYNC.already.has(email)) {
+      const byN = byName.get(nameKey(r.name)) || [];
+      const blank = byN.filter(a => !norm(a.email));
+      const cand = blank.length === 1 ? blank : (byN.length === 1 ? byN : []);
+      if (cand.length === 1) { p = cand[0]; matchedBy = "name"; }
+    }
     const actual = p ? (p.role || "") : null;
     const asg = p ? (assign[p.id] || null) : null;
     const problems = [];   // hard: will break something
@@ -217,6 +239,16 @@ async function load() {
 
     if (!expected) C("unmapped", "Registered role \"" + (r.role || "none") + "\" has no mapping, so it cannot be checked.");
     if (!email) P("noemail", "No email on the registration, so no account can be matched.");
+    else if (!p && SYNC && SYNC.noAuth.has(email)) {
+      if (expected === "director" && PLATFORM_ADMINS.has(email)) I("dirplatform", "No sign-in found at this email, but it is on the platform directors list. Check this is the address you actually sign in with.");
+      else (isRater ? P : C)(isRater ? "nologin_rater" : "nologin_other", "No sign-in exists at this email yet (the sync reports 'no Firebase login'). Create it in Bulk User Setup, or correct the registered email if they use another.");
+    }
+    else if (!p && SYNC && SYNC.toSync.has(email)) {
+      (isRater ? P : C)("needsync", "Has a sign-in but no people record yet. Press Sync in IW Registrations ('Sync to People').");
+    }
+    else if (!p && SYNC && SYNC.already.has(email)) {
+      (isRater ? P : C)("recordunmatched", "Has a sign-in and a people record, but the record has no matching email or name here, so this page cannot check its role.");
+    }
     else if (!p) {
       let hint = "";
       alt = (byName.get(nameKey(r.name)) || []).filter(a => norm(a.email) && norm(a.email) !== email);
@@ -224,6 +256,7 @@ async function load() {
       if (expected === "director" && PLATFORM_ADMINS.has(email)) I("dirplatform", "No people record, but this email is on the platform directors list, so the rules treat them as a director anyway. They just will not appear in people-based lists.");
       else (isRater ? P : C)(isRater ? "noaccount_rater" : "noaccount_other", "No people record found for this email. This page cannot see sign-in accounts, so they may already have a login and just lack a record." + hint);
     } else {
+      if (matchedBy === "name") C("emailfield", "Found by name: this person's people record has a blank or different email field, so it cannot be matched by email. Role shown is from that record.");
       if (matches.length > 1) C("duplicate", matches.length + " people records share this email (duplicates).");
       if (p.id.length !== 28) C("orphan", "people ID is " + p.id.length + " characters; sign-in IDs are normally 28, so this may be an orphan record, not a real account.");
       if (expected && actual !== expected) {
@@ -252,6 +285,7 @@ async function load() {
     if (needsFix) {
       if (expected === "director") fixWhy = "Not changed here: directors are made in Director & Access Management, not by this page.";
       else if (actual === "director" || PLATFORM_ADMINS.has(email)) fixWhy = "Not changed here: this person is a director or super-user, and changing the role would remove that.";
+      else if (matchedBy !== "email") fixWhy = "Not changed here: matched by name only, so check the record by hand first.";
       else if (matches.length > 1) fixWhy = "Not changed here: duplicate people records, so which one to edit is unclear.";
       else if (p.id.length !== 28) fixWhy = "Not changed here: the record ID does not look like a sign-in ID.";
       else fixable = true;
@@ -407,7 +441,7 @@ function renderHelp() {
   HELP_COPY = {};
   const out = [];
   // 1. Faculty-side people with no account at all: batch by role for Bulk User Setup.
-  const noAcc = ROWS.filter(x => x.problems.concat(x.cautions).some(t => t.code === "noaccount_rater") && x.alt.length === 0 && x.email && CREATABLE[x.expected]);
+  const noAcc = ROWS.filter(x => x.problems.concat(x.cautions).some(t => t.code === "noaccount_rater" || t.code === "nologin_rater") && x.alt.length === 0 && x.email && CREATABLE[x.expected]);
   const byRole = {};
   noAcc.forEach(x => { (byRole[x.expected] = byRole[x.expected] || []).push(x.email); });
   const roles = Object.keys(byRole);
