@@ -46,6 +46,9 @@
     .why { font-size:11.5px; color:#8f3309; line-height:1.45; margin-top:3px; }
     .why.soft { color:#856404; }
     .why.info { color:#8a97a3; }
+    .btn-fix { padding:5px 10px; background:#b7410e; color:white; border:none; border-radius:6px; font-size:11.5px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-fix:hover { background:#8f3309; }
+    .btn-fix:disabled { background:#aab8c2; cursor:default; }
     .reasons { font-size:12.5px; margin:0 0 14px; padding:10px 14px; background:#f5f7fa; border-radius:8px; line-height:1.9; }
     .reasons b { color:var(--rmd-navy); }
     .rs { display:inline-block; margin-right:14px; cursor:pointer; border-bottom:1px dotted #aab8c2; }
@@ -92,6 +95,11 @@
         <tbody id="rows"><tr><td colspan="8" class="hint">Loading...</td></tr></tbody>
       </table></div>
     </div>
+  </div>
+
+  <div class="card" id="helpCard" style="display:none;">
+    <div class="card-header">Fixing the rest</div>
+    <div class="card-body" id="help"></div>
   </div>
 
   <div class="card" id="extraCard" style="display:none;">
@@ -142,6 +150,7 @@ const NEEDS = {
 const RATERS = Object.keys(NEEDS);
 
 let ROWS = [];
+let PLATFORM_ADMINS = new Set();
 let filter = "action";
 let reasonFilter = null;
 const REASON_LABEL = {
@@ -160,18 +169,21 @@ function isTestName(name) {
 async function load() {
   document.getElementById("status").textContent = "Loading registrations, people and assignments...";
   document.querySelector("th:nth-child(5)").textContent = "iw_assignments " + CURRENT_IW_YEAR;
-  let regSnap, pSnap, aSnap;
+  let regSnap, pSnap, aSnap, cfgSnap;
   try {
-    [regSnap, pSnap, aSnap] = await Promise.all([
+    [regSnap, pSnap, aSnap, cfgSnap] = await Promise.all([
       db.collection(COLLECTIONS.iwRegistrations).get(),
       db.collection(COLLECTIONS.people).get(),
-      db.collection(COLLECTIONS.iwAssignments).where("year", "==", CURRENT_IW_YEAR).get()
+      db.collection(COLLECTIONS.iwAssignments).where("year", "==", CURRENT_IW_YEAR).get(),
+      db.collection("config").doc("platform").get()
     ]);
   } catch (e) {
     document.getElementById("status").textContent = "Could not load: " + e.message;
     return;
   }
 
+  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  PLATFORM_ADMINS = new Set([].concat(cfg.directors || [], cfg.superUsers || []).map(norm));
   const people = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const byEmail = new Map(), byName = new Map();
   people.forEach(p => {
@@ -197,6 +209,7 @@ async function load() {
     const problems = [];   // hard: will break something
     const cautions = [];   // soft: worth a look
     const infos = [];      // harmless, shown in grey, not counted
+    let alt = [];          // other people records with the same name but a different email
     const P = (code, msg) => problems.push({ code, msg });
     const C = (code, msg) => cautions.push({ code, msg });
     const I = (code, msg) => infos.push({ code, msg });
@@ -206,7 +219,7 @@ async function load() {
     if (!email) P("noemail", "No email on the registration, so no account can be matched.");
     else if (!p) {
       let hint = "";
-      const alt = byName.get(nameKey(r.name)) || [];
+      alt = (byName.get(nameKey(r.name)) || []).filter(a => norm(a.email) && norm(a.email) !== email);
       if (alt.length) hint = " A person with the same name exists under " + alt.map(a => a.email || a.id).join(", ") + ".";
       (isRater ? P : C)(isRater ? "noaccount_rater" : "noaccount_other", "No account found for this email in people." + hint);
     } else {
@@ -232,8 +245,18 @@ async function load() {
       const lacking = Object.keys(need).filter(k => need[k] && !can[k]);
       if (lacking.length && !problems.some(x => x.code === "rolemismatch")) P("refused", "Rules will refuse: " + lacking.join(", ") + ".");
     }
+    // Can the page safely fix this itself? Only one clean, sign-in-shaped record, never touching directors.
+    let fixable = false, fixWhy = "";
+    const needsFix = p && expected && (actual !== expected || (asg && asg !== expected));
+    if (needsFix) {
+      if (expected === "director") fixWhy = "Not changed here: directors are made in Director & Access Management, not by this page.";
+      else if (actual === "director" || PLATFORM_ADMINS.has(email)) fixWhy = "Not changed here: this person is a director or super-user, and changing the role would remove that.";
+      else if (matches.length > 1) fixWhy = "Not changed here: duplicate people records, so which one to edit is unclear.";
+      else if (p.id.length !== 28) fixWhy = "Not changed here: the record ID does not look like a sign-in ID.";
+      else fixable = true;
+    }
     const level = problems.length ? "bad" : (cautions.length ? "warn" : "ok");
-    return { r, p, email, expected, actual, asg, can, problems, cautions, infos, level, isRater };
+    return { r, p, email, expected, actual, asg, can, problems, cautions, infos, level, isRater, fixable, fixWhy, alt, matchCount: matches.length };
   });
 
   ROWS.sort((a, b) => {
@@ -245,7 +268,7 @@ async function load() {
   document.getElementById("status").textContent =
     ROWS.length + " attendees checked for Instructor Weekend " + CURRENT_IW_YEAR + " (" + declined + " declined, not shown). "
     + (nBad ? nBad + " will fail at least one thing they need." : "No hard failures found.");
-  renderPills(); renderReasons(); renderRows(); renderExtra(people, regs);
+  renderPills(); renderReasons(); renderRows(); renderHelp(); renderExtra(people, regs);
 }
 
 function renderPills() {
@@ -297,6 +320,9 @@ function renderRows() {
     const need = x.expected ? (NEEDS[x.expected] || null) : null;
     const tag = x.level === "bad" ? '<span class="tag bad">Will fail</span>' : x.level === "warn" ? '<span class="tag warn">Check</span>' : '<span class="tag ok">OK</span>';
     const why = x.problems.map(t => `<div class="why">${esc(t.msg)}</div>`).join("") + x.cautions.map(t => `<div class="why soft">${esc(t.msg)}</div>`).join("") + x.infos.map(t => `<div class="why info">${esc(t.msg)}</div>`).join("");
+    const fixHtml = x.fixable
+      ? `<div style="margin-top:6px;"><button class="btn-fix" onclick="fixRole('${esc(x.r.id)}', this)">Set role to ${esc(x.expected)}</button></div>`
+      : (x.fixWhy ? `<div class="why info">${esc(x.fixWhy)}</div>` : "");
     return `<tr>
       <td><div class="nm">${esc(x.r.name)}</div><div class="em">${esc(x.r.email)}</div></td>
       <td>${esc(x.r.role)}</td>
@@ -305,7 +331,7 @@ function renderRows() {
       <td>${x.asg ? esc(x.asg) : '<span class="dim">none</span>'}</td>
       <td>${esc(x.expected || "?")}</td>
       <td class="can">${canCell(x.can, need)}${need ? "" : ""}</td>
-      <td>${tag}${why}</td>
+      <td>${tag}${why}${fixHtml}</td>
     </tr>`;
   }).join("");
 }
@@ -322,6 +348,91 @@ function renderExtra(people, regs) {
   items.push("This page cannot see Firebase sign-in accounts directly. An attendee who signs in with a different email from the one registered will show as 'no account' here (or match the wrong record), exactly as Stella's Standing did.");
   document.getElementById("extra").innerHTML = items.map(t => `<p class="hint" style="margin:0 0 10px;">${t}</p>`).join("");
   document.getElementById("extraCard").style.display = "block";
+}
+
+// One person at a time, always confirmed. Writes exactly two docs:
+//   people/{uid}                       role (+ stream, mirroring admin-bulk-users.html), plus an audit trail
+//   iw_assignments/{year}_{uid}        function, same shape admin-bulk-users.html writes
+// Never touches directors, super-users, duplicates or non-UID records (see fixable above).
+async function fixRole(regId, btn) {
+  const x = ROWS.find(z => z.r.id === regId);
+  if (!x || !x.fixable) return;
+  // Re-read the live record immediately before writing, so a stale table cannot overwrite a newer edit.
+  let live;
+  try { live = await db.collection(COLLECTIONS.people).doc(x.p.id).get(); }
+  catch (e) { alert("Could not re-read this person: " + e.message); return; }
+  if (!live.exists) { alert("This person's record no longer exists. Re-check the page."); return; }
+  const nowRole = live.data().role || "";
+  if (nowRole === "director" || PLATFORM_ADMINS.has(norm(live.data().email))) { alert("This person is now a director or super-user. Nothing was changed."); return; }
+  const msg = x.r.name + " (" + x.email + ")\n\n"
+    + "people.role: " + (nowRole || "blank") + "  ->  " + x.expected + "\n"
+    + "iw_assignments " + CURRENT_IW_YEAR + ": " + (x.asg || "none") + "  ->  " + x.expected + "\n\n"
+    + "They registered as \"" + x.r.role + "\". Make this change?";
+  if (!confirm(msg)) return;
+  btn.disabled = true; btn.textContent = "Saving...";
+  try {
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+    const by = (auth.currentUser && auth.currentUser.email) || null;
+    const batch = db.batch();
+    batch.update(db.collection(COLLECTIONS.people).doc(x.p.id), {
+      role: x.expected,
+      stream: x.expected === "faculty" ? "faculty" : x.expected,
+      roleFixedFrom: nowRole,
+      roleFixedAt: ts,
+      roleFixedBy: by,
+      roleFixedVia: "admin-iw-preflight"
+    });
+    batch.set(db.collection(COLLECTIONS.iwAssignments).doc(CURRENT_IW_YEAR + "_" + x.p.id), {
+      year: CURRENT_IW_YEAR, uid: x.p.id, email: x.email, function: x.expected, assignedAt: ts, assignedBy: by
+    }, { merge: true });
+    await batch.commit();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "Set role to " + x.expected;
+    alert("Not saved: " + e.message);
+    return;
+  }
+  await load();
+}
+
+// --- Helpers for the cases this page cannot write itself -----------------------------
+const CREATABLE = { "faculty": "Faculty", "full-instructor": "Instructor Trainer", "assessor-faculty": "Assessor Faculty", "itc": "Instructor Trainer Candidate" };
+let HELP_COPY = {};
+function copyText(key, btn) {
+  const t = HELP_COPY[key];
+  navigator.clipboard.writeText(t).then(() => { const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 1500); },
+                                         () => { btn.textContent = "Could not copy"; });
+}
+function renderHelp() {
+  HELP_COPY = {};
+  const out = [];
+  // 1. Faculty-side people with no account at all: batch by role for Bulk User Setup.
+  const noAcc = ROWS.filter(x => x.problems.concat(x.cautions).some(t => t.code === "noaccount_rater") && x.alt.length === 0 && x.email && CREATABLE[x.expected]);
+  const byRole = {};
+  noAcc.forEach(x => { (byRole[x.expected] = byRole[x.expected] || []).push(x.email); });
+  const roles = Object.keys(byRole);
+  if (roles.length) {
+    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">1. No account at all</h4><p class="hint" style="margin:0 0 8px;">Create logins in <a href="admin-bulk-users.html">Bulk User Setup</a> (card "Add Faculty Accounts"). Pick the role shown, paste the emails, create. Each person gets a set-your-password email, and the page also writes their role and this year\'s assignment, so they come out correct. Do one role at a time.</p>'
+      + roles.map(r => { HELP_COPY["c_" + r] = byRole[r].join("\n");
+        return `<div style="margin-bottom:8px;"><b>${esc(CREATABLE[r])}</b> (${byRole[r].length}): <button class="btn-secondary" onclick="copyText('c_${r}', this)">Copy ${byRole[r].length} email(s)</button></div>`; }).join("")
+      + '<p class="hint" style="margin:0 0 16px;">Directors are not listed here on purpose. Candidates are not listed either: they use QR codes and do not need a login.</p>');
+  }
+  // 2. Probably signed up under another email: same name found with a different email.
+  const swaps = ROWS.filter(x => !x.p && x.alt.length === 1);
+  if (swaps.length) {
+    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">2. Same name, different email</h4><p class="hint" style="margin:0 0 8px;">The account exists under another address. If the <b>registered</b> email is the one they should use, open <a href="admin-bulk-users.html">Bulk User Setup</a>, card "Change Someone\'s Account Email": old = account email, new = registered email. It moves their login and every record matched by email in one go. If the account email is the right one, correct the registration instead and Re-check.</p>'
+      + swaps.map((x, i) => { HELP_COPY["s_" + i + "o"] = x.alt[0].email; HELP_COPY["s_" + i + "n"] = x.email;
+        return `<div style="margin-bottom:8px;font-size:12.5px;"><b>${esc(x.r.name)}</b>: account <code>${esc(x.alt[0].email)}</code> <button class="btn-secondary" onclick="copyText('s_${i}o', this)">Copy as old</button> registered <code>${esc(x.email)}</code> <button class="btn-secondary" onclick="copyText('s_${i}n', this)">Copy as new</button></div>`; }).join("")
+      + '<div style="height:10px;"></div>');
+  }
+  // 3. Duplicates and odd IDs.
+  const dups = ROWS.filter(x => x.matchCount > 1 || (x.p && x.p.id.length !== 28));
+  if (dups.length) {
+    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">3. Duplicate or odd records</h4><p class="hint" style="margin:0 0 8px;">Open <a href="admin-dedupe-people.html">Duplicate People &amp; Account Cleanup</a>. It only offers to delete the older record with no login and keeps the one tied to the real sign-in, and nothing is deleted until you tick it and confirm. Affected here: '
+      + dups.map(x => esc(x.r.name)).join(", ") + '. Then press Re-check.</p>');
+  }
+  const el = document.getElementById("help");
+  el.innerHTML = out.length ? out.join("") : '<p class="hint" style="margin:0;">Nothing here needs those tools right now.</p>';
+  document.getElementById("helpCard").style.display = "block";
 }
 
 function copyProblemEmails() {
