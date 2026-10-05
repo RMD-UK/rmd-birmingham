@@ -333,7 +333,7 @@ let saveDebounce    = {};
 // "Group Practice: BLS/AED" session, only for Instructor Candidates.
 const GATEWAY_SESSION_ID = "sat-8";
 let gateway          = {};     // { candidateId: gateway_assessments data }
-let canRecordGateway = false;  // faculty / director only (matches firestore.rules canAssess)
+let canRecordGateway = false;  // faculty / director, or an Instructor Trainer for their own room (see firestore.rules gateway_assessments)
 let gatewayUnsub     = null;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -392,7 +392,10 @@ window.addEventListener("load", () => {
       isSeniorFaculty(email)
     ]);
     seeAllGroups = (role === "director") || studentFac || seniorFac;
-    canRecordGateway = (role === "faculty" || role === "director");
+    // Faculty and the Director can record any room. An Instructor Trainer
+    // (full-instructor) can record for their OWN room only (firestore.rules
+    // checks people.group matches), so not if they are also viewing all groups.
+    canRecordGateway = (role === "faculty" || role === "director" || (role === "full-instructor" && !seeAllGroups));
     const allowed = ["faculty", "full-instructor", "director"];
     if (!seeAllGroups && !(role && allowed.includes(role))) {
       window.location.href = "timetable.html";

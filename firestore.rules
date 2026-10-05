@@ -499,9 +499,37 @@ service cloud.firestore {
     //   whether a candidate continues to Sunday) must never be silently erasable
     //   by a faculty member; unlocking to correct it is a separate, non-destructive
     //   update (lockedAt: null), already handled above.
+    //
+    // Added 2026-10 (per Jon): an Instructor Trainer (full-instructor) who runs a
+    // room may record the PASS/FAIL gateway result for candidates IN THEIR OWN
+    // ROOM only (same people.group), via the BLS/AED rating in
+    // session-feedback.html. Narrower than canAssess() on purpose: they can only
+    // write outcome + audit fields, only while the doc is not locked, and they
+    // can never lock, flag, sign off or delete. The Course Director's sign-off
+    // (cdConfirmed*) can be cleared (set null) by a changed result, never set.
+    function sameRoomAsMe(candidateId) {
+      return exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        exists(/databases/$(database)/documents/people/$(candidateId)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('group',
+          get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('room', '')) != '' &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('group',
+          get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('room', '')) ==
+        get(/databases/$(database)/documents/people/$(candidateId)).data.get('group', '');
+    }
     match /gateway_assessments/{docId} {
       allow read: if isSignedIn();
       allow create, update: if canAssess();
+      allow create: if isFullInstructor() && sameRoomAsMe(docId)
+        && request.resource.data.keys().hasOnly(['outcome', 'updatedAt', 'assessorUid', 'source'])
+        && request.resource.data.outcome in ['pass', 'fail']
+        && request.resource.data.assessorUid == request.auth.uid;
+      allow update: if isFullInstructor() && sameRoomAsMe(docId)
+        && resource.data.get('lockedAt', null) == null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['outcome', 'updatedAt', 'assessorUid', 'source', 'cdConfirmedAt', 'cdConfirmedBy', 'cdConfirmedOutcome'])
+        && request.resource.data.outcome in ['pass', 'fail']
+        && request.resource.data.get('cdConfirmedBy', null) == null
+        && request.resource.data.assessorUid == request.auth.uid;
       allow delete: if isDirector();
     }
 
@@ -809,29 +837,36 @@ service cloud.firestore {
 
     // ── Instructor Expression of Interest ───────────────────────────────────
     // Open all year, no login — see instructor-eoi.html. Document ID is the
-    // lowercased submitter email, same no-login edit-by-email pattern as
-    // summer_meeting_dietary/faculty_responses above.
-    // get:  public — caller must already know the exact email (= docId).
-    // list: director only — stops one unauthenticated request dumping every
-    //   submitter's name/email/course info.
-    // create/update: public — a resubmission from the same email overwrites
-    //   the previous one rather than creating a duplicate.
-    // delete: authenticated only.
+    // lowercased submitter email.
+    // Tightened 2026-10 (per Jon's review): before, anyone who knew an email
+    // address could READ that person's EOI (name, student number, degree) and
+    // any signed-in user could DELETE one. Now:
+    // get/list: Director and Senior Faculty only (same audience as
+    //   admin-instructor-review.html). instructor-eoi.html only ever WRITES,
+    //   it never reads an EOI back, so closing public reads breaks nothing.
+    // create/update: still public (a resubmission from the same email
+    //   overwrites the previous one), gated on config/instructor_eoi.open,
+    //   and now shape-checked: exactly the seven fields the form sends, doc id
+    //   must equal the lowercased email field, consent ticked, bounded string
+    //   lengths, server timestamp. Known limit: with no login, anyone who knows
+    //   an email address can still overwrite (not read) that person's EOI.
+    // delete: Director only.
     match /instructor_eoi/{docId} {
-      allow get: if true;
-      // list widened 2026-09-27 to isSeniorFaculty() alongside
-      // admin-instructor-review.html (the EOI+OPIS+outcome review tool) —
-      // Jon: "Faculty review the score & expression of interest details".
-      // Deliberately NOT isStudentFaculty() — the review tool is
-      // Director/Senior Faculty only, same gate as opis_ratings below.
-      allow list: if isDirector() || isSeniorFaculty();
-      // create/update additionally gated on config/instructor_eoi.open (added
-      // 2026-09-27, the master on/off in admin-global-tools.html) — a missing
-      // config doc still counts as open, so this doesn't retroactively lock
-      // anyone out before a director has ever visited that toggle.
-      allow create, update: if !exists(/databases/$(database)/documents/config/instructor_eoi)
-        || get(/databases/$(database)/documents/config/instructor_eoi).data.open != false;
-      allow delete: if isSignedIn();
+      allow get, list: if isDirector() || isSeniorFaculty();
+      allow create, update: if (!exists(/databases/$(database)/documents/config/instructor_eoi)
+          || get(/databases/$(database)/documents/config/instructor_eoi).data.open != false)
+        && request.resource.data.keys().hasOnly(['name', 'email', 'studentNumber', 'degree', 'assessmentPassDate', 'acknowledgedNoGuarantee', 'submittedAt'])
+        && request.resource.data.keys().hasAll(['name', 'email', 'studentNumber', 'degree', 'assessmentPassDate', 'acknowledgedNoGuarantee', 'submittedAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email == docId
+        && request.resource.data.email == request.resource.data.email.lower()
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
+        && request.resource.data.studentNumber is string && request.resource.data.studentNumber.size() > 0 && request.resource.data.studentNumber.size() <= 50
+        && request.resource.data.degree is string && request.resource.data.degree.size() > 0 && request.resource.data.degree.size() <= 200
+        && request.resource.data.assessmentPassDate is string && request.resource.data.assessmentPassDate.size() > 0 && request.resource.data.assessmentPassDate.size() <= 40
+        && request.resource.data.acknowledgedNoGuarantee == true
+        && request.resource.data.submittedAt == request.time;
+      allow delete: if isDirector();
     }
 
   }

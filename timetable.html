@@ -497,9 +497,17 @@
     let resources = "";
     if (s.resources && s.resources.length) {
       const isInstructorCandidate = currentRole === "instructor";
-      const visibleResources = isInstructorCandidate
+      // 2026-10, per Jon ("remove slide decks from course materials"):
+      // candidates (instructor and assessor streams) no longer get slide-deck
+      // links on the timetable either. Faculty keep them. To restore for
+      // candidates, set HIDE_SLIDES_FROM_CANDIDATES to false.
+      const HIDE_SLIDES_FROM_CANDIDATES = true;
+      const isSlideDeck = r => r.icon === "📊" || /slides?\b/i.test(r.title || "");
+      const isCandidateRole = currentRole === "instructor" || currentRole === "assessor";
+      let visibleResources = isInstructorCandidate
         ? s.resources.filter(r => !r.embedUrl && r.title !== "Session guide")
         : s.resources;
+      if (HIDE_SLIDES_FROM_CANDIDATES && isCandidateRole) visibleResources = visibleResources.filter(r => !isSlideDeck(r));
       resources = visibleResources.map(r => {
         if (r.embedUrl) {
           return `<div class="video-embed"><iframe src="${r.embedUrl}" allow="autoplay" allowfullscreen></iframe></div>`;

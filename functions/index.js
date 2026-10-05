@@ -3571,36 +3571,58 @@ function isCloseNameMatch(typed, stored) {
 }
 
 /**
- * lookupCandidateRoom - candidate-resources.html's "find your room" tool
- * (2026-10-02, Jon). Deliberately NOT a direct client-side Firestore read
- * of stage1_candidates — that collection is director/Student-Senior-Faculty
- * read-only in firestore.rules (Section 3.5) specifically because it holds
- * every candidate's email and degree alongside their room, and opening it
- * to public read to get at the room field would expose all of that too.
- * This callable instead checks the shared access code server-side (the
- * client-side check on the page proves nothing to the server by itself —
- * it's just UI, not security) against the same config/candidate_access doc,
- * then confirms name + email + course together (Jon, 2026-10-02: "they
- * will need to confirm name, email address & course") before returning a
- * match — email and course matched exactly, name matched exactly OR a
- * close typo-tolerant match (2026-10-03, Jon — see isCloseNameMatch above;
- * a close-name result doesn't return the room, it returns `closeMatch` +
- * the real stored name for the client to confirm first). Never a name
- * search on its own — email+course always narrows to this one candidate
- * before name is even considered, so this can't be used to fish for
- * someone else's room with just a guessed name. Returns only that one
- * candidate's name+room, nothing else. No Firebase Auth — candidates
- * never sign in anywhere on this site — App Check (already loaded on this
- * page) is what guards this callable from abuse instead.
+ * lookupCandidateRoom - candidate-resources.html's "find your course and room"
+ * tool (2026-10-02, Jon; reworked 2026-10-05, Jon: "they don't need to pick
+ * their course, but can enter their degree, full name and email address, and
+ * be told what course they are on and what room they are in").
+ *
+ * Deliberately NOT a direct client-side Firestore read of stage1_candidates:
+ * that collection is director/Student-Senior-Faculty read-only in
+ * firestore.rules (Section 3.5) because it holds every candidate's email and
+ * degree alongside their room. This callable checks the shared access code
+ * server-side (the client-side check proves nothing to the server) against
+ * config/candidate_access, then finds the candidate by EMAIL (exact, stored
+ * lowercase at import) and confirms the full name (exact after normalising
+ * case/accents/punctuation, or a close typo-tolerant match that comes back as
+ * `closeMatch` + the stored name for the client to confirm first).
+ *
+ * Course is no longer typed in: the answer now TELLS the candidate their course
+ * (and its date from config/stage1_course_dates) and room. `course` is still
+ * accepted as an optional filter so a cached older copy of the page keeps
+ * working. Degree is checked loosely (case/punctuation-insensitive, either
+ * side may contain the other) and used to choose between records when one
+ * email has several. A degree mismatch does NOT block the answer while
+ * REQUIRE_DEGREE_MATCH is false, because a wrong dropdown pick is far more
+ * likely than someone else's email and exact name; set it to true to make the
+ * degree a hard requirement.
+ *
+ * Never a name search on its own: email always narrows to that person's
+ * record(s) before name or degree is considered, so this cannot be used to
+ * fish for someone else's room by guessing a name. Returns only that person's
+ * own course, room and assessment slot. No Firebase Auth (candidates never sign
+ * in); App Check guards the callable from abuse.
  */
+const REQUIRE_DEGREE_MATCH = false;
+
+function normalizeDegreeForMatch(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function degreeMatches(typed, stored) {
+  const a = normalizeDegreeForMatch(typed);
+  const b = normalizeDegreeForMatch(stored);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return Math.min(a.length, b.length) >= 4 && (a.includes(b) || b.includes(a));
+}
+
 exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) => {
   const code = (request.data?.code || "").trim().toLowerCase();
-  const course = (request.data?.course || "").trim();
-  const name = (request.data?.name || "").trim().toLowerCase();
+  const course = (request.data?.course || "").trim();      // optional, legacy
+  const degree = (request.data?.degree || "").trim();
+  const name = (request.data?.name || "").trim();
   const email = (request.data?.email || "").trim().toLowerCase();
 
   if (!code) throw new HttpsError("invalid-argument", "Access code required.");
-  if (!course) throw new HttpsError("invalid-argument", "Course required.");
   if (!name) throw new HttpsError("invalid-argument", "Name required.");
   if (!email) throw new HttpsError("invalid-argument", "Email required.");
 
@@ -3610,32 +3632,63 @@ exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) 
     throw new HttpsError("permission-denied", "That access code isn't right.");
   }
 
-  // email is already stored lowercase at import (admin-stage1-candidates.html
-  // confirmImport()), so the equality check matches as-is.
-  const snap = await db.collection("stage1_candidates")
-    .where("course", "==", course)
-    .where("email", "==", email)
-    .get();
-
+  let q = db.collection("stage1_candidates").where("email", "==", email);
+  if (course) q = q.where("course", "==", course);
+  const snap = await q.get();
   const candidates = snap.docs.map(d => d.data());
 
-  const exact = candidates.find(c => (c.name || "").trim().toLowerCase() === name);
-  if (exact) return {
-    found: true,
-    name: exact.name || "",
-    room: exact.room || null,
-    // Assessment room/slot (Step 5, admin-stage1-assessment-allocation.html,
-    // 2026-10-03). Null for anyone not yet allocated an assessment slot —
-    // the client shows "not allocated yet" rather than treating that as an
-    // error. firstTimeAssessment !== false mirrors the allocator's own
-    // eligibility check, so a repeat assessment-taker (managed separately by
-    // RMD faculty) sees that explained instead of a bare "not allocated yet".
-    assessmentRoom: exact.assessmentRoom || null,
-    assessmentSlot: exact.assessmentSlot || null,
-    firstTimeAssessment: exact.firstTimeAssessment !== false,
-  };
+  const wanted = normalizeNameForMatch(name);
+  const nameMatches = candidates.filter(c => normalizeNameForMatch(c.name) === wanted);
 
-  const close = candidates.find(c => isCloseNameMatch(name, c.name || ""));
+  if (nameMatches.length) {
+    const degreeHits = nameMatches.filter(c => degreeMatches(degree, c.degree));
+    if (REQUIRE_DEGREE_MATCH && degree && !degreeHits.length) {
+      return { found: false, degreeMismatch: true };
+    }
+    const chosen = degreeHits.length ? degreeHits : nameMatches;
+
+    // Course dates are not personal data; they make "Course 3" mean something.
+    let dates = {};
+    try {
+      const d = await db.collection("config").doc("stage1_course_dates").get();
+      ((d.exists && d.data().courses) || []).forEach(c => { if (c && c.name) dates[c.name] = c.date || null; });
+    } catch (e) { dates = {}; }
+
+    const seen = new Set();
+    const matches = [];
+    chosen.forEach(c => {
+      const key = [c.course || "", c.room || ""].join("|");
+      if (seen.has(key)) return;            // the same record imported twice
+      seen.add(key);
+      matches.push({
+        course: c.course || null,
+        courseDate: (c.course && dates[c.course]) || null,
+        room: c.room || null,
+        // Assessment room/slot (admin-stage1-assessment-allocation.html).
+        // firstTimeAssessment !== false mirrors the allocator's eligibility
+        // check so a repeat assessment-taker sees that explained.
+        assessmentRoom: c.assessmentRoom || null,
+        assessmentSlot: c.assessmentSlot || null,
+        firstTimeAssessment: c.firstTimeAssessment !== false
+      });
+    });
+    matches.sort((a, b) => String(a.courseDate || "9999").localeCompare(String(b.courseDate || "9999")));
+
+    const first = matches[0];
+    return {
+      found: true,
+      name: chosen[0].name || "",
+      matches,
+      // Flat copies of the first match keep an older cached page working.
+      course: first.course,
+      room: first.room,
+      assessmentRoom: first.assessmentRoom,
+      assessmentSlot: first.assessmentSlot,
+      firstTimeAssessment: first.firstTimeAssessment
+    };
+  }
+
+  const close = candidates.find(c => isCloseNameMatch(name.toLowerCase(), c.name || ""));
   if (close) return { found: false, closeMatch: true, suggestedName: close.name || "" };
 
   return { found: false };

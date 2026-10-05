@@ -107,67 +107,89 @@
     };
   }
 
-  function table(headers, rows) {
+  /**
+   * data: { year, venue, generatedAt:Date, narrative:{label:text}, attendance:{arrived,total},
+   *   rows, assessorRows:[{name, summary}], itcRows:[{name, summary}], feedback, includeComments }
+   *
+   * buildReportModel() turns that into a list of simple blocks, and both the
+   * Word-HTML renderer and the real .docx writer (js/mini-docx.js) draw from the
+   * same model so the two formats cannot drift apart. Block types:
+   *   {t:"h1"|"h2"|"h3", text}  {t:"p", runs:[{text,bold}]}  {t:"ul", items:[text]}
+   *   {t:"table", headers:[], rows:[[]], weights:[]}
+   */
+  function buildReportModel(data) {
+    const gen = data.generatedAt ? data.generatedAt.toLocaleString("en-GB") : "";
+    const passN = data.rows.filter(r => r.recommended === "PASS").length;
+    const failN = data.rows.length - passN;
+    const gwSigned = data.rows.filter(r => r.gatewaySigned === "Yes").length;
+    const b = [];
+    b.push({ t: "h1", text: `RMD Instructor Weekend ${data.year}: Course Report` });
+    b.push({ t: "p", runs: [{ text: (data.venue || "Birmingham Medical School, University of Birmingham") + "\n" + "Generated " + gen +
+      (data.attendance ? "\nAttendance recorded: " + data.attendance.arrived + " arrived" : "") }] });
+
+    Object.entries(data.narrative || {}).forEach(([label, text]) => {
+      if (text && String(text).trim()) { b.push({ t: "h2", text: label }); b.push({ t: "p", runs: [{ text: String(text) }] }); }
+    });
+
+    b.push({ t: "h2", text: "Instructor Candidate results" });
+    b.push({ t: "p", runs: [{ text: `${data.rows.length} Instructor Candidates. Recommended overall course result: ${passN} PASS, ${failN} FAIL. ` +
+      `BLS/AED gateway results signed off by the Course Director: ${gwSigned} of ${data.rows.length}. ` +
+      `The recommended result defaults to PASS, or FAIL where a concern was rated on any session or overall, a concern was flagged, or the gateway was not passed; the Course Director may override it.` }] });
+    b.push({ t: "table",
+      headers: ["Name", "Group", "Gateway", "Recommended", "Basis", "Concerns", "G/A/R (sessions)", "Dev. overall"],
+      weights: [3, 1.2, 2, 1.8, 2.2, 5, 1.6, 1.6],
+      rows: data.rows.map(r => [r.name, r.group, r.gateway + (r.gatewaySigned === "Yes" ? " (signed off)" : ""), r.recommended, r.source, r.concerns || "None", `${r.green}/${r.amber}/${r.red}`, r.overall]) });
+
+    if (data.includeComments) {
+      const withText = data.rows.filter(r => r.notes || r.redComments);
+      if (withText.length) {
+        b.push({ t: "h2", text: "Faculty comments" });
+        withText.forEach(r => {
+          b.push({ t: "h3", text: r.name });
+          if (r.redComments) b.push({ t: "p", runs: [{ text: "Red session comments: ", bold: true }, { text: r.redComments }] });
+          if (r.notes) b.push({ t: "p", runs: [{ text: "Development notes: ", bold: true }, { text: r.notes }] });
+        });
+      }
+    }
+
+    if (data.assessorRows && data.assessorRows.length) {
+      b.push({ t: "h2", text: "Assessor / Senior Instructor candidates" });
+      b.push({ t: "table", headers: ["Name", "Summary of ratings"], weights: [3, 10], rows: data.assessorRows.map(r => [r.name, r.summary]) });
+    }
+    if (data.itcRows && data.itcRows.length) {
+      b.push({ t: "h2", text: "Instructor Trainer Candidates" });
+      b.push({ t: "table", headers: ["Name", "Observation summary"], weights: [3, 10], rows: data.itcRows.map(r => [r.name, r.summary]) });
+    }
+    const f = data.feedback;
+    b.push({ t: "h2", text: "Participant feedback" });
+    if (!f) b.push({ t: "p", runs: [{ text: "No participant feedback recorded." }] });
+    else {
+      b.push({ t: "p", runs: [{ text: `${f.n} response${f.n === 1 ? "" : "s"}. Mean score ${f.overall == null ? "n/a" : f.overall} (scale 1 to 5). Would recommend: ${["Definitely yes", "Probably yes", "Unsure", "No"].map(k => `${k} ${f.recommend[k] || 0}`).join(", ")}.` }] });
+      b.push({ t: "table", headers: ["Area", "Mean"], weights: [4, 2], rows: Object.entries(f.perKey).map(([k, v]) => [k, v == null ? "n/a" : v]) });
+      if (f.valuable.length) { b.push({ t: "h3", text: "Most valuable" }); b.push({ t: "ul", items: f.valuable }); }
+      if (f.suggestions.length) { b.push({ t: "h3", text: "Suggestions" }); b.push({ t: "ul", items: f.suggestions }); }
+    }
+    return b;
+  }
+
+  function htmlTable(headers, rows) {
     return `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-size:9pt;width:100%;">
       <tr style="background:#003B71;color:#fff;">${headers.map(h => `<th align="left">${esc(h)}</th>`).join("")}</tr>
       ${rows.map(r => `<tr>${r.map(c => `<td valign="top">${esc(c)}</td>`).join("")}</tr>`).join("")}
     </table>`;
   }
 
-  /**
-   * data: { year, venue, generatedAt:Date, narrative:{label:text}, attendance:{arrived,total},
-   *   rows, assessorRows:[{name, summary}], itcRows:[{name, summary}], feedback, includeComments }
-   */
+  // Word-compatible HTML (.doc). Kept as a fallback; the main export is the real .docx.
   function buildReportHtml(data) {
-    const gen = data.generatedAt ? data.generatedAt.toLocaleString("en-GB") : "";
-    const passN = data.rows.filter(r => r.recommended === "PASS").length;
-    const failN = data.rows.length - passN;
-    const gwSigned = data.rows.filter(r => r.gatewaySigned === "Yes").length;
-    const parts = [];
-    parts.push(`<h1 style="color:#003B71;">RMD Instructor Weekend ${esc(data.year)}: Course Report</h1>
-      <p>${esc(data.venue || "Birmingham Medical School, University of Birmingham")}<br>Generated ${esc(gen)}${data.attendance ? `<br>Attendance recorded: ${esc(data.attendance.arrived)} arrived` : ""}</p>`);
-
-    Object.entries(data.narrative || {}).forEach(([label, text]) => {
-      if (text && String(text).trim()) parts.push(`<h2 style="color:#003B71;">${esc(label)}</h2><p>${esc(text).replace(/\n/g, "<br>")}</p>`);
+    const parts = buildReportModel(data).map(blk => {
+      if (blk.t === "h1") return `<h1 style="color:#003B71;">${esc(blk.text)}</h1>`;
+      if (blk.t === "h2") return `<h2 style="color:#003B71;">${esc(blk.text)}</h2>`;
+      if (blk.t === "h3") return `<h3>${esc(blk.text)}</h3>`;
+      if (blk.t === "p")  return `<p>${blk.runs.map(r => { const t = esc(r.text).replace(/\n/g, "<br>"); return r.bold ? `<b>${t}</b>` : t; }).join("")}</p>`;
+      if (blk.t === "ul") return `<ul>${blk.items.map(t => `<li>${esc(t)}</li>`).join("")}</ul>`;
+      if (blk.t === "table") return htmlTable(blk.headers, blk.rows);
+      return "";
     });
-
-    parts.push(`<h2 style="color:#003B71;">Instructor Candidate results</h2>
-      <p>${data.rows.length} Instructor Candidates. Recommended overall course result: ${passN} PASS, ${failN} FAIL.
-      BLS/AED gateway results signed off by the Course Director: ${gwSigned} of ${data.rows.length}.
-      The recommended result defaults to PASS, or FAIL where a concern was rated on any session or overall, a concern was flagged, or the gateway was not passed; the Course Director may override it.</p>`);
-    parts.push(table(["Name", "Group", "Gateway", "Recommended", "Basis", "Concerns", "G/A/R (sessions)", "Dev. overall"],
-      data.rows.map(r => [r.name, r.group, r.gateway + (r.gatewaySigned === "Yes" ? " (signed off)" : ""), r.recommended, r.source, r.concerns || "None", `${r.green}/${r.amber}/${r.red}`, r.overall])));
-
-    if (data.includeComments) {
-      const withText = data.rows.filter(r => r.notes || r.redComments);
-      if (withText.length) {
-        parts.push(`<h2 style="color:#003B71;">Faculty comments</h2>`);
-        withText.forEach(r => {
-          parts.push(`<h3>${esc(r.name)}</h3>`);
-          if (r.redComments) parts.push(`<p><b>Red session comments:</b> ${esc(r.redComments)}</p>`);
-          if (r.notes) parts.push(`<p><b>Development notes:</b> ${esc(r.notes)}</p>`);
-        });
-      }
-    }
-
-    if (data.assessorRows && data.assessorRows.length) {
-      parts.push(`<h2 style="color:#003B71;">Assessor / Senior Instructor candidates</h2>`);
-      parts.push(table(["Name", "Summary of ratings"], data.assessorRows.map(r => [r.name, r.summary])));
-    }
-    if (data.itcRows && data.itcRows.length) {
-      parts.push(`<h2 style="color:#003B71;">Instructor Trainer Candidates</h2>`);
-      parts.push(table(["Name", "Observation summary"], data.itcRows.map(r => [r.name, r.summary])));
-    }
-    const f = data.feedback;
-    parts.push(`<h2 style="color:#003B71;">Participant feedback</h2>`);
-    if (!f) parts.push(`<p>No participant feedback recorded.</p>`);
-    else {
-      parts.push(`<p>${f.n} response${f.n === 1 ? "" : "s"}. Mean score ${f.overall == null ? "n/a" : f.overall} (scale 1 to 5). Would recommend: ${["Definitely yes","Probably yes","Unsure","No"].map(k => `${k} ${f.recommend[k] || 0}`).join(", ")}.</p>`);
-      parts.push(table(["Area", "Mean"], Object.entries(f.perKey).map(([k, v]) => [k, v == null ? "n/a" : v])));
-      if (f.valuable.length) parts.push(`<h3>Most valuable</h3><ul>${f.valuable.map(t => `<li>${esc(t)}</li>`).join("")}</ul>`);
-      if (f.suggestions.length) parts.push(`<h3>Suggestions</h3><ul>${f.suggestions.map(t => `<li>${esc(t)}</li>`).join("")}</ul>`);
-    }
-
     return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><title>RMD Instructor Weekend ${esc(data.year)} Course Report</title>
 <style>
@@ -178,7 +200,7 @@ h1 { font-size: 20pt; } h2 { font-size: 14pt; margin-top: 18pt; } h3 { font-size
 </style></head><body><div class="WordSection1">${parts.join("\n")}</div></body></html>`;
   }
 
-  const api = { buildResultRows, toCsv, buildReportHtml, summariseFeedback, CSV_HEAD };
+  const api = { buildResultRows, toCsv, buildReportModel, buildReportHtml, summariseFeedback, CSV_HEAD };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.RMD_COURSE_REPORT = api;
 })(typeof window !== "undefined" ? window : globalThis);

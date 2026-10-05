@@ -767,7 +767,7 @@
 
           <div style="display:flex;gap:10px;align-items:center;margin-top:8px;">
             <button class="btn-export" onclick="exportReport()">📄 Export notes (text)</button>
-            <button class="btn-export" style="background:#1a6e31;" onclick="exportCourseReport()">📘 Course report (Word)</button>
+            <button class="btn-export" style="background:#1a6e31;" onclick="exportCourseReport()">📘 Course report (Word .docx)</button>
             <button class="btn-export" style="background:#1a6e31;" onclick="exportResultsCsv()">📊 Results (CSV)</button>
             <label class="text-sm" style="display:flex;gap:5px;align-items:center;cursor:pointer;"><input type="checkbox" id="repIncludeComments" checked> include faculty comments</label>
             <button class="btn-sm btn-primary" onclick="saveReport()">Save draft</button>
@@ -857,6 +857,7 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/course-result.js"></script>
 <script src="js/course-report.js"></script>
+<script src="js/mini-docx.js"></script>
 <script src="js/programme-data.js?v=202609171730"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1870,11 +1871,14 @@ function renderFeedback(day) {
   }
 
   const reds = [];
+  const RANK = { red: 3, amber: 2, green: 1 };
   body.innerHTML = candidates.map(c => {
-    const fb = byCand[c.id] || [];
-    const latest = fb.sort((a,b) => (b.savedAt?.seconds||0) - (a.savedAt?.seconds||0))[0];
-    const rating = latest?.rating || "none";
-    if (rating === "red") reds.push({ candidate: c, feedback: latest });
+    const fb = (byCand[c.id] || []).slice().sort((a,b) => (b.savedAt?.seconds||0) - (a.savedAt?.seconds||0));
+    // The dot shows the WORST rating given that day (red > amber > green), not
+    // the most recent: a red followed by a later green must not read as green
+    // (2026-10, per Jon). Every red is listed in the detail card below.
+    const worst = fb.reduce((w, f) => (RANK[f.rating] || 0) > (RANK[w] || 0) ? f.rating : w, "none");
+    fb.filter(f => f.rating === "red").forEach(f => reds.push({ candidate: c, feedback: f }));
 
     return `
       <div class="tl-row">
@@ -1885,7 +1889,7 @@ function renderFeedback(day) {
         <div class="tl-sessions">
           ${fb.length ? fb.map(f => `<span class="tl-badge ${f.rating}" title="${esc(f.sessionId)}">${f.rating.charAt(0).toUpperCase()}</span>`).join("") : `<span class="tl-badge none">–</span>`}
         </div>
-        <span class="tl-dot ${rating}"></span>
+        <span class="tl-dot ${worst}" title="Worst rating today"></span>
       </div>`;
   }).join("");
 
@@ -2132,7 +2136,15 @@ async function exportCourseReport() {
   if (msg) msg.textContent = "Building report…";
   try {
     const data = await gatherReportData();
-    downloadBlob(`RMD-Instructor-Weekend-${data.year}-Course-Report.doc`, "application/msword", RMD_COURSE_REPORT.buildReportHtml(data));
+    // Real .docx. If the writer ever throws, fall back to the older Word-compatible .doc
+    // so the Course Director still gets a report.
+    try {
+      const bytes = RMD_MINIDOCX.build(RMD_COURSE_REPORT.buildReportModel(data), { title: `RMD Instructor Weekend ${data.year} Course Report` });
+      downloadBlob(`RMD-Instructor-Weekend-${data.year}-Course-Report.docx`, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", bytes);
+    } catch (docxErr) {
+      console.error("docx build failed, falling back to .doc", docxErr);
+      downloadBlob(`RMD-Instructor-Weekend-${data.year}-Course-Report.doc`, "application/msword", RMD_COURSE_REPORT.buildReportHtml(data));
+    }
     if (msg) msg.textContent = data.failed.length ? "Report built, but could not read: " + data.failed.join(", ") : "Report downloaded.";
   } catch (e) { console.error(e); if (msg) msg.textContent = "Could not build report: " + e.message; }
 }

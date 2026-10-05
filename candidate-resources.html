@@ -69,14 +69,14 @@
 
     <div class="card hidden" id="resourcesCard">
       <div class="card-body">
-        <div class="section-label">Find your room</div>
-        <p class="room-hint">Pick your course and confirm your name and email exactly as you registered — your room allocation will be confirmed before you attend, and definitely by the time your course starts on the first Monday, so if nothing shows yet, check back nearer the time rather than worrying.</p>
-        <select id="courseSelect">
-          <option value="">Select your course…</option>
+        <div class="section-label">Find your course and room</div>
+        <p class="room-hint">Enter your degree, full name and email address exactly as you registered, and we'll tell you which course you are on and which room you are in. If nothing shows yet, your allocation hasn't been confirmed - check back nearer the time rather than worrying.</p>
+        <select id="degreeSelect">
+          <option value="">Select your degree…</option>
         </select>
         <input type="text" id="lookupName" placeholder="Full name" autocomplete="name">
-        <input type="text" id="lookupEmail" placeholder="Email address" autocomplete="email">
-        <button class="btn-primary" id="findRoomBtn" onclick="findRoom()">Find my room</button>
+        <input type="email" id="lookupEmail" placeholder="Email address" autocomplete="email">
+        <button class="btn-primary" id="findRoomBtn" onclick="findRoom()">Find my course and room</button>
         <div class="room-loading" id="roomLoading">Checking…</div>
         <div class="room-result" id="roomResult"></div>
       </div>
@@ -117,36 +117,31 @@ const fns = firebase.functions();
 
 const STORAGE_KEY = "rmdCandidateAccessGranted";
 let enteredAccessCode = ""; // kept in memory only, so findRoom() can re-send it server-side without asking twice
-let pendingCloseMatch = null; // { course, email, suggestedName } while a "did you mean X?" prompt is up — 2026-10-03
+let pendingCloseMatch = null; // { degree, email, suggestedName } while a "did you mean X?" prompt is up — 2026-10-03
 
 function showResources() {
   document.getElementById("gateCard").classList.add("hidden");
   document.getElementById("resourcesCard").classList.remove("hidden");
   document.getElementById("bslCard").classList.remove("hidden");
-  loadCourseOptions();
+  loadDegreeOptions();
 }
 
-// Course dropdown reads config/stage1_course_dates directly (public read —
-// see firestore.rules, same pattern as config/candidate_access) rather
-// than going through a callable, since it's not personal data. Sorted by
-// date so "Course 1" etc. line up chronologically even if typed out of
-// order on Stage 1 Settings.
-async function loadCourseOptions() {
-  const sel = document.getElementById("courseSelect");
-  try {
-    const snap = await db.collection("config").doc("stage1_course_dates").get();
-    const courses = (snap.exists && snap.data().courses ? snap.data().courses : [])
-      .filter(c => c.name)
-      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-    courses.forEach(c => {
-      const opt = document.createElement("option");
-      opt.value = c.name;
-      opt.textContent = c.name;
-      sel.appendChild(opt);
-    });
-  } catch (err) {
-    console.warn("Couldn't load course list:", err);
-  }
+// Degree dropdown: the 9 standard Stage 1 degree names (STAGE1_DEGREE_GROUPS in
+// js/firebase-config.js, the same list the candidate import validates against),
+// plus "Other" for anyone whose degree isn't listed. The server only uses the
+// degree to pick the right record and does not block on a mismatch, so a wrong
+// pick never stops someone seeing their course and room.
+function loadDegreeOptions() {
+  const sel = document.getElementById("degreeSelect");
+  if (sel.options.length > 1) return;
+  Object.keys(STAGE1_DEGREE_GROUPS).forEach(d => {
+    const opt = document.createElement("option");
+    opt.value = d; opt.textContent = d;
+    sel.appendChild(opt);
+  });
+  const other = document.createElement("option");
+  other.value = "Other"; other.textContent = "Other / not listed";
+  sel.appendChild(other);
 }
 
 // Requires name + email + course together, confirming identity rather than
@@ -157,7 +152,7 @@ async function loadCourseOptions() {
 // just be a direct client-side Firestore read (that collection is
 // director/faculty-only).
 async function findRoom() {
-  const course = document.getElementById("courseSelect").value;
+  const degree = document.getElementById("degreeSelect").value;
   const name = document.getElementById("lookupName").value.trim();
   const email = document.getElementById("lookupEmail").value.trim();
   const resultEl = document.getElementById("roomResult");
@@ -165,16 +160,43 @@ async function findRoom() {
   resultEl.style.display = "none";
   resultEl.className = "room-result";
 
-  if (!course) { showRoomResult("notfound", "Select your course first."); return; }
+  if (!degree) { showRoomResult("notfound", "Select your degree first."); return; }
   if (!name) { showRoomResult("notfound", "Enter your full name."); return; }
   if (!email) { showRoomResult("notfound", "Enter your email address."); return; }
 
-  await runRoomLookup(course, name, email);
+  await runRoomLookup(degree, name, email);
 }
 
 // Shared by findRoom() (first attempt, typed name) and confirmCloseMatch()
 // (second attempt, after the candidate confirms a suggested near-match
 // name) — same call either way, just a different name going in. 2026-10-03.
+// "2026-10-12" -> "Monday 12 October 2026"; anything unparseable is shown as stored.
+function formatCourseDate(d) {
+  if (!d) return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d));
+  if (!m) return String(d);
+  const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return dt.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+// One course + room block. 2026-10-05 (Jon): candidates no longer pick their
+// course; they are told it. `several` is true when one email has more than one
+// record (a repeat course), so each block is labelled.
+function courseRoomHtml(m, several) {
+  const courseLine = m.course
+    ? `Your course:<span class="room-value">${escapeHtml(m.course)}</span>` + (m.courseDate ? `<div>${escapeHtml(formatCourseDate(m.courseDate))}</div>` : "")
+    : "";
+  let body;
+  if (!m.course) {
+    body = "You're registered, but you haven't been allocated to a course yet. It will be confirmed before you attend - check back nearer the time.";
+  } else if (m.room) {
+    body = courseLine + `<div style="margin-top:10px;">Your room:<span class="room-value">${escapeHtml(m.room)}</span></div>`;
+  } else {
+    body = courseLine + `<div style="margin-top:10px;">Your room hasn't been confirmed yet. It will be confirmed before you attend, and definitely by the time the course starts on the first Monday - check back nearer the time.</div>`;
+  }
+  return `<div${several ? ' style="margin-bottom:14px;"' : ""}>${body}${assessmentLineHtml(m)}</div>`;
+}
+
 // Assessment room/slot line, appended under the room result (2026-10-03,
 // Jon: "build some tool for candidates to look up when their assessment
 // will be... if they have not been allocated, show message"). A repeat
@@ -192,7 +214,7 @@ function assessmentLineHtml(data) {
   return `<div class="assessment-line">You don't have an assessment slot allocated yet — check back nearer the time.</div>`;
 }
 
-async function runRoomLookup(course, name, email) {
+async function runRoomLookup(degree, name, email) {
   const loadingEl = document.getElementById("roomLoading");
   const btn = document.getElementById("findRoomBtn");
 
@@ -200,27 +222,24 @@ async function runRoomLookup(course, name, email) {
   loadingEl.style.display = "block";
   try {
     const lookup = fns.httpsCallable("lookupCandidateRoom");
-    const res = await lookup({ code: enteredAccessCode, course, name, email });
+    const res = await lookup({ code: enteredAccessCode, degree, name, email });
     const data = res.data || {};
     if (data.found) {
-      if (data.room) {
-        showRoomResult("found", `Your room:<span class="room-value">${escapeHtml(data.room)}</span>` + assessmentLineHtml(data));
-      } else {
-        showRoomResult("pending", "You're on this course, but your room hasn't been confirmed yet. It will be confirmed before you attend, and definitely by the time the course starts on the first Monday — check back nearer the time." + assessmentLineHtml(data));
-      }
+      const list = (data.matches && data.matches.length) ? data.matches : [data];
+      showRoomResult("found", list.map((m, i) => courseRoomHtml(m, list.length > 1)).join(""));
     } else if (data.closeMatch && data.suggestedName) {
       // Name didn't match exactly, but course + email matched exactly one
       // candidate whose name is a close match — confirm before showing
       // anything (2026-10-03, Jon).
-      pendingCloseMatch = { course, email, suggestedName: data.suggestedName };
+      pendingCloseMatch = { degree, email, suggestedName: data.suggestedName };
       showRoomResult("confirm",
-        `We found <strong>${escapeHtml(data.suggestedName)}</strong> on this course with that email — is that you?` +
+        `We found <strong>${escapeHtml(data.suggestedName)}</strong> with that email address - is that you?` +
         `<div class="confirm-actions">` +
           `<button type="button" class="btn-confirm-yes" onclick="confirmCloseMatch()">Yes, that's me</button>` +
           `<button type="button" class="btn-confirm-no" onclick="cancelCloseMatch()">No, that's not me</button>` +
         `</div>`);
     } else {
-      showRoomResult("notfound", "No match for that name, email and course. Double-check they're entered exactly as you registered, or ask your instructor.");
+      showRoomResult("notfound", "No match for that name and email. Double-check they're entered exactly as you registered (the email you gave when you registered), or ask your instructor.");
     }
   } catch (err) {
     showRoomResult("notfound", "Couldn't check that right now — try again in a moment.");
@@ -232,14 +251,14 @@ async function runRoomLookup(course, name, email) {
 
 async function confirmCloseMatch() {
   if (!pendingCloseMatch) return;
-  const { course, email, suggestedName } = pendingCloseMatch;
+  const { degree, email, suggestedName } = pendingCloseMatch;
   pendingCloseMatch = null;
-  await runRoomLookup(course, suggestedName, email);
+  await runRoomLookup(degree, suggestedName, email);
 }
 
 function cancelCloseMatch() {
   pendingCloseMatch = null;
-  showRoomResult("notfound", "No match for that name, email and course. Double-check they're entered exactly as you registered, or ask your instructor.");
+  showRoomResult("notfound", "No match for that name and email. Double-check they're entered exactly as you registered (the email you gave when you registered), or ask your instructor.");
 }
 
 function showRoomResult(kind, html) {

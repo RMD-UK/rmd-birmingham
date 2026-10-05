@@ -61,6 +61,18 @@
       <p class="hint" style="margin-bottom:0;">Each row also has its own CSV button, which opens in Excel for a quick look or for keying results back in. The JSON file keeps full detail (nested ratings, timestamps as ISO dates) and can be restored later if ever needed.</p>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-header">Pre-weekend test data check</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Read-only. Looks for fake or left-over test people (names such as "test", "demo", "dummy", test email addresses, "IW Test" accounts) and for ratings that point at nobody, so they do not appear in the gateway sign-off table, pass confirmation, course report or paper sheets. It changes nothing. Anything it finds can be removed with the <a href="admin-iw-test-cleanup.html">test data cleanup tool</a>, which shows a preview first.</p>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="btn" id="checkBtn" onclick="runTestDataCheck()">Run the check</button>
+        <span class="hint" id="checkMsg"></span>
+      </div>
+      <div id="checkResult"></div>
+    </div>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -194,6 +206,84 @@ async function exportAll() {
   download(`RMD-IW-${CURRENT_IW_YEAR}-backup-${stamp()}.json`, "application/json", JSON.stringify(out, null, 2));
   btn.disabled = false;
   msg.textContent = failed.length ? "Downloaded, but could not read: " + failed.join(", ") : "Downloaded " + picked.length + " sets.";
+}
+
+// ── Pre-weekend test data check (read-only) ──────────────────────────────────
+const TEST_NAME_RE  = /(^|[^a-z])(test|testing|demo|dummy|fake|sample|asdf|xxx)([^a-z]|$)/i;
+const TEST_EMAIL_RE = /(^|[._+-])(test|testing|demo|dummy|fake)\d*([._+-]|@)|@(example\.(com|org|net)|test\.com|mailinator\.com|x)$/i;
+
+function personLabel(r) {
+  return r.name || [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email || r._id;
+}
+// Why does this record look like test data? Returns "" when it does not.
+function testReason(r) {
+  const name = (r.name || [r.firstName, r.lastName].filter(Boolean).join(" ") || "").trim();
+  const email = (r.email || "").trim().toLowerCase();
+  if (/^iw test/i.test(name) || /^instructor trainer (candidate )?test$/i.test(name)) return "name matches the IW test accounts";
+  if (name && TEST_NAME_RE.test(name)) return `name contains a test word ("${name}")`;
+  if (email && TEST_EMAIL_RE.test(email)) return `email looks like a test address (${email})`;
+  if (/^demo/i.test(r._id || "")) return "id starts with demo";
+  return "";
+}
+
+// sets: { people:[], iw_registrations:[], ... } each row has _id. Pure, so it can be tested.
+function findTestData(sets) {
+  const people = sets.people || [];
+  const personIds = new Set(people.map(p => p._id));
+  const testIds = new Set();
+  const findings = [];
+  const add = (collection, id, label, reason, kind) => findings.push({ collection, id, label, reason, kind });
+
+  people.forEach(p => { const why = testReason(p); if (why) { testIds.add(p._id); add("people", p._id, personLabel(p), why, "test person"); } });
+  ["iw_registrations", "mou_roster", "faculty_responses"].forEach(c => {
+    (sets[c] || []).forEach(r => { const why = testReason(r); if (why) add(c, r._id, personLabel(r), why, "test person"); });
+  });
+
+  // Records keyed on / pointing at a person
+  const byCandidate = [["session_feedback", "candidateId"], ["assessor_feedback", "candidateId"], ["development_assessments", "_id"],
+    ["gateway_assessments", "_id"], ["cd_course_results", "_id"], ["attendance", "_id"]];
+  byCandidate.forEach(([c, field]) => {
+    (sets[c] || []).forEach(r => {
+      const pid = r[field];
+      if (!pid) return;
+      if (testIds.has(pid)) add(c, r._id, pid, "belongs to a test person", "linked to test person");
+      else if (!personIds.has(pid)) add(c, r._id, pid, "points at a person who no longer exists", "orphan");
+    });
+  });
+
+  // Rooms listing test people
+  (sets.groups || []).forEach(g => {
+    ["candidates", "instructors"].forEach(k => (g[k] || []).forEach(m => {
+      const why = testReason(m);
+      if (why) add("groups", g._id, personLabel(m) + " (" + k + ")", why, "test person");
+    }));
+  });
+  (sets.itcs || []).forEach(m => { const why = testReason(m); if (why) add("config/itc_schedule", m.email || m.name, personLabel(m), why, "test person"); });
+  return findings;
+}
+
+async function runTestDataCheck() {
+  const btn = document.getElementById("checkBtn"), msg = document.getElementById("checkMsg"), out = document.getElementById("checkResult");
+  btn.disabled = true; msg.textContent = "Reading…"; out.innerHTML = "";
+  const names = ["people", "iw_registrations", "mou_roster", "faculty_responses", "session_feedback", "assessor_feedback", "development_assessments",
+    "gateway_assessments", "cd_course_results", "attendance", "groups"];
+  const sets = {}, failed = [];
+  for (const n of names) { const r = await fetchSet(n); if (r.error) failed.push(n); sets[n] = r.rows; }
+  const itc = await fetchSet("config/itc_schedule");
+  sets.itcs = (itc.rows[0] && itc.rows[0].itcs) || [];
+  const findings = findTestData(sets);
+  btn.disabled = false; render();
+  msg.textContent = failed.length ? "Could not read: " + failed.join(", ") + ". Result below is incomplete." : "Checked " + names.length + " collections.";
+  if (!findings.length) {
+    out.innerHTML = `<div class="note" style="background:#e6f4ea;border-color:#9fd3ad;color:#1a6e31;margin:0;">No test-like people or orphaned ratings found${failed.length ? " in the collections that could be read" : ""}. Still worth a glance at the candidate list on the sign-off table.</div>`;
+    return;
+  }
+  const kinds = {}; findings.forEach(f => { kinds[f.kind] = (kinds[f.kind] || 0) + 1; });
+  out.innerHTML = `<div class="note" style="margin:0 0 10px 0;"><strong>${findings.length} item${findings.length === 1 ? "" : "s"} to review</strong> (${Object.entries(kinds).map(([k, v]) => v + " " + k).join(", ")}). Name or email matching is a guess, so check each one before removing it. A real person called Sample or Demo would show up here too.</div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <tr style="text-align:left;background:#eef2f5;"><th style="padding:6px;">Where</th><th style="padding:6px;">Record</th><th style="padding:6px;">Why flagged</th></tr>
+    ${findings.map(f => `<tr style="border-bottom:1px solid #eef2f5;"><td style="padding:6px;white-space:nowrap;">${esc(f.collection)}</td><td style="padding:6px;">${esc(f.label)}<div class="hint">${esc(f.id)}</div></td><td style="padding:6px;">${esc(f.reason)}</td></tr>`).join("")}
+    </table></div>`;
 }
 
 render();
