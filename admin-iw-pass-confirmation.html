@@ -39,6 +39,9 @@
     .challenge-panel .title { font-weight:700; color:#8f3309; font-size:14px; margin-bottom:8px; }
     .challenge-panel ul { margin:8px 0; padding-left:20px; }
     .challenge-panel label { display:flex; align-items:flex-start; gap:8px; font-size:13px; color:#8f3309; margin:12px 0; cursor:pointer; }
+    .candidate-row .why { font-size:11px; color:var(--rmd-muted); margin-top:2px; max-width:520px; }
+    .candidate-row .why.warn { color:#b7410e; font-weight:700; }
+    .candidate-row { flex-wrap:wrap; }
     .success-banner { background:#e1efe3; border:1px solid #a6d8ae; border-radius:8px; padding:16px; color:#1a6e31; font-size:13px; line-height:1.6; }
   </style>
 </head>
@@ -90,6 +93,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/course-result.js"></script>
 <script>
 
 initFirebase();
@@ -97,7 +101,49 @@ requireDirector("timetable.html");
 
 function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
-let candidates = [];   // { id, name, email, pass: bool, alreadyConfirmed: bool }
+let candidates = [];   // { id, name, email, pass: bool, alreadyConfirmed: bool, why, warn }
+
+// Defaults come from the Course Director's "recommended overall course result"
+// (assessment-development.html -> cd_course_results). With none stored for a
+// candidate, js/course-result.js computes the automatic default: PASS unless
+// there is a red / concern / gateway FAIL. A gateway FAIL that the Course
+// Director has SIGNED OFF (cd-dashboard.html) always defaults to FAIL, even if a
+// PASS was recommended, and is flagged so it gets a second look. Every default
+// can still be toggled below before saving.
+async function loadResultInputs() {
+  const out = { gateway: {}, stored: {}, dev: {}, fb: {} };
+  const grab = async (name, fn) => {
+    try { const snap = await db.collection(name).get(); snap.forEach(d => fn(d.id, d.data())); }
+    catch (e) { console.warn("Could not load " + name + ":", e.message); out.failed = (out.failed || []).concat(name); }
+  };
+  await Promise.all([
+    grab("gateway_assessments",     (id, d) => { out.gateway[id] = d; }),
+    grab("cd_course_results",       (id, d) => { out.stored[id]  = d; }),
+    grab("development_assessments", (id, d) => { out.dev[id]     = d; }),
+    grab("session_feedback",        (id, d) => { if (d.candidateId) (out.fb[d.candidateId] = out.fb[d.candidateId] || []).push(d); })
+  ]);
+  return out;
+}
+
+function defaultFor(id, inputs) {
+  const g    = inputs.gateway[id] || {};
+  const auto = RMD_COURSE_RESULT.autoCourseResult({ dev: inputs.dev[id], feedback: inputs.fb[id], gateway: g });
+  const eff  = RMD_COURSE_RESULT.effectiveCourseResult(auto, inputs.stored[id]);
+  const gwSignedFail = g.outcome === "fail" && g.cdConfirmedBy && g.cdConfirmedOutcome === "fail";
+  let pass = eff.result === "pass";
+  let why, warn = false;
+  if (gwSignedFail) {
+    pass = false;
+    why  = "Gateway FAIL signed off by the Course Director" + (eff.source === "cd" && eff.result === "pass" ? ". Recommended result was PASS, please check." : ".");
+    warn = eff.source === "cd" && eff.result === "pass";
+  } else if (eff.source === "cd") {
+    why  = "Course Director recommended " + eff.result.toUpperCase() + (eff.differs ? " (automatic default was " + auto.result.toUpperCase() + ": " + (auto.reasons.join("; ") || "no concerns") + ")" : "");
+    warn = eff.differs && eff.result === "pass" && auto.reasons.length > 0;
+  } else {
+    why  = auto.reasons.length ? "Automatic: " + auto.reasons.join("; ") : "Automatic: no concerns rated";
+  }
+  return { pass, why, warn };
+}
 
 async function loadCandidates() {
   const listEl = document.getElementById("candidateList");
@@ -117,6 +163,9 @@ async function loadCandidates() {
     });
   } catch (e) { console.warn("Could not load iw_assignments:", e.message); }
 
+  const inputs = await loadResultInputs();
+  if (inputs.failed) summaryEl.textContent = "Could not read: " + inputs.failed.join(", ") + ". Defaults may be incomplete, check each result.";
+
   try {
     const pSnap = await db.collection(COLLECTIONS.people).get();
     pSnap.forEach(doc => {
@@ -125,11 +174,14 @@ async function loadCandidates() {
       if (role !== "instructor") return;
       const history = Array.isArray(d.roleHistory) ? d.roleHistory : [];
       const alreadyConfirmed = history.some(h => h.role === "Instructor" && (h.to === null || h.to === undefined));
+      const def = defaultFor(doc.id, inputs);
       candidates.push({
         id: doc.id,
         name: d.name || d.email || doc.id,
         email: d.email || "",
-        pass: true,
+        pass: def.pass,
+        why: def.why,
+        warn: def.warn,
         alreadyConfirmed
       });
     });
@@ -146,7 +198,10 @@ async function loadCandidates() {
     return;
   }
 
-  summaryEl.textContent = candidates.length + " Instructor Candidate(s) for Instructor Weekend " + CURRENT_IW_YEAR + ".";
+  const nFail = candidates.filter(c => !c.pass).length;
+  summaryEl.textContent = candidates.length + " Instructor Candidate(s) for Instructor Weekend " + CURRENT_IW_YEAR + ". "
+    + (candidates.length - nFail) + " default to PASS, " + nFail + " to FAIL (from the Course Director's recommended results). Check each one, then toggle if needed."
+    + (inputs.failed ? " NOTE: could not read " + inputs.failed.join(", ") + ", so some defaults may be incomplete." : "");
   document.getElementById("reviewSection").style.display = "block";
   renderCandidates();
 }
@@ -158,6 +213,7 @@ function renderCandidates() {
       <div>
         <div class="name">${esc(c.name)}</div>
         <div class="meta">${esc(c.email)}</div>
+        <div class="why ${c.warn ? "warn" : ""}">${esc(c.why || "")}</div>
       </div>
       ${c.alreadyConfirmed ? '<div class="already">Already confirmed</div>' : ''}
       <button class="toggle-pill ${c.pass ? "pass" : "fail"}" onclick="togglePass('${esc(c.id)}')">${c.pass ? "PASS" : "FAIL"}</button>
@@ -188,7 +244,7 @@ function reviewSubmission() {
     <div class="challenge-panel">
       <div class="title">⚠️ Confirm ${fails.length} candidate(s) did NOT pass</div>
       <div>The following will be recorded as not yet confirmed — no Instructor standing will be saved for them, and they can be confirmed later once this is run again:</div>
-      <ul>${fails.map(c => `<li>${esc(c.name)}</li>`).join("")}</ul>
+      <ul>${fails.map(c => `<li>${esc(c.name)}${c.why ? " <span style=\"font-weight:400;\">(" + esc(c.why) + ")</span>" : ""}</li>`).join("")}</ul>
       <label><input type="checkbox" id="challengeCheck" onchange="document.getElementById('confirmSubmitBtn').disabled = !this.checked"> I've checked this list and confirm these ${fails.length} candidate(s) genuinely did not pass Instructor Weekend ${CURRENT_IW_YEAR}.</label>
       <button class="btn-danger" id="confirmSubmitBtn" disabled onclick="submitConfirmation(this)">Save — record ${candidates.length - fails.length} Instructor(s), ${fails.length} not confirmed</button>
     </div>`;

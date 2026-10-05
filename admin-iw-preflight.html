@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructor Weekend - Account Preflight - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 1100px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .card-body { padding:16px; }
+    .note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:16px; line-height:1.5; }
+    .hint { font-size:12px; color:var(--rmd-muted); line-height:1.5; }
+    .pills { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+    .pill { border:2px solid #ccd6dd; background:white; border-radius:10px; padding:8px 14px; cursor:pointer; font-family:var(--font); text-align:left; }
+    .pill.active { border-color:var(--rmd-blue); background:#eef6fb; }
+    .pill .val { font-size:20px; font-weight:800; color:var(--rmd-navy); }
+    .pill .lbl { font-size:11px; color:var(--rmd-muted); text-transform:uppercase; letter-spacing:0.4px; }
+    .pill.bad .val { color:#b7410e; }
+    .pill.good .val { color:#1a6e31; }
+    .btn-secondary { padding:8px 14px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-secondary:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
+    .tbl-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:12.5px; }
+    th { text-align:left; padding:8px 10px; background:#f5f7fa; color:var(--rmd-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; position:sticky; top:0; }
+    td { padding:8px 10px; border-top:1px solid #e8edf2; vertical-align:top; }
+    .nm { font-weight:700; color:var(--rmd-navy); }
+    .em { color:var(--rmd-muted); font-size:11.5px; word-break:break-all; }
+    .tag { display:inline-block; border-radius:10px; padding:2px 9px; font-size:11px; font-weight:700; white-space:nowrap; }
+    .tag.ok { background:#e1efe3; color:#1a6e31; }
+    .tag.warn { background:#fff3cd; color:#856404; }
+    .tag.bad { background:#fce8e6; color:#b7410e; }
+    .tag.na { background:#eef1f4; color:#637282; }
+    .can { white-space:nowrap; font-size:11.5px; }
+    .can span { display:inline-block; margin-right:6px; }
+    .yes { color:#1a6e31; font-weight:700; }
+    .no { color:#b7410e; font-weight:700; }
+    .dim { color:#aab8c2; }
+    .why { font-size:11.5px; color:#8f3309; line-height:1.45; margin-top:3px; }
+    .why.soft { color:#856404; }
+    .why.info { color:#8a97a3; }
+    .btn-fix { padding:5px 10px; background:#b7410e; color:white; border:none; border-radius:6px; font-size:11.5px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-fix:hover { background:#8f3309; }
+    .btn-fix:disabled { background:#aab8c2; cursor:default; }
+    .reasons { font-size:12.5px; margin:0 0 14px; padding:10px 14px; background:#f5f7fa; border-radius:8px; line-height:1.9; }
+    .reasons b { color:var(--rmd-navy); }
+    .rs { display:inline-block; margin-right:14px; cursor:pointer; border-bottom:1px dotted #aab8c2; }
+    .rs.active { border-bottom:2px solid var(--rmd-blue); }
+    code { background:#eef1f4; padding:1px 5px; border-radius:4px; font-size:11.5px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Instructor Weekend - Account Preflight</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only · read-only, writes nothing</div>
+    </div>
+    <a href="admin-iw-registrations.html" class="btn-secondary" style="text-decoration:none;">← IW Registrations</a>
+    <button class="btn-secondary" onclick="load()">Re-check</button>
+  </div>
+
+  <div class="note">
+    The rating forms are protected by Firestore rules that read <strong>only</strong> <code>people/{uid}.role</code>. The
+    <code>iw_assignments</code> function is used by some pages to decide who appears in lists, but the rules ignore it. This page
+    compares the two for every Instructor Weekend attendee so a mismatch shows up now rather than on the day. The "Can write" columns
+    show what the rules will actually allow, based on <code>people.role</code> as it is right now.
+  </div>
+
+  <div class="card">
+    <div class="card-header">Attendees (not declined)</div>
+    <div class="card-body">
+      <div class="hint" id="status" style="margin-bottom:10px;">Loading...</div>
+      <div class="pills" id="pills"></div>
+      <div class="reasons" id="reasons"></div>
+      <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-secondary" onclick="copyProblemEmails()">Copy emails of rows needing action</button>
+        <span class="hint" id="copyMsg" style="align-self:center;"></span>
+      </div>
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Person</th><th>Registered as</th><th>Reg. status</th>
+          <th>people.role (rules)</th><th>iw_assignments {YEAR}</th><th>Should be</th>
+          <th>Can write: session feedback / assessment dev / ITC obs / assessor feedback</th><th>Result</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="hint">Loading...</td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="card" id="helpCard" style="display:none;">
+    <div class="card-header">Fixing the rest</div>
+    <div class="card-body" id="help"></div>
+  </div>
+
+  <div class="card" id="extraCard" style="display:none;">
+    <div class="card-header">Other things worth knowing</div>
+    <div class="card-body" id="extra"></div>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+requireDirector("timetable.html").then(() => load());
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function norm(s) { return (s || "").trim().toLowerCase(); }
+function nameKey(s) { return norm(s).replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim(); }
+
+// Same mapping admin-iw-registrations.html uses when it syncs to people.
+const EXPECTED_ROLE = {
+  "Instructor Candidate":         "instructor",
+  "Assessor / Senior Instructor": "assessor",
+  "Faculty":                      "faculty",
+  "Instructor Trainer Candidate": "itc",
+  "Instructor Trainer":           "full-instructor",
+  "Assessor Faculty":             "assessor-faculty",
+  "Director":                     "director",
+  "RMD Student Faculty":          "faculty"
+};
+// What firestore.rules allow, by people.role (see isFaculty / canAssess / canObserveItc / isAssessorFaculty).
+const CAN = {
+  session:  r => ["faculty", "full-instructor", "director"].includes(r),
+  assess:   r => ["faculty", "director"].includes(r),
+  itc:      r => ["faculty", "full-instructor", "director"].includes(r),
+  assessor: r => ["assessor-faculty", "director"].includes(r)
+};
+// Which of those a role is expected to be able to do.
+const NEEDS = {
+  "faculty":          { session: 1, assess: 1, itc: 1, assessor: 0 },
+  "full-instructor":  { session: 1, assess: 0, itc: 1, assessor: 0 },
+  "assessor-faculty": { session: 0, assess: 0, itc: 0, assessor: 1 },
+  "director":         { session: 1, assess: 1, itc: 1, assessor: 1 }
+};
+const RATERS = Object.keys(NEEDS);
+
+let ROWS = [];
+let PLATFORM_ADMINS = new Set();
+let filter = "action";
+let reasonFilter = null;
+const REASON_LABEL = {
+  noaccount_rater: "faculty-side attendee with no people record", pagesvsrules: "page and rules disagree",
+  rolemismatch: "people.role not what the registration implies", refused: "rules refuse a needed write",
+  noemail: "registration has no email", noaccount_other: "candidate or other: no people record",
+  duplicate: "duplicate people records", orphan: "ID does not look like a sign-in ID",
+  asgdiffers: "iw_assignments differs from registration", candidate_nologin: "candidate with no sign-in (normal)",
+  nologin_rater: "faculty-side: no sign-in at registered email", nologin_other: "candidate or other: no sign-in at registered email",
+  needsync: "has sign-in, needs Sync to People", recordunmatched: "record exists but cannot be matched here",
+  emailfield: "people record found by name only (email field blank or different)", testdata: "leftover test data", unmapped: "unmapped role"
+};
+
+function isTestName(name) {
+  const n = norm(name);
+  return n.startsWith("iw test") || n === "instructor trainer test" || n === "instructor trainer candidate test";
+}
+
+async function load() {
+  document.getElementById("status").textContent = "Loading registrations, people and assignments...";
+  document.querySelector("th:nth-child(5)").textContent = "iw_assignments " + CURRENT_IW_YEAR;
+  let regSnap, pSnap, aSnap, cfgSnap;
+  try {
+    [regSnap, pSnap, aSnap, cfgSnap] = await Promise.all([
+      db.collection(COLLECTIONS.iwRegistrations).get(),
+      db.collection(COLLECTIONS.people).get(),
+      db.collection(COLLECTIONS.iwAssignments).where("year", "==", CURRENT_IW_YEAR).get(),
+      db.collection("config").doc("platform").get()
+    ]);
+  } catch (e) {
+    document.getElementById("status").textContent = "Could not load: " + e.message;
+    return;
+  }
+
+  // Ask the server which registered emails have a real sign-in (read-only dry run of the existing
+  // sync; writes nothing). This is what the "Sync to People" panel reads, so the two agree.
+  let SYNC = null;
+  try {
+    const res = await firebase.functions().httpsCallable("syncIwRegistrationsToPeople")({ dryRun: true });
+    const d = res.data || {};
+    const set = a => new Set((a || []).map(x => norm(x.email)));
+    SYNC = { already: set(d.alreadySynced), toSync: set(d.synced), noAuth: set(d.noAuthAccount) };
+  } catch (e) { console.warn("Sync dry run unavailable:", e.message); }
+  const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+  PLATFORM_ADMINS = new Set([].concat(cfg.directors || [], cfg.superUsers || []).map(norm));
+  const people = pSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const byEmail = new Map(), byName = new Map();
+  people.forEach(p => {
+    const e = norm(p.email);
+    if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e).push(p); }
+    const k = nameKey(p.name);
+    if (k) { if (!byName.has(k)) byName.set(k, []); byName.get(k).push(p); }
+  });
+  const assign = {};
+  aSnap.forEach(d => { const a = d.data(); if (a.uid && a.function) assign[a.uid] = a.function; });
+
+  const regs = regSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const declined = regs.filter(r => r.status === "declined").length;
+  const live = regs.filter(r => r.status !== "declined");
+
+  ROWS = live.map(r => {
+    const email = norm(r.email);
+    const expected = EXPECTED_ROLE[r.role] || null;
+    const matches = email ? (byEmail.get(email) || []) : [];
+    let p = matches[0] || null;
+    let matchedBy = p ? "email" : null;
+    // Has a real sign-in and a uid-keyed record, but the record's email field is blank or different:
+    // fall back to a unique name match so the role can still be checked.
+    if (!p && email && SYNC && SYNC.already.has(email)) {
+      const byN = byName.get(nameKey(r.name)) || [];
+      const blank = byN.filter(a => !norm(a.email));
+      const cand = blank.length === 1 ? blank : (byN.length === 1 ? byN : []);
+      if (cand.length === 1) { p = cand[0]; matchedBy = "name"; }
+    }
+    const actual = p ? (p.role || "") : null;
+    const asg = p ? (assign[p.id] || null) : null;
+    const problems = [];   // hard: will break something
+    const cautions = [];   // soft: worth a look
+    const infos = [];      // harmless, shown in grey, not counted
+    let alt = [];          // other people records with the same name but a different email
+    const P = (code, msg) => problems.push({ code, msg });
+    const C = (code, msg) => cautions.push({ code, msg });
+    const I = (code, msg) => infos.push({ code, msg });
+    const isRater = expected && RATERS.includes(expected);
+
+    if (!expected) C("unmapped", "Registered role \"" + (r.role || "none") + "\" has no mapping, so it cannot be checked.");
+    if (!email) P("noemail", "No email on the registration, so no account can be matched.");
+    else if (!p && SYNC && SYNC.noAuth.has(email)) {
+      if (expected === "director" && PLATFORM_ADMINS.has(email)) I("dirplatform", "No sign-in found at this email, but it is on the platform directors list. Check this is the address you actually sign in with.");
+      else (isRater ? P : C)(isRater ? "nologin_rater" : "nologin_other", "No sign-in exists at this email yet (the sync reports 'no Firebase login'). Create it in Bulk User Setup, or correct the registered email if they use another.");
+    }
+    else if (!p && SYNC && SYNC.toSync.has(email)) {
+      (isRater ? P : C)("needsync", "Has a sign-in but no people record yet. Press Sync in IW Registrations ('Sync to People').");
+    }
+    else if (!p && SYNC && SYNC.already.has(email) && expected === "director") {
+      I("dirrecord", "Has a sign-in and a people record that this page cannot match by email or name. Directors get their rights from the platform list or their own record, and you must already hold them to open this page, so this is not a failure.");
+    }
+    else if (!p && SYNC && SYNC.already.has(email)) {
+      (isRater ? P : C)("recordunmatched", "Has a sign-in and a people record, but the record has no matching email or name here, so this page cannot check its role.");
+    }
+    else if (!p) {
+      let hint = "";
+      alt = (byName.get(nameKey(r.name)) || []).filter(a => norm(a.email) && norm(a.email) !== email);
+      if (alt.length) hint = " A person with the same name exists under " + alt.map(a => a.email || a.id).join(", ") + ".";
+      if (expected === "director" && PLATFORM_ADMINS.has(email)) I("dirplatform", "No people record, but this email is on the platform directors list, so the rules treat them as a director anyway. They just will not appear in people-based lists.");
+      else (isRater ? P : C)(isRater ? "noaccount_rater" : "noaccount_other", "No people record found for this email. This page cannot see sign-in accounts, so they may already have a login and just lack a record." + hint);
+    } else {
+      if (matchedBy === "name") C("emailfield", "Found by name: this person's people record has a blank or different email field, so it cannot be matched by email. Role shown is from that record.");
+      if (matches.length > 1) C("duplicate", matches.length + " people records share this email (duplicates).");
+      // Use the server's view of sign-ins, not the ID length. Candidates check in by QR code and
+      // normally have no login, so a record with an auto-generated ID is expected for them.
+      if (SYNC) {
+        if (SYNC.noAuth.has(email)) {
+          if (isRater) P("nologin_rater", "A people record exists, but there is no sign-in at this email. Ratings need a sign-in, so they cannot submit anything until one exists.");
+          else I("candidate_nologin", "No sign-in at this email. Normal for candidates, who check in by QR code.");
+        } else if (SYNC.toSync.has(email)) {
+          C("needsync", "Has a sign-in, but its own people record is missing (only this older record matched). Press Sync in IW Registrations, then check for a duplicate.");
+        }
+      } else if (p.id.length !== 28) {
+        C("orphan", "people ID is " + p.id.length + " characters; sign-in IDs are normally 28, so this may be an orphan record, not a real account. (Sync lookup unavailable, so this is a guess.)");
+      }
+      if (expected && actual !== expected) {
+        const msg = "people.role is \"" + (actual || "blank") + "\", expected \"" + expected + "\".";
+        ((isRater || (actual && RATERS.includes(actual))) ? P : C)("rolemismatch", msg);
+      }
+      if (asg && expected && asg !== expected) C("asgdiffers", "iw_assignments says \"" + asg + "\", expected \"" + expected + "\".");
+      if (isRater && asg && actual && asg !== actual) P("pagesvsrules", "Pages use \"" + asg + "\" but rules use \"" + actual + "\": the page will let them in and the save will be refused.");
+      if (isRater && !asg && actual === expected) I("noasg", "No iw_assignments record for " + CURRENT_IW_YEAR + ". Harmless: pages fall back to people.role, which is correct.");
+      else if (isRater && !asg) I("noasg", "No iw_assignments record for " + CURRENT_IW_YEAR + " (falls back to people.role).");
+    }
+    if (isTestName(r.name) || (p && isTestName(p.name))) C("testdata", "Looks like leftover test data (see admin-iw-test-cleanup.html).");
+
+    const can = actual == null ? null : {
+      session: CAN.session(actual), assess: CAN.assess(actual), itc: CAN.itc(actual), assessor: CAN.assessor(actual)
+    };
+    // A rater who cannot do something their role needs is a hard problem, even if the role label matches.
+    if (isRater && can) {
+      const need = NEEDS[expected];
+      const lacking = Object.keys(need).filter(k => need[k] && !can[k]);
+      if (lacking.length && !problems.some(x => x.code === "rolemismatch")) P("refused", "Rules will refuse: " + lacking.join(", ") + ".");
+    }
+    // Can the page safely fix this itself? Only one clean, sign-in-shaped record, never touching directors.
+    let fixable = false, fixWhy = "";
+    const needsFix = p && expected && (actual !== expected || (asg && asg !== expected));
+    if (needsFix) {
+      if (expected === "director") fixWhy = "Not changed here: directors are made in Director & Access Management, not by this page.";
+      else if (actual === "director" || PLATFORM_ADMINS.has(email)) fixWhy = "Not changed here: this person is a director or super-user, and changing the role would remove that.";
+      else if (matchedBy !== "email") fixWhy = "Not changed here: matched by name only, so check the record by hand first.";
+      else if (matches.length > 1) fixWhy = "Not changed here: duplicate people records, so which one to edit is unclear.";
+      else if (isRater && p.id.length !== 28) fixWhy = "Not changed here: the record ID does not look like a sign-in ID, so changing it may not affect what the rules see.";
+      else fixable = true;
+    }
+    const level = problems.length ? "bad" : (cautions.length ? "warn" : "ok");
+    return { r, p, email, expected, actual, asg, can, problems, cautions, infos, level, isRater, fixable, fixWhy, alt, matchCount: matches.length };
+  });
+
+  ROWS.sort((a, b) => {
+    const o = { bad: 0, warn: 1, ok: 2 };
+    return (o[a.level] - o[b.level]) || (b.isRater - a.isRater) || String(a.r.name).localeCompare(String(b.r.name));
+  });
+
+  const nBad = ROWS.filter(x => x.level === "bad").length;
+  document.getElementById("status").textContent =
+    ROWS.length + " attendees checked for Instructor Weekend " + CURRENT_IW_YEAR + " (" + declined + " declined, not shown). "
+    + (nBad ? nBad + " will fail at least one thing they need." : "No hard failures found.");
+  renderPills(); renderReasons(); renderRows(); renderHelp(); renderExtra(people, regs);
+}
+
+function renderPills() {
+  const c = { all: ROWS.length, action: ROWS.filter(x => x.level !== "ok").length, bad: ROWS.filter(x => x.level === "bad").length,
+              raters: ROWS.filter(x => x.isRater).length, okraters: ROWS.filter(x => x.isRater && x.level === "ok").length };
+  const mk = (k, lbl, n, cls) => `<button class="pill ${filter === k ? "active" : ""} ${cls || ""}" onclick="setFilter('${k}')"><div class="val">${n}</div><div class="lbl">${lbl}</div></button>`;
+  document.getElementById("pills").innerHTML =
+    mk("action", "Need a look", c.action, c.action ? "bad" : "good") +
+    mk("bad", "Will fail", c.bad, c.bad ? "bad" : "good") +
+    mk("raters", "Raters (faculty side)", c.raters) +
+    mk("okraters", "Raters fully OK", c.okraters, "good") +
+    mk("all", "Everyone", c.all);
+}
+function setFilter(k) { filter = k; reasonFilter = null; renderPills(); renderReasons(); renderRows(); }
+function setReason(c) { reasonFilter = (reasonFilter === c ? null : c); filter = "all"; renderPills(); renderReasons(); renderRows(); }
+function renderReasons() {
+  const n = {}, hard = {};
+  ROWS.forEach(x => {
+    x.problems.forEach(t => { n[t.code] = (n[t.code] || 0) + 1; hard[t.code] = true; });
+    x.cautions.forEach(t => { n[t.code] = (n[t.code] || 0) + 1; });
+  });
+  const keys = Object.keys(n).sort((a, b) => (hard[b] ? 1 : 0) - (hard[a] ? 1 : 0) || n[b] - n[a]);
+  const noasg = ROWS.filter(x => x.infos.some(i => i.code === "noasg")).length;
+  document.getElementById("reasons").innerHTML = "<b>Why rows are flagged</b> (click to filter; red = hard failure):<br>"
+    + (keys.map(c => `<span class="rs ${reasonFilter === c ? "active" : ""}" onclick="setReason('${c}')"><b style="color:${hard[c] ? "#b7410e" : "#856404"}">${n[c]}</b> ${esc(REASON_LABEL[c] || c)}</span>`).join("") || "Nothing flagged.")
+    + (noasg ? `<br><span class="hint">Not counted: ${noasg} faculty-side attendee(s) have no iw_assignments record. That is harmless while their people.role is right.</span>` : "");
+}
+
+function canCell(can, need) {
+  const names = [["session", "S"], ["assess", "A"], ["itc", "I"], ["assessor", "R"]];
+  if (!can) return '<span class="dim">no record</span>';
+  return names.map(([k, l]) => {
+    const has = can[k];
+    if (need && need[k]) return `<span class="${has ? "yes" : "no"}" title="${k}">${l} ${has ? "✓" : "✗"}</span>`;
+    return `<span class="dim" title="${k} (not needed)">${l} ${has ? "✓" : "-"}</span>`;
+  }).join("");
+}
+
+function renderRows() {
+  let rows = ROWS;
+  if (reasonFilter) rows = rows.filter(x => x.problems.concat(x.cautions).some(t => t.code === reasonFilter));
+  else if (filter === "action") rows = rows.filter(x => x.level !== "ok");
+  else if (filter === "bad") rows = rows.filter(x => x.level === "bad");
+  else if (filter === "raters") rows = rows.filter(x => x.isRater);
+  else if (filter === "okraters") rows = rows.filter(x => x.isRater && x.level === "ok");
+  const el = document.getElementById("rows");
+  if (!rows.length) { el.innerHTML = '<tr><td colspan="8" class="hint">Nothing in this view.</td></tr>'; return; }
+  el.innerHTML = rows.map(x => {
+    const need = x.expected ? (NEEDS[x.expected] || null) : null;
+    const tag = x.level === "bad" ? '<span class="tag bad">Will fail</span>' : x.level === "warn" ? '<span class="tag warn">Check</span>' : '<span class="tag ok">OK</span>';
+    const why = x.problems.map(t => `<div class="why">${esc(t.msg)}</div>`).join("") + x.cautions.map(t => `<div class="why soft">${esc(t.msg)}</div>`).join("") + x.infos.map(t => `<div class="why info">${esc(t.msg)}</div>`).join("");
+    const fixHtml = x.fixable
+      ? `<div style="margin-top:6px;"><button class="btn-fix" onclick="fixRole('${esc(x.r.id)}', this)">Set role to ${esc(x.expected)}</button></div>`
+      : (x.fixWhy ? `<div class="why info">${esc(x.fixWhy)}</div>` : "");
+    return `<tr>
+      <td><div class="nm">${esc(x.r.name)}</div><div class="em">${esc(x.r.email)}</div></td>
+      <td>${esc(x.r.role)}</td>
+      <td><span class="tag na">${esc(x.r.status || "")}</span></td>
+      <td>${x.p ? esc(x.actual || "blank") : '<span class="dim">no record</span>'}</td>
+      <td>${x.asg ? esc(x.asg) : '<span class="dim">none</span>'}</td>
+      <td>${esc(x.expected || "?")}</td>
+      <td class="can">${canCell(x.can, need)}${need ? "" : ""}</td>
+      <td>${tag}${why}${fixHtml}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderExtra(people, regs) {
+  const items = [];
+  const testP = people.filter(p => isTestName(p.name));
+  const testR = regs.filter(r => isTestName(r.name));
+  if (testP.length || testR.length) items.push(`Leftover test data: ${testP.length} people record(s) and ${testR.length} registration(s) with test names. Run <a href="admin-iw-test-cleanup.html">the test-data cleanup</a> before the weekend so test accounts do not appear in room lists or ratings.`);
+  const regEmails = new Set(regs.map(r => norm(r.email)));
+  const unreg = people.filter(p => ["faculty", "full-instructor", "assessor-faculty"].includes(p.role) && !regEmails.has(norm(p.email)) && !isTestName(p.name));
+  if (unreg.length) items.push(`${unreg.length} account(s) have a faculty-side <code>people.role</code> but are not on the Instructor Weekend registration list (they can rate, but are not expected): ${unreg.slice(0, 25).map(p => esc(p.name || p.email || p.id)).join(", ")}${unreg.length > 25 ? ", ..." : ""}.`);
+  items.push("Legend for the Can write column: S = session feedback, A = assessment development, I = ITC observations, R = assessor feedback. Green ✓ is needed and allowed, red ✗ is needed and refused, grey is not needed for that role.");
+  items.push("This page cannot see Firebase sign-in accounts directly. An attendee who signs in with a different email from the one registered will show as 'no account' here (or match the wrong record), exactly as Stella's Standing did.");
+  document.getElementById("extra").innerHTML = items.map(t => `<p class="hint" style="margin:0 0 10px;">${t}</p>`).join("");
+  document.getElementById("extraCard").style.display = "block";
+}
+
+// One person at a time, always confirmed. Writes exactly two docs:
+//   people/{uid}                       role (+ stream, mirroring admin-bulk-users.html), plus an audit trail
+//   iw_assignments/{year}_{uid}        function, same shape admin-bulk-users.html writes
+// Never touches directors, super-users, duplicates or non-UID records (see fixable above).
+async function fixRole(regId, btn) {
+  const x = ROWS.find(z => z.r.id === regId);
+  if (!x || !x.fixable) return;
+  // Re-read the live record immediately before writing, so a stale table cannot overwrite a newer edit.
+  let live;
+  try { live = await db.collection(COLLECTIONS.people).doc(x.p.id).get(); }
+  catch (e) { alert("Could not re-read this person: " + e.message); return; }
+  if (!live.exists) { alert("This person's record no longer exists. Re-check the page."); return; }
+  const nowRole = live.data().role || "";
+  if (nowRole === "director" || PLATFORM_ADMINS.has(norm(live.data().email))) { alert("This person is now a director or super-user. Nothing was changed."); return; }
+  const msg = x.r.name + " (" + x.email + ")\n\n"
+    + "people.role: " + (nowRole || "blank") + "  ->  " + x.expected + "\n"
+    + "iw_assignments " + CURRENT_IW_YEAR + ": " + (x.asg || "none") + "  ->  " + x.expected + "\n\n"
+    + "They registered as \"" + x.r.role + "\". Make this change?";
+  if (!confirm(msg)) return;
+  btn.disabled = true; btn.textContent = "Saving...";
+  try {
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+    const by = (auth.currentUser && auth.currentUser.email) || null;
+    const batch = db.batch();
+    batch.update(db.collection(COLLECTIONS.people).doc(x.p.id), {
+      role: x.expected,
+      stream: x.expected === "faculty" ? "faculty" : x.expected,
+      roleFixedFrom: nowRole,
+      roleFixedAt: ts,
+      roleFixedBy: by,
+      roleFixedVia: "admin-iw-preflight"
+    });
+    batch.set(db.collection(COLLECTIONS.iwAssignments).doc(CURRENT_IW_YEAR + "_" + x.p.id), {
+      year: CURRENT_IW_YEAR, uid: x.p.id, email: x.email, function: x.expected, assignedAt: ts, assignedBy: by
+    }, { merge: true });
+    await batch.commit();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "Set role to " + x.expected;
+    alert("Not saved: " + e.message);
+    return;
+  }
+  await load();
+}
+
+// --- Helpers for the cases this page cannot write itself -----------------------------
+const CREATABLE = { "faculty": "Faculty", "full-instructor": "Instructor Trainer", "assessor-faculty": "Assessor Faculty", "itc": "Instructor Trainer Candidate" };
+let HELP_COPY = {};
+function copyText(key, btn) {
+  const t = HELP_COPY[key];
+  navigator.clipboard.writeText(t).then(() => { const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 1500); },
+                                         () => { btn.textContent = "Could not copy"; });
+}
+function renderHelp() {
+  HELP_COPY = {};
+  const out = [];
+  // 1. Faculty-side people with no account at all: batch by role for Bulk User Setup.
+  const noAcc = ROWS.filter(x => x.problems.concat(x.cautions).some(t => t.code === "noaccount_rater" || t.code === "nologin_rater") && x.alt.length === 0 && x.email && CREATABLE[x.expected]);
+  const byRole = {};
+  noAcc.forEach(x => { (byRole[x.expected] = byRole[x.expected] || []).push(x.email); });
+  const roles = Object.keys(byRole);
+  if (roles.length) {
+    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">1. No people record</h4><p class="hint" style="margin:0 0 8px;"><b>Step A (do this first):</b> in <a href="admin-iw-registrations.html">IW Registrations</a> open the grey "Sync to People (backup only)" button at the right of the action bar. It looks each confirmed person up by email. Anyone who already has a login but no record is listed under "new to sync": press Sync, then Re-check here. Anyone who has no login at all is the group below.<br><b>Step B:</b> for the ones the sync could not find, create logins in <a href="admin-bulk-users.html">Bulk User Setup</a> (card "Add Faculty Accounts"). Pick the role shown, paste the emails, create. Each person gets a set-your-password email, and the page also writes their role and this year\'s assignment. Do one role at a time. Before creating, search the name in <a href="admin-dedupe-people.html">Duplicate People &amp; Account Cleanup</a> so you do not make a second account for someone who signed up under another address.</p>'
+      + roles.map(r => { HELP_COPY["c_" + r] = byRole[r].join("\n");
+        return `<div style="margin-bottom:8px;"><b>${esc(CREATABLE[r])}</b> (${byRole[r].length}): <button class="btn-secondary" onclick="copyText('c_${r}', this)">Copy ${byRole[r].length} email(s)</button></div>`; }).join("")
+      + '<p class="hint" style="margin:0 0 16px;">Directors are not listed here on purpose. Candidates are not listed either: they use QR codes and do not need a login.</p>');
+  }
+  // 2. Probably signed up under another email: same name found with a different email.
+  const swaps = ROWS.filter(x => !x.p && x.alt.length === 1);
+  if (swaps.length) {
+    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">2. Same name, different email</h4><p class="hint" style="margin:0 0 8px;">A people record with the same name exists under another address. <b>Run Step A above first</b>: if the sync finds a login at the registered email, they already use that address and the other record is an old duplicate, so use the duplicate cleanup page instead of the email tool (the email tool fails if the new address already has a login). Only if the sync finds no login at the registered address, and the other record is the real login, and the <b>registered</b> email is the one they should use, open <a href="admin-bulk-users.html">Bulk User Setup</a>, card "Change Someone\'s Account Email": old = account email, new = registered email. It moves their login and every record matched by email in one go. If the account email is the right one, correct the registration instead and Re-check.</p>'
+      + swaps.map((x, i) => { HELP_COPY["s_" + i + "o"] = x.alt[0].email; HELP_COPY["s_" + i + "n"] = x.email;
+        return `<div style="margin-bottom:8px;font-size:12.5px;"><b>${esc(x.r.name)}</b>: account <code>${esc(x.alt[0].email)}</code> <button class="btn-secondary" onclick="copyText('s_${i}o', this)">Copy as old</button> registered <code>${esc(x.email)}</code> <button class="btn-secondary" onclick="copyText('s_${i}n', this)">Copy as new</button></div>`; }).join("")
+      + '<div style="height:10px;"></div>');
+  }
+  // 3. Duplicates and odd IDs.
+  const dups = ROWS.filter(x => x.matchCount > 1);
+  if (dups.length) {
+    out.push('<h4 style="margin:0 0 6px;color:var(--rmd-navy);">3. Duplicate or odd records</h4><p class="hint" style="margin:0 0 8px;">Open <a href="admin-dedupe-people.html">Duplicate People &amp; Account Cleanup</a>. It only offers to delete the older record with no login and keeps the one tied to the real sign-in, and nothing is deleted until you tick it and confirm. Affected here: '
+      + dups.map(x => esc(x.r.name)).join(", ") + '. Then press Re-check.</p>');
+  }
+  const el = document.getElementById("help");
+  el.innerHTML = out.length ? out.join("") : '<p class="hint" style="margin:0;">Nothing here needs those tools right now.</p>';
+  document.getElementById("helpCard").style.display = "block";
+}
+
+function copyProblemEmails() {
+  const list = ROWS.filter(x => x.level !== "ok" && x.email).map(x => x.email);
+  const msg = document.getElementById("copyMsg");
+  if (!list.length) { msg.textContent = "Nothing to copy."; return; }
+  navigator.clipboard.writeText(list.join("; ")).then(
+    () => { msg.textContent = list.length + " email(s) copied."; },
+    () => { msg.textContent = "Could not copy."; }
+  );
+}
+</script>
+</body>
+</html>

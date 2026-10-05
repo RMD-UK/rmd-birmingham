@@ -40,7 +40,12 @@
     .history-list { padding:8px 12px; }
     .history-entry { display:flex; gap:10px; align-items:center; padding:5px 0; font-size:12px; border-top:1px solid #f4f6f8; }
     .history-entry:first-child { border-top:none; }
-    .history-entry .role { font-weight:700; color:var(--rmd-navy); min-width:140px; }
+    .rat-note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:12px; line-height:1.5; }
+  .rat-table { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:12px; }
+  .rat-table th { text-align:left; padding:6px 8px; background:#f5f7fa; color:var(--rmd-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.4px; }
+  .rat-table td { padding:6px 8px; border-top:1px solid #e8edf2; vertical-align:top; }
+  .rat-group { font-weight:700; color:var(--rmd-navy); margin:14px 0 6px; }
+  .history-entry .role { font-weight:700; color:var(--rmd-navy); min-width:140px; }
     .history-entry .span { color:var(--rmd-muted); font-family:monospace; }
     .history-entry .open-tag { background:#e2ebf4; color:#2f5a8a; font-size:10px; font-weight:700; padding:1px 6px; border-radius:8px; }
     .history-entry .src { margin-left:auto; color:#aab8c2; font-size:11px; }
@@ -65,8 +70,21 @@
   </div>
 
   <div class="card">
+    <div class="card-header">Ratify permanent roles from the MoU roster</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Sets each person's permanent role (Instructor, Senior Instructor or Assessor) from this year's MoU roster, using the exact spellings the Standing display reads. Student and Senior Faculty are skipped, because their standing comes from the faculty roster. Nothing is written until you review the list and confirm. Earlier role periods are closed, never deleted.</p>
+      <div class="rat-note">People registered as <strong>Instructor Candidate</strong> for this Instructor Weekend are left out and listed separately, because they only become Instructors through <a href="admin-iw-pass-confirmation.html">Pass Confirmation</a>.</div>
+      <label for="ratDate" style="font-weight:700;font-size:13px;">Start date for these roles</label>
+      <input type="date" id="ratDate" value="2026-10-11" style="padding:8px 10px;border:2px solid #ccd6dd;border-radius:6px;font-size:14px;margin:4px 0 12px 8px;">
+      <div><button class="btn-primary" id="ratScanBtn" onclick="ratScan()">🔍 Compare roster with role history</button></div>
+      <div id="ratResults" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header">One-time backfill</div>
     <div class="card-body">
+      <div class="rat-note" style="background:#fce8e6;border-color:#f5b8b0;color:#8f3309;"><strong>Use "Ratify permanent roles" above instead.</strong> This backfill copies each person's <code>people.role</code>, which also holds their Instructor Weekend job (such as faculty or itc), and the Standing display ignores most of those values. Only use it if you understand that.</div>
       <p class="hint" style="margin-top:0;">People who already have a current role but no role history yet (i.e. everyone, before this page existed) can be seeded with a single open period starting from their current role, so the eligibility shortlist and CPD certificate have something to read immediately rather than waiting a full year. The exact start date isn't known for a backfilled period, so it's recorded as "from: unknown" rather than guessed.</p>
       <button class="btn-primary" id="scanBtn" onclick="scanBackfill()">🔍 Scan for people missing role history</button>
       <div id="backfillResults" style="margin-top:14px;"></div>
@@ -253,6 +271,136 @@ async function confirmBackfill() {
   } catch (err) {
     alert("Backfill failed: " + err.message);
   }
+}
+
+// ── Ratify permanent roles from the MoU roster ───────────────────────────────
+// Added 2026-10-04. Writes the exact strings resolveAxisAStanding() reads
+// (AXIS_A_TIER_LABELS in firebase-config.js): "Instructor", "Assessor",
+// "Senior Instructor". Student/Senior Faculty standing comes from faculty_roster,
+// so they are skipped. IW Instructor Candidates are left to Pass Confirmation.
+const RAT_TARGETS = { "instructor": "Instructor", "senior instructor": "Senior Instructor", "assessor": "Assessor" };
+let ratPlan = [];
+
+function ratEsc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function ratNorm(v) { return (v || "").trim().toLowerCase(); }
+function ratNameKey(v) { return ratNorm(v).replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim(); }
+function ratOpenRole(p) {
+  const h = Array.isArray(p.roleHistory) ? p.roleHistory : [];
+  const open = h.filter(x => x.to === null || x.to === undefined);
+  return open.length ? (open[open.length - 1].role || "(blank)") : null;
+}
+
+async function ratScan() {
+  const btn = document.getElementById("ratScanBtn");
+  const out = document.getElementById("ratResults");
+  btn.disabled = true; btn.textContent = "Comparing…";
+  out.innerHTML = "";
+  try {
+    const [rosterSnap, peopleSnap, regSnap] = await Promise.all([
+      db.collection(COLLECTIONS.mouRoster).get(),
+      db.collection(COLLECTIONS.people).get(),
+      db.collection(COLLECTIONS.iwRegistrations).get()
+    ]);
+    const people = peopleSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const byEmail = new Map(), byName = new Map();
+    people.forEach(p => {
+      const e = ratNorm(p.email); if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e).push(p); }
+      const k = ratNameKey(p.name); if (k) { if (!byName.has(k)) byName.set(k, []); byName.get(k).push(p); }
+    });
+    const candidateEmails = new Set();
+    regSnap.forEach(d => { const r = d.data(); if (r.role === "Instructor Candidate" && r.status !== "declined") candidateEmails.add(ratNorm(r.email)); });
+
+    ratPlan = [];
+    const groups = { change: [], ok: [], pass: [], unmatched: [], dup: [], skipped: 0 };
+    rosterSnap.forEach(d => {
+      const m = d.data();
+      const target = RAT_TARGETS[ratNorm(m.role)];
+      if (!target) { groups.skipped++; return; }
+      const email = ratNorm(m.email || d.id);
+      let matches = byEmail.get(email) || [];
+      let how = "email";
+      if (!matches.length) { matches = byName.get(ratNameKey(m.name)) || []; how = "name"; }
+      const row = { name: m.name || email, email, target, how };
+      if (matches.length > 1) { groups.dup.push(row); return; }
+      if (!matches.length) { groups.unmatched.push(row); return; }
+      const p = matches[0];
+      row.uid = p.id; row.current = ratOpenRole(p); row.personName = p.name || p.email || p.id;
+      if (row.current === target) { groups.ok.push(row); return; }
+      if (target === "Instructor" && candidateEmails.has(email)) { groups.pass.push(row); return; }
+      groups.change.push(row);
+    });
+    ratPlan = groups.change;
+    renderRat(groups);
+  } catch (e) {
+    out.innerHTML = '<div class="empty-state">Could not compare: ' + ratEsc(e.message) + '</div>';
+  }
+  btn.disabled = false; btn.textContent = "🔍 Compare roster with role history";
+}
+
+function ratTable(rows, withBox) {
+  return '<table class="rat-table"><thead><tr>' + (withBox ? '<th></th>' : '') + '<th>Person</th><th>Current open role</th><th>Roster says</th><th>Matched by</th></tr></thead><tbody>'
+    + rows.map((r, i) => '<tr>' + (withBox ? '<td><input type="checkbox" class="ratBox" data-i="' + i + '"' + (r.how === "email" ? ' checked' : '') + ' onchange="ratCount()"></td>' : '')
+      + '<td><strong>' + ratEsc(r.name) + '</strong><br><span style="color:#637282;font-size:11.5px;">' + ratEsc(r.email) + '</span></td>'
+      + '<td>' + (r.current === undefined ? '' : (r.current ? ratEsc(r.current) : '<span style="color:#aab8c2;">none</span>')) + '</td>'
+      + '<td>' + ratEsc(r.target) + '</td><td>' + ratEsc(r.how || "") + '</td></tr>').join("") + '</tbody></table>';
+}
+
+function renderRat(g) {
+  const out = document.getElementById("ratResults");
+  let h = '<div class="summary-line">' + g.change.length + ' to change, ' + g.ok.length + ' already correct, ' + g.pass.length + ' left to Pass Confirmation, ' + g.unmatched.length + ' with no people record, ' + g.dup.length + ' duplicated' + (g.skipped ? ', ' + g.skipped + ' Student/Senior Faculty skipped' : '') + '.</div>';
+  if (g.change.length) {
+    h += '<div class="rat-group">Proposed changes (untick any you do not want; rows matched by name only start unticked, so check them first)</div>' + ratTable(g.change, true)
+      + '<button class="btn-primary" id="ratApplyBtn" onclick="ratApply()">Apply 0 changes</button><div id="ratLog" style="margin-top:12px;font-size:13px;"></div>';
+  }
+  if (g.pass.length) h += '<div class="rat-group">Left to Pass Confirmation (registered as Instructor Candidate)</div>' + ratTable(g.pass, false);
+  if (g.unmatched.length) h += '<div class="rat-group">On the roster but no people record found (nothing written)</div>' + ratTable(g.unmatched.map(r => ({ ...r, current: undefined })), false);
+  if (g.dup.length) h += '<div class="rat-group">More than one people record matches (nothing written, sort out duplicates first)</div>' + ratTable(g.dup.map(r => ({ ...r, current: undefined })), false);
+  if (g.ok.length) h += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;color:var(--rmd-navy);">Already correct (' + g.ok.length + ')</summary>' + ratTable(g.ok, false) + '</details>';
+  out.innerHTML = h;
+  ratCount();
+}
+
+function ratChosen() {
+  return Array.from(document.querySelectorAll(".ratBox")).filter(b => b.checked).map(b => ratPlan[Number(b.dataset.i)]);
+}
+function ratCount() {
+  const btn = document.getElementById("ratApplyBtn"); if (!btn) return;
+  const n = ratChosen().length;
+  btn.textContent = "Apply " + n + " change" + (n === 1 ? "" : "s");
+  btn.disabled = n === 0;
+}
+
+async function ratApply() {
+  const date = document.getElementById("ratDate").value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert("Enter a start date first."); return; }
+  const rows = ratChosen();
+  if (!rows.length) return;
+  if (!confirm("Set " + rows.length + " permanent role(s) from " + date + "?\n\nEach person's currently open role period is closed on that date and the roster role is started. Earlier periods are kept. Continue?")) return;
+  const btn = document.getElementById("ratApplyBtn"); btn.disabled = true; btn.textContent = "Saving…";
+  const log = document.getElementById("ratLog"); log.innerHTML = "";
+  let done = 0, skipped = 0, failed = 0;
+  const line = (t, c) => { const d = document.createElement("div"); d.style.color = c || "inherit"; d.textContent = t; log.appendChild(d); };
+  for (const r of rows) {
+    try {
+      const ref = db.collection(COLLECTIONS.people).doc(r.uid);
+      const result = await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error("record no longer exists");
+        const hist = Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory.map(x => ({ ...x })) : [];
+        const open = hist.filter(x => x.to === null || x.to === undefined);
+        if (open.length && open[open.length - 1].role === r.target) return "skipped";
+        hist.forEach(x => { if (x.to === null || x.to === undefined) x.to = date; });
+        hist.push({ role: r.target, from: date, to: null, source: "mou-roster-ratify", note: "Ratified from the MoU roster" });
+        tx.update(ref, { roleHistory: hist });
+        return "done";
+      });
+      if (result === "done") { done++; line("✓ " + r.name + " → " + r.target, "#1a6e31"); }
+      else { skipped++; line("= " + r.name + " already " + r.target + ", unchanged", "#637282"); }
+    } catch (e) { failed++; line("✗ " + r.name + ": " + e.message, "#b7410e"); }
+  }
+  line(done + " saved, " + skipped + " unchanged, " + failed + " failed.", failed ? "#b7410e" : "#1a6e31");
+  btn.textContent = "Done";
+  loadPeople();
 }
 
 loadPeople();

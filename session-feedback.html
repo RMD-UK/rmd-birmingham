@@ -81,6 +81,15 @@
     .candidate-card.rating-green  { border-left-color: #1a6e31; }
     .candidate-card.rating-amber  { border-left-color: #c17a00; }
     .candidate-card.rating-red    { border-left-color: #b7410e; }
+    /* ── Gateway PASS/FAIL row (BLS/AED group practice only) ── */
+    .gateway-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 14px; border-top:1px dashed #d5dce3; background:#f7f9fb; }
+    .gateway-label { font-size:12px; font-weight:700; color:var(--rmd-navy); flex:1; min-width:140px; }
+    .gateway-label small { display:block; font-weight:400; color:var(--rmd-muted); }
+    .gw-btn { border:2px solid #cfd8e0; background:#fff; border-radius:8px; padding:7px 16px; font-family:var(--font); font-size:13px; font-weight:800; cursor:pointer; min-width:74px; }
+    .gw-btn.pass.on { background:#e6f4ea; border-color:#1a6e31; color:#1a6e31; }
+    .gw-btn.fail.on { background:#fce8e6; border-color:#b7410e; color:#b7410e; }
+    .gw-btn:disabled { opacity:.55; cursor:default; }
+    .gw-status { font-size:11px; color:var(--rmd-muted); width:100%; }
 
     .candidate-header {
       padding: 12px 14px 10px;
@@ -317,6 +326,16 @@ let currentSession  = preSession;
 let ratings         = {};      // { candidateId: { rating, comment, strong, weak, savedAt } }
 let saveDebounce    = {};
 
+// ── Gateway PASS/FAIL (added 2026-10) ─────────────────────────────────────
+// The BLS/AED competency gateway is recorded in gateway_assessments/{candidateId}
+// (the SAME record assessment-gateway.html and the Course Director read), so
+// entering it here is not a second copy of the result. Only on the Saturday
+// "Group Practice: BLS/AED" session, only for Instructor Candidates.
+const GATEWAY_SESSION_ID = "sat-8";
+let gateway          = {};     // { candidateId: gateway_assessments data }
+let canRecordGateway = false;  // faculty / director only (matches firestore.rules canAssess)
+let gatewayUnsub     = null;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sessionable sessions — only sessions where faculty submit candidate feedback
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,6 +392,7 @@ window.addEventListener("load", () => {
       isSeniorFaculty(email)
     ]);
     seeAllGroups = (role === "director") || studentFac || seniorFac;
+    canRecordGateway = (role === "faculty" || role === "director");
     const allowed = ["faculty", "full-instructor", "director"];
     if (!seeAllGroups && !(role && allowed.includes(role))) {
       window.location.href = "timetable.html";
@@ -391,6 +411,7 @@ window.addEventListener("load", () => {
     } catch (e) { console.warn("Could not load user doc:", e.message); }
 
     await loadCandidates();
+    startGatewayListener();
     onSessionChange();
   });
 });
@@ -532,6 +553,8 @@ function buildCard(c) {
                 onclick="toggleFlag('${c.id}','weak')">⚠ Notably weak</button>
       </div>
 
+      ${buildGatewayRow(c)}
+
       <div class="comment-wrap ${redVisible}" id="comment-${c.id}">
         <div class="comment-label">Comment required for red rating *</div>
         <textarea class="comment-textarea" id="text-${c.id}"
@@ -540,6 +563,86 @@ function buildCard(c) {
         <div class="comment-prompt">Be specific — this forms part of the faculty meeting record if concerns are escalated.</div>
       </div>
     </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gateway PASS/FAIL (Saturday BLS/AED group practice)
+// ─────────────────────────────────────────────────────────────────────────────
+function isGatewayCandidate(c) {
+  return currentSession === GATEWAY_SESSION_ID && c.role === ROLES.INSTRUCTOR;
+}
+
+function buildGatewayRow(c) {
+  if (!isGatewayCandidate(c)) return "";
+  const g       = gateway[c.id] || {};
+  const outcome = g.outcome || "";
+  const locked  = !!g.lockedAt;
+  const off     = (!canRecordGateway || locked) ? "disabled" : "";
+  let status;
+  if (!outcome)         status = "Not yet recorded. Deadline 12:00.";
+  else if (g.cdConfirmedBy && g.cdConfirmedOutcome === outcome) status = "Confirmed by Course Director.";
+  else if (locked)      status = "Locked. Ask the Course Director to unlock to change it.";
+  else                  status = "Recorded. Not yet confirmed by the Course Director.";
+  if (!canRecordGateway) status = (outcome ? status + " " : "") + "View only for your role. Ask room faculty or the Course Director to record it.";
+  return `<div class="gateway-row" id="gw-${c.id}">
+      <div class="gateway-label">BLS/AED gateway<small>Competency check, pass by 12:00</small></div>
+      <button class="gw-btn pass ${outcome === "pass" ? "on" : ""}" ${off} onclick="setGateway('${c.id}','pass')">PASS</button>
+      <button class="gw-btn fail ${outcome === "fail" ? "on" : ""}" ${off} onclick="setGateway('${c.id}','fail')">FAIL</button>
+      <div class="gw-status">${esc(status)}</div>
+    </div>`;
+}
+
+function refreshGatewayRow(candidateId) {
+  const c  = myCandidates.find(x => x.id === candidateId);
+  const el = document.getElementById("gw-" + candidateId);
+  if (!c || !el) return;
+  el.outerHTML = buildGatewayRow(c);
+}
+
+function startGatewayListener() {
+  if (currentSession !== GATEWAY_SESSION_ID || !db) return;
+  if (gatewayUnsub) gatewayUnsub();
+  gatewayUnsub = db.collection("gateway_assessments").onSnapshot(snap => {
+    snap.docChanges().forEach(ch => {
+      if (ch.type === "removed") delete gateway[ch.doc.id];
+      else gateway[ch.doc.id] = ch.doc.data();
+    });
+    myCandidates.forEach(c => { if (isGatewayCandidate(c)) refreshGatewayRow(c.id); });
+  }, err => console.warn("Gateway listener:", err.message));
+}
+
+async function setGateway(candidateId, outcome) {
+  if (!canRecordGateway) { showToast("Your role can view but not record the gateway result", "red"); return; }
+  const c = myCandidates.find(x => x.id === candidateId);
+  if (!c || c.id.startsWith("demo")) { showToast("Demo candidate, nothing saved"); return; }
+  const ref = db.collection("gateway_assessments").doc(candidateId);
+  try {
+    // Re-read inside a transaction so a result the Course Director has just
+    // locked can never be overwritten from here.
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const cur  = snap.exists ? snap.data() : {};
+      if (cur.lockedAt) throw new Error("locked");
+      const payload = {
+        outcome,
+        updatedAt:   firebase.firestore.FieldValue.serverTimestamp(),
+        assessorUid: currentUser.uid,
+        source:      "session-feedback"
+      };
+      // A changed result invalidates any earlier Course Director confirmation.
+      if (cur.outcome && cur.outcome !== outcome) {
+        payload.cdConfirmedAt = null; payload.cdConfirmedBy = null; payload.cdConfirmedOutcome = null;
+      }
+      tx.set(ref, payload, { merge: true });
+    });
+    showToast(`${c.name}: gateway ${outcome === "pass" ? "PASS" : "FAIL"}`, outcome === "pass" ? "green" : "red");
+    if (outcome === "fail" && !(ratings[candidateId]?.rating)) {
+      showToast("Gateway FAIL recorded. Please also add a traffic light and comment for this candidate.", "red");
+    }
+  } catch (err) {
+    if (err.message === "locked") showToast("Locked by the Course Director. Ask them to unlock it.", "red");
+    else { console.error(err); showToast("Save failed. Check connection or permissions.", "red"); }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

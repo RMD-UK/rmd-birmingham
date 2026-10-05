@@ -339,6 +339,23 @@ function linkifyForEmail(escapedText) {
   });
 }
 
+// 2026-10-05, Jon: "all relevant URLs hyperlinked" in EVERY comms-hub email.
+// linkifyForEmail covers the HTML part; this makes the plain-text part
+// clickable too by upgrading any bare address (rmd.uk.com/page) to a full
+// https:// URL in the message itself, before both versions are built. Leaves
+// existing http(s) URLs and email addresses untouched.
+function ensureFullUrls(text) {
+  const re = /((?:https?:\/\/)?(?:www\.)?[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)*\.(?:com|co\.uk|org\.uk|ac\.uk|uk\.com|org|net|edu)(?:\/[^\s<]*)?)|([A-Za-z0-9][A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+  return String(text || "").replace(re, (match, urlPart, emailPart) => {
+    if (emailPart) return match;
+    let core = match, trail = "";
+    const trailMatch = core.match(/[).,;:]+$/);
+    if (trailMatch) { trail = trailMatch[0]; core = core.slice(0, -trail.length); }
+    if (!core || /^https?:\/\//i.test(core)) return match;
+    return `https://${core}${trail}`;
+  });
+}
+
 function buildBrandedHtmlEmail(bodyText) {
   const paragraphs = String(bodyText || "")
     .split(/\n{2,}/)
@@ -3256,9 +3273,9 @@ async function sendPersonalisedBatch(resend, { subject, message, people }) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   for (const person of people) {
     const firstName = (person.name || "").trim().split(" ")[0] || "there";
-    const personalised = message
+    const personalised = ensureFullUrls(message
       .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
-      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
+      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there"));
     const payload = {
       from: FROM_EMAIL,
       to: person.email,
@@ -3283,6 +3300,15 @@ async function sendPersonalisedBatch(resend, { subject, message, people }) {
     }
   }
   return { sent, sentTo, failedEmails };
+}
+
+// 2026-10-05, Jon: every URL/email in every comms-hub email must be a link.
+// The admin summary copy was text-only, so its URLs and addresses were not
+// clickable. This renders the same summary text as simple HTML (line breaks
+// kept, links added); the plain text stays alongside as the fallback.
+function buildCommsSummaryHtml(text) {
+  const body = linkifyForEmail(escapeHtmlForEmail(text));
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${body}</div>`;
 }
 
 // Builds the paste-ready admin summary copy text shared by sendBulkComms
@@ -3392,7 +3418,8 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
       to: COMMS_BCC,
       replyTo: REPLY_TO,
       subject: `[RMD Comms copy] ${subject} — ${sent} sent${deferred.length ? `, ${deferred.length} queued` : ""}${groupLabel ? ` (${groupLabel})` : ""}`,
-      text: buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails })
+      text: buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }),
+      html: buildCommsSummaryHtml(buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }))
     });
   } catch (err) {
     console.error("sendBulkComms: summary copy to COMMS_BCC failed", err.message);
@@ -3477,7 +3504,8 @@ exports.processCommsQueueDaily = onSchedule(
             to: COMMS_BCC,
             replyTo: REPLY_TO,
             subject: `[RMD Comms copy] ${job.subject} — staggered send complete, ${cumulativeSentTo.length} sent`,
-            text: buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed })
+            text: buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed }),
+            html: buildCommsSummaryHtml(buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed }))
           });
         } catch (err) {
           console.error("processCommsQueueDaily: completion summary failed", err.message);

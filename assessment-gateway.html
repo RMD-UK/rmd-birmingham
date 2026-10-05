@@ -343,8 +343,12 @@ async function loadCandidates() {
       const data = d.data();
       const effectiveRole = iwAssignments[d.id] || data.role;
       if (effectiveRole !== ROLES.INSTRUCTOR) return;
-      candidates[d.id] = { name: data.name || d.id, stream: data.stream || "" };
-      const rm = (data.room || "").toUpperCase();
+      // Room: admin-room-allocation.html saves a person's room as people.group
+      // (the legacy people.room field is never written), so read group first.
+      // Fixed 2026-10: this page only read .room, so on real data no candidate
+      // matched any room.
+      const rm = (data.group || data.room || "").toUpperCase();
+      candidates[d.id] = { name: data.name || d.id, stream: data.stream || "", room: rm };
       if (rm) roomSet.add(rm);
     });
     // Deliberately not falling back to demo data if this filters down to
@@ -518,7 +522,7 @@ function buildCandidateRow(id) {
     <div class="candidate-row ${rowClass}" id="cr-${id}">
       <div class="cr-name">
         ${cand.name}
-        <small>${cand.stream||""}</small>
+        <small>${cand.stream||""}${(outcome && asmnt.cdConfirmedBy && asmnt.cdConfirmedOutcome === outcome) ? " · ✓ signed off by Course Director" : ""}</small>
       </div>
       <div class="cr-outcome">
         <button class="btn-pass ${passClass}" onclick="recordOutcome('${id}','pass')" ${disabled} title="Successful">✓</button>
@@ -644,7 +648,7 @@ function requestUnlock(candidateId) {
   const name = candidates[candidateId] ? candidates[candidateId].name : candidateId;
   if (confirm(`Unlock assessment for ${name}?\n\nThis will allow the outcome to be changed. Tap OK to confirm.`)) {
     unlockPending[candidateId] = true;
-    db.collection("gateway_assessments").doc(candidateId).update({ lockedAt: null })
+    db.collection("gateway_assessments").doc(candidateId).update({ lockedAt: null, cdConfirmedAt: null, cdConfirmedBy: null, cdConfirmedOutcome: null })
       .then(() => {
         delete unlockPending[candidateId];
         showToast("Unlocked — outcome can now be changed", "amber");

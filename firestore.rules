@@ -505,6 +505,18 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+    // ── Course Director recommended overall course result (2026-10) ─────────
+    // One doc per Instructor Candidate (doc id = candidate's people id), written
+    // from assessment-development.html when the Course Director toggles the
+    // "Course result" PASS/FAIL button; read by admin-iw-pass-confirmation.html
+    // to pre-fill its PASS/FAIL defaults. Director only, read and write: it is
+    // a pass/fail recommendation, so candidates and faculty must not see or
+    // change it. Deleting a doc just returns that candidate to the automatic
+    // default (see js/course-result.js).
+    match /cd_course_results/{docId} {
+      allow read, write: if isDirector();
+    }
+
     // ── Development assessments ─────────────────────────────────────────────
     // Read: any signed-in user (candidate can see their own RAG trajectory).
     // Create/update: faculty or director only.

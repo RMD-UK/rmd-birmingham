@@ -34,7 +34,7 @@
     .recipient-row:first-child { border-top:none; }
     .recipient-row .name { font-weight:700; color:var(--rmd-navy); }
     .recipient-row .email { color:var(--rmd-muted); font-family:monospace; font-size:11px; margin-left:8px; }
-    .group-list { max-height:280px; overflow-y:auto; border:1px solid #e8edf2; border-radius:6px; }
+    .group-list { max-height:520px; overflow-y:auto; border:1px solid #e8edf2; border-radius:6px; }
     .group-row { display:flex; align-items:flex-start; gap:10px; padding:9px 12px; font-size:13px; border-top:1px solid #f0f3f6; cursor:pointer; }
     .group-row:first-child { border-top:none; }
     .group-row:hover { background:#f8fafc; }
@@ -183,73 +183,55 @@ async function loadGroups() {
     candidateAccessCode = "";
   }
 
-  // Stage 1 candidates, grouped by course
+  // Stage 1 candidates, grouped by course. 2026-10-05, Jon: Courses 1-6 are
+  // listed from Settings (stage1_course_dates) as well as from candidate
+  // records, so every course shows up as its own stem even before anyone has
+  // been allocated to it.
   const stage1Snap = await db.collection(COLLECTIONS.stage1Candidates).get();
   const stage1 = stage1Snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const courses = Array.from(new Set(stage1.filter(c => c.course).map(c => c.course))).sort(courseSort);
+  const courses = Array.from(new Set([
+    ...Object.keys(courseDatesConfig),
+    ...stage1.filter(c => c.course).map(c => c.course),
+  ])).sort(courseSort);
   courses.forEach(course => {
     const people = stage1.filter(c => c.course === course && c.email).map(c => ({ name: c.name, email: c.email }));
     groups.push({ id: "stage1_" + course, label: `${course} (${people.length})`, people, category: "stage1", courseName: course });
   });
-  const allStage1 = stage1.filter(c => c.email).map(c => ({ name: c.name, email: c.email }));
-  groups.push({ id: "stage1_all", label: `All candidates, any course (${allStage1.length})`, people: allStage1, category: "stage1", isAllLeaf: true });
 
-  // IW roster-based groups
   const rosterSnap = await db.collection(COLLECTIONS.mouRoster).get();
   const roster = rosterSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const rosterGroup = (label, roles) => {
-    const people = roster.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
-    groups.push({ id: "roster_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "iw" });
-  };
-  rosterGroup("Instructor Candidates", ["Instructor"]);
-  rosterGroup("Assessors & Senior Instructors", ["Assessor", "Senior Instructor"]);
-  rosterGroup("RMD Student Faculty", ["RMD Student Faculty"]);
-  rosterGroup("RMD Senior Faculty", ["RMD Senior Faculty"]);
+  const rosterPeople = roles => roster.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
 
-  // Same mou_roster roles as above, listed again under Stage 1 Courses —
-  // 2026-10-02, Jon: wants "all instructors / all Senior Instructors / all
-  // assessors" as options alongside the per-course Stage 1 groups, split out
-  // of the combined "Assessors & Senior Instructors" roster group rather than
-  // a separate data source (confirmed explicitly). Same people, same email —
-  // just a second, differently-labelled way to find them from this tool.
-  const stage1RoleGroup = (label, roles) => {
-    const people = roster.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
-    groups.push({ id: "stage1role_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "stage1", isRoleGroup: true });
+  // RMD staff groups (2026-10-05, Jon). Same mou_roster roles as before.
+  const staffGroup = (label, roles) => {
+    const people = rosterPeople(roles);
+    groups.push({ id: "stage1role_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "staff" });
   };
-  stage1RoleGroup("All Instructors", ["Instructor"]);
-  stage1RoleGroup("All Senior Instructors", ["Senior Instructor"]);
-  stage1RoleGroup("All Assessors", ["Assessor"]);
+  staffGroup("All Instructors", ["Instructor"]);
+  staffGroup("All Senior Instructors", ["Senior Instructor"]);
+  staffGroup("All Assessors", ["Assessor"]);
 
-  // IW faculty_responses-based groups — confirmed attendees only, same
-  // scoping admin-iw-registrations.html uses when pulling from this source.
+  // Instructor weekend. Confirmed attendees only for the faculty_responses
+  // based groups, same scoping admin-iw-registrations.html uses.
   const facSnap = await db.collection("faculty_responses").where("attendanceStatus", "==", "confirmed").get();
   const fac = facSnap.docs.map(d => ({ id: d.id, ...d.data() })).map(d => ({
     name: [d.firstName, d.lastName].filter(Boolean).join(" ") || d.name || d.email, email: d.email, role: d.role
   }));
-  const facGroup = (label, roles) => {
-    const people = fac.filter(m => roles.includes(m.role) && m.email);
-    groups.push({ id: "fac_" + roles.join("_"), label: `${label} (${people.length})`, people, category: "iw" });
-  };
-  facGroup("Instructor Trainers", ["Instructor Trainer"]);
-  facGroup("Instructor Trainer Candidates (ITC)", ["Instructor Trainer Candidate", "ITC"]);
-  facGroup("Assessor Faculty", ["Assessor Faculty"]);
-  facGroup("Faculty", ["Faculty"]);
-  facGroup("Directors", ["Director"]);
+  const facPeople = roles => fac.filter(m => roles.includes(m.role) && m.email).map(m => ({ name: m.name, email: m.email }));
 
-  // Combined convenience groups — built from the individual IW groups above,
-  // shown first and marked distinctly (2026-10-02, Jon: "want to choose some
-  // more groups eg 'all faculty for instructor weekend' and others").
-  const combos = [];
-  const allFacultyPeople = dedupe(fac.filter(m => m.email && ["Instructor Trainer", "Instructor Trainer Candidate", "ITC", "Assessor Faculty", "Faculty", "Director"].includes(m.role)));
-  combos.push({ id: "combo_all_faculty", label: `IW — All Faculty: Instructor Trainers, Assessor Faculty, Faculty, ITC & Directors (${allFacultyPeople.length})`, people: allFacultyPeople, combo: true });
+  const instructorCandidates = rosterPeople(["Instructor"]);
+  groups.push({ id: "roster_Instructor", label: `Instructor Candidates (${instructorCandidates.length})`, people: instructorCandidates, category: "iw" });
 
-  const everyoneIW = dedupe([
-    ...roster.filter(m => m.email).map(m => ({ name: m.name, email: m.email })),
-    ...fac.filter(m => m.email),
+  const itc = facPeople(["Instructor Trainer Candidate", "ITC"]);
+  groups.push({ id: "fac_Instructor Trainer Candidate_ITC", label: `Instructor Trainer Candidates (${itc.length})`, people: itc, category: "iw" });
+
+  // "Faculty" = RMD Student Faculty + RMD Senior Faculty + Instructor
+  // Trainers + Assessor Faculty + Faculty + Directors (de-duplicated by email).
+  const facultyPeople = dedupe([
+    ...rosterPeople(["RMD Student Faculty", "RMD Senior Faculty"]),
+    ...facPeople(["Instructor Trainer", "Assessor Faculty", "Faculty", "Director"]),
   ]);
-  combos.push({ id: "combo_everyone_iw", label: `IW — Everyone, every role & stream (${everyoneIW.length})`, people: everyoneIW, combo: true });
-
-  groups = [...combos, ...groups];
+  groups.push({ id: "iw_faculty", label: `Faculty: Student Faculty, Senior Faculty, Instructor Trainers, Assessor Faculty, Directors (${facultyPeople.length})`, people: facultyPeople, category: "iw" });
 
   renderGroupList();
 }
@@ -271,34 +253,21 @@ function categorySection(title, innerHtml, open) {
 
 function renderGroupList() {
   const list = document.getElementById("groupList");
-  const combos        = groups.filter(g => g.combo);
-  const iwGroups       = groups.filter(g => g.category === "iw");
-  const stage1Courses = groups.filter(g => g.category === "stage1" && !g.isAllLeaf && !g.isRoleGroup);
-  const stage1All     = groups.filter(g => g.category === "stage1" && g.isAllLeaf);
-  const stage1Roles    = groups.filter(g => g.category === "stage1" && g.isRoleGroup);
+  const courseGroups = groups.filter(g => g.category === "stage1" && g.courseName);
+  const staff = groups.filter(g => g.category === "staff");
+  const iw = groups.filter(g => g.category === "iw");
 
-  let html = "";
-  if (combos.length) {
-    html += `<div class="group-divider">Combined groups</div>` + combos.map(groupRowHtml).join("");
-  }
-  if (iwGroups.length) {
-    html += categorySection("🎓 Instructor Weekend", iwGroups.map(groupRowHtml).join(""), false);
-  }
-  if (stage1Courses.length || stage1All.length || stage1Roles.length) {
-    const stems = Array.from(new Set(stage1Courses.map(g => courseStem(g.courseName)))).sort();
-    let inner = stage1All.map(groupRowHtml).join("") + stage1Roles.map(groupRowHtml).join("");
-    const courseRowHtml = g => groupRowHtml(g) + templateActionsHtml(g);
-    if (stems.length > 1) {
-      stems.forEach(stem => {
-        const members = stage1Courses.filter(g => courseStem(g.courseName) === stem);
-        inner += `<details class="group-subcat"><summary>${esc(stem)} (${members.length})</summary>${members.map(courseRowHtml).join("")}</details>`;
-      });
-    } else {
-      inner += stage1Courses.map(courseRowHtml).join("");
-    }
-    html += categorySection("📚 Stage 1 Courses", inner, false);
-  }
-  list.innerHTML = html || `<div class="empty-state">No groups available.</div>`;
+  // 2026-10-05, Jon: three clear sections, in this order - Stage 1 (Monday
+  // evening) courses (each course its own expandable stem, with its email
+  // types inside), RMD staff groups, Instructor weekend.
+  let s1 = "";
+  courseGroups.forEach(g => {
+    s1 += `<details class="group-subcat"><summary>${esc(g.courseName)}</summary>${groupRowHtml(g)}${templateActionsHtml(g)}</details>`;
+  });
+  let html = categorySection("\uD83D\uDCCB Stage 1 (Monday evening) courses", s1, true);
+  html += categorySection("\uD83D\uDC65 RMD staff groups", staff.map(groupRowHtml).join(""), true);
+  html += categorySection("\uD83C\uDF93 Instructor weekend", iw.map(groupRowHtml).join(""), true);
+  list.innerHTML = html;
 }
 
 function formatLongDate(iso) {
@@ -325,9 +294,9 @@ function computeCourseSessionDates(courseName) {
 // placeholders for now") so the UI shape is there without guessing content
 // for templates that haven't been drafted yet.
 const COURSE_TEMPLATES = [
-  { key: "allocation", label: "📧 Allocation email", ready: true },
-  { key: "reminder",   label: "📅 Reminder",         ready: false },
-  { key: "precourse",  label: "📋 Pre-course info",   ready: false },
+  { key: "allocation", label: "\uD83D\uDCE7 Allocation", ready: true },
+  { key: "reminder",   label: "\uD83D\uDCC5 Reminder",   ready: false },
+  { key: "assessment", label: "\uD83D\uDCDD Assessment", ready: false },
 ];
 
 function templateActionsHtml(g) {
@@ -345,8 +314,56 @@ function templateActionsHtml(g) {
 // issue" in Stage1_Course_Allocation_Email_Template.md was resolved;
 // candidates confirm name, email and course there and get their room if
 // it's been set, or a message that it'll be confirmed before the course.
+// ── Shared pieces for EVERY course email (2026-10-05, Jon: "Courses 2-6
+// should always have same formatting as course 1 ... same principle for all
+// emails we send from the bulk comms"). Each course template is built from
+// the same opening, links and sign-off below, so no course (and no future
+// email type) can drift from the others. URLs are always written as full
+// https:// addresses so they are clickable even in plain-text mail clients;
+// the server also upgrades any bare address and links every URL/email in
+// whatever is sent (see ensureFullUrls / linkifyForEmail in functions).
+const CANDIDATE_RESOURCES_URL = "https://rmd.uk.com/candidate-resources.html";
+const BLS_ADMIN_EMAIL = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
+const INSTAGRAM_URL = "https://www.instagram.com/rmdbirmingham/";
+
+function emailOpening() { return "Dear {{first_name}},"; }
+
+function emailSignoff() {
+  return `Kind regards,
+BLS Administrative Team
+RMD Birmingham
+
+RMD Birmingham - Basic Life Support Faculty
+${BLS_ADMIN_EMAIL}
+Instagram: @RMDBirmingham (${INSTAGRAM_URL})`;
+}
+
+// One builder per email type. Every builder returns { subject, body } and
+// must use emailOpening() / emailSignoff() so formatting is identical across
+// all six courses and all email types.
+const COURSE_EMAIL_BUILDERS = {
+  allocation: (courseName, dates, accessCode) => ({
+    subject: `Your BLS Course — ${courseName}: Dates & Room Allocation`,
+    body: [
+      emailOpening(),
+      `We look forward to welcoming you for your BLS course commencing on ${dates.session1}.`,
+      `Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night`,
+      `All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.`,
+      `Instructions for your examination night (session 3) will be sent in the week before.`,
+      `Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at ${CANDIDATE_RESOURCES_URL} — the access code is ${accessCode}, then "Find your room" with your name, email and course. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.`,
+      `The same page also has the BLS reference material (the algorithm and AED guidance) — please take a look before your course starts.`,
+      `If you are unable to attend your BLS session, please email us (${BLS_ADMIN_EMAIL}) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.`,
+      emailSignoff(),
+    ].join("\n\n"),
+  }),
+};
+
 function applyCourseTemplate(kind, groupId, courseName) {
-  if (kind !== "allocation") return; // other keys are placeholders, not wired up
+  const builder = COURSE_EMAIL_BUILDERS[kind];
+  if (!builder) return; // other keys are placeholders, not wired up
   const dates = computeCourseSessionDates(courseName);
   if (!dates) {
     alert(`No date saved for "${courseName}" in Settings yet — add it on admin-stage1-settings.html first, then try this template again.`);
@@ -356,37 +373,19 @@ function applyCourseTemplate(kind, groupId, courseName) {
     alert('No candidate access code is set — add one on the "Candidate resource access code" card on Stage 1 Candidates first, then try this template again.');
     return;
   }
+  // 2026-10-05: untick every other group first - the template is for ONE
+  // course, so a leftover ticked group must never ride along with it.
+  document.querySelectorAll('#groupList input[type=checkbox]').forEach(x => { x.checked = false; });
   const cb = document.querySelector(`#groupList input[type=checkbox][value="${CSS.escape(groupId)}"]`);
-  if (cb) { cb.checked = true; onGroupChange(); }
+  if (cb) {
+    cb.checked = true;
+    onGroupChange();
+    for (let d = cb.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
+  }
 
-  document.getElementById("subjectInput").value = `Your BLS Course — ${courseName}: Dates & Room Allocation`;
-  document.getElementById("messageInput").value =
-`Dear {{first_name}},
-
-We look forward to welcoming you for your BLS course commencing on ${dates.session1}.
-
-Course Dates
-- ${dates.session1}
-- ${dates.session2}
-- ${dates.exam} = Exam Night
-
-All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.
-
-Instructions for your examination night (session 3) will be sent in the week before.
-
-Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at rmd.uk.com/candidate-resources.html — the access code is ${candidateAccessCode}, then "Find your room" with your name, email and course. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.
-
-The same page also has the BLS reference material (the algorithm and AED guidance) — please take a look before your course starts.
-
-If you are unable to attend your BLS session, please email us (colmds-c-rmdbirmingham@adf.bham.ac.uk) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.
-
-Kind regards,
-BLS Administrative Team
-RMD Birmingham
-
-RMD Birmingham - Basic Life Support Faculty
-colmds-c-rmdbirmingham@adf.bham.ac.uk
-Instagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
+  const built = builder(courseName, dates, candidateAccessCode);
+  document.getElementById("subjectInput").value = built.subject;
+  document.getElementById("messageInput").value = built.body;
 
   document.getElementById("subjectInput").scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -413,6 +412,27 @@ function onGroupChange() {
   document.getElementById("previewCard").style.display = "none";
   document.getElementById("confirmBox").checked = false;
   document.getElementById("sendBtn").disabled = true;
+  currentGroup = null; // 2026-10-05: never keep a recipient group from an earlier preview
+}
+
+// 2026-10-05, Jon: a Course 3 message went to Course 1 candidates. Guard: if
+// the subject/message names "Course N" and any ticked course group is a
+// different course, refuse. Only applies when at least one ticked group is a
+// Stage 1 course group; messages naming no course are never blocked.
+function courseMismatchProblem(subject, message, selected) {
+  const tickedCourses = selected.filter(g => g.courseName);
+  if (!tickedCourses.length) return null;
+  const tickedNums = new Set();
+  tickedCourses.forEach(g => (String(g.courseName).match(/\d+/g) || []).forEach(n => tickedNums.add(n)));
+  const mentioned = new Set();
+  const re = /\bcourse\s+(\d+)\b/gi;
+  let m;
+  const text = subject + "\n" + message;
+  while ((m = re.exec(text)) !== null) mentioned.add(m[1]);
+  const wrong = [...mentioned].filter(n => !tickedNums.has(n));
+  if (!wrong.length) return null;
+  return `Stopped: the subject/message mentions Course ${wrong.join(", Course ")} but the ticked group is ${tickedCourses.map(g => g.courseName).join(" + ")}. ` +
+    `Check you have the right template loaded and the right group ticked (nothing has been sent).`;
 }
 
 function previewRecipients() {
@@ -421,6 +441,8 @@ function previewRecipients() {
   const message = document.getElementById("messageInput").value.trim();
   if (!selected.length) { alert("Choose at least one group first."); return; }
   if (!subject || !message) { alert("Write a subject and a message first."); return; }
+  const mismatch = courseMismatchProblem(subject, message, selected);
+  if (mismatch) { alert(mismatch); return; }
 
   currentGroup = {
     label: selected.map(g => g.label).join(" + "),
@@ -448,6 +470,14 @@ async function sendNow() {
   if (!currentGroup || !currentGroup.people.length) return;
   const subject = document.getElementById("subjectInput").value.trim();
   const message = document.getElementById("messageInput").value.trim();
+  // 2026-10-05: re-check at the moment of sending, against what is ticked NOW.
+  const selectedNow = getSelectedGroups();
+  if (selectedNow.map(g => g.label).join(" + ") !== currentGroup.label) {
+    alert("Stopped: the ticked groups no longer match the preview. Click Preview recipients again (nothing has been sent).");
+    return;
+  }
+  const mismatchNow = courseMismatchProblem(subject, message, selectedNow);
+  if (mismatchNow) { alert(mismatchNow); return; }
   const btn = document.getElementById("sendBtn");
   btn.disabled = true;
   btn.textContent = "Sending…";

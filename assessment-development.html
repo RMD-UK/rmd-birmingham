@@ -41,6 +41,24 @@
       color: var(--rmd-muted); cursor: pointer; white-space: nowrap; flex-shrink: 0;
     }
     .room-btn.active { background: var(--rmd-navy); color: white; border-color: var(--rmd-navy); }
+    .room-select {
+      padding: 6px 12px; border-radius: 20px; border: 2px solid #dce3ea; background: white;
+      font-size: 13px; font-weight: 700; font-family: var(--font); color: var(--rmd-navy);
+      cursor: pointer; flex-shrink: 0;
+    }
+    .room-select.active { border-color: var(--rmd-navy); background: var(--rmd-navy); color: white; }
+
+    /* ── Recommended overall course result (Course Director only) ── */
+    table.atbl.no-result .col-result { display: none; }
+    .cr-btn {
+      border: none; border-radius: 14px; padding: 5px 12px; min-width: 62px; font-size: 12px;
+      font-weight: 800; font-family: var(--font); cursor: pointer;
+    }
+    .cr-btn.pass { background: #e1efe3; color: #1a6e31; border: 2px solid #1a6e31; }
+    .cr-btn.fail { background: #fce8e6; color: #b7410e; border: 2px solid #b7410e; }
+    .cr-src { font-size: 10px; color: var(--rmd-muted); margin-top: 3px; line-height: 1.3; max-width: 120px; }
+    .cr-src.warn { color: #b7410e; font-weight: 700; }
+    .cr-reset { border: none; background: none; color: var(--rmd-muted); cursor: pointer; font-size: 12px; padding: 0 2px; }
 
     /* ── Views ── */
     .view { display: none; }
@@ -253,10 +271,11 @@
           <th>Overall</th>
           <th>Flag</th>
           <th>Notes</th>
+          <th class="col-result">Course<br>result</th>
         </tr>
       </thead>
       <tbody id="assessBody">
-        <tr><td colspan="9"><div class="loading">Loading…</div></td></tr>
+        <tr><td colspan="10"><div class="loading">Loading…</div></td></tr>
       </tbody>
     </table>
   </div>
@@ -276,6 +295,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/course-result.js"></script>
 <script>
 
 // ── URL params ──────────────────────────────────────────────────────────────
@@ -310,6 +330,16 @@ var currentRoom   = myRoom || "all";
 var currentOvRoom = "all";
 var saveTimers    = {};       // per-candidate debounce for notes
 var unsubscribe   = null;
+
+// ── Recommended overall course result (Course Director only; 2026-10) ───────
+// cd_course_results/{candidateId} holds the Course Director's explicit choice.
+// With no choice stored, the default is computed live (js/course-result.js):
+// PASS, unless there is a red on a session / checkpoint / overall, a concern
+// flag, or a gateway FAIL.
+var gatewayMap   = {};   // {candidateId: gateway_assessments data}
+var feedbackMap  = {};   // {candidateId: [session_feedback docs]}
+var courseResult = {};   // {candidateId: cd_course_results data}
+var crUnsubs     = [];
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 var authResolved = false;
@@ -357,6 +387,7 @@ async function boot() {
   await loadCandidates();
   buildRoomStrips();
   startListener();
+  setupCourseResult();
 }
 
 // ── Load candidates ──────────────────────────────────────────────────────────
@@ -391,7 +422,8 @@ async function loadCandidates() {
             id:            d.id,
             name:          data.name   || d.id,
             stream:        data.stream || "Instructor Candidate",
-            room:          (data.room  || "").toUpperCase(),
+            // people.group is what admin-room-allocation.html writes; people.room is legacy/never written (fixed 2026-10)
+            room:          (data.group || data.room || "").toUpperCase(),
             effectiveRole: iwAssignments[d.id] || data.role
           };
         })
@@ -440,8 +472,25 @@ function buildRoomStrips() {
   const makeBtn = (r, prefix, active) =>
     `<button class="room-btn ${active?'active':''}" id="${prefix}-${r}" onclick="${prefix==='room'?'setRoom':'setOvRoom'}('${r}')">${r === 'all' ? 'All rooms' : r}</button>`;
 
-  document.getElementById("roomStrip").innerHTML   = rooms.map(r => makeBtn(r, "room",   r === currentRoom)).join("");
-  document.getElementById("ovRoomStrip").innerHTML = ["all",...allRooms].map(r => makeBtn(r, "ovroom", r === currentOvRoom)).join("");
+  // Room dropdown (2026-10, per Jon): sits alongside the "All rooms" button so
+  // one room can be picked from a list as well as from the pills. Only shown
+  // when there is more than one room to choose from.
+  const makeSel = (prefix, current, list) => {
+    if (list.length < 2) return "";
+    const handler = prefix === "room" ? "setRoom" : "setOvRoom";
+    return `<select class="room-select ${current !== 'all' ? 'active' : ''}" id="${prefix}-select" onchange="${handler}(this.value)" title="Pick a room">
+      <option value="all" ${current === 'all' ? 'selected' : ''}>Room…</option>
+      ${list.filter(r => r !== 'all').map(r => `<option value="${r}" ${r === current ? 'selected' : ''}>${r}</option>`).join("")}
+    </select>`;
+  };
+  const roomBtns = rooms.map(r => makeBtn(r, "room", r === currentRoom));
+  const ovRooms  = ["all", ...allRooms];
+  const ovBtns   = ovRooms.map(r => makeBtn(r, "ovroom", r === currentOvRoom));
+  // Dropdown goes straight after the first ("All rooms") button.
+  document.getElementById("roomStrip").innerHTML   = rooms.length > 1 && rooms[0] === "all"
+    ? roomBtns[0] + makeSel("room", currentRoom, rooms) + roomBtns.slice(1).join("")
+    : roomBtns.join("");
+  document.getElementById("ovRoomStrip").innerHTML = ovBtns[0] + makeSel("ovroom", currentOvRoom, ovRooms) + ovBtns.slice(1).join("");
 }
 
 // ── Firestore listener ───────────────────────────────────────────────────────
@@ -478,6 +527,7 @@ function setRoom(r) {
   document.querySelectorAll(".room-btn[id^='room-']").forEach(b => b.classList.remove("active"));
   const el = document.getElementById("room-" + r);
   if (el) el.classList.add("active");
+  syncRoomSelect("room-select", r);
   renderAssessTable();
 }
 
@@ -486,7 +536,15 @@ function setOvRoom(r) {
   document.querySelectorAll(".room-btn[id^='ovroom-']").forEach(b => b.classList.remove("active"));
   const el = document.getElementById("ovroom-" + r);
   if (el) el.classList.add("active");
+  syncRoomSelect("ovroom-select", r);
   renderOverview();
+}
+
+function syncRoomSelect(id, r) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  sel.value = r;               // "all" shows the "Room…" placeholder
+  sel.classList.toggle("active", r !== "all");
 }
 
 function visibleCandidates(room) {
@@ -499,7 +557,7 @@ function renderAssessTable() {
   const tbody = document.getElementById("assessBody");
   const cands = visibleCandidates(currentRoom);
   if (cands.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--rmd-muted);">No candidates in this room.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--rmd-muted);">No candidates in this room.</td></tr>`;
     return;
   }
   // Preserve which notes panels are open
@@ -546,9 +604,10 @@ function buildCandidateRows(c, notesOpen) {
         </div>
       </td>
       <td><button class="${nbCls}" id="nbtn-${c.id}" onclick="toggleNotes('${c.id}')" title="Notes">📝</button></td>
+      <td class="col-result" data-cr="${c.id}">${courseResultCell(c)}</td>
     </tr>
     <tr class="notes-row" id="notes-row-${c.id}" style="${notesOpen?'':'display:none;'}">
-      <td colspan="9">
+      <td colspan="10">
         <div class="notes-panel">
           <div class="notes-req ${s.flags.concern?'show':''}" id="notes-req-${c.id}">⚠️ Notes required when concern is flagged</div>
           <textarea class="notes-ta ${s.flags.concern&&!s.notes.trim()?'required':''}" id="notes-ta-${c.id}"
@@ -720,7 +779,10 @@ function renderOverview() {
             <span class="stream-badge ${streamCls}" style="margin-left:6px;">${streamLbl}</span>
             <span style="font-size:11px;font-weight:400;color:var(--rmd-muted);margin-left:4px;">${c.room}</span>
           </div>
-          <span class="overall-badge ${ovCls}" style="cursor:default;">${ovLbl}</span>
+          <span style="display:flex;gap:6px;align-items:center;">
+            ${courseResultBadge(c)}
+            <span class="overall-badge ${ovCls}" style="cursor:default;">${ovLbl}</span>
+          </span>
         </div>
         <div class="cand-card-body" id="ovc-${ci}">
           <div class="traj-grid">
@@ -738,6 +800,111 @@ function renderOverview() {
 
 function toggleOverviewCard(id) {
   document.getElementById(id).classList.toggle("open");
+}
+
+// ── Recommended overall course result (Course Director only) ─────────────────
+function isInstructorCandidate(c) { return c.effectiveRole === ROLES.INSTRUCTOR; }
+
+function setupCourseResult() {
+  const tbl = document.getElementById("assessTable");
+  if (!isDirector) { if (tbl) tbl.classList.add("no-result"); return; }
+  if (!tbl || typeof db === "undefined" || !db) return;
+  crUnsubs.forEach(u => { try { u(); } catch (e) {} });
+  crUnsubs = [];
+  const refresh = () => { refreshCourseResultCells(); };
+  crUnsubs.push(db.collection("gateway_assessments").onSnapshot(snap => {
+    snap.docChanges().forEach(ch => { if (ch.type === "removed") delete gatewayMap[ch.doc.id]; else gatewayMap[ch.doc.id] = ch.doc.data(); });
+    refresh();
+  }, err => console.warn("gateway listener:", err.message)));
+  crUnsubs.push(db.collection("cd_course_results").onSnapshot(snap => {
+    snap.docChanges().forEach(ch => { if (ch.type === "removed") delete courseResult[ch.doc.id]; else courseResult[ch.doc.id] = ch.doc.data(); });
+    refresh();
+  }, err => console.warn("cd_course_results listener:", err.message)));
+  // Directors can read every session_feedback doc (firestore.rules); rebuild
+  // the per-candidate lists from the full snapshot each time.
+  const fbDocs = {};
+  crUnsubs.push(db.collection("session_feedback").onSnapshot(snap => {
+    snap.docChanges().forEach(ch => { if (ch.type === "removed") delete fbDocs[ch.doc.id]; else fbDocs[ch.doc.id] = ch.doc.data(); });
+    feedbackMap = {};
+    Object.values(fbDocs).forEach(f => { if (f && f.candidateId) (feedbackMap[f.candidateId] = feedbackMap[f.candidateId] || []).push(f); });
+    refresh();
+  }, err => console.warn("session_feedback listener:", err.message)));
+}
+
+function courseResultFor(cid) {
+  const auto = RMD_COURSE_RESULT.autoCourseResult({
+    dev: assessments[cid], feedback: feedbackMap[cid], gateway: gatewayMap[cid]
+  });
+  return RMD_COURSE_RESULT.effectiveCourseResult(auto, courseResult[cid]);
+}
+
+function courseResultCell(c) {
+  if (!isDirector) return "";
+  if (!isInstructorCandidate(c)) return `<span style="font-size:11px;color:var(--rmd-muted);">n/a</span>`;
+  const r   = courseResultFor(c.id);
+  const lbl = r.result === "pass" ? "PASS" : "FAIL";
+  const why = r.auto.reasons.length ? "Concerns: " + r.auto.reasons.join("; ") : "No concerns rated";
+  let src;
+  if (r.source === "cd") {
+    src = `<div class="cr-src ${r.differs ? "warn" : ""}">Set by you${r.differs ? " (auto says " + r.auto.result.toUpperCase() + ")" : ""} <button class="cr-reset" onclick="resetCourseResult('${c.id}')" title="Go back to the automatic default">↺</button></div>`;
+  } else {
+    src = `<div class="cr-src">${r.auto.reasons.length ? "Auto: " + esc(r.auto.reasons.join("; ")) : "Auto: no concerns"}</div>`;
+  }
+  return `<button class="cr-btn ${r.result}" onclick="toggleCourseResult('${c.id}')" title="${esc(why)}. Tap to switch.">${lbl}</button>${src}`;
+}
+
+function courseResultBadge(c) {
+  if (!isDirector || !isInstructorCandidate(c)) return "";
+  const r = courseResultFor(c.id);
+  return `<span class="cr-btn ${r.result}" style="cursor:default;" title="Recommended overall course result">${r.result === "pass" ? "PASS" : "FAIL"}</span>`;
+}
+
+function refreshCourseResultCells() {
+  candidates.forEach(c => {
+    const td = document.querySelector(`td[data-cr="${c.id}"]`);
+    if (td) td.innerHTML = courseResultCell(c);
+  });
+  if (document.getElementById("view-overview").classList.contains("active")) renderOverview();
+}
+
+async function toggleCourseResult(cid) {
+  if (!isDirector) return;
+  const r    = courseResultFor(cid);
+  const next = r.result === "pass" ? "fail" : "pass";
+  const c    = candidates.find(x => x.id === cid);
+  courseResult[cid] = { ...(courseResult[cid] || {}), result: next };   // optimistic
+  refreshCourseResultCells();
+  try {
+    await db.collection("cd_course_results").doc(cid).set({
+      result:        next,
+      autoResult:    r.auto.result,
+      autoReasons:   r.auto.reasons,
+      candidateName: c ? c.name : "",
+      setByUid:      auth.currentUser ? auth.currentUser.uid : null,
+      setAt:         firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } catch (err) {
+    showToast("Save failed. Check connection or permissions.", "red");
+    console.error(err);
+    delete courseResult[cid];
+    refreshCourseResultCells();
+  }
+}
+
+async function resetCourseResult(cid) {
+  if (!isDirector) return;
+  try {
+    await db.collection("cd_course_results").doc(cid).delete();
+    delete courseResult[cid];
+    refreshCourseResultCells();
+  } catch (err) {
+    showToast("Could not reset. Check connection or permissions.", "red");
+    console.error(err);
+  }
+}
+
+function esc(s) {
+  return (s == null ? "" : String(s)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
 // ── View switching ─────────────────────────────────────────────────────────

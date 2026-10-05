@@ -312,6 +312,16 @@
     .btn-sm:hover { background: #ccd6dd; }
     .btn-primary { background: var(--rmd-blue); color: white; }
     .btn-primary:hover { background: var(--rmd-navy); }
+    /* ── Gateway sign-off + recommended result (2026-10) ── */
+    .gw-pill { display:inline-block; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:800; }
+    .gw-pill.pass { background:#e6f4ea; color:#1a6e31; }
+    .gw-pill.fail { background:#fde8e4; color:#b7410e; }
+    .gw-pill.none { background:#f0f3f6; color:#8a99a6; }
+    .gw-state { font-size:11px; color:var(--rmd-muted); }
+    .gw-state.ok { color:#1a6e31; font-weight:700; }
+    .gw-summary { font-size:13px; color:var(--rmd-navy); margin-bottom:10px; font-weight:600; }
+    .btn-sm.btn-green { background:#1a6e31; color:#fff; }
+    .btn-sm.btn-green:hover { background:#14562a; }
     .loading { color: var(--rmd-muted); font-size: 13px; padding: 20px 0; text-align: center; }
     .tag { display: inline-block; background: #e8edf2; color: var(--rmd-muted); font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600; margin-left: 4px; }
     .tag.strong { background: #e6f4ea; color: #1a6e31; }
@@ -422,9 +432,7 @@
       <div class="nav-item" onclick="switchSection('itcs')" id="nav-itcs">
         <span class="nav-icon">🔄</span><span>ITC</span>
       </div>
-      <div class="nav-item" onclick="switchSection('faculty')" id="nav-faculty">
-        <span class="nav-icon">📋</span><span>Faculty</span>
-      </div>
+      <!-- Faculty tab removed from nav 2026-10 (section-faculty and its loaders left in place, unreachable, so it can be restored by re-adding this nav item) -->
 
       <div class="nav-group-label">Event Logistics</div>
       <div class="nav-item" onclick="switchSection('programme')" id="nav-programme">
@@ -525,6 +533,9 @@
           <a href="iw-checkin-poster.html" target="_blank" style="display:inline-block;padding:10px 16px;background:#C26A00;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">📱 Check-in Poster (QR)</a>
           <a href="admin-room-allocation.html" style="display:inline-block;padding:10px 16px;background:var(--rmd-navy);color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🏫 Room Allocation</a>
           <a href="admin-lecture-allocation.html" style="display:inline-block;padding:10px 16px;background:#8b2e9e;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🎤 Lecture Allocation</a>
+          <a href="admin-iw-export.html" style="display:inline-block;padding:10px 16px;background:#0f766e;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">💾 Data Export (backup)</a>
+          <a href="admin-iw-paper-sheets.html" style="display:inline-block;padding:10px 16px;background:#475569;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🖨 Paper Sheets</a>
+          <a href="admin-iw-pass-confirmation.html" style="display:inline-block;padding:10px 16px;background:#b7410e;color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">✅ Pass Confirmation</a>
           <a href="admin-global-tools.html" style="display:inline-block;padding:10px 16px;background:var(--rmd-mid);color:white;border-radius:6px;text-decoration:none;font-size:13px;font-weight:700;">🌐 Global Admin Tools</a>
         </div>
       </div>
@@ -546,6 +557,26 @@
     <!-- ── CANDIDATES ── -->
     <section class="section" id="section-candidates">
       <div class="section-title">Candidates</div>
+      <div class="card" id="gatewayCard">
+        <div class="card-header">BLS/AED Gateway: Course Director sign-off
+          <div class="card-actions">
+            <button class="btn-sm btn-green" onclick="confirmAllGateway()">Confirm all recorded</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0;">
+          <div class="gw-summary" id="gatewaySummary" style="padding:12px 14px 0;">Loading…</div>
+          <table class="cand-table">
+            <thead><tr>
+              <th>Name</th>
+              <th>Group</th>
+              <th>Gateway result</th>
+              <th>Sign-off</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="gatewayTableBody"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
       <div class="card">
         <div class="card-header">All Candidates
           <div class="card-actions">
@@ -678,7 +709,6 @@
     <section class="section" id="section-feedback">
       <div class="section-title">Session Feedback — Traffic Lights</div>
       <div class="day-tabs">
-        <button class="day-tab-btn" onclick="showFeedbackDay('friday',this)">Friday</button>
         <button class="day-tab-btn active" onclick="showFeedbackDay('saturday',this)">Saturday 10 Oct</button>
         <button class="day-tab-btn" onclick="showFeedbackDay('sunday',this)">Sunday 11 Oct</button>
       </div>
@@ -736,7 +766,10 @@
           </div>
 
           <div style="display:flex;gap:10px;align-items:center;margin-top:8px;">
-            <button class="btn-export" onclick="exportReport()">📄 Export report</button>
+            <button class="btn-export" onclick="exportReport()">📄 Export notes (text)</button>
+            <button class="btn-export" style="background:#1a6e31;" onclick="exportCourseReport()">📘 Course report (Word)</button>
+            <button class="btn-export" style="background:#1a6e31;" onclick="exportResultsCsv()">📊 Results (CSV)</button>
+            <label class="text-sm" style="display:flex;gap:5px;align-items:center;cursor:pointer;"><input type="checkbox" id="repIncludeComments" checked> include faculty comments</label>
             <button class="btn-sm btn-primary" onclick="saveReport()">Save draft</button>
             <span class="text-sm text-muted" id="reportSaveMsg"></span>
           </div>
@@ -822,6 +855,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/course-result.js"></script>
+<script src="js/course-report.js"></script>
 <script src="js/programme-data.js?v=202609171730"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
@@ -831,6 +866,7 @@ let currentUser  = null;
 let allPeople    = [];    // all people docs
 let iwAssignments = {};   // { uid: function } -- this year's IW job, from iw_assignments; falls back to people.role when absent
 let feedbackData = [];    // session_feedback docs
+let gatewayData  = {};    // { candidateId: gateway_assessments data } (live)
 let currentSection = "overview";
 let currentProgDay    = "saturday";
 let currentFeedbackDay = "saturday";
@@ -895,6 +931,7 @@ window.addEventListener("load", () => {
 
     await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
     renderOverview();
+    startGatewayWatch();
     renderAssessors();
     renderProgramme("saturday");
     renderFeedback("saturday");
@@ -1204,6 +1241,127 @@ function renderCandidates(filter) {
 }
 
 function filterCandidates(val) { renderCandidates(val); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GATEWAY SIGN-OFF (2026-10, per Jon)
+// ─────────────────────────────────────────────────────────────────────────────
+// Faculty record PASS/FAIL in gateway_assessments/{candidateId} (from
+// assessment-gateway.html or the Saturday BLS/AED group practice rating).
+// The Course Director signs each result off here. A sign-off writes
+// cdConfirmedAt / cdConfirmedBy / cdConfirmedOutcome and sets lockedAt, so the
+// result can't be changed from the rooms without an unlock. It counts as
+// current only while cdConfirmedOutcome still equals outcome.
+function gwIsConfirmed(g) {
+  return !!(g && g.outcome && g.cdConfirmedBy && g.cdConfirmedOutcome === g.outcome);
+}
+
+function startGatewayWatch() {
+  try {
+    db.collection("gateway_assessments").onSnapshot(snap => {
+      snap.docChanges().forEach(ch => {
+        if (ch.type === "removed") delete gatewayData[ch.doc.id];
+        else gatewayData[ch.doc.id] = ch.doc.data();
+      });
+      renderGateway();
+    }, err => {
+      console.warn("Gateway listener:", err.message);
+      renderGateway();
+    });
+  } catch (e) { renderGateway(); }
+}
+
+function renderGateway() {
+  const tbody = document.getElementById("gatewayTableBody");
+  const sum   = document.getElementById("gatewaySummary");
+  if (!tbody || !sum) return;
+  const cands = allPeople.filter(p => effectiveRole(p) === ROLES.INSTRUCTOR);
+  cands.sort((a, b) => {
+    const ga = a.group || "", gb = b.group || "";
+    if (ga !== gb) { if (!ga) return 1; if (!gb) return -1; return ga.localeCompare(gb, undefined, { numeric: true }); }
+    return (a.name || "").localeCompare(b.name || "");
+  });
+  if (!cands.length) {
+    sum.textContent = "No Instructor Candidates loaded.";
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-msg">No candidates found.</td></tr>`;
+    return;
+  }
+  let pass = 0, fail = 0, none = 0, conf = 0;
+  const rows = cands.map(c => {
+    const g = gatewayData[c.id] || {};
+    const confirmed = gwIsConfirmed(g);
+    if (g.outcome === "pass") pass++; else if (g.outcome === "fail") fail++; else none++;
+    if (confirmed) conf++;
+    const pill = g.outcome === "pass" ? `<span class="gw-pill pass">PASS</span>`
+               : g.outcome === "fail" ? `<span class="gw-pill fail">FAIL</span>`
+               : `<span class="gw-pill none">Not recorded</span>`;
+    const flag = g.flagged ? ` <span title="Concern flagged in the room" style="color:#c17a00;">⚑</span>` : "";
+    let state, action = "";
+    if (!g.outcome) { state = `<span class="gw-state">Awaiting result</span>`; }
+    else if (confirmed) {
+      state  = `<span class="gw-state ok">✓ Signed off</span>`;
+      action = `<button class="btn-sm" onclick="unconfirmGateway('${c.id}')">Reopen</button>`;
+    } else {
+      state  = `<span class="gw-state">${g.lockedAt ? "Locked, not signed off" : "Recorded, awaiting sign-off"}</span>`;
+      action = `<button class="btn-sm btn-green" onclick="confirmGateway('${c.id}')">Confirm</button>`;
+    }
+    return `<tr>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(c.group || "–")}</td>
+      <td>${pill}${flag}</td>
+      <td>${state}</td>
+      <td style="text-align:right;">${action}</td>
+    </tr>`;
+  }).join("");
+  tbody.innerHTML = rows;
+  sum.textContent = `${pass} pass · ${fail} fail · ${none} not recorded · ${conf} of ${cands.length} signed off`;
+}
+
+async function confirmGatewayOne(id) {
+  const ref = db.collection("gateway_assessments").doc(id);
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    const cur  = snap.exists ? snap.data() : {};
+    if (!cur.outcome) throw new Error("no result recorded");
+    tx.set(ref, {
+      cdConfirmedAt:      firebase.firestore.FieldValue.serverTimestamp(),
+      cdConfirmedBy:      currentUser.uid,
+      cdConfirmedOutcome: cur.outcome,
+      lockedAt:           firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+}
+
+async function confirmGateway(id) {
+  const c = allPeople.find(p => p.id === id);
+  try { await confirmGatewayOne(id); }
+  catch (e) { alert("Could not sign off " + (c ? c.name : id) + ": " + e.message); }
+}
+
+async function confirmAllGateway() {
+  const todo = allPeople
+    .filter(p => effectiveRole(p) === ROLES.INSTRUCTOR)
+    .filter(p => { const g = gatewayData[p.id]; return g && g.outcome && !gwIsConfirmed(g); });
+  if (!todo.length) { alert("Nothing to confirm. Every recorded result is already signed off."); return; }
+  const fails = todo.filter(p => gatewayData[p.id].outcome === "fail");
+  const msg = `Sign off ${todo.length} gateway result${todo.length !== 1 ? "s" : ""}?\n\n`
+    + `${todo.length - fails.length} PASS and ${fails.length} FAIL.\n`
+    + (fails.length ? `FAIL: ${fails.map(p => p.name).join(", ")}\n\n` : "\n")
+    + `Signed-off results are locked in the rooms until you reopen them.`;
+  if (!confirm(msg)) return;
+  const results = await Promise.allSettled(todo.map(p => confirmGatewayOne(p.id)));
+  const bad = results.map((r, i) => r.status === "rejected" ? todo[i].name : null).filter(Boolean);
+  if (bad.length) alert("These could not be signed off: " + bad.join(", "));
+}
+
+async function unconfirmGateway(id) {
+  const c = allPeople.find(p => p.id === id);
+  if (!confirm(`Reopen the gateway result for ${c ? c.name : id}?\n\nThis removes the sign-off and unlocks the result so it can be changed in the room.`)) return;
+  try {
+    await db.collection("gateway_assessments").doc(id).set({
+      cdConfirmedAt: null, cdConfirmedBy: null, cdConfirmedOutcome: null, lockedAt: null
+    }, { merge: true });
+  } catch (e) { alert("Could not reopen: " + e.message); }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ASSESSORS & SENIOR INSTRUCTORS (2026-09-14, per Jon)
@@ -1883,6 +2041,110 @@ function exportReport() {
   a.download = "RMD-2026-Course-Report.txt";
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COURSE REPORT: Word document + CSV for the UoB SharePoint record (2026-10)
+// ─────────────────────────────────────────────────────────────────────────────
+// Builders live in js/course-report.js. Both exports re-read the current data
+// first, so they reflect any late changes, and the comments checkbox decides
+// whether free-text faculty comments (red session comments, development
+// notes) go into the file.
+async function gatherReportData() {
+  const includeComments = !!document.getElementById("repIncludeComments")?.checked;
+  const readAll = async name => {
+    const out = [];
+    try { const snap = await db.collection(name).get(); snap.forEach(d => out.push({ id: d.id, ...d.data() })); }
+    catch (e) { console.warn("Report: could not read " + name + ":", e.message); (gatherReportData.failed = gatherReportData.failed || []).push(name); }
+    return out;
+  };
+  gatherReportData.failed = [];
+  const [devDocs, storedDocs, gwDocs, pfDocs, sfDocs, afDocs] = await Promise.all([
+    readAll("development_assessments"), readAll("cd_course_results"), readAll("gateway_assessments"),
+    readAll("participant_feedback"), readAll("session_feedback"), readAll(COLLECTIONS.assessorFeedback)
+  ]);
+  const byId = arr => Object.fromEntries(arr.map(d => [d.id, d]));
+  const fbMap = {};
+  sfDocs.forEach(f => { if (f.candidateId) (fbMap[f.candidateId] = fbMap[f.candidateId] || []).push(f); });
+  const afMap = {};
+  afDocs.forEach(f => { if (f.candidateId) (afMap[f.candidateId] = afMap[f.candidateId] || []).push(f); });
+
+  const sessionTitle = id => {
+    for (const d of ["friday", "saturday", "sunday"]) {
+      const s = (PROGRAMME[d]?.sessions || []).find(x => x.id === id);
+      if (s) return s.title;
+    }
+    return id || "";
+  };
+
+  const cands = allPeople.filter(p => effectiveRole(p) === ROLES.INSTRUCTOR);
+  const rows = RMD_COURSE_REPORT.buildResultRows({
+    candidates: cands, devMap: byId(devDocs), fbMap, gatewayMap: byId(gwDocs), storedMap: byId(storedDocs),
+    autoFn: RMD_COURSE_RESULT.autoCourseResult, effFn: RMD_COURSE_RESULT.effectiveCourseResult,
+    sessionTitle, includeComments
+  });
+
+  const assessorRows = allPeople.filter(p => effectiveRole(p) === ROLES.ASSESSOR).map(p => {
+    const fb = afMap[p.id] || [];
+    const n = r => fb.filter(f => f.rating === r).length;
+    let summary = fb.length ? `Green ${n("green")}, Amber ${n("amber")}, Red ${n("red")}` : "No ratings recorded";
+    if (includeComments) {
+      const c = fb.filter(f => f.comment).map(f => f.comment);
+      if (c.length) summary += ". Comments: " + c.join(" | ");
+    }
+    return { name: p.name || "", summary };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  const itcRows = (itcSchedule.itcs || []).map(itc => {
+    const s = itcSummaries[itc.email.replace(/[^a-z0-9]/g, "_")];
+    return { name: itc.name, summary: s?.summary ? s.summary + (s.observationCount ? ` (${s.observationCount} observations)` : "") : "No summary generated" };
+  });
+
+  const narrative = {
+    "Course overview": document.getElementById("rep-overview")?.value,
+    "Candidate outcomes (Course Director's note)": document.getElementById("rep-outcomes")?.value,
+    "Faculty performance": document.getElementById("rep-faculty")?.value,
+    "ITC assessment": document.getElementById("rep-itc")?.value,
+    "Course logistics": document.getElementById("rep-logistics")?.value,
+    "Actions for next course": document.getElementById("rep-actions")?.value
+  };
+  return {
+    year: CURRENT_IW_YEAR, generatedAt: new Date(), narrative, includeComments, rows, assessorRows, itcRows,
+    attendance: { arrived: document.getElementById("statArrived")?.textContent || "n/a" },
+    feedback: RMD_COURSE_REPORT.summariseFeedback(pfDocs),
+    failed: gatherReportData.failed.slice()
+  };
+}
+
+function downloadBlob(filename, mime, content) {
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+async function exportCourseReport() {
+  const msg = document.getElementById("reportSaveMsg");
+  if (msg) msg.textContent = "Building report…";
+  try {
+    const data = await gatherReportData();
+    downloadBlob(`RMD-Instructor-Weekend-${data.year}-Course-Report.doc`, "application/msword", RMD_COURSE_REPORT.buildReportHtml(data));
+    if (msg) msg.textContent = data.failed.length ? "Report built, but could not read: " + data.failed.join(", ") : "Report downloaded.";
+  } catch (e) { console.error(e); if (msg) msg.textContent = "Could not build report: " + e.message; }
+}
+
+async function exportResultsCsv() {
+  const msg = document.getElementById("reportSaveMsg");
+  if (msg) msg.textContent = "Building CSV…";
+  try {
+    const data = await gatherReportData();
+    downloadBlob(`RMD-Instructor-Weekend-${data.year}-Results.csv`, "text/csv;charset=utf-8", RMD_COURSE_REPORT.toCsv(data.rows));
+    if (msg) msg.textContent = data.failed.length ? "CSV built, but could not read: " + data.failed.join(", ") : "CSV downloaded.";
+  } catch (e) { console.error(e); if (msg) msg.textContent = "Could not build CSV: " + e.message; }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
