@@ -222,6 +222,30 @@ async function resolveRole(uid, email) {
   return null;
 }
 
+// customRoleLabel(storedLabel) -> string | null
+// people.roleLabel is a display string stored on the person record. The sync
+// functions only create people docs when none exists, so an old record can
+// keep a stale label (e.g. "Instructor Candidate") after the person's role
+// moves on (e.g. to Instructor Trainer Candidate). Pages used to show the
+// stored label ahead of the role's own label, so the stale text won.
+// Standard role names (and the raw role keys the sync writes) are therefore
+// ignored here and the page falls back to its ROLE_LABELS[role]; only a
+// genuinely custom label (anything that is not a standard role name) is kept.
+// Use as: customRoleLabel(roleLabel) || ROLE_LABELS[role] || role
+const STANDARD_ROLE_LABELS = [
+  "course director", "director", "faculty", "instructor trainer",
+  "full-instructor", "full instructor", "instructor candidate", "instructor",
+  "assessor / senior instructor", "assessor", "senior instructor",
+  "assessor faculty", "assessor-faculty",
+  "instructor trainer candidate", "itc"
+];
+function customRoleLabel(storedLabel) {
+  if (!storedLabel) return null;
+  const k = String(storedLabel).trim().toLowerCase();
+  if (!k || STANDARD_ROLE_LABELS.indexOf(k) !== -1) return null;
+  return String(storedLabel);
+}
+
 // requireDirector() — call on director-only pages instead of writing auth
 // logic inline. Waits for auth state, resolves role, redirects if not director.
 // ── Self-service password reset ─────────────────────────────────────────────
