@@ -94,7 +94,10 @@
 </div>
 
 <div class="search-bar">
-  <input type="text" id="candSearch" placeholder="Find a candidate by name…" autocomplete="off" oninput="onSearchInput()">
+  <input type="text" id="candSearch" placeholder="Find a candidate by name, email or degree…" autocomplete="off" oninput="onSearchInput()">
+  <select id="searchCourse" onchange="onSearchInput()" aria-label="Limit search to a course (optional)" style="margin-top:8px;width:100%;padding:8px 10px;border:1.5px solid #d0d5e0;border-radius:7px;font-size:13px;font-family:var(--font);background:#fff;">
+    <option value="">Any course (optional filter)</option>
+  </select>
   <div id="searchResults" class="search-results" style="display:none"></div>
 </div>
 
@@ -128,6 +131,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/candidate-lookup.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // Evening Course Rosters — read-only view for RMD Student/Senior Faculty
@@ -146,6 +150,7 @@
 const ROOMS = STAGE1_TEACHING_ROOMS;
 
 let allCandidates  = [];
+let courseDates    = {};   // course name -> date, from config/stage1_course_dates
 let allInstructors = [];
 let allAllocDocs   = [];
 let defaultAllocDoc = null;
@@ -254,6 +259,11 @@ async function loadData() {
   } catch (e) { console.warn("stage1_candidates load failed:", e.message); }
 
   try {
+    const cd = await db.collection("config").doc("stage1_course_dates").get();
+    courseDates = RMD_CAND_LOOKUP.dateMap(cd.exists ? cd.data().courses : []);
+  } catch (e) { console.warn("course dates load failed:", e.message); }
+
+  try {
     const snap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get();
     allInstructors = snap.docs.map(d => {
       const data = d.data();
@@ -288,8 +298,11 @@ function populateCourseDropdown() {
   sel.innerHTML = `<option value="">— Choose a course —</option>` +
     courses.map(c => {
       const n = allCandidates.filter(x => x.course === c).length;
-      return `<option value="${esc(c)}">${esc(c)} (${n} candidate${n===1?"":"s"})</option>`;
+      const d = RMD_CAND_LOOKUP.formatDate(courseDates[c]);
+      return `<option value="${esc(c)}">${esc(c)}${d ? " - " + esc(d) : ""} (${n} candidate${n===1?"":"s"})</option>`;
     }).join("");
+  document.getElementById("searchCourse").innerHTML = `<option value="">Any course (optional filter)</option>` +
+    courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   if (!courses.length) {
     document.getElementById("noCourse").textContent = "No Stage 1 courses have candidates imported yet.";
   }
@@ -374,9 +387,10 @@ function onSearchInput() {
   const resultsEl = document.getElementById("searchResults");
   if (q.length < 2) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; return; }
 
+  const courseOnly = document.getElementById("searchCourse").value;
   const matches = allCandidates
-    .filter(c => (c.name || "").toLowerCase().includes(q))
-    .slice(0, 20); // cap — a short query against 1000+ candidates could otherwise list hundreds
+    .filter(c => (!courseOnly || c.course === courseOnly) && RMD_CAND_LOOKUP.matches(c, q))
+    .slice(0, 20); // cap - a short query against 1000+ candidates could otherwise list hundreds
 
   if (!matches.length) {
     resultsEl.innerHTML = `<div class="search-result" style="color:#8893b0;cursor:default">No match</div>`;
@@ -385,13 +399,13 @@ function onSearchInput() {
   }
 
   resultsEl.innerHTML = matches.map(c => {
-    const where = c.course
-      ? (ROOMS.includes(c.room) ? `${esc(c.course)} — Room ${esc(c.room)}` : `${esc(c.course)} — not yet assigned a room`)
-      : "Not yet on a course";
+    const L = RMD_CAND_LOOKUP;
+    const where = c.course ? `${esc(L.courseText(c, courseDates))} - ${esc(L.roomText(c))}` : "Not on a course yet";
     return `<div class="search-result" onclick="jumpToCandidate('${esc(c.id)}')">
               <div class="sr-name">${esc(c.name || "(no name)")}</div>
+              <div class="sr-meta">${esc(c.degree || "no degree")} · ${esc(c.email || "no email on file")}</div>
               <div class="sr-meta">${where}</div>
-              <div class="sr-meta">${esc(c.course ? assessmentMetaStr(c) : "")}</div>
+              <div class="sr-meta">${esc(c.course ? L.assessmentText(c) : "")}</div>
             </div>`;
   }).join("");
   resultsEl.style.display = "block";

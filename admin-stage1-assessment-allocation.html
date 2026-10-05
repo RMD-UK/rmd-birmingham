@@ -64,8 +64,9 @@
   <div class="card">
     <div class="card-header">Find a candidate - first sit or not</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Search any candidate by name or email (across every course). <strong>Not first sit</strong> takes them out of the standard first-sit assessment stream, so they are not given a room or slot automatically and RMD faculty arrange their assessment separately. <strong>Cannot attend</strong> is for someone who will not be at the assessment (for example, absent from the course); it also frees any slot they already hold. Both can be reversed here at any time.</p>
-      <input type="text" id="excludeSearch" placeholder="Type at least 2 letters of a name or email…" autocomplete="off" oninput="renderExcludeLookup()" style="width:100%;padding:10px;border:2px solid #ccd6dd;border-radius:6px;font-size:14px;font-family:var(--font);box-sizing:border-box;">
+      <p class="hint" style="margin-top:0;">Search any candidate by name, email or degree (across every course, or narrow it with the optional course box); the result shows their course with its date, room and assessment slot. <strong>Not first sit</strong> takes them out of the standard first-sit assessment stream, so they are not given a room or slot automatically and RMD faculty arrange their assessment separately. <strong>Cannot attend</strong> is for someone who will not be at the assessment (for example, absent from the course); it also frees any slot they already hold. Both can be reversed here at any time.</p>
+      <input type="text" id="excludeSearch" placeholder="Type at least 2 letters of a name, email or degree…" autocomplete="off" oninput="renderExcludeLookup()" style="width:100%;padding:10px;border:2px solid #ccd6dd;border-radius:6px;font-size:14px;font-family:var(--font);box-sizing:border-box;">
+      <select id="excludeCourse" onchange="renderExcludeLookup()" aria-label="Limit to a course (optional)" style="width:100%;padding:10px;border:2px solid #ccd6dd;border-radius:6px;font-size:14px;font-family:var(--font);box-sizing:border-box;margin-top:8px;"><option value="">Any course (optional filter)</option></select>
       <div id="excludeResults"></div>
     </div>
   </div>
@@ -97,6 +98,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/candidate-lookup.js"></script>
 <script>
 
 initFirebase();
@@ -151,6 +153,7 @@ const DEFAULT_ASSESSMENT_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM1
 
 let allCandidates = [];
 let assessmentRooms = [];
+let courseDates = {};   // course name -> date (config/stage1_course_dates)
 
 async function loadAssessmentRooms() {
   try {
@@ -163,6 +166,10 @@ async function loadAssessmentRooms() {
 async function loadCandidates() {
   const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
   allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  try {
+    const cd = await db.collection("config").doc("stage1_course_dates").get();
+    courseDates = RMD_CAND_LOOKUP.dateMap(cd.exists ? cd.data().courses : []);
+  } catch (err) { courseDates = {}; }
   populateCourseSelect();
 }
 
@@ -176,6 +183,8 @@ function populateCourseSelect() {
     return a.localeCompare(b);
   });
   sel.innerHTML = `<option value="">Choose a course…</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  const sc = document.getElementById("excludeCourse");
+  if (sc) { const cur = sc.value; sc.innerHTML = `<option value="">Any course (optional filter)</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join(""); if (cur && courses.includes(cur)) sc.value = cur; }
   if (current && courses.includes(current)) sel.value = current;
   onCourseChange();
 }
@@ -195,11 +204,11 @@ function renderExcludeLookup() {
   const q = document.getElementById("excludeSearch").value.trim().toLowerCase();
   const el = document.getElementById("excludeResults");
   if (q.length < 2) { el.innerHTML = ""; return; }
-  const hits = allCandidates.filter(c =>
-    (c.name || "").toLowerCase().includes(q) || (c.email || "").toLowerCase().includes(q)).slice(0, 15);
+  const courseOnly = document.getElementById("excludeCourse").value;
+  const hits = allCandidates.filter(c => (!courseOnly || c.course === courseOnly) && RMD_CAND_LOOKUP.matches(c, q)).slice(0, 15);
   if (!hits.length) { el.innerHTML = `<div class="empty-state">No candidate matches.</div>`; return; }
   el.innerHTML = `<table class="data-table" style="margin-top:10px;">
-    <thead><tr><th>Name</th><th>Course</th><th>Assessment status</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Course and room</th><th>Assessment status</th><th></th></tr></thead>
     <tbody>${hits.map(c => {
       const status = [];
       if (c.assessmentAbsent === true) status.push("cannot attend");
@@ -213,8 +222,8 @@ function renderExcludeLookup() {
         ? `<button class="btn-secondary" onclick="excludeToggleAbsent('${esc(c.id)}', false)">Can attend again</button>`
         : `<button class="btn-secondary" style="color:#b23b3b;" onclick="excludeToggleAbsent('${esc(c.id)}', true)">Cannot attend</button>`;
       return `<tr>
-        <td><strong>${esc(c.name)}</strong><br><span class="hint" style="margin:0;">${esc(c.email) || "no email"}</span></td>
-        <td>${esc(c.course) || "–"}</td>
+        <td><strong>${esc(c.name)}</strong><br><span class="hint" style="margin:0;">${esc(c.degree) || "no degree"} · ${esc(c.email) || "no email"}</span></td>
+        <td>${esc(RMD_CAND_LOOKUP.courseText(c, courseDates))}${c.course ? `<br><span class="hint" style="margin:0;">${esc(RMD_CAND_LOOKUP.roomText(c))}</span>` : ""}</td>
         <td style="font-size:12px;">${status.join(", ")}</td>
         <td style="white-space:nowrap;">${repeatBtn} ${absentBtn}</td>
       </tr>`;

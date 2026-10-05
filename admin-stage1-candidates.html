@@ -155,7 +155,7 @@
       <p class="hint" style="margin-top:0;">A coloured dot before a name means that candidate shares a surname and course with at least one other candidate below — matching colours mark the same group. Hover a dot to see who it matches. Same soft "check, don't auto-exclude" flag as the Add candidates preview above, just kept visible once records are saved.</p>
       <div class="filters">
         <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
-        <input type="text" id="searchBox" placeholder="Search by name, email or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
+        <input type="text" id="searchBox" placeholder="Search by name, email, degree or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
       </div>
       <p class="hint" style="margin-top:0;">Someone repeating (absence, need to redo) gets a fresh record on the new course rather than editing their old one in place — paste them in above as normal, then use <strong>Link repeat</strong> on either their old or new row to connect the two records for reference. Nothing else changes; it just stops an old attempt reading as still-pending once you can see it led to a later one.</p>
       <div class="summary-line" id="summaryLine"></div>
@@ -180,6 +180,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/candidate-lookup.js"></script>
 <script>
 
 initFirebase();
@@ -1046,10 +1047,8 @@ function renderCandidates() {
   let filtered = allCandidates;
   if (courseFilter === "__unallocated__") filtered = filtered.filter(c => !c.course);
   else if (courseFilter) filtered = filtered.filter(c => c.course === courseFilter);
-  if (q) filtered = filtered.filter(c =>
-    (c.name || "").toLowerCase().includes(q) ||
-    (c.email || "").toLowerCase().includes(q) ||
-    (c.room || "").toLowerCase().includes(q));
+  if (q) filtered = filtered.filter(c => RMD_CAND_LOOKUP.matches(c, q));
+  const cdates = RMD_CAND_LOOKUP.dateMap(courseSessions);
 
   document.getElementById("summaryLine").textContent = `${filtered.length} of ${allCandidates.length} candidates`;
 
@@ -1061,8 +1060,8 @@ function renderCandidates() {
             <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}${possibleRepeatBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
-            <td>${esc(c.course) || "–"}</td>
-            <td>${esc(c.room) || "–"}</td>
+            <td>${esc(RMD_CAND_LOOKUP.courseText(c, cdates).replace("Not on a course yet", "–"))}</td>
+            <td>${esc(c.room) || "–"}${c.course ? `<br><span class="hint" style="margin:0;">${esc(RMD_CAND_LOOKUP.assessmentText(c))}</span>` : ""}</td>
             <td><button class="btn-link-sm" onclick="startEditCandidate('${c.id}')">✎ Edit</button></td>
             <td>${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
