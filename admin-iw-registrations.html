@@ -248,7 +248,7 @@
     <button class="btn-action secondary" onclick="togglePanel('rosterPanel')" data-tooltip="Pulls Instructor Candidates and Assessor/Senior Instructors off this year's confirmed MOU roster (membership list, not signed-MOU status). Instructor Candidates land already Confirmed — attendance is mandated, no sign-off needed. Assessor/Senior Instructors land Pending and are emailed a confirm/decline link automatically as part of this import (or reply by email and use the ✓/✗ buttons) to move them to Confirmed or Declined. The only route either group has onto this list.">⬇ Import course candidates</button>
     <button class="btn-action secondary" onclick="togglePanel('missingPanel')" data-tooltip="Read-only check: everyone on this year's confirmed MOU roster as an Instructor Candidate or Assessor/Senior Instructor who is NOT yet on this list. Attendance is mandated for both groups. Doesn't add anyone — use Import course candidates for that.">🔍 Who's missing</button>
     <button class="btn-action secondary" onclick="togglePanel('facultyPanel')" data-tooltip="Pulls Faculty marked Confirmed on Faculty Responses. Adds them already Confirmed — no separate confirm step needed.">🎓 Import confirmed faculty</button>
-    <button class="btn-action" onclick="togglePanel('addPanel')" data-tooltip="Add one person or paste a list, under one role — for anyone the imports above missed.">+ Add people</button>
+    <button class="btn-action" onclick="togglePanel('addPanel')" data-tooltip="Add one Instructor Candidate or Assessor / Senior Instructor in a single step (MOU roster + this list), and optionally remove the person they replace.">+ Add or replace a person</button>
     <button class="btn-action" onclick="togglePanel('inviteExtraPanel')" data-tooltip="For one person outside the confirmed MOU roster — Instructor Trainer, Assessor Faculty, ITC, Director, one-off Faculty, or RMD Student Faculty. Generates a direct link for them to confirm themselves onto this list.">✉ Invite an extra</button>
     <button class="btn-action secondary" onclick="copyConfirmedEmails()" data-tooltip="Copies every Confirmed attendee's email to your clipboard, comma-separated.">📧 Copy confirmed emails</button>
     <button class="btn-action secondary" onclick="copyAssessorEmails()" data-tooltip="Copies every Assessor/Senior Instructor's email to your clipboard, comma-separated — everyone in that role regardless of Pending/Confirmed/Declined status.">📧 Copy Assessor/Sr Instr. emails</button>
@@ -259,35 +259,66 @@
     <button class="btn-action quiet tip-right" onclick="togglePanel('syncPanel')" data-tooltip="Backup only — you shouldn't normally need this. Confirming someone already syncs them automatically within seconds. Use this only to backfill people confirmed before automation was added, retry after a sync error, or re-check after fixing a flagged role.">🔗 Sync to People (backup only)</button>
   </div>
 
-  <!-- Add people panel — one name or a pasted list, same flow either way -->
+  <!-- Add or replace a person — Instructor Candidate / Assessor / Senior Instructor. One step: MOU roster + this list, and optionally withdraws the person being replaced. -->
   <div class="panel" id="addPanel" style="display:none;">
-    <div class="panel-header">Add people
+    <div class="panel-header">Add or replace a person
       <button onclick="togglePanel('addPanel')" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--rmd-muted);">×</button>
     </div>
     <div class="panel-body">
       <div class="info-box">
-        One person per line — a single name works fine too. Accepted formats:<br>
-        <code>Jane Smith, jane@email.com</code>&nbsp; or &nbsp;<code>Jane Smith &lt;jane@email.com&gt;</code>&nbsp; or &nbsp;<code>jane@email.com</code>
+        For <strong>Instructor Candidates</strong> and <strong>Assessors / Senior Instructors</strong> only. One click adds the person to
+        <strong>both</strong> the MOU roster (so they appear in the room pool) <strong>and</strong> this list. Candidates land Confirmed;
+        Assessors / Senior Instructors land Pending and are emailed their attendance confirmation request.<br><br>
+        If you pick someone under <em>Replacing</em> who is on this list, they are withdrawn in the same step: removed from this list, the MOU roster,
+        people, check-in, rooms and any assessment records. If you already withdrew them, pick them from the <em>MOU roster only</em> group to remove just their leftover roster line (Withdraw does not touch the roster). This cannot be undone.<br><br>
+        Instructor Trainers, Assessor Faculty, ITCs and other faculty are different &mdash; use <strong>Invite an extra</strong>.
       </div>
       <div class="field">
-        <label>Role for everyone added</label>
+        <label>Name</label>
+        <input type="text" id="addName" placeholder="Jane Smith">
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="addEmail" placeholder="jane@example.com">
+      </div>
+      <div class="field">
+        <label>Role</label>
         <select id="addRole" style="max-width:300px;">
-          <option value="Instructor Candidate">Instructor Candidate</option>
-          <option value="Assessor / Senior Instructor">Assessor / Senior Instructor</option>
-          <option value="Faculty">Faculty</option>
-          <option value="Instructor Trainer Candidate">Instructor Trainer Candidate</option>
-          <option value="Other">Other</option>
+          <option value="Instructor">Instructor Candidate</option>
+          <option value="Assessor">Assessor</option>
+          <option value="Senior Instructor">Senior Instructor</option>
         </select>
       </div>
       <div class="field">
-        <label>Name(s) and email(s)</label>
-        <textarea id="addInput" placeholder="Jane Smith, jane@example.com&#10;John Doe &lt;john@example.com&gt;&#10;mary@example.com"></textarea>
+        <label>Replacing (optional)</label>
+        <select id="addReplacing" style="max-width:420px;" onchange="updateAddButtonLabel()">
+          <option value="">&mdash; not replacing anyone &mdash;</option>
+        </select>
       </div>
-      <button class="btn-action secondary" onclick="parseAdd()">Preview →</button>
-      <div id="addPreview" class="import-preview" style="display:none;"></div>
-      <div id="addActions" style="display:none;margin-top:12px;">
-        <button class="btn-action" onclick="importAdd()">Add to list</button>
-        <span id="addFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
+      <div class="field">
+        <label>Note (optional)</label>
+        <input type="text" id="addNote" placeholder="e.g. late replacement for illness">
+      </div>
+      <div class="field">
+        <label style="display:flex;align-items:flex-start;gap:8px;font-weight:600;">
+          <input type="checkbox" id="addToList" checked style="margin-top:3px;">
+          <span>Also add to this list now
+            <span style="display:block;font-weight:400;font-size:12px;color:var(--rmd-muted);margin-top:2px;">
+              Untick if this person does not have an RMD login yet. They are added to the MOU roster only. Set up their login
+              (Bulk Users, &ldquo;Set Up Logins&rdquo;, tick just them), then use <strong>Import course candidates</strong> here to bring them onto
+              the list. Adding them to the list <em>before</em> they have a login leaves their record without their real account ID, which breaks their room and role display.
+            </span>
+          </span>
+        </label>
+      </div>
+      <button class="btn-action" id="addPersonBtn" onclick="addOrReplacePerson()">Add person</button>
+      <button class="btn-action secondary" type="button" onclick="showWelcomeMessage(true)" style="margin-left:6px;">Copy welcome message</button>
+      <span id="addFeedback" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span>
+      <div id="addWelcomeBox" style="display:none;margin-top:14px;">
+        <label style="font-weight:700;font-size:13px;display:block;margin-bottom:4px;">Welcome message (wording follows the Role chosen above; edit before sending)</label>
+        <textarea id="addWelcome" rows="17" style="width:100%;font-size:13px;line-height:1.45;"></textarea>
+        <div style="margin-top:6px;"><button class="btn-action secondary" type="button" onclick="copyWelcomeMessage()">Copy to clipboard</button>
+        <span id="addWelcomeFb" style="font-size:12px;color:var(--rmd-muted);margin-left:10px;"></span></div>
       </div>
     </div>
   </div>
@@ -432,7 +463,6 @@ let allRegistrations   = [];   // [{id, name, email, role, status, source, notes
 let rosterCandidates   = [];   // from mou_roster (for import panel)
 let facultyCandidates  = [];   // from faculty_responses, attendanceStatus === "confirmed" (for import panel)
 let currentFilter      = "all";
-let addData            = [];   // parsed rows from the Add people panel (one name or many)
 let syncCandidates     = [];   // confirmed regs mapped for People sync
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
@@ -838,9 +868,10 @@ async function fixInstructorCandidateStatus() {
 // using the same lower-cased client-side comparison the rest of this page
 // already uses (loadSyncPreview above) rather than a Firestore `where` query,
 // since stored email casing isn't guaranteed consistent.
-async function withdrawEntry(docId, name, email) {
+async function withdrawEntry(docId, name, email, opts) {
+  opts = opts || {};
   const emailLc = (email || "").trim().toLowerCase();
-  if (!confirm(
+  if (!opts.skipConfirm && !confirm(
     `Withdraw ${name || "this person"} \u2014 they can\u2019t attend after all?\n\n` +
     `This removes them from the IW registrations list AND from every other part of ` +
     `the platform: their people record, attendance/check-in, badges, room/group ` +
@@ -935,112 +966,268 @@ async function withdrawEntry(docId, name, email) {
     updateSummary();
     renderTable();
 
+    if (opts.silent) return { ok: true, problems };
     if (problems.length) {
       alert(`${name} withdrawn, but some cleanup steps failed \u2014 check these manually:\n\n` + problems.join("\n"));
     } else {
       alert(`${name} withdrawn and removed from all Instructor Weekend records.`);
     }
   } catch (err) {
+    if (opts.silent) return { ok: false, error: err.message };
     alert("Withdraw failed: " + err.message);
   }
 }
 
-// ── Add people (one name or a pasted list — same flow, one shared role) ────────
-function parseAdd() {
-  const raw  = document.getElementById("addInput").value;
-  const role = document.getElementById("addRole").value;
-  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+// ── Add or replace a person (Instructor Candidate / Assessor / Senior Instructor) ──
+// 2026-10-06 (Jon): replaces the old generic "+ Add people" box. That box only wrote
+// iw_registrations (Pending), so a late replacement never reached the room pool —
+// admin-room-allocation.html builds its candidate pool from mou_roster only — and the
+// person being replaced stayed on mou_roster after Withdraw. This does it all in one step:
+//   1. mou_roster/{email} (set with merge, so any aliasEmails already on that doc survive)
+//   2. iw_registrations (same status rule as importFromRoster: candidates Confirmed,
+//      assessors/senior instructors Pending + RSVP invite email)
+//   3. optionally: delete the replaced person's mou_roster line(s), then withdrawEntry()
+//      (cascade delete: people, attendance, rooms, gateway/development, ITC data).
+// Jon confirmed 2026-10-06: anyone being replaced has left the course entirely, so
+// deleting their data is intended.
+const ADD_ROSTER_ROLE_TO_IW = { "Instructor": "Instructor Candidate", "Assessor": ASSESSOR_ROLE, "Senior Instructor": ASSESSOR_ROLE };
 
-  addData = [];
-  lines.forEach(line => {
-    // "Name <email>" format
-    const angleMatch = line.match(/^(.+?)\s*<([^>]+)>\s*$/);
-    if (angleMatch) {
-      addData.push({ name: angleMatch[1].trim(), email: angleMatch[2].trim().toLowerCase(), role, notes: "" });
-      return;
-    }
-    // "Name, email" or "Name\temail"
-    const parts = line.split(/,|\t/).map(s => s.trim());
-    if (parts.length >= 2 && parts[1].includes("@")) {
-      addData.push({ name: parts[0], email: parts[1].toLowerCase(), role, notes: "" });
-      return;
-    }
-    // Email only
-    if (line.includes("@")) {
-      addData.push({ name: line.split("@")[0], email: line.toLowerCase(), role, notes: "" });
-      return;
-    }
-    // Name only (no email) — kept in the preview so the gap is visible, but it
-    // can't be added: email is required on every registration record.
-    addData.push({ name: line, email: "", role, notes: "" });
-  });
+let rosterOnlyLeftovers = {};   // docId -> {name,email,role} : on mou_roster as a candidate/assessor but NOT on this list
 
-  renderAddPreview();
-}
-
-function renderAddPreview() {
-  const preview = document.getElementById("addPreview");
-  preview.style.display = "block";
-
-  if (!addData.length) {
-    preview.innerHTML = '<div class="empty-state">Could not parse any rows. Check format.</div>';
-    document.getElementById("addActions").style.display = "none";
-    return;
-  }
-
-  const existing = new Set(allRegistrations.map(r => r.email));
-  preview.innerHTML = addData.map((p, i) => {
-    const dup     = p.email && existing.has(p.email);
-    const noEmail = !p.email;
-    const status  = noEmail
-      ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fff3cd;color:#856404;">No email — won't be added</span>`
-      : dup
-        ? `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#fce8e6;color:#b7410e;">Already on list</span>`
-        : `<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;background:#e6f4ea;color:#1a6e31;">Will add</span>`;
-    return `<div class="preview-row">
-      <span class="preview-name">${p.name||"–"}</span>
-      <span class="preview-email">${p.email||"<em>no email</em>"}</span>
-      <input type="text" class="preview-note-input" placeholder="note (optional)"
-        value="${(p.notes||"").replace(/"/g,"&quot;")}" oninput="addData[${i}].notes = this.value">
-      ${status}
-    </div>`;
-  }).join("");
-
-  document.getElementById("addActions").style.display = "block";
-}
-
-async function importAdd() {
-  const role   = document.getElementById("addRole").value;
-  const toAdd  = addData.filter(p => p.email && !allRegistrations.some(r => r.email === p.email));
-  const fb     = document.getElementById("addFeedback");
-
-  if (!toAdd.length) { fb.textContent = "Nothing new to add."; return; }
-  fb.textContent = `Adding ${toAdd.length} ${toAdd.length===1?"person":"people"}…`;
-
+async function populateReplacingList() {
+  const sel = document.getElementById("addReplacing");
+  if (!sel) return;
+  const keep = sel.value;
+  const esc = t => String(t || "").replace(/</g, "&lt;");
+  const eligible = allRegistrations
+    .filter(r => r.role === "Instructor Candidate" || r.role === ASSESSOR_ROLE)
+    .sort((a,b) => (a.name||"").localeCompare(b.name||""));
+  let html = '<option value="">\u2014 not replacing anyone \u2014</option>';
+  html += '<optgroup label="On this list (withdraws them fully)">' +
+    eligible.map(r => `<option value="${r.id}">${esc(r.name || r.email)} \u00b7 ${r.role === "Instructor Candidate" ? "Candidate" : "Assessor/Sr Instr."} \u00b7 ${esc(r.email)}</option>`).join("") +
+    '</optgroup>';
+  sel.innerHTML = html;
+  rosterOnlyLeftovers = {};
   try {
-    const batch = db.batch();
-    const ts    = firebase.firestore.FieldValue.serverTimestamp();
-    const newDocs = [];
-
-    toAdd.forEach(p => {
-      const ref   = db.collection(IW_COLL).doc();
-      const notes = p.notes || "";
-      batch.set(ref, { name: p.name, email: p.email, role: p.role || role, notes, source: "manual", status: "pending", addedAt: ts });
-      newDocs.push({ id: ref.id, name: p.name, email: p.email, role: p.role || role, notes, source: "manual", status: "pending" });
+    const onList = new Set();
+    allRegistrations.forEach(r => onList.add((r.email || "").toLowerCase()));
+    const snap = await db.collection(COLLECTIONS.mouRoster).get();
+    const left = [];
+    snap.forEach(d => {
+      const x = d.data() || {};
+      const role = (x.role || "").trim().toLowerCase();
+      if (role !== "instructor" && role !== "senior instructor" && role !== "assessor") return;
+      const em = (x.email || d.id || "").toLowerCase();
+      const aliases = (x.aliasEmails || []).map(e => (e || "").toLowerCase());
+      if (onList.has(em) || aliases.some(a => onList.has(a))) return;
+      rosterOnlyLeftovers[d.id] = { name: x.name || "", email: em, role: x.role };
+      left.push({ id: d.id, name: x.name || em, email: em, role: x.role });
     });
-    await batch.commit();
+    left.sort((a,b) => a.name.localeCompare(b.name));
+    if (left.length) {
+      sel.innerHTML += '<optgroup label="On the MOU roster only, already withdrawn or never imported (removes the roster line only)">' +
+        left.map(r => `<option value="roster:${esc(r.id)}">${esc(r.name)} \u00b7 ${esc(r.role)} \u00b7 ${esc(r.email)}</option>`).join("") +
+        '</optgroup>';
+    }
+  } catch (err) {
+    console.warn("Could not load roster-only list:", err.message);
+  }
+  if (keep && sel.querySelector(`option[value="${keep}"]`)) sel.value = keep;
+  updateAddButtonLabel();
+}
 
-    allRegistrations.push(...newDocs);
-    allRegistrations.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+// Welcome message for the person being added. Text only (nothing is sent from here).
+// Wording follows the Role selector: Instructor Candidate vs Assessor / Senior Instructor.
+function buildWelcomeMessage(name, email, rosterRole) {
+  const first = (name || "").trim().split(/\s+/)[0] || "there";
+  const isCand = rosterRole === "Instructor";
+  const link = `https://rmd.uk.com/mou-account-setup.html?roster=${encodeURIComponent((email || "[their email, lowercase]").toLowerCase())}`;
+  const roleTxt = isCand ? "an Instructor Candidate" : "an Assessor / Senior Instructor";
+  const dates = "10 and 11 October";
+  const sees = isCand ? "your candidate guide, the timetable and your room" : "your guide, the timetable and your sessions";
+  const guide = isCand ? "Your candidate guide is the top option." : "Your guide is the top option.";
+  const step4 = isCand
+    ? "Bookmark the timetable on your phone before Saturday. Your room appears at the top once rooms are set."
+    : "Open the timetable and bookmark it on your phone. The Saturday assessor sessions and the Sunday Senior Instructor sessions are on it, with the slides linked to each one.";
+  const rsvp = isCand ? "" : "\nYou'll also get a short yes/no email asking you to confirm your attendance. Please answer it, because it's how we know you're coming.\n";
+  return `Hi ${first},
+
+You're joining the RMD Instructor Weekend (${dates}) as ${roleTxt}. To see ${sees}, you need an RMD account. It takes two minutes:
+
+1. Open this link: ${link}
+2. Choose the email you want to sign in with (use one you'll still have next year) and a password of at least 6 characters, then tap "Create my account".
+3. Go to rmd.uk.com and sign in. Tap "RMD Instructor Weekend" on the Member Menu. ${guide}
+4. ${step4}
+${rsvp}
+If the link says it can't find your invitation, or you forget your password, reply to us and we'll sort it.
+
+Thanks,
+Jon`;
+}
+
+function showWelcomeMessage(scroll) {
+  const name  = document.getElementById("addName").value.trim();
+  const email = document.getElementById("addEmail").value.trim().toLowerCase();
+  const role  = document.getElementById("addRole").value;
+  document.getElementById("addWelcome").value = buildWelcomeMessage(name, email, role);
+  document.getElementById("addWelcomeBox").style.display = "block";
+  document.getElementById("addWelcomeFb").textContent = (!email || !email.includes("@")) ? "Enter their email above, then click again so the link is filled in." : "";
+  if (scroll) document.getElementById("addWelcomeBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function copyWelcomeMessage() {
+  const ta = document.getElementById("addWelcome");
+  const fb = document.getElementById("addWelcomeFb");
+  ta.select(); ta.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(ta.value)
+    .then(() => { fb.textContent = "\u2713 Copied."; })
+    .catch(() => { try { document.execCommand("copy"); fb.textContent = "\u2713 Copied."; } catch (e) { fb.textContent = "Select the text and copy it by hand."; } });
+}
+
+function updateAddButtonLabel() {
+  const btn = document.getElementById("addPersonBtn");
+  if (!btn) return;
+  btn.textContent = document.getElementById("addReplacing").value ? "Add and remove replaced person" : "Add person";
+}
+
+async function addOrReplacePerson() {
+  const fb       = document.getElementById("addFeedback");
+  const name     = document.getElementById("addName").value.trim();
+  const email    = document.getElementById("addEmail").value.trim().toLowerCase();
+  const rosterRole = document.getElementById("addRole").value;
+  const note     = document.getElementById("addNote").value.trim();
+  const outId    = document.getElementById("addReplacing").value;
+  const addToList = document.getElementById("addToList").checked;
+  const btn      = document.getElementById("addPersonBtn");
+
+  if (!name)  { fb.textContent = "Name required."; return; }
+  if (!email || !email.includes("@")) { fb.textContent = "Valid email required."; return; }
+
+  const iwRole = ADD_ROSTER_ROLE_TO_IW[rosterRole];
+  if (!iwRole) { fb.textContent = "Pick a role."; return; }
+
+  const dup = allRegistrations.find(r => (r.email || "").toLowerCase() === email);
+  if (dup) { fb.textContent = `${dup.name || email} is already on this list (${dup.status || "pending"}) \u2014 nothing added.`; return; }
+
+  const rosterOnlyId = outId.startsWith("roster:") ? outId.slice(7) : "";
+  const rosterOnly   = rosterOnlyId ? rosterOnlyLeftovers[rosterOnlyId] : null;
+  const out = (outId && !rosterOnlyId) ? allRegistrations.find(r => r.id === outId) : null;
+  if (outId && !rosterOnlyId && !out) { fb.textContent = "Could not find the person to replace \u2014 reload the page and try again."; return; }
+  if (rosterOnlyId && !rosterOnly) { fb.textContent = "Could not find that roster entry \u2014 reload the page and try again."; return; }
+  if (rosterOnly && rosterOnlyId === email) { fb.textContent = "The new person and the roster entry to remove have the same email."; return; }
+  if (out && (out.email || "").toLowerCase() === email) { fb.textContent = "The new person and the person being replaced have the same email."; return; }
+
+  const status = iwRole === "Instructor Candidate" ? "confirmed" : "pending";
+  let msg = `Add ${name} <${email}> as ${rosterRole === "Instructor" ? "Instructor Candidate" : rosterRole}?\n\n` +
+            `\u2022 Added to the MOU roster (room pool)\n` +
+            (addToList
+              ? `\u2022 Added to this list as ${status === "confirmed" ? "Confirmed" : "Pending (attendance confirmation email will be sent)"}`
+              : `\u2022 NOT added to this list yet (roster only). Set up their login, then use Import course candidates.`);
+  if (out) {
+    msg += `\n\nAND remove ${out.name || out.email} (${out.email}):\n` +
+           `\u2022 deleted from this list, the MOU roster, people, check-in, rooms and any assessment records\n` +
+           `\u2022 this cannot be undone`;
+  }
+  if (rosterOnly) {
+    msg += `\n\nAND remove ${rosterOnly.name || rosterOnly.email} (${rosterOnly.email}) from the MOU roster only. ` +
+           `They are not on this list, so nothing else is touched. This cannot be undone.`;
+  }
+  if (!confirm(msg)) return;
+
+  btn.disabled = true;
+  const problems = [];
+  try {
+    fb.textContent = "Adding\u2026";
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+
+    // 1. MOU roster — merge so aliasEmails / any other fields on an existing doc are kept
+    await db.collection(COLLECTIONS.mouRoster).doc(email).set({ name, email, role: rosterRole, addedAt: ts }, { merge: true });
+
+    // 2. IW registrations
+    if (addToList) {
+      const notes = [out ? `Replaces ${out.name || out.email}` : "", note].filter(Boolean).join(" \u2014 ");
+      const ref = db.collection(IW_COLL).doc();
+      await ref.set({ name, email, role: iwRole, notes, source: "manual", status, addedAt: ts });
+      allRegistrations.push({ id: ref.id, name, email, role: iwRole, notes, source: "manual", status });
+      allRegistrations.sort((a,b) => (a.name||"").localeCompare(b.name||""));
+    }
+
+    // 3. Assessors / Senior Instructors: send their attendance confirmation request
+    if (addToList && iwRole === ASSESSOR_ROLE) {
+      try {
+        const res = await fns.httpsCallable("sendIwRsvpInvites")({});
+        const d = res.data || {};
+        if (d.failed) problems.push(`RSVP email failed for: ${(d.failedEmails || []).join(", ")}`);
+      } catch (err) {
+        problems.push("RSVP invite email failed (use \u201cResend attendance confirmation request\u201d): " + (err.message || err.code || "unknown"));
+      }
+    }
+
+    // 4. Replacing someone: roster line first, then the full withdraw cascade
+    let outRoom = "";
+    if (out) {
+      fb.textContent = "Removing replaced person\u2026";
+      const outLc = (out.email || "").toLowerCase();
+      // Note which room they were in BEFORE the withdraw clears it, so the hint is accurate
+      try {
+        const gSnap = await db.collection(COLLECTIONS.groups).get();
+        const rooms = [];
+        gSnap.forEach(d => {
+          if (d.id === "itc_schedule") return;
+          const x = d.data() || {};
+          if (Array.isArray(x.candidates) && x.candidates.includes(out.name)) rooms.push(d.id);
+        });
+        outRoom = rooms.join(", ");
+      } catch (err) { /* hint only */ }
+      try {
+        const rSnap = await db.collection(COLLECTIONS.mouRoster).get();
+        const batch = db.batch();
+        let n = 0;
+        rSnap.forEach(d => {
+          if (d.id === email) return;
+          const x = d.data() || {};
+          const aliases = (x.aliasEmails || []).map(e => (e || "").toLowerCase());
+          if (d.id.toLowerCase() === outLc || (x.email || "").toLowerCase() === outLc || aliases.includes(outLc)) { batch.delete(d.ref); n++; }
+        });
+        if (n) await batch.commit();
+      } catch (err) {
+        problems.push("MOU roster line for " + (out.name || out.email) + ": " + err.message);
+      }
+      const r = await withdrawEntry(out.id, out.name, out.email, { skipConfirm: true, silent: true });
+      if (!r || !r.ok) problems.push("Withdraw failed: " + ((r && r.error) || "unknown error"));
+      else (r.problems || []).forEach(p => problems.push(p));
+    }
+
+    // 4b. Already withdrawn from the list: just remove the leftover roster line
+    if (rosterOnly) {
+      try {
+        await db.collection(COLLECTIONS.mouRoster).doc(rosterOnlyId).delete();
+      } catch (err) {
+        problems.push("MOU roster line for " + (rosterOnly.name || rosterOnly.email) + ": " + err.message);
+      }
+    }
+
+    showWelcomeMessage(false);
     updateSummary();
     renderTable();
-    document.getElementById("addInput").value = "";
-    document.getElementById("addPreview").style.display = "none";
-    document.getElementById("addActions").style.display = "none";
-    fb.textContent = `✓ ${toAdd.length} ${toAdd.length===1?"person":"people"} added`;
-    setTimeout(() => { fb.textContent = ""; }, 4000);
-  } catch(err) {
+    await populateReplacingList();
+    ["addName","addEmail","addNote"].forEach(id => document.getElementById(id).value = "");
+    document.getElementById("addReplacing").value = "";
+    document.getElementById("addToList").checked = true;
+    updateAddButtonLabel();
+
+    let done = `${name} added` + (out ? ` and ${out.name || out.email} removed.` : rosterOnly ? ` and ${rosterOnly.name || rosterOnly.email} removed from the MOU roster.` : ".");
+    if (outRoom) done += `\n\n${out.name || out.email} was in room ${outRoom}. Place ${name} there on admin-room-allocation.html (drag from the Pool, then Save all).`;
+    if (!addToList) done += "\n\nNext: set up their login (Bulk Users, Set Up Logins, tick just them), then click Import course candidates on this page.";
+    else if (rosterRole === "Instructor") done += "\n\nThey are now in the room pool on admin-room-allocation.html (reload that page).";
+    if (problems.length) done += "\n\nCheck these:\n" + problems.join("\n");
+    fb.textContent = problems.length ? "Done, with warnings." : "\u2713 Done.";
+    alert(done);
+  } catch (err) {
     fb.textContent = "Error: " + err.message;
+    alert("Stopped part-way: " + err.message + "\n\nCheck the MOU roster and this list before trying again.");
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1432,6 +1619,7 @@ function togglePanel(id) {
   });
   if (!visible) {
     el.style.display = "block";
+    if (id === "addPanel") populateReplacingList();
     if (id === "rosterPanel") loadRosterPreview();
     if (id === "facultyPanel") loadFacultyPreview();
     if (id === "syncPanel") loadSyncPreview();
