@@ -300,16 +300,22 @@
         <input type="text" id="addNote" placeholder="e.g. late replacement for illness">
       </div>
       <div class="field">
-        <label style="display:flex;align-items:flex-start;gap:8px;font-weight:600;">
-          <input type="checkbox" id="addToList" checked style="margin-top:3px;">
-          <span>Also add to this list now
-            <span style="display:block;font-weight:400;font-size:12px;color:var(--rmd-muted);margin-top:2px;">
-              Untick if this person does not have an RMD login yet. They are added to the MOU roster only. Set up their login
-              (Bulk Users, &ldquo;Set Up Logins&rdquo;, tick just them), then use <strong>Import course candidates</strong> here to bring them onto
-              the list. Adding them to the list <em>before</em> they have a login leaves their record without their real account ID, which breaks their room and role display.
+        <label>Does this person already have an RMD login?</label>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px;">
+          <label style="display:flex;align-items:flex-start;gap:10px;font-weight:600;cursor:pointer;">
+            <input type="radio" name="addHasLogin" value="no" checked onchange="updateLoginHelp()" style="width:auto;flex:none;margin:3px 0 0;padding:0;">
+            <span>No, or I'm not sure
+              <span style="display:block;font-weight:400;font-size:12px;color:var(--rmd-muted);margin-top:2px;">The safe choice. They go on the MOU roster only for now.</span>
             </span>
-          </span>
-        </label>
+          </label>
+          <label style="display:flex;align-items:flex-start;gap:10px;font-weight:600;cursor:pointer;">
+            <input type="radio" name="addHasLogin" value="yes" onchange="updateLoginHelp()" style="width:auto;flex:none;margin:3px 0 0;padding:0;">
+            <span>Yes, they can already sign in at rmd.uk.com
+              <span style="display:block;font-weight:400;font-size:12px;color:var(--rmd-muted);margin-top:2px;">They go on the MOU roster and the weekend list in one click.</span>
+            </span>
+          </label>
+        </div>
+        <div id="addLoginHelp" class="info-box" style="margin-top:12px;"></div>
       </div>
       <button class="btn-action" id="addPersonBtn" onclick="addOrReplacePerson()">Add person</button>
       <button class="btn-action secondary" type="button" onclick="showWelcomeMessage(true)" style="margin-left:6px;">Copy welcome message</button>
@@ -1034,6 +1040,7 @@ async function populateReplacingList() {
   }
   if (keep && sel.querySelector(`option[value="${keep}"]`)) sel.value = keep;
   updateAddButtonLabel();
+  updateLoginHelp();
 }
 
 // Welcome message for the person being added. Text only (nothing is sent from here).
@@ -1084,6 +1091,23 @@ function copyWelcomeMessage() {
     .catch(() => { try { document.execCommand("copy"); fb.textContent = "\u2713 Copied."; } catch (e) { fb.textContent = "Select the text and copy it by hand."; } });
 }
 
+function updateLoginHelp() {
+  const box = document.getElementById("addLoginHelp");
+  if (!box) return;
+  const hasLogin = document.querySelector('input[name="addHasLogin"]:checked').value === "yes";
+  box.innerHTML = hasLogin
+    ? `<strong>What happens:</strong><ol style="margin:6px 0 0 18px;padding:0;">
+         <li>Click <em>Add person</em>. They go on the MOU roster and the weekend list together.</li>
+         <li>Place them in a room on the room allocation page.</li></ol>
+       <div style="margin-top:6px;">Not certain they can sign in? Choose <em>No</em> instead. If they are put on the list before they have a login, their room and role may not show.</div>`
+    : `<strong>What happens:</strong><ol style="margin:6px 0 0 18px;padding:0;">
+         <li>Click <em>Add person</em>. They go on the MOU roster only. Nobody is emailed.</li>
+         <li>Send them the welcome message that appears. It has their link to create an account.</li>
+         <li>When they have created it, come back to this page and click <strong>Import course candidates</strong> at the top. That puts them on the weekend list.</li>
+         <li>Place them in a room on the room allocation page.</li></ol>
+       <div style="margin-top:6px;">Why not straight onto the list? Their record must be created after their account exists, or their room and role will not show.</div>`;
+}
+
 function updateAddButtonLabel() {
   const btn = document.getElementById("addPersonBtn");
   if (!btn) return;
@@ -1097,7 +1121,7 @@ async function addOrReplacePerson() {
   const rosterRole = document.getElementById("addRole").value;
   const note     = document.getElementById("addNote").value.trim();
   const outId    = document.getElementById("addReplacing").value;
-  const addToList = document.getElementById("addToList").checked;
+  const addToList = document.querySelector('input[name="addHasLogin"]:checked').value === "yes";
   const btn      = document.getElementById("addPersonBtn");
 
   if (!name)  { fb.textContent = "Name required."; return; }
@@ -1122,7 +1146,7 @@ async function addOrReplacePerson() {
             `\u2022 Added to the MOU roster (room pool)\n` +
             (addToList
               ? `\u2022 Added to this list as ${status === "confirmed" ? "Confirmed" : "Pending (attendance confirmation email will be sent)"}`
-              : `\u2022 NOT added to this list yet (roster only). Set up their login, then use Import course candidates.`);
+              : `\u2022 NOT on the weekend list yet. They need an RMD login first (see the steps in the panel).`);
   if (out) {
     msg += `\n\nAND remove ${out.name || out.email} (${out.email}):\n` +
            `\u2022 deleted from this list, the MOU roster, people, check-in, rooms and any assessment records\n` +
@@ -1213,12 +1237,13 @@ async function addOrReplacePerson() {
     await populateReplacingList();
     ["addName","addEmail","addNote"].forEach(id => document.getElementById(id).value = "");
     document.getElementById("addReplacing").value = "";
-    document.getElementById("addToList").checked = true;
+    document.querySelector('input[name="addHasLogin"][value="no"]').checked = true;
+    updateLoginHelp();
     updateAddButtonLabel();
 
     let done = `${name} added` + (out ? ` and ${out.name || out.email} removed.` : rosterOnly ? ` and ${rosterOnly.name || rosterOnly.email} removed from the MOU roster.` : ".");
     if (outRoom) done += `\n\n${out.name || out.email} was in room ${outRoom}. Place ${name} there on admin-room-allocation.html (drag from the Pool, then Save all).`;
-    if (!addToList) done += "\n\nNext: set up their login (Bulk Users, Set Up Logins, tick just them), then click Import course candidates on this page.";
+    if (!addToList) done += "\n\nNEXT STEPS:\n1. Send them the welcome message shown below (it has their link to create an account).\n2. When they have created their account, come back here and click \u201cImport course candidates\u201d at the top of this page.\n3. Place them in a room on the room allocation page.";
     else if (rosterRole === "Instructor") done += "\n\nThey are now in the room pool on admin-room-allocation.html (reload that page).";
     if (problems.length) done += "\n\nCheck these:\n" + problems.join("\n");
     fb.textContent = problems.length ? "Done, with warnings." : "\u2713 Done.";
