@@ -67,6 +67,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-1",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
         start: "08:00",
         duration: 45,
         title: "Registration",
@@ -79,6 +80,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-2",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
         start: "08:45",
         duration: 30,
         title: "Plenary Introduction & Welcome",
@@ -94,6 +96,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-3",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
         start: "09:15",
         duration: 20,
         title: "Equipment Demonstration",
@@ -110,6 +113,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-4",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
         start: "09:35",
         duration: 30,
         title: "Equipment Practice",
@@ -125,6 +129,7 @@ const PROGRAMME = {
       // block until midday as before — "assessor" removed from roles below, per Jon.
       {
         id: "sat-6",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "10:10",
         duration: 20,
         title: "Plenary Lecture: BLS/AED",
@@ -140,6 +145,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-7",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "10:30",
         duration: 15,
         title: "Plenary Demonstration: BLS/AED",
@@ -181,6 +187,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-10",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "12:00",
         duration: 30,
         title: "Plenary Lecture: First Aid",
@@ -410,6 +417,7 @@ const PROGRAMME = {
       // ── Instructor development (Saturday afternoon) ──
       {
         id: "sat-13",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "14:15",
         duration: 10,
         title: "BLS/AED/First Aid: Q&A & Feedback",
@@ -423,6 +431,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-14",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "14:25",
         duration: 20,
         title: "Life Support & Real Life",
@@ -438,6 +447,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-15",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "14:45",
         duration: 5,
         title: "Welcome & Goals of the BLS Instructor Course",
@@ -451,6 +461,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-16",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "14:50",
         duration: 20,
         title: "Plenary Lecture: Principles of Adult Learning & Teaching",
@@ -466,6 +477,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-17",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "15:10",
         duration: 15,
         title: "Effective Teaching: 5-Minute Presentation",
@@ -482,6 +494,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-18",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "15:25",
         duration: 20,
         title: "Debrief: 5-Minute Presentation",
@@ -497,6 +510,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-19",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "15:45",
         duration: 15,
         title: "Plenary Lecture: The Learning Conversation",
@@ -526,6 +540,7 @@ const PROGRAMME = {
       },
       {
         id: "sat-21",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
         start: "17:00",
         duration: 30,
         title: "Whole Course Photo",
@@ -668,6 +683,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-1",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "09:30",
         duration: 15,
         title: "Registration",
@@ -680,6 +696,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-2",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "09:45",
         duration: 15,
         title: "Learning",
@@ -696,6 +713,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-3",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "10:00",
         duration: 30,
         title: "Plenary Demonstration: Skills Teaching (BLS/AED)",
@@ -726,6 +744,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-6",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "12:00",
         duration: 20,
         title: "Plenary Lecture: Assessing",
@@ -742,6 +761,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-7",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "12:20",
         duration: 15,
         title: "Plenary Demonstration: Assessing",
@@ -756,6 +776,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-8",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "12:35",
         duration: 10,
         title: "RMD Reasonable Adjustments Pathway",
@@ -807,6 +828,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-12",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "15:00",
         duration: 30,
         title: "Course Logistics & Briefing",
@@ -819,6 +841,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-13",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "15:30",
         duration: 30,
         title: "Food for Thought",
@@ -834,6 +857,7 @@ const PROGRAMME = {
       },
       {
         id: "sun-14",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
         start: "16:00",
         duration: 15,
         title: "Summary Plenary & End of Course",

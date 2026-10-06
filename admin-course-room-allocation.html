@@ -216,15 +216,33 @@ async function loadData() {
   } catch(e) { console.warn("stage1_candidates load failed:", e.message); showStatus("Couldn't load candidates — check Firestore rules", "err"); }
 
   try {
+    // Monday teaching pool (2026-10-06, Jon): people with role "instructor",
+    // minus anyone marked "not teaching this term" on admin-iw-monday-ready.html
+    // (people.notTeachingThisTerm), plus role "assessor" ONLY when the director
+    // has switched that on there (config/monday_pool.includeAssessors). Both
+    // extras fail safe: if they cannot be read, the pool is exactly what it was.
+    let includeAssessors = false;
+    try {
+      const pc = await db.collection("config").doc("monday_pool").get();
+      includeAssessors = pc.exists && pc.data().includeAssessors === true;
+    } catch (e) { /* default off */ }
     const snap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get();
-    allInstructors = snap.docs.map(d => {
+    let poolDocs = snap.docs;
+    if (includeAssessors) {
+      try {
+        const asnap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.ASSESSOR).get();
+        poolDocs = poolDocs.concat(asnap.docs);
+      } catch (e) { console.warn("Assessor pool load failed:", e.message); }
+    }
+    allInstructors = poolDocs.filter(d => d.data().notTeachingThisTerm !== true).map(d => {
       const data = d.data();
       // Preferred name is a first-name swap, not a whole-name replacement
       // (Jon, 2026-09-07) — always show the surname alongside it, same
       // logic as resolveCanonicalName()'s displayName in firebase-config.js.
       const surname = data.passportLastName || (data.name ? data.name.trim().split(/\s+/).pop() : "");
       const first = data.preferredName ? data.preferredName.trim().split(/\s+/)[0] : null;
-      const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
+      let name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
+      if (data.role === ROLES.ASSESSOR) name += " (Assessor)";
       // Instructor Weekend strength rating (2026-10-01) — computed server
       // side from blind session/assessor feedback (see functions/index.js:
       // recomputeInstructorIwScore), never raw ratings. "unrated" when the

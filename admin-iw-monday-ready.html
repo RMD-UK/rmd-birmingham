@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monday Readiness - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 1100px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { background: var(--rmd-blue); color:white; padding:11px 16px; font-size:13px; font-weight:700; letter-spacing:0.3px; display:flex; align-items:center; gap:10px; }
+    .card-header .ttl { flex:1; }
+    .card-body { padding:16px; }
+    .note { background:#fff3cd; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; font-size:13px; color:#856404; margin-bottom:12px; line-height:1.5; }
+    .note.red { background:#fce8e6; border-color:#f5b8b0; color:#8f3309; }
+    .note.green { background:#e1efe3; border-color:#b7d9bd; color:#1a6e31; }
+    .hint { font-size:12px; color:var(--rmd-muted); line-height:1.5; }
+    .chip { display:inline-block; border-radius:10px; padding:2px 10px; font-size:11px; font-weight:700; white-space:nowrap; background:#eef1f4; color:#637282; }
+    .chip.ok { background:#e1efe3; color:#1a6e31; }
+    .chip.warn { background:#fff3cd; color:#856404; }
+    .chip.bad { background:#fce8e6; color:#b7410e; }
+    .btn-secondary { padding:8px 14px; background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; text-decoration:none; display:inline-block; }
+    .btn-secondary:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
+    .btn-secondary:disabled { opacity:.5; cursor:default; }
+    .btn-go { padding:6px 12px; background:#b7410e; color:white; border:none; border-radius:6px; font-size:12px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-go:hover { background:#8f3309; }
+    .btn-go:disabled { background:#aab8c2; cursor:default; }
+    .tbl-wrap { overflow-x:auto; margin:8px 0 12px; }
+    table { width:100%; border-collapse:collapse; font-size:12.5px; }
+    th { text-align:left; padding:8px 10px; background:#f5f7fa; color:var(--rmd-muted); font-size:11px; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
+    td { padding:8px 10px; border-top:1px solid #e8edf2; vertical-align:top; }
+    .nm { font-weight:700; color:var(--rmd-navy); }
+    .em { color:var(--rmd-muted); font-size:11.5px; word-break:break-all; }
+    .why { font-size:11.5px; color:#8f3309; line-height:1.45; margin-top:3px; }
+    .why.soft { color:#856404; }
+    .why.info { color:#6d7a86; }
+    code { background:#eef1f4; padding:1px 5px; border-radius:4px; font-size:11.5px; }
+    h4 { margin:14px 0 4px; color:var(--rmd-navy); font-size:13.5px; }
+    h4:first-child { margin-top:0; }
+    .row-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
+    .strip { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+    .strip a { text-decoration:none; background:white; border:2px solid #ccd6dd; border-radius:10px; padding:6px 12px; font-size:12px; color:var(--rmd-navy); font-weight:700; }
+    .strip a:hover { border-color:var(--rmd-blue); }
+    select { padding:7px 10px; border:1.5px solid #ccd6dd; border-radius:6px; font-family:var(--font); font-size:13px; }
+    details { margin:8px 0; }
+    summary { cursor:pointer; font-size:12.5px; color:var(--rmd-blue); font-weight:700; }
+    .modal-bg { position:fixed; inset:0; background:rgba(15,30,45,.55); display:none; align-items:center; justify-content:center; z-index:50; padding:16px; }
+    .modal { background:white; border-radius:10px; max-width:640px; width:100%; max-height:88vh; overflow:auto; padding:18px 20px; box-shadow:0 8px 30px rgba(0,0,0,.3); }
+    .modal h3 { margin:0 0 10px; color:var(--rmd-navy); font-size:16px; }
+    .modal .body { font-size:13px; line-height:1.55; }
+    .modal .body ul { margin:6px 0 6px 18px; padding:0; }
+    .modal input[type=text] { width:100%; padding:8px 10px; border:2px solid #ccd6dd; border-radius:6px; font-family:var(--font); font-size:14px; margin-top:6px; }
+    .modal .btns { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;min-width:200px;">
+      <div class="top-bar-title">Monday Readiness</div>
+      <div class="top-bar-sub">RMD Birmingham · Director only · reads everything, writes only when you confirm an action</div>
+    </div>
+    <a href="admin-iw-registrations.html" class="btn-secondary">← IW Registrations</a>
+    <button class="btn-secondary" onclick="load()">Re-check</button>
+  </div>
+
+  <div class="note">
+    A checklist for the end of Instructor Weekend and the first Monday evening course. Nothing here changes anything until you press an
+    action button and confirm the preview. Rating rules read <code>people.role</code>, so do <b>not</b> restore weekend roles (step 2)
+    until the weekend is over.
+  </div>
+
+  <div class="hint" id="status" style="margin-bottom:10px;">Loading...</div>
+  <div class="strip" id="strip"></div>
+
+  <div class="card" id="s1"><div class="card-header"><span class="ttl">1. Weekend ratings complete</span><span class="chip" id="c1">Loading</span></div><div class="card-body" id="b1"></div></div>
+  <div class="card" id="s2"><div class="card-header"><span class="ttl">2. Restore temporary roles</span><span class="chip" id="c2">Loading</span></div><div class="card-body" id="b2"></div></div>
+  <div class="card" id="s3"><div class="card-header"><span class="ttl">3. Instructors who did not pass</span><span class="chip" id="c3">Loading</span></div><div class="card-body" id="b3"></div></div>
+  <div class="card" id="s4"><div class="card-header"><span class="ttl">4. Sign-in check for the teaching pool</span><span class="chip" id="c4">Loading</span></div><div class="card-body" id="b4"></div></div>
+  <div class="card" id="s5"><div class="card-header"><span class="ttl">5. Test data</span><span class="chip" id="c5">Loading</span></div><div class="card-body" id="b5"></div></div>
+  <div class="card" id="s6"><div class="card-header"><span class="ttl">6. Allocation check for the Monday course</span><span class="chip" id="c6">Loading</span></div><div class="card-body" id="b6"></div></div>
+  <div class="card" id="s7"><div class="card-header"><span class="ttl">7. Optional: add Senior Instructors and Assessors to the pool</span><span class="chip" id="c7">Loading</span></div><div class="card-body" id="b7"></div></div>
+
+</div>
+
+<div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true">
+  <h3 id="mTitle"></h3><div class="body" id="mBody"></div>
+  <div id="mTypedWrap" style="display:none;margin-top:10px;"><div class="hint" id="mTypedLbl"></div><input type="text" id="mTyped" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+  <div class="btns"><button class="btn-secondary" id="mCancel">Cancel</button><button class="btn-go" id="mOk">Confirm</button></div>
+</div></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/monday-ready.js"></script>
+<script>
+initFirebase();
+const fns = firebase.functions();
+const M = window.RMD_MONDAY;
+const MONDAY_DATE = "2026-10-12";       // first Monday evening course after Instructor Weekend
+requireDirector("timetable.html").then(() => load());
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function norm(s) { return (s || "").trim().toLowerCase(); }
+function personCell(x) { return '<div class="nm">' + esc(x.name) + '</div><div class="em">' + esc(x.email) + '</div>'; }
+function tbl(head, rows) {
+  if (!rows.length) return "";
+  return '<div class="tbl-wrap"><table><thead><tr>' + head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" + rows.join("") + "</tbody></table></div>";
+}
+function setChip(n, state, text) {
+  const el = document.getElementById("c" + n);
+  el.className = "chip " + state; el.textContent = text;
+  CHIPS[n] = { state, text };
+}
+const CHIPS = {};
+const TITLES = { 1: "Ratings", 2: "Restore roles", 3: "Not passed", 4: "Sign-ins", 5: "Test data", 6: "Allocation", 7: "Assessors" };
+
+let D = null;          // everything loaded
+let COURSE = "";       // course picked in step 6
+const SELECTED = { restore: new Set(), notpassed: new Set() };
+
+// ── Load ────────────────────────────────────────────────────────────────────
+async function load() {
+  document.getElementById("status").textContent = "Loading people, registrations, ratings, allocations and the sign-in check...";
+  const errs = [];
+  const safe = async (name, p) => { try { return await p; } catch (e) { errs.push(name + ": " + e.message); return null; } };
+  const [pSnap, regSnap, aSnap, cfgSnap, poolSnap, candSnap, allocSnap, sfSnap, afSnap, datesSnap, facSnap, mouSnap, syncRes] = await Promise.all([
+    safe("people", db.collection(COLLECTIONS.people).get()),
+    safe("iw_registrations", db.collection(COLLECTIONS.iwRegistrations).get()),
+    safe("iw_assignments", db.collection(COLLECTIONS.iwAssignments).where("year", "==", CURRENT_IW_YEAR).get()),
+    safe("config/platform", db.collection("config").doc("platform").get()),
+    safe("config/monday_pool", db.collection("config").doc("monday_pool").get()),
+    safe("stage1_candidates", db.collection(COLLECTIONS.stage1Candidates).get()),
+    safe("course_allocations", db.collection(COLLECTIONS.courseAllocations).get()),
+    safe("session_feedback", db.collection("session_feedback").get()),
+    safe("assessor_feedback", db.collection(COLLECTIONS.assessorFeedback).get()),
+    safe("config/stage1_course_dates", db.collection("config").doc("stage1_course_dates").get()),
+    safe("faculty_responses", db.collection("faculty_responses").get()),
+    safe("mou_roster", db.collection(COLLECTIONS.mouRoster).get()),
+    safe("sign-in check (sync dry run)", firebase.functions().httpsCallable("syncIwRegistrationsToPeople")({ dryRun: true }))
+  ]);
+  const docs = s => s ? s.docs.map(d => ({ id: d.id, ...d.data() })) : null;
+  let sync = null;
+  if (syncRes && syncRes.data) {
+    const d = syncRes.data, set = a => new Set((a || []).map(x => norm(x.email)));
+    sync = { already: set(d.alreadySynced), toSync: set(d.synced), noAuth: set(d.noAuthAccount) };
+  }
+  const assigns = {};
+  if (aSnap) aSnap.forEach(d => { const a = d.data(); if (a.uid && a.function) assigns[a.uid] = a.function; });
+  const cfg = cfgSnap && cfgSnap.exists ? cfgSnap.data() : {};
+  const allocAll = docs(allocSnap) || [];
+  const dates = datesSnap && datesSnap.exists ? (datesSnap.data().courses || []) : [];
+  D = {
+    errs, sync,
+    people: docs(pSnap), regs: docs(regSnap) || [], assigns,
+    admins: M.platformAdminSet(cfg),
+    poolCfg: poolSnap && poolSnap.exists ? poolSnap.data() : {},
+    candidates: docs(candSnap) || [],
+    allocDocs: allocAll.filter(d => d.id !== "_default"),
+    defaultDoc: allocAll.find(d => d.id === "_default") || null,
+    sessionFb: docs(sfSnap) || [], assessorFb: docs(afSnap) || [],
+    courses: dates, facultyResponses: docs(facSnap) || [], mouRoster: docs(mouSnap) || []
+  };
+  D.poolOpts = { includeAssessors: D.poolCfg.includeAssessors === true };
+  if (!D.people) {
+    document.getElementById("status").textContent = "Could not read people records, so nothing can be checked. " + errs.join("; ");
+    return;
+  }
+  const courseNames = courseList();
+  if (!COURSE || !courseNames.includes(COURSE)) COURSE = M.courseOnDate(dates, MONDAY_DATE) || courseNames[0] || "";
+  SELECTED.restore = new Set(); SELECTED.notpassed = new Set();
+  document.getElementById("status").innerHTML = D.people.length + " people records loaded."
+    + (errs.length ? ' <span style="color:#b7410e;">Could not read: ' + esc(errs.join("; ")) + ". Steps that need those are marked.</span>" : "")
+    + (sync ? "" : ' <span style="color:#b7410e;">The sign-in check could not run, so step 4 and 6 fall back to guesses from record IDs.</span>');
+  renderAll();
+}
+function courseList() {
+  const s = new Set();
+  D.candidates.forEach(c => { if (c.course) s.add(c.course); });
+  D.courses.forEach(c => { if (c && c.name) s.add(c.name); });
+  return Array.from(s).sort((a, b) => {
+    const na = parseInt((a.match(/\d+/) || [])[0], 10), nb = parseInt((b.match(/\d+/) || [])[0], 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return a.localeCompare(b);
+  });
+}
+function renderAll() {
+  [render1, render2, render3, render4, render5, render6, render7].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
+  document.getElementById("strip").innerHTML = [1,2,3,4,5,6,7].map(n => {
+    const c = CHIPS[n] || { state: "", text: "" };
+    return '<a href="#s' + n + '">' + n + ". " + TITLES[n] + ' <span class="chip ' + c.state + '">' + esc(c.text) + "</span></a>";
+  }).join("");
+}
+function missing(name) { return D.errs.some(e => e.startsWith(name)); }
+function copyList(btn, list) {
+  navigator.clipboard.writeText(list.join("; ")).then(() => { const o = btn.textContent; btn.textContent = "Copied " + list.length; setTimeout(() => btn.textContent = o, 1800); }, () => { btn.textContent = "Could not copy"; });
+}
+let COPY = {};
+function copyKey(key, btn) { copyList(btn, COPY[key] || []); }
+
+// ── Confirm dialog (every write goes through this) ──────────────────────────
+function askConfirm(opt) {
+  return new Promise(resolve => {
+    const bg = document.getElementById("modalBg"), ok = document.getElementById("mOk"), cancel = document.getElementById("mCancel");
+    const typedWrap = document.getElementById("mTypedWrap"), typed = document.getElementById("mTyped");
+    document.getElementById("mTitle").textContent = opt.title;
+    document.getElementById("mBody").innerHTML = opt.html;
+    ok.textContent = opt.okLabel || "Confirm";
+    typed.value = "";
+    if (opt.typed) {
+      typedWrap.style.display = "block";
+      document.getElementById("mTypedLbl").innerHTML = "To go ahead, type <code>" + esc(opt.typed) + "</code> exactly:";
+      ok.disabled = true;
+      typed.oninput = () => { ok.disabled = typed.value.trim() !== opt.typed; };
+    } else { typedWrap.style.display = "none"; ok.disabled = false; typed.oninput = null; }
+    const done = v => { bg.style.display = "none"; ok.onclick = cancel.onclick = null; resolve(v); };
+    ok.onclick = () => done(true); cancel.onclick = () => done(false);
+    bg.style.display = "flex";
+  });
+}
+async function commitUpdates(updates) {   // updates: [{id, data}] -> people docs, batches of 400
+  const CH = 400;
+  for (let i = 0; i < updates.length; i += CH) {
+    const batch = db.batch();
+    updates.slice(i, i + CH).forEach(u => batch.update(db.collection(COLLECTIONS.people).doc(u.id), u.data));
+    await batch.commit();
+  }
+}
+const FV = () => firebase.firestore.FieldValue;
+const byEmail = () => (auth.currentUser && auth.currentUser.email) || null;
+
+// ── 1. Weekend ratings ──────────────────────────────────────────────────────
+function render1() {
+  const el = document.getElementById("b1");
+  if (missing("session_feedback") || missing("assessor_feedback")) { setChip(1, "warn", "Could not read ratings"); el.innerHTML = '<p class="hint">Ratings could not be read, so this step cannot be checked.</p>'; return; }
+  const r = M.computeRatings({ people: D.people, regs: D.regs, sessionFb: D.sessionFb, assessorFb: D.assessorFb, poolOpts: D.poolOpts, sync: D.sync });
+  const un = r.unratedAtWeekend, rm = r.ratersMissing;
+  if (r.ready && r.raters.length) setChip(1, "ok", "Complete");
+  else if (!r.rated.length && !D.sessionFb.length) setChip(1, "warn", "No ratings yet");
+  else setChip(1, "warn", un.length + " unrated, " + rm.length + " raters quiet");
+  let h = '<p class="hint" style="margin:0 0 10px;">Teaching pool: <b>' + r.poolSize + '</b> instructors (people with role <code>instructor</code>' + (D.poolOpts.includeAssessors ? ", plus assessors" : "") + '). <b>' + r.rated.length + '</b> have at least one weekend rating, <b>' + r.unratedAtWeekend.length + '</b> were at the weekend and have none, <b>' + r.unratedOther.length + '</b> were not on the weekend list.</p>';
+  h += "<h4>Instructors at the weekend with no rating yet (" + un.length + ")</h4>";
+  h += un.length ? tbl(["Person", "Role"], un.map(x => "<tr><td>" + personCell(x) + "</td><td>" + esc(x.role) + "</td></tr>")) : '<p class="hint">None.</p>';
+  h += "<h4>Faculty-side raters with no ratings submitted (" + rm.length + " of " + r.raters.length + ")</h4>";
+  if (rm.length) {
+    COPY.raters = rm.filter(x => x.email).map(x => x.email);
+    h += '<div class="row-actions"><button class="btn-secondary" onclick="copyKey(\'raters\', this)">Copy emails (' + COPY.raters.length + ')</button></div>';
+    h += tbl(["Person", "Role", "Why"], rm.map(x => "<tr><td>" + personCell(x) + "</td><td>" + esc(x.role) + '</td><td>' + (x.why ? '<span class="why">' + esc(x.why) + "</span>" : '<span class="why info">Has a record and sign-in, no ratings found.</span>') + "</td></tr>"));
+  } else h += '<p class="hint">' + (r.raters.length ? "Everyone has submitted at least one rating." : "No faculty-side attendees found on the registration list.") + "</p>";
+  h += '<p class="hint">A faculty member who ran a room with nothing to rate can legitimately have none. Assessor Faculty rate in a separate form, which is also counted. Test records are left out.</p>';
+  if (r.unratedOther.length) h += "<details><summary>" + r.unratedOther.length + " pool instructors who were not on the weekend list (shown as unrated in allocation)</summary>" + tbl(["Person"], r.unratedOther.map(x => "<tr><td>" + personCell(x) + "</td></tr>")) + "</details>";
+  el.innerHTML = h;
+}
+
+// ── 2. Restore temporary roles ──────────────────────────────────────────────
+function render2() {
+  const el = document.getElementById("b2");
+  const R = M.computeRestore({ people: D.people, admins: D.admins, assigns: D.assigns });
+  const early = M.restoreTooEarly(Date.now());
+  if (!R.rows.length) { setChip(2, "ok", "Nothing to restore"); el.innerHTML = '<p class="hint">Nobody has a <code>roleFixedFrom</code> record, so no roles were changed by the preflight page.</p>'; return; }
+  if (!R.restorable.length) setChip(2, "ok", "Nothing left to restore");
+  else setChip(2, early ? "warn" : "bad", R.restorable.length + (early ? " to restore after the weekend" : " waiting"));
+  let h = "";
+  if (early) h += '<div class="note red"><b>The weekend is not over.</b> Raters currently hold their weekend role in <code>people.role</code>, and the rating rules read exactly that. Restoring now would stop those people rating. The buttons below ask for an extra typed confirmation before then.</div>';
+  h += '<p class="hint" style="margin:0 0 8px;">These people had <code>people.role</code> changed by the Account Preflight page. "Restore" puts the previous role back, sets <code>stream</code> to match, and keeps a record of what was restored. The per-year weekend job in <code>iw_assignments</code> is left alone. Directors and super-users are never changed.</p>';
+  if (R.restorable.length) {
+    R.restorable.forEach(x => { if (!x.caution && !SELECTED.restore.has("__init__")) SELECTED.restore.add(x.id); });
+    SELECTED.restore.add("__init__");
+    h += '<div class="row-actions"><button class="btn-go" onclick="restoreSelected()">Restore ticked rows...</button><span class="hint">Rows with a caution start unticked.</span></div>';
+  }
+  h += tbl(["", "Person", "Now", "Restore to", "Notes", ""], R.rows.map(x => {
+    const notes = (x.skip ? '<div class="why' + (x.canRestore ? "" : " info") + '">' + esc(x.skip) + "</div>" : "") + (x.caution ? '<div class="why">' + esc(x.caution) + "</div>" : "") + (x.info ? '<div class="why soft">' + esc(x.info) + "</div>" : "");
+    return "<tr><td>" + (x.canRestore ? '<input type="checkbox" ' + (SELECTED.restore.has(x.id) ? "checked" : "") + ' onchange="toggleSel(\'restore\',\'' + esc(x.id) + '\',this.checked)">' : "") + "</td><td>" + personCell(x) + "</td><td>" + esc(x.current || "blank") + "</td><td>" + esc(x.restoreTo || "-") + "</td><td>" + notes + "</td><td>" + (x.canRestore ? '<button class="btn-go" onclick="restoreOne(\'' + esc(x.id) + '\')">Restore to ' + esc(x.restoreTo) + "</button>" : "") + "</td></tr>";
+  }));
+  el.innerHTML = h;
+}
+function toggleSel(kind, id, on) { if (on) SELECTED[kind].add(id); else SELECTED[kind].delete(id); }
+async function restoreOne(id) { return doRestore([id], false); }
+async function restoreSelected() {
+  const ids = Array.from(SELECTED.restore).filter(x => x !== "__init__");
+  if (!ids.length) { alert("Nothing ticked."); return; }
+  return doRestore(ids, true);
+}
+async function doRestore(ids, many) {
+  const R = M.computeRestore({ people: D.people, admins: D.admins, assigns: D.assigns });
+  const rows = R.restorable.filter(x => ids.includes(x.id));
+  if (!rows.length) { alert("Nothing restorable in that selection."); return; }
+  // Re-read each record just before showing the preview, so the preview is of what will actually be written.
+  let live;
+  try { live = await Promise.all(rows.map(r => db.collection(COLLECTIONS.people).doc(r.id).get())); }
+  catch (e) { alert("Could not re-read the records: " + e.message); return; }
+  const ok = [], skipped = [];
+  rows.forEach((r, i) => {
+    const s = live[i];
+    if (!s.exists) { skipped.push([r, "record no longer exists"]); return; }
+    const d = s.data();
+    if (M.isDirectorLike({ role: d.role, email: d.email }, D.admins)) { skipped.push([r, "now a director or super-user"]); return; }
+    if (d.roleFixedFrom !== r.restoreTo) { skipped.push([r, "previous role record changed since this page loaded"]); return; }
+    if ((d.role || "") !== r.current) { skipped.push([r, "role changed since this page loaded (now " + (d.role || "blank") + ")"]); return; }
+    ok.push(r);
+  });
+  if (!ok.length) { alert("Nothing to write: " + skipped.map(x => x[0].name + " (" + x[1] + ")").join("; ")); return; }
+  const early = M.restoreTooEarly(Date.now());
+  const phrase = early ? "RESTORE EARLY" : (many ? "RESTORE " + ok.length : null);
+  const html = (early ? '<p style="color:#b7410e;"><b>The weekend is not over.</b> These people will lose the rating rights their current role gives them.</p>' : "")
+    + "<p>This changes <b>" + ok.length + "</b> record(s). For each: <code>people.role</code> goes back to the previous role and <code>stream</code> follows it. Nothing else changes.</p><ul>"
+    + ok.map(r => "<li><b>" + esc(r.name) + "</b> (" + esc(r.email) + "): " + esc(r.current || "blank") + " &rarr; <b>" + esc(r.restoreTo) + "</b>" + (r.info ? " &middot; " + esc(r.info) : "") + "</li>").join("") + "</ul>"
+    + (skipped.length ? "<p><b>Skipped (checked just now):</b></p><ul>" + skipped.map(x => "<li>" + esc(x[0].name) + ": " + esc(x[1]) + "</li>").join("") + "</ul>" : "");
+  const yes = await askConfirm({ title: many ? "Restore " + ok.length + " roles?" : "Restore " + ok[0].name + "?", html, okLabel: "Restore", typed: phrase });
+  if (!yes) return;
+  try {
+    await commitUpdates(ok.map(r => ({ id: r.id, data: M.restoreUpdate(r, byEmail(), FV()) })));
+  } catch (e) { alert("Not saved: " + e.message); return; }
+  await load();
+}
+
+// ── 3. Instructors who did not pass ─────────────────────────────────────────
+function render3() {
+  const el = document.getElementById("b3");
+  const N = M.computeNotPassed({ people: D.people, regs: D.regs, admins: D.admins });
+  const undecided = N.onList.filter(x => !x.marked);
+  const passRun = N.withPeriod > 0;
+  if (!passRun && N.total) setChip(3, "warn", "Run Pass Confirmation first");
+  else if (undecided.length) setChip(3, "warn", undecided.length + " to decide");
+  else setChip(3, "ok", N.onList.filter(x => x.marked).length + " marked");
+  let h = "";
+  if (!passRun && N.total) h += '<div class="note">Nobody with role <code>instructor</code> has an open Instructor period yet, so <a href="admin-iw-pass-confirmation.html">Pass Confirmation</a> has probably not been run. Do that first, otherwise everyone below will look like they did not pass.</div>';
+  h += '<p class="hint" style="margin:0 0 8px;">People whose role is <code>instructor</code> but who have no open <b>Instructor</b> period in their role history. "Not teaching this term" keeps them out of the teaching pool in Course Room &amp; Instructor Allocation until you clear it. It does not change their role. ' + N.withPeriod + " of " + N.total + " instructors do have an Instructor period.</p>";
+  const rowHtml = x => "<tr><td>" + (x.marked ? "" : '<input type="checkbox" ' + (SELECTED.notpassed.has(x.id) ? "checked" : "") + ' onchange="toggleSel(\'notpassed\',\'' + esc(x.id) + '\',this.checked)">') + "</td><td>" + personCell(x) + "</td><td>" + (x.marked ? '<span class="chip warn">Not teaching this term</span>' : "") + "</td><td>" + (x.marked ? '<button class="btn-secondary" onclick="markPeople([\'' + esc(x.id) + '\'], false)">Clear</button>' : "") + "</td></tr>";
+  h += "<h4>Registered as Instructor Candidate, no Instructor period (" + N.onList.length + ")</h4>";
+  h += N.onList.length ? tbl(["", "Person", "Status", ""], N.onList.map(rowHtml)) : '<p class="hint">None.</p>';
+  h += '<div class="row-actions"><button class="btn-go" onclick="markSelected()">Mark ticked as not teaching this term...</button></div>';
+  h += "<details><summary>" + N.notOnList.length + " other instructors with no Instructor period (not on this year's weekend list)</summary><p class=\"hint\">Probably older instructors whose history was never recorded, so they most likely should teach. Run the MoU ratify tool in <a href=\"admin-role-history.html\">Role History</a> first. You can still mark someone here.</p>" + tbl(["", "Person", "Status", ""], N.notOnList.map(rowHtml)) + "</details>";
+  if (N.markedButPassed.length) h += "<h4>Marked, but now have an Instructor period (" + N.markedButPassed.length + ")</h4>" + tbl(["", "Person", "Status", ""], N.markedButPassed.map(rowHtml));
+  el.innerHTML = h;
+}
+async function markSelected() {
+  const ids = Array.from(SELECTED.notpassed);
+  if (!ids.length) { alert("Nothing ticked."); return; }
+  return markPeople(ids, true);
+}
+async function markPeople(ids, marked) {
+  let live;
+  try { live = await Promise.all(ids.map(id => db.collection(COLLECTIONS.people).doc(id).get())); }
+  catch (e) { alert("Could not re-read the records: " + e.message); return; }
+  const ok = [], skipped = [];
+  ids.forEach((id, i) => {
+    const s = live[i];
+    if (!s.exists) { skipped.push([id, "record no longer exists"]); return; }
+    const d = s.data();
+    if (M.isDirectorLike({ role: d.role, email: d.email }, D.admins)) { skipped.push([d.name || id, "director or super-user"]); return; }
+    if (marked && (d.role || "") !== "instructor") { skipped.push([d.name || id, "role is now " + (d.role || "blank")]); return; }
+    ok.push({ id, name: d.name || d.email || id, email: d.email || "" });
+  });
+  if (!ok.length) { alert("Nothing to write: " + skipped.map(x => x[0] + " (" + x[1] + ")").join("; ")); return; }
+  const html = "<p>" + (marked ? "These " + ok.length + " people will be left out of the teaching pool in Course Room &amp; Instructor Allocation. Their role is not changed. You can clear this later."
+    : "These " + ok.length + " people will go back into the teaching pool.") + "</p><ul>" + ok.map(x => "<li><b>" + esc(x.name) + "</b> (" + esc(x.email) + ")</li>").join("") + "</ul>"
+    + (skipped.length ? "<p><b>Skipped:</b></p><ul>" + skipped.map(x => "<li>" + esc(x[0]) + ": " + esc(x[1]) + "</li>").join("") + "</ul>" : "")
+    + (marked ? '<p class="hint">Allocation pages that were already open need a refresh. Anything already saved in a course allocation stays until you change it there.</p>' : "");
+  const yes = await askConfirm({ title: marked ? "Mark " + ok.length + " as not teaching this term?" : "Clear the mark on " + ok.length + "?", html, okLabel: marked ? "Mark" : "Clear" });
+  if (!yes) return;
+  try { await commitUpdates(ok.map(x => ({ id: x.id, data: M.markUpdate(marked, byEmail(), FV()) }))); }
+  catch (e) { alert("Not saved: " + e.message); return; }
+  await load();
+}
+
+// ── 4. Sign-in check ────────────────────────────────────────────────────────
+function render4() {
+  const el = document.getElementById("b4");
+  const S = M.computeSignin({ people: D.people, sync: D.sync, poolOpts: D.poolOpts });
+  const c = S.counts, bad = c.none + c.idmismatch;
+  if (bad) setChip(4, "bad", bad + " cannot sign in or match");
+  else if (c.unknown + c.noemail) setChip(4, "warn", (c.unknown + c.noemail) + " probably no sign-in");
+  else setChip(4, "ok", "All look fine");
+  const lbl = { ok: "Has sign-in", likely: "Probably has sign-in", none: "No sign-in", idmismatch: "Sign-in does not match record", unknown: "Probably no sign-in", noemail: "No email" };
+  const cls = { ok: "ok", likely: "ok", none: "bad", idmismatch: "bad", unknown: "warn", noemail: "warn" };
+  let h = '<p class="hint" style="margin:0 0 8px;">' + (S.syncAvailable ? "Uses the read-only dry run of the sync, which only knows people on this year's confirmed registration list. For everyone else, the record ID shape is used as a guide (a real sign-in ID is 28 characters), which is an inference, not proof." : "The sync dry run could not run, so every result below is a guess from the record ID shape.") + "</p>";
+  h += '<p style="margin:0 0 8px;">' + [["ok", "ok"], ["likely", "likely"], ["none", "none"], ["idmismatch", "idmismatch"], ["unknown", "unknown"], ["noemail", "noemail"]].filter(k => c[k[1]]).map(k => '<span class="chip ' + cls[k[0]] + '">' + c[k[1]] + " " + lbl[k[0]] + "</span>").join(" ") + "</p>";
+  COPY.logins = S.needLogin.map(x => x.email);
+  h += '<div class="row-actions"><button class="btn-secondary" onclick="copyKey(\'logins\', this)"' + (COPY.logins.length ? "" : " disabled") + ">Copy emails of people needing a login (" + COPY.logins.length + ')</button>'
+    + '<a class="btn-secondary" href="admin-bulk-users.html">Bulk User Setup: Set Up Logins for All Active RMD Birmingham Members</a>'
+    + '<a class="btn-secondary" href="admin-iw-registrations.html">IW Registrations: open the Sync to People panel</a></div>';
+  const rows = S.rows.filter(x => x.status !== "ok");
+  h += rows.length ? tbl(["Person", "Result", "Detail"], rows.map(x => "<tr><td>" + personCell(x) + '</td><td><span class="chip ' + cls[x.status] + '">' + lbl[x.status] + '</span></td><td><span class="why info">' + esc(x.why) + "</span></td></tr>")) : '<p class="hint">Every pool instructor has a matching sign-in.</p>';
+  h += '<p class="hint">Order of fixes: create logins in Bulk User Setup first, then run Sync to People so each login gets a record with its own ID, then press Re-check. A record with an auto-generated ID needs the Duplicate People &amp; Account Cleanup tool.</p>';
+  el.innerHTML = h;
+}
+
+// ── 5. Test data ────────────────────────────────────────────────────────────
+function render5() {
+  const el = document.getElementById("b5");
+  const T = M.countTestData({ people: D.people, regs: D.regs, facultyResponses: D.facultyResponses, mouRoster: D.mouRoster, poolOpts: D.poolOpts });
+  setChip(5, T.inPool ? "bad" : (T.total ? "warn" : "ok"), T.total ? T.total + " test record(s)" : "Clean");
+  let h = '<p style="margin:0 0 8px;">People records: <b>' + T.people + "</b> &middot; registrations: <b>" + T.regs + "</b> &middot; faculty responses: <b>" + T.facultyResponses + "</b> &middot; MoU roster: <b>" + T.mouRoster + "</b></p>";
+  if (T.inPool) h += '<div class="note red">' + T.inPool + " test record(s) are in the teaching pool and would appear in allocation: " + esc(T.poolTestNames.join(", ")) + ".</div>";
+  h += '<div class="row-actions"><a class="btn-secondary" href="admin-iw-test-cleanup.html">Open the test-data cleanup</a></div>';
+  el.innerHTML = h;
+}
+
+// ── 6. Allocation check ─────────────────────────────────────────────────────
+function render6() {
+  const el = document.getElementById("b6");
+  const names = courseList();
+  if (!names.length) { setChip(6, "warn", "No courses"); el.innerHTML = '<p class="hint">No Stage 1 courses found yet.</p>'; return; }
+  const dateMap = {}; D.courses.forEach(c => { if (c && c.name) dateMap[c.name] = c.date || ""; });
+  const A = M.computeAllocation({ course: COURSE, candidates: D.candidates, allocDocs: D.allocDocs, defaultDoc: D.defaultDoc, people: D.people, sync: D.sync, rooms: STAGE1_TEACHING_ROOMS });
+  setChip(6, A.ready ? "ok" : ((A.badMembers.length || A.noRoom.length) ? "bad" : "warn"), A.ready ? "Ready" : (A.warnings.length + A.noRoom.length ? (A.noRoom.length + " without room, " + A.warnings.length + " warning(s)") : "Check"));
+  let h = '<div class="row-actions"><label for="courseSel" class="hint">Course:</label><select id="courseSel" onchange="COURSE=this.value;renderAll()">'
+    + names.map(n => '<option value="' + esc(n) + '"' + (n === COURSE ? " selected" : "") + ">" + esc(n) + (dateMap[n] ? " (" + esc(dateMap[n]) + ")" : "") + "</option>").join("")
+    + '</select><a class="btn-secondary" href="admin-course-room-allocation.html">Open Course Room &amp; Instructor Allocation</a></div>';
+  h += '<p class="hint">' + A.candidateCount + " candidate(s) on this course. Teams come from: <b>" + (A.source === "saved" ? "this course's saved allocation" : A.source === "default" ? "the default allocation only (nothing saved for this course)" : "nothing saved yet") + "</b>.</p>";
+  A.warnings.forEach(w => { h += '<div class="note' + (A.badMembers.length && /ID that will not/.test(w) ? " red" : "") + '">' + esc(w) + "</div>"; });
+  h += "<h4>Candidates without a room (" + A.noRoom.length + ")</h4>";
+  h += A.noRoom.length ? tbl(["Candidate", "Note"], A.noRoom.map(x => "<tr><td>" + personCell(x) + "</td><td>" + (x.had ? '<span class="why">Had "' + esc(x.had) + '", which is not a valid room.</span>' : '<span class="why info">No room.</span>') + "</td></tr>")) : '<p class="hint">Everyone has a room.</p>';
+  h += "<h4>Team members whose ID will not give OPIS access (" + A.badMembers.length + ")</h4>";
+  h += A.badMembers.length ? tbl(["Room", "Person", "Problem"], A.badMembers.map(x => "<tr><td>" + esc(x.room) + "</td><td><div class=\"nm\">" + esc(x.name) + '</div><div class="em">' + esc(x.uid) + "</div></td><td><span class=\"why\">" + esc(x.problem) + "</span></td></tr>")) : '<p class="hint">None.</p>';
+  h += "<h4>Candidates whose saved team list is out of date (" + A.stale.length + ")</h4>";
+  h += A.stale.length ? '<p class="hint">OPIS looks at a copy of the team stored on each candidate, written only when the allocation is saved. Open the allocation for this course and press Save to refresh it.</p>' + tbl(["Candidate", "Room", "Team on candidate", "Team in allocation"], A.stale.map(x => "<tr><td>" + esc(x.name) + "</td><td>" + esc(x.room) + "</td><td>" + x.has + "</td><td>" + x.wants + "</td></tr>")) : '<p class="hint">' + (A.source === "saved" ? "All candidates match the saved allocation." : "Nothing to compare until an allocation is saved.") + "</p>";
+  if (A.roomsWithoutTeam.length) h += '<p class="hint">Rooms with candidates but no instructors: <b>' + esc(A.roomsWithoutTeam.join(", ")) + "</b>.</p>";
+  el.innerHTML = h;
+}
+
+// ── 7. Optional assessor toggle ─────────────────────────────────────────────
+function render7() {
+  const el = document.getElementById("b7");
+  const on = D.poolOpts.includeAssessors;
+  const n = D.people.filter(p => M.norm(p.role) === "assessor" && p.notTeachingThisTerm !== true && !M.isTestDoc(p)).length;
+  setChip(7, on ? "warn" : "", on ? "On" : "Off (default)");
+  el.innerHTML = '<p style="margin:0 0 8px;">Currently <b>' + (on ? "ON" : "OFF") + "</b>. The Monday teaching pool is people with role <code>instructor</code>. Senior Instructors and Assessors (role <code>assessor</code>) are left out unless you turn this on.</p>"
+    + '<p class="hint">Turning it on adds <b>' + n + "</b> assessor record(s) to the Instructors tab in Course Room &amp; Instructor Allocation, each labelled &quot;(Assessor)&quot;. It does not change anyone's role. Only a super-user can save this setting.</p>"
+    + '<div class="row-actions"><button class="btn-go" onclick="setAssessorPool(' + (!on) + ')">' + (on ? "Turn off..." : "Turn on...") + "</button></div>";
+}
+async function setAssessorPool(on) {
+  const n = D.people.filter(p => M.norm(p.role) === "assessor" && p.notTeachingThisTerm !== true && !M.isTestDoc(p)).length;
+  const yes = await askConfirm({ title: on ? "Add Assessors to the teaching pool?" : "Take Assessors out of the teaching pool?", html: on ? "<p>" + n + " people with role <code>assessor</code> (Senior Instructors and Assessors) will appear in the Instructors tab of Course Room &amp; Instructor Allocation, labelled &quot;(Assessor)&quot;.</p><p>Anyone you have marked &quot;not teaching this term&quot; stays out. No roles change.</p>" : "<p>Assessors will no longer appear in the Instructors tab. Anyone already placed in a saved allocation stays there until you change it.</p>", okLabel: on ? "Turn on" : "Turn off" });
+  if (!yes) return;
+  try { await db.collection("config").doc("monday_pool").set({ includeAssessors: on, updatedAt: FV().serverTimestamp(), updatedBy: byEmail() }, { merge: true }); }
+  catch (e) { alert("Not saved: " + e.message + (/permission/i.test(e.message) ? "\n\nOnly a super-user can change this setting." : "")); return; }
+  await load();
+}
+</script>
+</body>
+</html>
