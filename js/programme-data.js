@@ -588,7 +588,9 @@ const PROGRAMME = {
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
         notes: "",
-        resources: [],
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -601,7 +603,9 @@ const PROGRAMME = {
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
         notes: "",
-        resources: [],
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -614,7 +618,9 @@ const PROGRAMME = {
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
         notes: "And how to navigate these with instructors / common questions.",
-        resources: [],
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -627,7 +633,9 @@ const PROGRAMME = {
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
         notes: "Including teaching and examining.",
-        resources: [],
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -640,7 +648,9 @@ const PROGRAMME = {
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
         notes: "",
-        resources: [],
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -653,7 +663,9 @@ const PROGRAMME = {
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
         notes: "",
-        resources: [],
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -666,7 +678,9 @@ const PROGRAMME = {
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
         notes: "",
-        resources: [],
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
