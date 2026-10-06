@@ -288,8 +288,10 @@ const PROGRAMME = {
         lead: "",
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
-        notes: "Assessors and Senior Instructors only.",
-        resources: [],
+        notes: "Assessors and Senior Instructors only. Objectives; what is new and to note (current guidelines, RCUK, nurse refresher course, breasted manikins, assessment night checklist, QCPR).",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -301,21 +303,30 @@ const PROGRAMME = {
         lead: "",
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
-        notes: "",
-        resources: [],
+        notes: "Demonstrate your own competence in basic life support skills and recertify.",
+        resources: [
+          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" },
+          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" },
+          { title: "BLS Algorithm", path: "resources/provider/bls-algorithm.pdf", icon: "📄" },
+          { title: "AED Settings", path: "resources/provider/aed-settings.pdf", icon: "📄" },
+          { title: "QCPR How-to Guide", path: "resources/provider/qcpr-how-to-guide.pdf", icon: "📄" },
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
         id: "sat-assessor-3",
         start: "12:00",
         duration: 30,
-        title: "Introduction to Examining a BLS Candidate",
+        title: "Introduction to Assessing a BLS Candidate",
         location: "WF15",
         lead: "",
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
-        notes: "",
-        resources: [],
+        notes: "Assessment night: preparing your room (environment, equipment, checklist), role of teachers and when to have the assistant in or out of the room, timing, clean up.",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -334,28 +345,32 @@ const PROGRAMME = {
         id: "sat-assessor-5",
         start: "13:30",
         duration: 45,
-        title: "Examination of the Successful Candidate",
+        title: "Assessment of the Successful Candidate",
         location: "WF15",
         lead: "",
         needsPresenter: true,
         needsHelper: true,
         roles: ["assessor", "faculty", "director"],
         notes: "Introduction, making the candidate feel at ease, observing, delivering the verdict, learning conversation, closure — followed by group sessions.",
-        resources: [],
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
         id: "sat-assessor-6",
         start: "14:15",
         duration: 45,
-        title: "Examination of the Unsuccessful Candidate",
+        title: "Assessment of the Unsuccessful Candidate",
         location: "WF15",
         lead: "",
         needsPresenter: true,
         needsHelper: true,
         roles: ["assessor", "faculty", "director"],
         notes: "Delivering the verdict, being direct, learning conversation, re-sits, avoiding confrontation/debate — followed by group sessions.",
-        resources: [],
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -374,13 +389,14 @@ const PROGRAMME = {
         id: "sat-assessor-8",
         start: "15:15",
         duration: 90,
-        title: "Grey Areas & Examining the Borderline Candidate",
+        title: "Grey Areas & Assessing the Borderline Candidate",
         location: "WF15",
         lead: "",
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
-        notes: "Standardisation, common issues from previous examinations, and fail-point criteria (approach, 999 call, chest compressions, rescue breaths, AED). Runs straight through to 16:45 — no longer paused for the Whole Course Photo, which now sits after Feedback & Closure instead.",
+        notes: "Standardisation, common issues from previous assessments, and fail-point criteria (approach, 999 call, chest compressions, rescue breaths, AED). Runs straight through to 16:45 — no longer paused for the Whole Course Photo, which now sits after Feedback & Closure instead.",
         resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" },
           { title: "Grey Areas slides", path: "resources/assessor-grey-areas.html", icon: "📊" }
         ],
         tags: ["assessor-stream"]
@@ -394,8 +410,10 @@ const PROGRAMME = {
         lead: "",
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
-        notes: "Assessor candidate training concludes here. Senior Instructors continue with an additional session Sunday morning.",
-        resources: [],
+        notes: "Course closure: form completion, first night debrief, assessment irregularity form, assessment sit-ins. Assessor candidate training concludes here. Senior Instructors continue with an additional session Sunday morning.",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
         tags: ["assessor-stream"]
       },
       {
@@ -612,7 +630,7 @@ const PROGRAMME = {
         id: "sun-assessor-2c",
         start: "10:30",
         duration: 30,
-        title: "Reinforce Grey Areas Covered in the Examiner Course",
+        title: "Reinforce Grey Areas Covered in the Assessor Course",
         location: "WF15",
         lead: "",
         needsPresenter: true,
@@ -632,7 +650,7 @@ const PROGRAMME = {
         lead: "",
         needsPresenter: true,
         roles: ["assessor", "faculty", "director"],
-        notes: "Including teaching and examining.",
+        notes: "Including teaching and assessing.",
         resources: [
           { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
         ],
