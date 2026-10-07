@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructor Potential Forms — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 1100px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    #authMsg { color:#fff3cd; font-size:12px; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { padding:12px 16px; font-weight:700; color:var(--rmd-navy); border-bottom:1px solid #eef2f6; font-size:14px; }
+    .card-body { padding:14px 16px; }
+    .hint { font-size:12px; color:var(--rmd-muted); line-height:1.5; margin:0 0 10px; }
+    .notice { background:#fff8e1; border-left:4px solid #b8860b; border-radius:0 6px 6px 0; padding:10px 14px; font-size:13px; color:var(--rmd-navy); line-height:1.5; margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px 14px; }
+    .grid label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--rmd-muted); margin-bottom:3px; }
+    input[type=text], select, textarea { width:100%; padding:8px 10px; border:2px solid #ccd6dd; border-radius:6px; font-size:13px; font-family:var(--font); }
+    textarea { min-height:90px; resize:vertical; line-height:1.45; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+    .btn { background:var(--rmd-blue); color:white; border:none; border-radius:6px; padding:10px 16px; font-size:13px; font-weight:700; cursor:pointer; font-family:var(--font); }
+    .btn.secondary { background:#fff; color:var(--rmd-navy); border:2px solid #ccd6dd; }
+    .btn:disabled { opacity:.45; cursor:not-allowed; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--rmd-muted); padding:8px 8px; border-bottom:2px solid #eef2f6; }
+    td { padding:8px 8px; border-bottom:1px solid #eef2f6; vertical-align:top; }
+    td.name { font-weight:700; color:var(--rmd-navy); }
+    td input.year { width:70px; }
+    .pill { display:inline-block; font-size:10px; font-weight:700; padding:3px 9px; border-radius:10px; text-transform:uppercase; letter-spacing:.4px; margin-right:4px; }
+    .pill-ok { background:#e1efe3; color:#1a6e31; }
+    .pill-warn { background:#fff3cd; color:#856404; }
+    .warn-text { font-size:12px; color:#856404; margin-top:4px; }
+    .stmt-row td { background:#f7f9fb; }
+    .link { color:var(--rmd-blue); cursor:pointer; font-size:12px; font-weight:700; background:none; border:none; padding:0; font-family:var(--font); }
+    .empty-state { padding:30px; text-align:center; color:var(--rmd-muted); font-size:13px; }
+    .result { font-size:13px; line-height:1.6; }
+    .result .bad { color:#b7410e; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Instructor Potential Forms</div>
+      <div class="top-bar-sub">RMD Birmingham · Course Director only</div>
+      <div id="authMsg"></div>
+    </div>
+    <a href="member-menu.html" style="color:white;font-size:12px;">← Menu</a>
+  </div>
+
+  <div class="notice">
+    These are <strong>drafts for you to check and sign</strong>. The form is RCUK's own pilot PDF (BLS IP form, June 2026, V1.2) with the details typed onto it. The <strong>signature and date are left blank</strong> for you, and so is box 1.A (registering body). Every candidate is marked <strong>Suitable</strong> by default (a solid block in the box).
+  </div>
+
+  <div class="card">
+    <div class="card-header">Details typed on every form</div>
+    <div class="card-body">
+      <div class="grid">
+        <div><label for="fCentre">BLS Course Centre</label><input type="text" id="fCentre"></div>
+        <div><label for="fNominated">Nominated by</label><input type="text" id="fNominated"></div>
+        <div><label for="fDirector">Course Director</label><input type="text" id="fDirector"></div>
+        <div><label for="fEmail">Email</label><input type="text" id="fEmail"></div>
+        <div><label for="fPhone">Telephone</label><input type="text" id="fPhone"></div>
+        <div><label for="fUni">University (box 1.B)</label><input type="text" id="fUni"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Choose a course and candidates</div>
+    <div class="card-body">
+      <div class="toolbar">
+        <select id="courseSelect" onchange="renderTable()" style="max-width:340px;"><option value="">Loading courses…</option></select>
+        <button class="btn secondary" onclick="selectReady()">Select all that are ready</button>
+        <button class="btn secondary" onclick="selectNone()">Clear selection</button>
+        <span id="countLine" class="hint" style="margin:0;"></span>
+      </div>
+      <p class="hint">Only candidates marked <strong>Passed</strong> on the Stage 1 assessment are listed. The date on the form is the course date set in Settings. "Ready" means: passed, has OPIS ratings, nothing flagged, and a year of study. You can edit the year and the supporting statement for anyone before generating.</p>
+      <div id="tableWrap"><div class="empty-state">Loading…</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Generate</div>
+    <div class="card-body">
+      <div class="toolbar">
+        <button class="btn" id="genBtn" onclick="generate(false)">Download selected as one PDF</button>
+        <button class="btn secondary" id="genSepBtn" onclick="generate(true)">Download each as a separate PDF</button>
+      </div>
+      <div id="result" class="result"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/candidate-lookup.js"></script>
+<script src="js/pdf-lib.min.js"></script>
+<script src="js/ip-form.js"></script>
+<script>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Instructor Potential (IP) forms — built 2026-10-07 per Jon.
+// Fills RCUK's "BLS Instructor Potential (IP)" pilot form (June 2026, V1.2) in
+// bulk for chosen Stage 1 candidates who passed. Everything happens in this
+// browser: nothing is sent anywhere and no PDF is stored.
+// Data: stage1_candidates (name, degree, yearOfStudy, course, outcome),
+// opis_ratings (descriptive words only, never the numbers, go on the form),
+// config/stage1_course_dates (course date). See js/ip-form.js for how the PDF
+// is filled and what is deliberately left blank.
+// Director only. Reading opis_ratings is already allowed to directors by
+// firestore.rules, so no rules change is needed for this page.
+// ─────────────────────────────────────────────────────────────────────────────
+const TEMPLATE_URL = "assets/rcuk-bls-ip-form-v1.2.pdf";
+
+// Defaults typed on every form (editable on the page). Per Jon, 2026-10-07.
+const IP_DEFAULTS = {
+  centre: "RMD Birmingham",
+  nominatedBy: "Jon Hulme",
+  director: "Jon Hulme",
+  email: "j.hulme.1@bham.ac.uk",
+  phone: "07866 932260",
+  university: "University of Birmingham"
+};
+
+initFirebase();
+
+auth.onAuthStateChanged(async function(user) {
+  if (!user) { window.location.href = "signin.html"; return; }
+  const role = await resolveRole(user.uid, user.email || "");
+  if (role !== ROLES.DIRECTOR) {
+    document.getElementById("authMsg").textContent = "Course Directors only — redirecting…";
+    setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+    return;
+  }
+  init();
+});
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+let candidates = [];      // all stage1_candidates
+let ratings = [];         // all opis_ratings
+let courseDates = {};     // course name -> "YYYY-MM-DD"
+let rows = [];            // rows for the chosen course (passed only)
+let selected = new Set(); // candidate ids ticked
+let yearEdits = {};       // id -> year typed in
+let stmtEdits = {};       // id -> edited statement
+
+function longDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  if (!m) return "";
+  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  return (+m[3]) + " " + months[+m[2] - 1] + " " + m[1];
+}
+
+async function init() {
+  document.getElementById("fCentre").value = IP_DEFAULTS.centre;
+  document.getElementById("fNominated").value = IP_DEFAULTS.nominatedBy;
+  document.getElementById("fDirector").value = IP_DEFAULTS.director;
+  document.getElementById("fEmail").value = IP_DEFAULTS.email;
+  document.getElementById("fPhone").value = IP_DEFAULTS.phone;
+  document.getElementById("fUni").value = IP_DEFAULTS.university;
+
+  try {
+    const [cSnap, rSnap, dSnap] = await Promise.all([
+      db.collection(COLLECTIONS.stage1Candidates).get(),
+      db.collection(COLLECTIONS.opisRatings).get(),
+      db.collection("config").doc("stage1_course_dates").get()
+    ]);
+    candidates = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    ratings = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    courseDates = RMD_CAND_LOOKUP.dateMap(dSnap.exists ? dSnap.data().courses : []);
+  } catch (err) {
+    document.getElementById("tableWrap").innerHTML = `<div class="empty-state">Couldn't load the data: ${esc(err.message)}</div>`;
+    return;
+  }
+
+  const names = Array.from(new Set(candidates.filter(c => c.outcome === "Passed" && c.course).map(c => c.course))).sort();
+  const sel = document.getElementById("courseSelect");
+  sel.innerHTML = `<option value="">— Choose a course —</option>` + names.map(n => {
+    const d = longDate(courseDates[n]);
+    return `<option value="${esc(n)}">${esc(n)}${d ? " (" + esc(d) + ")" : ""}</option>`;
+  }).join("");
+  if (!names.length) document.getElementById("tableWrap").innerHTML = `<div class="empty-state">No candidates are marked Passed yet. Import assessment outcomes on the Stage 1 Candidates page first.</div>`;
+  else renderTable();
+}
+
+function ratingsFor(c) {
+  const email = (c.email || "").toLowerCase();
+  const byId = ratings.filter(r => r.candidateId === c.id);
+  if (byId.length) return byId;
+  return email ? ratings.filter(r => (r.candidateEmail || "").toLowerCase() === email) : [];
+}
+
+function buildRows(course) {
+  return candidates
+    .filter(c => c.course === course && c.outcome === "Passed")
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+    .map(c => {
+      const rts = ratingsFor(c);
+      const st = RMD_IP_FORM.composeStatement(rts);
+      return { c, rts, st };
+    });
+}
+
+function yearOf(r) { return (yearEdits[r.c.id] !== undefined ? yearEdits[r.c.id] : (r.c.yearOfStudy || "")).trim(); }
+function stmtOf(r) { return stmtEdits[r.c.id] !== undefined ? stmtEdits[r.c.id] : r.st.text; }
+
+function problems(r) {
+  const p = [];
+  if (!r.rts.length) p.push("No OPIS ratings yet");
+  r.st.warnings.forEach(w => { if (!/No OPIS ratings/.test(w)) p.push(w); });
+  if (!yearOf(r)) p.push("Year of study is blank. Type it in or it will be blank on the form.");
+  if (!courseDates[r.c.course]) p.push("No date set for this course in Settings, so the course date will be blank.");
+  if (stmtOf(r).length > 560) p.push("Statement is long and will be printed in very small type.");
+  return p;
+}
+function isReady(r) { return r.rts.length > 0 && problems(r).length === 0; }
+
+function statusHtml(r) {
+  const probs = problems(r);
+  return probs.length ? `<span class="pill pill-warn">Check</span><div class="warn-text">${probs.map(esc).join("<br>")}</div>` : `<span class="pill pill-ok">Ready</span>`;
+}
+function refreshStatus(id) {
+  const r = rows.find(x => x.c.id === id), el = document.getElementById("st-" + id);
+  if (r && el) el.innerHTML = statusHtml(r);
+}
+
+function renderTable() {
+  const course = document.getElementById("courseSelect").value;
+  const wrap = document.getElementById("tableWrap");
+  if (!course) { rows = []; wrap.innerHTML = `<div class="empty-state">Choose a course above.</div>`; updateCount(); return; }
+  rows = buildRows(course);
+  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No passed candidates on this course.</div>`; updateCount(); return; }
+  wrap.innerHTML = `<table>
+    <thead><tr><th></th><th>Candidate</th><th>Degree</th><th>Year</th><th>OPIS</th><th>Status</th><th></th></tr></thead>
+    <tbody>${rows.map((r, i) => {
+      return `<tr>
+        <td><input type="checkbox" ${selected.has(r.c.id) ? "checked" : ""} onchange="toggle('${esc(r.c.id)}', this.checked)"></td>
+        <td class="name">${esc(r.c.name)}<div style="font-weight:400;font-size:11px;color:var(--rmd-muted);">${esc(r.c.email || "")}</div></td>
+        <td>${esc(r.c.degree || "")}</td>
+        <td><input type="text" class="year" value="${esc(yearOf(r))}" oninput="setYear('${esc(r.c.id)}', this.value)" aria-label="Year of study"></td>
+        <td>${r.rts.length} rating${r.rts.length === 1 ? "" : "s"}</td>
+        <td id="st-${esc(r.c.id)}">${statusHtml(r)}</td>
+        <td><button class="link" onclick="toggleStmt(${i})">Statement</button></td>
+      </tr>
+      <tr class="stmt-row" id="stmt-${i}" style="display:none;"><td></td><td colspan="6">
+        <textarea oninput="setStmt('${esc(r.c.id)}', this.value)">${esc(stmtOf(r))}</textarea>
+        <div class="hint" style="margin:4px 0 0;">Edit the wording if you want. It is what is typed in the "Course Director supporting statement" box.</div>
+      </td></tr>`;
+    }).join("")}</tbody></table>`;
+  updateCount();
+}
+
+function toggle(id, on) { if (on) selected.add(id); else selected.delete(id); updateCount(); }
+function setYear(id, v) { yearEdits[id] = v; refreshStatus(id); }
+function setStmt(id, v) { stmtEdits[id] = v; refreshStatus(id); }
+function toggleStmt(i) { const el = document.getElementById("stmt-" + i); el.style.display = el.style.display === "none" ? "" : "none"; }
+function selectReady() { rows.forEach(r => { if (isReady(r)) selected.add(r.c.id); }); renderTable(); }
+function selectNone() { selected.clear(); renderTable(); }
+function updateCount() {
+  const n = rows.filter(r => selected.has(r.c.id)).length;
+  document.getElementById("countLine").textContent = rows.length ? `${n} selected of ${rows.length} passed` : "";
+  document.getElementById("genBtn").disabled = n === 0;
+  document.getElementById("genSepBtn").disabled = n === 0;
+}
+
+function safeFile(s) { return String(s || "candidate").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "candidate"; }
+
+function download(bytes, filename) {
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+function entryFor(r) {
+  const g = id => document.getElementById(id).value.trim();
+  return {
+    data: {
+      name: r.c.name || "",
+      centre: g("fCentre"),
+      courseDate: longDate(courseDates[r.c.course]),
+      nominatedBy: g("fNominated"),
+      director: g("fDirector"),
+      email: g("fEmail"),
+      phone: g("fPhone"),
+      university: g("fUni"),
+      course: r.c.degree || "",
+      year: yearOf(r),
+      statement: stmtOf(r),
+      suitable: true
+    }
+  };
+}
+
+async function generate(separate) {
+  const chosen = rows.filter(r => selected.has(r.c.id));
+  const out = document.getElementById("result");
+  if (!chosen.length) return;
+  out.innerHTML = "Building…";
+  try {
+    const resp = await fetch(TEMPLATE_URL);
+    if (!resp.ok) throw new Error("Couldn't load the RCUK form (" + resp.status + ")");
+    const tpl = await resp.arrayBuffer();
+    const lines = [];
+    if (separate) {
+      for (const r of chosen) {
+        const res = await RMD_IP_FORM.buildPdf(PDFLib, tpl, [entryFor(r)]);
+        download(res.bytes, "IP-form-" + safeFile(r.c.name) + ".pdf");
+        res.warnings[0].forEach(w => lines.push(`<span class="bad">${esc(r.c.name)}: ${esc(w)}</span>`));
+        await new Promise(res2 => setTimeout(res2, 350));
+      }
+    } else {
+      const res = await RMD_IP_FORM.buildPdf(PDFLib, tpl, chosen.map(entryFor));
+      const label = safeFile(document.getElementById("courseSelect").value);
+      download(res.bytes, "IP-forms-" + label + ".pdf");
+      res.warnings.forEach((ws, i) => ws.forEach(w => lines.push(`<span class="bad">${esc(chosen[i].c.name)}: ${esc(w)}</span>`)));
+    }
+    out.innerHTML = `Done: ${chosen.length} form${chosen.length === 1 ? "" : "s"} downloaded. <strong>Check each one, then sign and date it.</strong> After that, record the IP on each candidate's results sheet (RCUK ask for this).` + (lines.length ? "<br>" + lines.join("<br>") : "");
+  } catch (err) {
+    out.innerHTML = `<span class="bad">Couldn't build the PDF: ${esc(err.message)}</span>`;
+  }
+}
+</script>
+</body>
+</html>
