@@ -198,6 +198,21 @@ function outcomePill(outcome) {
   return `<span class="pill pill-unknown">Outcome unknown</span>`;
 }
 
+// Labels for every OPIS score key ever stored. Ratings from before 2026-10-07 use
+// attitudeEngagement / takingFeedback / givingFeedback; newer ones use the
+// teamMember / confidentAdaptable / interactiveSupportive keys. Each rating
+// only shows the keys it actually has.
+const OPIS_SCORE_LABELS = [
+  ["communication", "Communication"],
+  ["teamMember", "Team member"],
+  ["confidentAdaptable", "Confident / adaptable"],
+  ["interactiveSupportive", "Interactive / supportive"],
+  ["attitudeEngagement", "Attitude (older form)"],
+  ["takingFeedback", "Taking feedback (older form)"],
+  ["givingFeedback", "Giving feedback (older form)"],
+  ["punctuality", "Punctuality"]
+];
+
 function candidateCardHtml(r, i) {
   const eoi = r.eoi;
   const ratingCount = r.ratings.length;
@@ -215,12 +230,9 @@ function candidateCardHtml(r, i) {
           <span style="color:var(--rmd-muted);font-weight:400;">${fmtDate(rt.submittedAt)} · ${esc(rt.course) || ""}${rt.room ? " / " + esc(rt.room) : ""}</span>
         </div>
         <div class="rating-scores">
-          <span>Communication: <b>${rt.scores?.communication ?? "–"}</b></span>
-          <span>Attitude: <b>${rt.scores?.attitudeEngagement ?? "–"}</b></span>
-          <span>Taking feedback: <b>${rt.scores?.takingFeedback ?? "–"}</b></span>
-          <span>Giving feedback: <b>${rt.scores?.givingFeedback ?? "–"}</b></span>
-          <span>Punctuality: <b>${rt.scores?.punctuality ?? "–"}</b></span>
+          ${OPIS_SCORE_LABELS.filter(([k]) => rt.scores && rt.scores[k] !== undefined).map(([k, lab]) => `<span>${lab}: <b>${rt.scores[k]}</b></span>`).join("")}
           <span>Total: <b>${rt.total ?? "–"}/15</b></span>
+          ${rt.outstandingTeachingPotential === true ? `<span style="color:#1a6e31;"><b>&#10003; Potential outstanding teaching ability</b></span>` : ""}
         </div>
       </div>`).join("")
     : `<div class="no-ratings">No OPIS ratings submitted yet.</div>`;

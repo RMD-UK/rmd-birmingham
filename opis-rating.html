@@ -68,6 +68,8 @@
 
     .credibility-row { display:flex; align-items:flex-start; gap:10px; background:#fff8e1; border-left:4px solid #b8860b; border-radius:0 6px 6px 0; padding:12px 14px; margin:16px 18px; font-size:13px; color:var(--rmd-navy); line-height:1.5; }
     .credibility-row input { width:auto; margin-top:3px; flex-shrink:0; }
+    .teaching-row { display:flex; align-items:flex-start; gap:10px; background:#e8f0fe; border-left:4px solid var(--rmd-blue); border-radius:0 6px 6px 0; padding:12px 14px; margin:16px 18px 0; font-size:13px; color:var(--rmd-navy); line-height:1.5; cursor:pointer; }
+    .teaching-row input { width:auto; margin-top:3px; flex-shrink:0; }
 
     .total-row { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; background:#f7f9fc; border-top:1px solid #eef1f8; }
     .total-row .label { font-size:12px; color:#8893b0; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
@@ -142,9 +144,17 @@
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // OPIS Candidate Rating — Stage 1 evening-course instructors score candidates
-// they've taught against the 5 OPIS criteria (Communication, Attitude and
-// Engagement, Taking on feedback, Giving feedback, Punctuality and
-// reliability), 1-3 each. Built 2026-09-27 per Jon. Same course/room/candidate
+// they've taught against 5 criteria (Communication, Team member, Confident /
+// flexible / adaptable, Interactive / supportive / enthusiastic, Punctuality
+// and reliability), 1-3 each, plus an optional "potential outstanding teaching
+// ability" tick box. Criteria revised 2026-10-07 to follow the instructor
+// selection criteria (Jon). Earlier submissions used the old keys
+// (attitudeEngagement, takingFeedback, givingFeedback) and are kept as they
+// were; admin-instructor-review.html shows either set.
+// NOT on this form by design: registration/eligibility (all students qualify,
+// registering body is the University of Birmingham) and resuscitation /
+// defibrillation knowledge (taken from the Stage 1 assessment result later).
+// Same course/room/candidate
 // data as course-roster-view.html (stage1_candidates + course_allocations),
 // same access gate (director / RMD Student Faculty / RMD Senior Faculty).
 // Each submission is its own opis_ratings doc — deliberately not keyed by
@@ -156,24 +166,24 @@ const ROOMS = STAGE1_TEACHING_ROOMS;
 
 const CRITERIA = [
   { key: "communication", label: "Communication", levels: {
-      1: "Difficulty communicating with fellow candidates",
-      2: "Good communication with fellow candidates",
-      3: "Excellent and clear confident communication"
+      1: "Difficulty communicating clearly with fellow candidates",
+      2: "Communicates clearly with fellow candidates",
+      3: "Excellent communication: clear, confident and easily understood"
   }},
-  { key: "attitudeEngagement", label: "Attitude and Engagement", levels: {
-      1: "Minimal interest level",
-      2: "Good interest level",
-      3: "Excellent interest level"
+  { key: "teamMember", label: "Team member", levels: {
+      1: "Finds it hard to work as part of a team",
+      2: "Works well as a team member",
+      3: "Excellent team member: helps and includes others"
   }},
-  { key: "takingFeedback", label: "Taking on feedback", levels: {
-      1: "No response to teacher feedback",
-      2: "Some response to teacher feedback",
-      3: "Highly receptive to feedback"
+  { key: "confidentAdaptable", label: "Confident, flexible and adaptable", levels: {
+      1: "Hesitant, and finds it hard to adjust when things change",
+      2: "Reasonably confident, and adjusts when things change",
+      3: "Confident, flexible and readily adaptable"
   }},
-  { key: "givingFeedback", label: "Giving feedback", levels: {
-      1: "No willingness to volunteer feedback",
-      2: "Will volunteer good feedback when asked",
-      3: "Provides excellent feedback when encouraged"
+  { key: "interactiveSupportive", label: "Interactive, supportive and enthusiastic", levels: {
+      1: "Passive, with little interaction with or support for others",
+      2: "Joins in and supports others when prompted",
+      3: "Consistently interactive, supportive and enthusiastic"
   }},
   { key: "punctuality", label: "Punctuality and reliability", levels: {
       1: "Often late",
@@ -196,6 +206,7 @@ let selectedRoom = null;
 let selectedCandidateId = null;
 let currentScores = {};
 let credibilityChecked = false;
+let teachingPotential = false; // optional tick: potential outstanding teaching ability
 let scoredThisSession = new Set(); // candidateId set, session-only, just for the UI pill
 
 function esc(s) {
@@ -452,6 +463,7 @@ function selectCandidate(candidateId) {
   selectedCandidateId = candidateId;
   currentScores = {};
   credibilityChecked = false;
+  teachingPotential = false;
   renderRoster();
   renderDetail();
   document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -494,6 +506,10 @@ function renderDetail() {
       <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom || "not yet assigned")} · ${esc(selectedCourse)}</div>
     </div>
     <div class="criteria">${criteriaHtml}</div>
+    <label class="teaching-row">
+      <input type="checkbox" id="teachingCheckbox" ${teachingPotential ? "checked" : ""} onchange="setTeachingPotential(this.checked)">
+      <span><b>Shows potential outstanding teaching ability</b> (optional: tick only if you saw this in this candidate. Leave blank otherwise.)</span>
+    </label>
     <label class="credibility-row">
       <input type="checkbox" id="credibilityCheckbox" ${credibilityChecked ? "checked" : ""} onchange="setCredibility(this.checked)">
       <span>I confirm I've spent enough time with this person to make a credible submission.</span>
@@ -515,6 +531,8 @@ function setScore(key, level) {
   currentScores[key] = level;
   renderDetail();
 }
+
+function setTeachingPotential(v) { teachingPotential = !!v; }
 
 function setCredibility(checked) {
   credibilityChecked = checked;
@@ -543,6 +561,7 @@ async function submitRating() {
       room: selectedRoom,
       scores: { ...currentScores },
       total: total,
+      outstandingTeachingPotential: teachingPotential === true,
       credibilityConfirmed: true,
       submittedByUid: currentUser.uid,
       submittedByName: myName,

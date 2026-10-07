@@ -771,7 +771,7 @@ service cloud.firestore {
     //   actually teaches in the rooms. submittedByUid must match the caller
     //   (stops one person's submission being attributed to someone else),
     //   credibilityConfirmed must be true (the "spent enough time with this
-    //   person" checkbox on the form), and every OPIS score must be 1-3.
+    //   person" checkbox on the form), and every OPIS score must be 1-3 (criteria revised 2026-10-07: communication, teamMember, confidentAdaptable, interactiveSupportive, punctuality, plus the outstandingTeachingPotential tick; older docs keep the old keys).
     // read: director + RMD Senior Faculty only — this is the review-tool
     //   audience deciding instructor potential, not the raters themselves.
     // update: none — a submission is immutable once made.
@@ -784,10 +784,11 @@ service cloud.firestore {
         && request.resource.data.candidateId is string
         && request.resource.data.candidateId.size() > 0
         && request.resource.data.scores.communication in [1, 2, 3]
-        && request.resource.data.scores.attitudeEngagement in [1, 2, 3]
-        && request.resource.data.scores.takingFeedback in [1, 2, 3]
-        && request.resource.data.scores.givingFeedback in [1, 2, 3]
-        && request.resource.data.scores.punctuality in [1, 2, 3];
+        && request.resource.data.scores.teamMember in [1, 2, 3]
+        && request.resource.data.scores.confidentAdaptable in [1, 2, 3]
+        && request.resource.data.scores.interactiveSupportive in [1, 2, 3]
+        && request.resource.data.scores.punctuality in [1, 2, 3]
+        && request.resource.data.outstandingTeachingPotential is bool;
       allow update: if false;
       allow delete: if isDirector();
     }
