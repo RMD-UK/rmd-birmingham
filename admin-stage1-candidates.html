@@ -1067,6 +1067,7 @@ function renderCandidates() {
             <td>${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
               : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}
+              ${c.course ? `<button class="btn-link-sm" title="Clear this one person's course and room so the next Allocate now run places them again" onclick="reallocateCandidate('${c.id}')">↻ Re-allocate</button>` : ""}
               <button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
           </tr>`).join("")}</tbody>
       </table>`
@@ -1092,7 +1093,49 @@ function editRowHtml(c) {
       <button class="btn-promote" onclick="saveEditCandidate('${c.id}')">Save</button>
       <button class="btn-link-sm" onclick="cancelEditCandidate()">Cancel</button>
     </td>
-  </tr>`;
+  </tr>
+  <tr><td colspan="7" style="background:#f7fafd;font-size:12px;padding:8px 10px;">
+    <strong>Placement dates on file:</strong>
+    ${(c.placementBlocks || []).length
+      ? (c.placementBlocks || []).map((b, i) => `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:10px;background:#eef2f6;">${esc(b.start)} to ${esc(b.end)} <a href="#" title="Remove these dates" style="color:#b7410e;text-decoration:none;font-weight:700;" onclick="removePlacementBlock('${c.id}', ${i}); return false;">✕</a></span>`).join("")
+      : `<span style="color:#667;">none</span>`}
+    <span style="color:#667;"> Dates changed? Pasting the new dates in Step 2 only <em>adds</em> them, so ✕ the old ones here, paste the new ones, then use ↻ Re-allocate on their row.</span>
+  </td></tr>`;
+}
+
+// Remove one placement block from a candidate (used when their placement dates change).
+async function removePlacementBlock(id, index) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c || !c.placementBlocks || !c.placementBlocks[index]) return;
+  const b = c.placementBlocks[index];
+  if (!confirm(`Remove the placement dates ${b.start} to ${b.end} for ${c.name}?\n\nThis doesn't move them. If they are already on a course, use ↻ Re-allocate afterwards.`)) return;
+  try {
+    const next = c.placementBlocks.filter((_, i) => i !== index);
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ placementBlocks: next });
+    c.placementBlocks = next;
+    renderCandidates();
+  } catch (err) {
+    alert("Couldn't remove those dates: " + err.message);
+  }
+}
+
+// Re-run the allocation for ONE person (e.g. a Pharmacy student whose placement
+// dates changed). Clears just their course and room and marks them checked, so
+// the next "Allocate now" in Course allocation places them afresh, using their
+// current placement dates. Everyone else is untouched. Added 2026-10-07 (Jon).
+async function reallocateCandidate(id) {
+  const c = allCandidates.find(x => x.id === id);
+  if (!c || !c.course) return;
+  if (!confirm(`Re-allocate ${c.name}?\n\nThis clears their current course (${c.course}) and room (${c.room || "none"}). Nobody else is changed, and their placement dates are kept.\n\nThen open Course allocation and run "Allocate now": only unallocated, checked people are placed, so just this person will be.\n\nIf they've already been told their course, they will need telling again if it changes.`)) return;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ course: null, room: null, placementChecked: true });
+    c.course = null; c.room = null; c.placementChecked = true;
+    populateCourseFilter();
+    renderCandidates();
+    alert(`${c.name} is now unallocated and checked. Run "Allocate now" in Course allocation to place them again.`);
+  } catch (err) {
+    alert("Re-allocate failed: " + err.message);
+  }
 }
 
 function startEditCandidate(id) {
