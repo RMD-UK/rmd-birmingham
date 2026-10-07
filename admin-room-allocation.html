@@ -217,6 +217,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
 <script>
 // ── Constants ──────────────────────────────────────────────────────────────
 // DIRECTOR_EMAILS is declared once in js/firebase-config.js, loaded above.
@@ -399,8 +400,8 @@ function renderPool() {
   const assigned = assignedEmails();
   const q = (document.getElementById("poolSearch").value || "").toLowerCase();
   const selInst = selectedInstructors();
-  const cands = allCandidates.filter(p => !assigned.has(p.email) && (!q || p.name.toLowerCase().includes(q)));
-  const insts  = selInst.filter(p => !assigned.has(p.email) && (!q || p.name.toLowerCase().includes(q)));
+  const cands = allCandidates.filter(p => !assigned.has(p.email) && (!q || RMD_FUZZY.score(q, [p.name]) > 0));
+  const insts  = selInst.filter(p => !assigned.has(p.email) && (!q || RMD_FUZZY.score(q, [p.name]) > 0));
   const totalUnassigned = allCandidates.filter(p => !assigned.has(p.email)).length
                         + selInst.filter(p => !assigned.has(p.email)).length;
 
@@ -635,7 +636,7 @@ function tfSelectAll(state) {
 // ── ITC ────────────────────────────────────────────────────────────────────
 function renderITCPicker() {
   const q = (document.getElementById("itcSearch").value || "").toLowerCase();
-  const people = allITC.filter(p => !q || p.name.toLowerCase().includes(q));
+  const people = allITC.filter(p => !q || RMD_FUZZY.score(q, [p.name]) > 0);
   document.getElementById("itcCount").textContent = itcSet.size;
   document.getElementById("itcPickerGrid").innerHTML = people.map(p => {
     const sel = itcSet.has(p.email);

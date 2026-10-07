@@ -108,6 +108,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
 <script>
 
 initFirebase();
@@ -143,10 +144,7 @@ function historyHtml(p) {
 function renderPeople() {
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
   const filtered = q
-    ? allPeople.filter(p =>
-        (p.name || "").toLowerCase().includes(q) ||
-        (p.email || "").toLowerCase().includes(q) ||
-        (p.role || "").toLowerCase().includes(q))
+    ? allPeople.filter(p => RMD_FUZZY.score(q, [p.name, p.email, p.role]) > 0)
     : allPeople;
 
   document.getElementById("summaryLine").textContent =

@@ -82,6 +82,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
 <script>
 
 initFirebase();
@@ -179,7 +180,7 @@ function render() {
     return { eoi, email, records, ratings, outcome };
   });
 
-  if (q) rows = rows.filter(r => (r.eoi.name || "").toLowerCase().includes(q) || r.email.includes(q));
+  if (q) rows = rows.filter(r => RMD_FUZZY.score(q, [r.eoi.name, r.email]) > 0);
   if (filter === "unrated") rows = rows.filter(r => !r.ratings.length);
   if (filter === "fail") rows = rows.filter(r => r.outcome.outcome === "Failed");
   if (filter === "attempts") rows = rows.filter(r => r.outcome.neededMoreThanTwoAttempts === true);

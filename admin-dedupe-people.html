@@ -85,7 +85,9 @@
       <div class="hint" style="margin-bottom:10px;">
         For duplicates the scan above can't group automatically — e.g. the same person under two different email addresses with different names. Search by email or name, review the matches, then delete the one(s) you don't want. <strong>Deleting a record with a login attached deletes that login entirely</strong>, not just their data — make sure you're deleting the spare, not the one someone actually signs in with. This can't be undone.
       </div>
-      <input type="text" id="searchBox" placeholder="Search by name or email…">
+      <input type="text" id="searchBox" onkeydown="if(event.key==='Enter')manualSearch()" placeholder="Search by name or email (typos and word order are OK)…">
+      <input type="text" id="degreeBox" list="degreeList" onkeydown="if(event.key==='Enter')manualSearch()" placeholder="Degree course (optional, helps confirm the right person)" style="margin-top:6px;">
+      <datalist id="degreeList"></datalist>
       <button class="btn-secondary" onclick="manualSearch()">Search</button>
       <div id="manualResults" style="margin-top:10px;"></div>
     </div>
@@ -100,6 +102,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
 <script>
 
 initFirebase();
@@ -275,8 +278,40 @@ async function deleteLinkedAccounts(records) {
   return msg;
 }
 
+// Degree lookup: people records don't store a degree, but Stage 1 candidate
+// records do. Link by exact email first, then by identical normalised name.
+let candidatesLoaded = false, candByEmail = {}, candByName = {};
+async function loadCandidatesForDegree() {
+  if (candidatesLoaded) return;
+  candidatesLoaded = true;
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    snap.docs.forEach(d => {
+      const c = d.data();
+      if (!c.degree) return;
+      const e = normEmail(c.email), n = normName(c.name);
+      if (e) candByEmail[e] = c;
+      if (n) (candByName[n] = candByName[n] || []).push(c);
+    });
+  } catch (e) { console.warn("Could not load Stage 1 candidates for degree matching:", e); }
+}
+function degreeFor(p) {
+  const byE = candByEmail[normEmail(p.email)];
+  if (byE) return { degree: byE.degree, course: byE.course || "", via: "email" };
+  const byN = candByName[normName(p.name)];
+  if (byN && byN.length) return { degree: byN[0].degree, course: byN[0].course || "", via: "name" };
+  return null;
+}
+(function fillDegreeList() {
+  try {
+    const dl = document.getElementById("degreeList");
+    dl.innerHTML = Object.keys(STAGE1_DEGREE_GROUPS).map(d => `<option value="${d.replace(/"/g, "&quot;")}">`).join("");
+  } catch (e) { /* datalist is only a convenience */ }
+})();
+
 async function manualSearch() {
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
+  const degreeQ = (document.getElementById("degreeBox").value || "").trim();
   const results = document.getElementById("manualResults");
   if (!q) { results.innerHTML = ""; return; }
 
@@ -284,16 +319,44 @@ async function manualSearch() {
     const snap = await db.collection(COLLECTIONS.people).get();
     allPeople = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
-  const matches = allPeople.filter(p =>
-    (p.name || "").toLowerCase().includes(q) || (p.email || "").toLowerCase().includes(q)
-  );
+  await loadCandidatesForDegree();   // so the degree badge shows even when no degree was typed
+
+  // Fuzzy: word order, typos, "Surname, First", accents and partial emails all still match.
+  let matches = RMD_FUZZY.filter(allPeople, q, p => [
+    p.name, p.email, p.preferredName, p.knownAs, p.passportName, p.firstName, p.lastName, p.surname
+  ]);
+
+  // Optional degree: rank people whose known degree matches first, then unknown, then clearly different.
+  // Nobody is hidden, because plenty of people records have no degree on file.
+  const verdict = p => {
+    if (!degreeQ) return "";
+    const d = degreeFor(p);
+    if (!d) return "unknown";
+    return RMD_FUZZY.score(degreeQ, [d.degree]) > 0 ? "match" : "different";
+  };
+  if (degreeQ) {
+    const rank = { match: 0, unknown: 1, different: 2 };
+    matches = matches.map((p, i) => ({ p, i, v: verdict(p) }))
+      .sort((a, b) => rank[a.v] - rank[b.v] || a.i - b.i).map(x => x.p);
+  }
   if (!matches.length) { results.innerHTML = `<div class="empty-state">No matches.</div>`; return; }
+
+  const badge = (p) => {
+    const d = degreeFor(p);
+    const v = verdict(p);
+    let text = d ? `${d.degree}${d.course ? " · " + d.course : ""}` : "no degree on file";
+    let style = "background:#eef2f6;color:#4a5b6c;";
+    if (v === "match")     { style = "background:#e3f4e8;color:#1c6b34;"; text = "✓ " + text; }
+    if (v === "different") { style = "background:#fdecea;color:#a13030;"; text = "✗ " + text; }
+    return `<span class="meta" style="padding:2px 8px;border-radius:10px;${style}">${text}</span>`;
+  };
 
   results.innerHTML = matches.map(p => `
     <div class="row" style="border:1px solid #e8edf2;border-radius:6px;margin-bottom:6px;">
       <span class="name">${p.name || "(no name)"}</span>
       <span class="meta">${p.email || "(no email)"}</span>
       <span class="meta">${p.role || "–"}</span>
+      ${badge(p)}
       <span class="id">${p.id}</span>
       <button class="btn-secondary" style="color:#b7410e;border-color:#b7410e;margin-left:auto;" onclick="manualDelete('${p.id}')">Delete</button>
     </div>
@@ -309,7 +372,9 @@ async function manualDelete(id) {
     ? "\n\nThis record has a working login — deleting it deletes that login entirely, not just the data. This can't be undone; they'd need a fresh invite to get back in."
     : "\n\nThis record has no login attached — only the data will be removed.";
 
-  if (!confirm(`Delete this record?\n\n${p.name || "(no name)"} — ${p.email || "no email"} — ${p.role || "no role"}\nDoc ID: ${id}${loginWarning}`)) return;
+  const dg = degreeFor(p);
+  const degLine = dg ? `\nDegree: ${dg.degree}${dg.course ? " (" + dg.course + ")" : ""}` : "";
+  if (!confirm(`Delete this record?\n\n${p.name || "(no name)"} — ${p.email || "no email"} — ${p.role || "no role"}${degLine}\nDoc ID: ${id}${loginWarning}`)) return;
 
   try {
     await db.collection(COLLECTIONS.people).doc(id).delete();

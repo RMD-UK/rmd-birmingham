@@ -181,6 +181,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/candidate-lookup.js"></script>
+<script src="js/fuzzy-search.js"></script>
 <script>
 
 initFirebase();
@@ -1428,7 +1429,7 @@ async function linkRepeat(candidateId) {
   if (!query) { alert("Type something to search for."); return; }
 
   const matches = allCandidates.filter(x =>
-    x.id !== candidateId && !x.linkedCandidateId && (x.name || "").toLowerCase().includes(query));
+    x.id !== candidateId && !x.linkedCandidateId && RMD_FUZZY.score(query, [x.name]) > 0);
   if (!matches.length) { alert("No unlinked candidate record matches that search."); return; }
 
   let target;

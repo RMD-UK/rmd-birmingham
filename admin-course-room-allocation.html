@@ -166,6 +166,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
 <script>
 // ── Constants ────────────────────────────────────────────────────────────
 // STAGE1_TEACHING_ROOMS is declared once in js/firebase-config.js — do not
@@ -430,7 +431,7 @@ function renderPool() {
   const assigned = assignedIds();
   const q = (document.getElementById("poolSearch").value || "").toLowerCase();
   const unassigned = courseCandidates
-    .filter(c => !assigned.has(c.id) && (!q || c.name.toLowerCase().includes(q)))
+    .filter(c => !assigned.has(c.id) && (!q || RMD_FUZZY.score(q, [c.name]) > 0))
     .sort((a, b) => surnameOf(a.name).localeCompare(surnameOf(b.name)) || a.name.localeCompare(b.name));
   document.getElementById("poolCount").textContent = courseCandidates.filter(c => !assigned.has(c.id)).length;
   document.getElementById("poolList").innerHTML = unassigned.length
@@ -457,7 +458,7 @@ function renderInstructorPool() {
   ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
   const q = (document.getElementById("instrPoolSearch")?.value || "").toLowerCase();
   const unassigned = allInstructors
-    .filter(i => !assigned.has(i.uid) && (!q || i.name.toLowerCase().includes(q)))
+    .filter(i => !assigned.has(i.uid) && (!q || RMD_FUZZY.score(q, [i.name]) > 0))
     .sort((a, b) => surnameOf(a.name).localeCompare(surnameOf(b.name)) || a.name.localeCompare(b.name));
   document.getElementById("instrPoolCount").textContent = unassigned.length;
   document.getElementById("instrPoolList").innerHTML = unassigned.length
