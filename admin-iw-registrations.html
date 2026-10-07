@@ -613,12 +613,16 @@ async function loadFacultyRoleMap() {
 
 // email(lowercase) -> { uid, role } from people docs keyed by a real login UID
 // (28 chars; shorter ids are orphan auto-ID docs that resolveRole() never reads).
+// email -> role for people docs that are NOT keyed by a login UID (auto-ID orphans).
+// resolveRole() can never see these, so the person falls back to the default role.
+let orphanEmails = {};
 async function loadAccountRoleMap() {
   const map = {};
   // This year's Instructor Weekend function records (iw_assignments/{year}_{uid}).
   // resolveIwFunction() reads THIS first and only falls back to people.role, so a
   // stale one here overrides a correct people.role.
   const fnByUid = {};
+  orphanEmails = {};
   try {
     const a = await db.collection(COLLECTIONS.iwAssignments).get();
     a.forEach(doc => { const d = doc.data(); if (d.uid && String(d.year) === String(CURRENT_IW_YEAR)) fnByUid[d.uid] = d.function || ""; });
@@ -629,6 +633,7 @@ async function loadAccountRoleMap() {
       const d = doc.data();
       const email = (d.email || "").toLowerCase().trim();
       if (email && doc.id.length === 28) map[email] = { uid: doc.id, role: d.role || "", iwFunction: fnByUid[doc.id] || null };
+      else if (email) orphanEmails[email] = d.role || "";
     });
   } catch (e) { console.warn("people role map load failed:", e.message); }
   return map;
@@ -646,7 +651,15 @@ function hasAccountMismatch(r) {
   return r.account.role !== want || (r.account.iwFunction && r.account.iwFunction !== want);
 }
 
+function hasOrphanOnly(r) {
+  const e = (r.email || "").toLowerCase().trim();
+  return r.status === "confirmed" && !r.account && Object.prototype.hasOwnProperty.call(orphanEmails, e);
+}
+
 function accountMismatchBadge(r) {
+  if (hasOrphanOnly(r)) {
+    return ` <div style="color:#b7410e;font-size:11px;margin-top:2px;" title="Their People record has an auto-generated ID, so the site cannot find it when they sign in and shows them the default role. Use Sync to People (top of page) to create the proper login-keyed record, then remove the old one on the dedupe page.">⚠ No login-keyed record (has an old orphan one) - run Sync to People</div>`;
+  }
   if (!hasAccountMismatch(r)) return "";
   return ` <div style="color:#b7410e;font-size:11px;margin-top:2px;">⚠ Login role is "${r.account.role || "none"}"${r.account.iwFunction ? ` (this year's IW record: "${r.account.iwFunction}")` : ""} <button type="button" class="btn-link-sm" style="font-size:11px;" onclick="syncAccountToRegistration('${r.id}')">Set login to ${r.role}</button></div>`;
 }
@@ -749,7 +762,7 @@ function updateSummary() {
   document.getElementById("sum-faculty").textContent    = r.filter(x => x.source === "faculty").length;
   document.getElementById("sum-assessorFaculty").textContent = r.filter(x => x.role === "Assessor Faculty").length;
   document.getElementById("sum-itc").textContent         = r.filter(x => x.role === "Instructor Trainer Candidate").length;
-  document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role" || hasRoleMismatch(x) || hasAccountMismatch(x)).length;
+  document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role" || hasRoleMismatch(x) || hasAccountMismatch(x) || hasOrphanOnly(x)).length;
 }
 
 // ── Table ────────────────────────────────────────────────────────────────────
@@ -783,7 +796,7 @@ function getFiltered() {
     case "faculty":     rows = allRegistrations.filter(r => r.source === "faculty"); break;
     case "assessorFaculty": rows = allRegistrations.filter(r => r.role === "Assessor Faculty"); break;
     case "itc":         rows = allRegistrations.filter(r => r.role === "Instructor Trainer Candidate"); break;
-    case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role" || hasRoleMismatch(r) || hasAccountMismatch(r)); break;
+    case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role" || hasRoleMismatch(r) || hasAccountMismatch(r) || hasOrphanOnly(r)); break;
     case "total":       rows = allRegistrations; break;
     default:            rows = allRegistrations;
   }
