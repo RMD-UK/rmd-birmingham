@@ -77,6 +77,9 @@
 
     .cred-bar { display:flex; align-items:center; gap:8px; margin:6px 10px 0; padding:5px 10px; border-radius:0 6px 6px 0; background:#fff8e1; border-left:4px solid #b8860b; font-size:12px; line-height:1.35; cursor:pointer; }
     .cred-bar input { width:auto; flex-shrink:0; }
+    .cred-bar.need { box-shadow:0 0 0 2px #b8860b; }
+    .matrix.gated { opacity:.45; }
+    .m-cell:disabled { cursor:not-allowed; }
     .check.off { opacity:.45; filter:grayscale(1); cursor:default; }
     .check.mistake { background:#fce8e6; border-left:4px solid #b7410e; }
     .link-btn { background:none; border:none; padding:2px 4px; font:inherit; font-size:11.5px; color:#8893b0; text-decoration:underline; cursor:pointer; align-self:center; }
@@ -546,11 +549,13 @@ function renderDetail() {
   const showMistake = mistakeRequired || mistakeOpen;
   const ready = complete && credibilityChecked && !justSubmitted && (!mistakeRequired || mistakeChecked);
   const LEVELS = { 1: "Unsatisfactory", 2: "Adequate", 3: "Excellent" };
+  // The scores can't be filled in until the "spent enough time" box is ticked.
+  const gated = !credibilityChecked && !justSubmitted;
 
   const rows = CRITERIA.map(crit => {
     const selected = currentScores[crit.key];
     const cells = [3, 2, 1].map(level => `
-      <button type="button" class="m-cell ${level === selected ? "sel s" + level : ""}" onclick="setScore('${crit.key}', ${level})">
+      <button type="button" class="m-cell ${level === selected ? "sel s" + level : ""}" ${gated ? "disabled" : ""} onclick="setScore('${crit.key}', ${level})">
         <span class="lv s${level}">${level}</span><span>${esc(crit.levels[level])}</span>
       </button>`).join("");
     return `<div class="m-label">${esc(crit.label)}</div>${cells}`;
@@ -564,8 +569,8 @@ function renderDetail() {
         ? `<button type="button" class="btn-next" id="nextBtn" onclick="nextCandidate()">Next candidate →</button>`
         : (selectedRoom ? `<span class="submit-msg">Everyone in Room ${esc(selectedRoom)} is rated ✓</span>` : ""));
   } else {
-    const hint = !complete ? "Score all 5 and tick the confirmation"
-               : !credibilityChecked ? "Tick the confirmation under the name"
+    const hint = !credibilityChecked ? "Tick the confirmation under the name to start"
+               : !complete ? "Score all 5 criteria"
                : (mistakeRequired && !mistakeChecked) ? "Tick the box about your first submission"
                : "";
     foot = `<span class="tot-label">Total${complete ? "" : ` (${scoredCount} of 5)`}</span>
@@ -583,11 +588,11 @@ function renderDetail() {
       <h3>${esc(candidate.name)}</h3>
       <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom || "not yet assigned")} · ${esc(selectedCourse)}</div>
     </div>
-    <label class="cred-bar ${justSubmitted ? "locked" : ""}">
+    <label class="cred-bar ${justSubmitted ? "locked" : ""} ${gated ? "need" : ""}">
       <input type="checkbox" id="credibilityCheckbox" ${credibilityChecked ? "checked" : ""} onchange="setCredibility(this.checked)">
       <span>I've spent enough time with this person to make a credible submission.</span>
     </label>
-    <div class="matrix ${justSubmitted ? "locked" : ""}">
+    <div class="matrix ${justSubmitted ? "locked" : ""} ${gated ? "gated" : ""}">
       <div></div>
       <div class="m-head s3">3 · ${LEVELS[3]}</div><div class="m-head s2">2 · ${LEVELS[2]}</div><div class="m-head s1">1 · ${LEVELS[1]}</div>
       ${rows}
