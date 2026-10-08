@@ -506,7 +506,7 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "Slides (to be uploaded)", path: "", icon: "📊" },
+          { title: "Slides: How to Boil an Egg", path: "resources/egg-slides.html", icon: "📊" },
           { title: "Session guide", path: "resources/instructor/2-five-minute-lecture-summary.html", icon: "📄" }
         ],
         tags: []

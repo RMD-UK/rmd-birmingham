@@ -312,6 +312,10 @@ initFirebase();
 
 window.addEventListener("load", () => {
   populateSessionSelect();
+  // Opened from a session's "Rate this session" button: hide the dropdown
+  // straight away so it never flashes while sign-in and role are checked.
+  // It comes back below if the session id turns out not to be rateable.
+  if (currentSession) document.getElementById("sessionPickerWrap").classList.add("hidden");
 
   auth.onAuthStateChanged(async user => {
     if (!user) { window.location.href = "index.html"; return; }
@@ -344,6 +348,7 @@ window.addEventListener("load", () => {
       refreshSession();
     } else {
       currentSession = "";
+      document.getElementById("sessionPickerWrap").classList.remove("hidden");
     }
   });
 });
