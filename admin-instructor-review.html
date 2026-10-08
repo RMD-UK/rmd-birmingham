@@ -83,6 +83,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/fuzzy-search.js"></script>
+<script src="js/opis-util.js"></script>
 <script>
 
 initFirebase();
@@ -138,9 +139,10 @@ async function init() {
     (candidatesByEmail[email] = candidatesByEmail[email] || []).push(c);
   });
 
+  const allRatings = ratingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  OPIS_UTIL.markSuperseded(allRatings);
   ratingsByEmail = {};
-  ratingSnap.docs.forEach(d => {
-    const r = { id: d.id, ...d.data() };
+  allRatings.forEach(r => {
     const email = (r.candidateEmail || "").toLowerCase();
     if (!email) return;
     (ratingsByEmail[email] = ratingsByEmail[email] || []).push(r);
@@ -181,7 +183,7 @@ function render() {
   });
 
   if (q) rows = rows.filter(r => RMD_FUZZY.score(q, [r.eoi.name, r.email]) > 0);
-  if (filter === "unrated") rows = rows.filter(r => !r.ratings.length);
+  if (filter === "unrated") rows = rows.filter(r => !r.ratings.some(x => !x._superseded));
   if (filter === "fail") rows = rows.filter(r => r.outcome.outcome === "Failed");
   if (filter === "attempts") rows = rows.filter(r => r.outcome.neededMoreThanTwoAttempts === true);
 
@@ -216,21 +218,22 @@ const OPIS_SCORE_LABELS = [
 
 function candidateCardHtml(r, i) {
   const eoi = r.eoi;
-  const ratingCount = r.ratings.length;
-  const avgTotal = ratingCount ? (r.ratings.reduce((s, x) => s + (x.total || 0), 0) / ratingCount).toFixed(1) : null;
+  const current = r.ratings.filter(x => !x._superseded);
+  const ratingCount = current.length;
+  const avgTotal = ratingCount ? (current.reduce((s, x) => s + (x.total || 0), 0) / ratingCount).toFixed(1) : null;
 
   const recordsHtml = r.records.length
     ? r.records.map(c => `<div>${esc(c.course) || "no course"} <span style="color:var(--rmd-muted);">— ${esc(c.degree) || "no degree"}${c.room ? ", Room " + esc(c.room) : ""}</span></div>`).join("")
     : `<div class="no-ratings">No matching Stage 1 candidate record found for this email.</div>`;
 
-  const ratingsHtml = ratingCount
+  const ratingsHtml = r.ratings.length
     ? r.ratings.map(rt => `
-      <div class="rating-card">
+      <div class="rating-card" style="${rt._superseded ? "opacity:.5;" : ""}">
         <div class="rating-card-head">
-          <span>${esc(rt.submittedByName) || "Unknown submitter"}</span>
+          <span>${esc(rt.submittedByName) || "Unknown submitter"}${rt._isCorrection ? ` <span style="background:#e6f4ea;color:#1a6e31;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;">Corrected rating (current)</span>` : ""}${rt._superseded ? ` <span style="background:#eef1f8;color:#6b7c88;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:700;">Superseded: replaced by a corrected rating</span>` : ""}</span>
           <span style="color:var(--rmd-muted);font-weight:400;">${fmtDate(rt.submittedAt)} · ${esc(rt.course) || ""}${rt.room ? " / " + esc(rt.room) : ""}</span>
         </div>
-        <div class="rating-scores">
+        <div class="rating-scores" style="${rt._superseded ? "text-decoration:line-through;" : ""}">
           ${OPIS_SCORE_LABELS.filter(([k]) => rt.scores && rt.scores[k] !== undefined).map(([k, lab]) => `<span>${lab}: <b>${rt.scores[k]}</b></span>`).join("")}
           <span>Total: <b>${rt.total ?? "–"}/15</b></span>
           ${rt.outstandingTeachingPotential === true ? `<span style="color:#1a6e31;"><b>&#10003; Potential outstanding teaching ability</b></span>` : ""}

@@ -75,6 +75,13 @@
     .check.pot { background:#e8f0fe; border-left:4px solid var(--rmd-blue); }
     .check.cred { background:#fff8e1; border-left:4px solid #b8860b; }
 
+    .cred-bar { display:flex; align-items:center; gap:8px; margin:6px 10px 0; padding:5px 10px; border-radius:0 6px 6px 0; background:#fff8e1; border-left:4px solid #b8860b; font-size:12px; line-height:1.35; cursor:pointer; }
+    .cred-bar input { width:auto; flex-shrink:0; }
+    .check.off { opacity:.45; filter:grayscale(1); cursor:default; }
+    .check.mistake { background:#fce8e6; border-left:4px solid #b7410e; }
+    .link-btn { background:none; border:none; padding:2px 4px; font:inherit; font-size:11.5px; color:#8893b0; text-decoration:underline; cursor:pointer; align-self:center; }
+    .link-btn:hover { color:var(--rmd-navy); }
+    .link-btn .sm { display:none; }
     .foot { display:flex; align-items:center; gap:10px 14px; padding:8px 12px; background:#f7f9fc; border-top:1px solid #eef1f8; flex-wrap:wrap; }
     .foot .tot-label { font-size:11px; color:#8893b0; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
     .foot .tot-val { font-size:18px; font-weight:700; color:var(--rmd-navy); }
@@ -84,6 +91,9 @@
     .btn-submit:disabled { background:#aab8c2; cursor:default; }
     .btn-next { padding:9px 18px; background:#1a6e31; color:#fff; border:none; border-radius:8px; font-size:13.5px; font-weight:700; font-family:var(--font); cursor:pointer; }
     .btn-next:hover { background:#14562a; }
+    .btn-reset { padding:8px 14px; background:#fff; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:13px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-reset:hover:not(:disabled) { border-color:#b7410e; color:#b7410e; }
+    .btn-reset:disabled { opacity:.45; cursor:default; }
     .submit-msg { font-size:13px; font-weight:700; color:#1a6e31; background:#e6f4ea; border:1px solid #bfe0c9; padding:6px 10px; border-radius:8px; }
     .submit-err { font-size:12.5px; color:#b7410e; }
     .hint { font-size:12px; color:#8893b0; }
@@ -109,8 +119,13 @@
       .m-cell .lv { width:15px; height:15px; font-size:10px; }
       .checks { padding:0 6px 6px; gap:4px; }
       .check { min-width:0; flex-basis:100%; padding:4px 8px; font-size:11px; }
+      .cred-bar { margin:4px 6px 0; padding:4px 8px; font-size:11px; }
       .foot { padding:6px 8px; gap:6px 10px; }
       .foot .hint { display:none; }
+      .foot .tot-label { display:none; }
+      .link-btn .lg { display:none; }
+      .link-btn .sm { display:inline; }
+      .btn-reset { padding:6px 10px; font-size:12px; }
       .btn-submit, .btn-next { padding:8px 14px; }
     }
   </style>
@@ -232,6 +247,8 @@ function saveDone() {
 }
 function isDone(id) { return doneSet.has(id) || scoredThisSession.has(id); }
 let justSubmitted = false;
+let mistakeChecked = false;   // 'I made a mistake with my first submission' (correction of an earlier rating)
+let mistakeOpen = false;      // user opened the correction box for a candidate not yet marked rated on this device
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -481,6 +498,8 @@ function selectCandidate(candidateId) {
   credibilityChecked = false;
   teachingPotential = false;
   justSubmitted = false;
+  mistakeChecked = false;
+  mistakeOpen = false;
   renderRoster();
   renderDetail();
 }
@@ -516,12 +535,21 @@ function renderDetail() {
   detail.style.display = "";
 
   const { total, complete, scoredCount } = evaluate();
-  const ready = complete && credibilityChecked && !justSubmitted;
+  // Outstanding teaching ability can only be ticked once all five are scored
+  // and the total is 12 or more; otherwise it is greyed out and cleared.
+  const potOk = complete && total >= 12;
+  if (!potOk) teachingPotential = false;
+  // A second submission for someone already rated needs the "I made a mistake"
+  // box. It is saved as a correction, and the Course Director views show the
+  // newer one as current and the earlier one as superseded.
+  const mistakeRequired = isDone(candidate.id);
+  const showMistake = mistakeRequired || mistakeOpen;
+  const ready = complete && credibilityChecked && !justSubmitted && (!mistakeRequired || mistakeChecked);
   const LEVELS = { 1: "Unsatisfactory", 2: "Adequate", 3: "Excellent" };
 
   const rows = CRITERIA.map(crit => {
     const selected = currentScores[crit.key];
-    const cells = [1, 2, 3].map(level => `
+    const cells = [3, 2, 1].map(level => `
       <button type="button" class="m-cell ${level === selected ? "sel s" + level : ""}" onclick="setScore('${crit.key}', ${level})">
         <span class="lv s${level}">${level}</span><span>${esc(crit.levels[level])}</span>
       </button>`).join("");
@@ -536,11 +564,17 @@ function renderDetail() {
         ? `<button type="button" class="btn-next" id="nextBtn" onclick="nextCandidate()">Next candidate →</button>`
         : (selectedRoom ? `<span class="submit-msg">Everyone in Room ${esc(selectedRoom)} is rated ✓</span>` : ""));
   } else {
+    const hint = !complete ? "Score all 5 and tick the confirmation"
+               : !credibilityChecked ? "Tick the confirmation under the name"
+               : (mistakeRequired && !mistakeChecked) ? "Tick the box about your first submission"
+               : "";
     foot = `<span class="tot-label">Total${complete ? "" : ` (${scoredCount} of 5)`}</span>
       <span class="tot-val">${complete ? total : "–"} <span style="font-size:12px;color:#8893b0;font-weight:400;">/ 15</span></span>
+      ${showMistake ? "" : `<button type="button" class="link-btn" onclick="openMistake()"><span class="lg">Correcting an earlier submission?</span><span class="sm">Correcting?</span></button>`}
       <span class="spacer"></span>
-      <span class="hint" id="submitHint" style="${ready ? "display:none;" : ""}">Score all 5 and tick the confirmation</span>
+      <span class="hint" id="submitHint" style="${ready ? "display:none;" : ""}">${hint}</span>
       <span class="submit-err" id="submitErr" style="display:none;"></span>
+      <button type="button" class="btn-reset" id="resetBtn" ${(scoredCount || credibilityChecked || teachingPotential || mistakeChecked) ? "" : "disabled"} onclick="resetRating()">Reset</button>
       <button type="button" class="btn-submit" id="submitBtn" ${ready ? "" : "disabled"} onclick="submitRating()">Submit rating</button>`;
   }
 
@@ -549,26 +583,44 @@ function renderDetail() {
       <h3>${esc(candidate.name)}</h3>
       <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom || "not yet assigned")} · ${esc(selectedCourse)}</div>
     </div>
+    <label class="cred-bar ${justSubmitted ? "locked" : ""}">
+      <input type="checkbox" id="credibilityCheckbox" ${credibilityChecked ? "checked" : ""} onchange="setCredibility(this.checked)">
+      <span>I've spent enough time with this person to make a credible submission.</span>
+    </label>
     <div class="matrix ${justSubmitted ? "locked" : ""}">
       <div></div>
-      <div class="m-head s1">1 · ${LEVELS[1]}</div><div class="m-head s2">2 · ${LEVELS[2]}</div><div class="m-head s3">3 · ${LEVELS[3]}</div>
+      <div class="m-head s3">3 · ${LEVELS[3]}</div><div class="m-head s2">2 · ${LEVELS[2]}</div><div class="m-head s1">1 · ${LEVELS[1]}</div>
       ${rows}
     </div>
     <div class="checks ${justSubmitted ? "locked" : ""}">
-      <label class="check pot">
-        <input type="checkbox" id="teachingCheckbox" ${teachingPotential ? "checked" : ""} onchange="setTeachingPotential(this.checked)">
-        <span><b>Potential outstanding teaching ability</b> (optional: tick only if you saw it)</span>
+      <label class="check pot ${potOk ? "" : "off"}">
+        <input type="checkbox" id="teachingCheckbox" ${teachingPotential ? "checked" : ""} ${potOk ? "" : "disabled"} onchange="setTeachingPotential(this.checked)">
+        <span><b>Potential outstanding teaching ability</b> ${potOk ? "(optional: tick only if you saw it)" : "(only available when the total is 12 or more)"}</span>
       </label>
-      <label class="check cred">
-        <input type="checkbox" id="credibilityCheckbox" ${credibilityChecked ? "checked" : ""} onchange="setCredibility(this.checked)">
-        <span>I've spent enough time with this person to make a credible submission.</span>
-      </label>
+      ${showMistake ? `
+      <label class="check mistake">
+        <input type="checkbox" id="mistakeCheckbox" ${mistakeChecked ? "checked" : ""} onchange="setMistake(this.checked)">
+        <span><b>I made a mistake with my first submission and need to enter a new, correct one.</b>${mistakeRequired ? " (needed to submit again for this candidate)" : ""}</span>
+      </label>` : ""}
     </div>
     <div class="foot">${foot}</div>
   `;
   const nb = document.getElementById("nextBtn");
   if (nb) nb.focus();
 }
+
+// Clear this candidate's scores and both ticks before submitting. Nothing has been
+// saved yet at this point, so this only resets the form.
+function resetRating() {
+  currentScores = {};
+  credibilityChecked = false;
+  teachingPotential = false;
+  mistakeChecked = false;
+  renderDetail();
+}
+
+function setMistake(v) { mistakeChecked = !!v; renderDetail(); }
+function openMistake() { mistakeOpen = true; renderDetail(); }
 
 function setScore(key, level) {
   currentScores[key] = level;
@@ -589,7 +641,8 @@ async function submitRating() {
   const btn = document.getElementById("submitBtn");
   errEl.style.display = "none";
 
-  if (!candidate || !complete || !credibilityChecked || justSubmitted) return;
+  const mistakeRequired = isDone(candidate ? candidate.id : "");
+  if (!candidate || !complete || !credibilityChecked || justSubmitted || (mistakeRequired && !mistakeChecked)) return;
 
   btn.disabled = true;
   btn.textContent = "Submitting…";
@@ -603,8 +656,9 @@ async function submitRating() {
       room: selectedRoom,
       scores: { ...currentScores },
       total: total,
-      outstandingTeachingPotential: teachingPotential === true,
+      outstandingTeachingPotential: (teachingPotential === true && total >= 12),
       credibilityConfirmed: true,
+      ...(mistakeChecked ? { correctsPrevious: true } : {}),
       submittedByUid: currentUser.uid,
       submittedByName: myName,
       submittedByEmail: currentUser.email || null,
