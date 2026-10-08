@@ -224,6 +224,16 @@
     .sq-stat.mid  { background: #fff3cd; color: #c17a00; }
     .sq-stat.low  { background: #fde8e4; color: #b7410e; }
     .sq-stat.none { background: #f0f3f6; color: #9aa8b4; font-weight: 600; }
+    .sq-click { cursor: pointer; border-radius: 6px; }
+    .sq-click:hover { background: #f7f9fb; }
+    .sq-click:focus-visible { outline: 2px solid var(--rmd-navy); outline-offset: 2px; }
+    .sq-chev { font-size: 14px; color: var(--rmd-muted); width: 14px; text-align: center; }
+    .sq-spread { display: inline-flex; width: 70px; height: 10px; border-radius: 5px; overflow: hidden; background: #e8edf2; }
+    .sq-spread i { display: block; height: 100%; }
+    .sq-spread .sp1 { background: #b7410e; } .sq-spread .sp2 { background: #e0a030; } .sq-spread .sp3 { background: #7fb2e0; }
+    .sq-spread .sp4 { background: #6cb87e; } .sq-spread .sp5 { background: #1a6e31; }
+    .sq-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 0 0 10px; border-bottom: 1px solid #e8edf2; }
+    .sq-bar a { color: var(--rmd-navy); font-size: 12px; font-weight: 700; }
     .sq-resp { margin: 8px 0 0 0; padding: 8px 10px; background: #f7f9fb; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #33414d; }
     .sq-resp b { color: var(--rmd-navy); }
     .sq-issue { color: #b7410e; font-weight: 700; }
@@ -2173,6 +2183,19 @@ function qualityWhen(x) {
   return ms ? new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 }
 
+// Which sessions have their individual responses open. Default is collated
+// (one summary line per session); click a session to see each response.
+const openQualityRows = new Set();
+function toggleQualityRow(id) {
+  if (openQualityRows.has(id)) openQualityRows.delete(id); else openQualityRows.add(id);
+  renderSessionQuality();
+}
+function toggleAllQuality(open) {
+  openQualityRows.clear();
+  if (open) qualityDocs.forEach(d => openQualityRows.add(d.sessionId));
+  renderSessionQuality();
+}
+
 function renderSessionQuality() {
   const body = document.getElementById("qualityBody");
   const flagBody = document.getElementById("qualityFlagged");
@@ -2196,10 +2219,6 @@ function renderSessionQuality() {
     rows.push({ id, title: bySession[id][0].sessionTitle || id, sub: "Not in programme", list: bySession[id] });
   });
 
-  // Flagged responses first
-  const flagged = qualityDocs.filter(d => d.cdFlag);
-  const badge = document.getElementById("navQualityBadge");
-  if (badge) { badge.textContent = flagged.length; badge.classList.toggle("hidden", flagged.length === 0); }
   const respHtml = x => {
     const ov = x.overall || x.delivery;
     const bits = [
@@ -2207,32 +2226,57 @@ function renderSessionQuality() {
       x.objectives ? `Objectives: <b>${OBJ_WORD[x.objectives] || x.objectives}</b>` : "",
       x.resourceIssue === "yes" ? `<span class="sq-issue">Resource issue</span>${x.resourceNotes ? ": " + esc(x.resourceNotes) : ""}` : ""
     ].filter(Boolean).join(" · ");
-    return `<div class="sq-resp">${bits}${x.otherComments ? `<div>${esc(x.otherComments)}</div>` : ""}
-      <div class="text-sm text-muted">${esc(x.submittedByName || "Faculty")}${qualityWhen(x) ? " · " + esc(qualityWhen(x)) : ""}</div></div>`;
+    return `<div class="sq-resp">${bits || "No ratings given"}${x.otherComments ? `<div>${esc(x.otherComments)}</div>` : ""}
+      <div class="text-sm text-muted">${esc(x.submittedByName || "Faculty")}${qualityWhen(x) ? " · " + esc(qualityWhen(x)) : ""}${x.cdFlag ? " · <span class=\"sq-issue\">Flagged</span>" : ""}</div></div>`;
   };
-  flagBody.innerHTML = flagged.length
-    ? flagged.map(x => {
-        const hit = rows.find(r => r.id === x.sessionId);
-        return `<div class="sq-row"><div class="sq-title">${esc(hit ? hit.title : (x.sessionTitle || x.sessionId))}
-          <small>${esc(hit ? hit.sub : "")}</small></div>${respHtml(x)}</div>`;
-      }).join("")
-    : `<div class="empty-msg">Nothing flagged. A low rating or a resource issue shows here.</div>`;
 
-  body.innerHTML = rows.map(r => {
-    const ov = qualityAvg(r.list, "overall"), ob = qualityAvg(r.list, "objectives");
-    const issues = r.list.filter(x => x.resourceIssue === "yes").length;
+  // Overall rating spread: a five-part bar, Poor to Excellent.
+  const spread = list => {
+    const c = [0, 0, 0, 0, 0];
+    list.forEach(x => { const v = Number(x.overall || x.delivery); if (v >= 1 && v <= 5) c[v - 1]++; });
+    const tot = c.reduce((a, b) => a + b, 0);
+    if (!tot) return "";
+    return `<span class="sq-spread" title="Overall: ${c.map((n, i) => QUAL_WORD[i + 1] + " " + n).join(", ")}">${
+      c.map((n, i) => n ? `<i class="sp${i + 1}" style="flex:${n}"></i>` : "").join("")}</span>`;
+  };
+
+  // One row per session, collated by default; the chevron opens the individual responses.
+  const sessionRow = (r, onlyFlagged) => {
+    const list = onlyFlagged ? r.list.filter(x => x.cdFlag) : r.list;
+    if (onlyFlagged && !list.length) return "";
+    const ov = qualityAvg(list, "overall"), ob = qualityAvg(list, "objectives");
+    const issues = list.filter(x => x.resourceIssue === "yes").length;
+    const flaggedN = list.filter(x => x.cdFlag).length;
+    const comments = list.filter(x => x.otherComments || x.resourceNotes).length;
+    const key = (onlyFlagged ? "f:" : "") + r.id;
+    const open = list.length && openQualityRows.has(key);
     const stat = (label, a) => `<span class="sq-stat ${qualityClass(a)}">${label} ${a == null ? "–" : a.toFixed(1)}</span>`;
     return `<div class="sq-row">
-      <div class="sq-top">
+      <div class="sq-top ${list.length ? "sq-click" : ""}" ${list.length ? `onclick="toggleQualityRow('${esc(key)}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')toggleQualityRow('${esc(key)}')"` : ""}>
         <div class="sq-title">${esc(r.title)}<small>${esc(r.sub)}</small></div>
-        ${r.list.length
-          ? stat("Overall", ov) + stat("Objectives", ob) + (issues ? `<span class="sq-stat low">${issues} issue${issues > 1 ? "s" : ""}</span>` : "")
-            + `<span class="sq-stat">${r.list.length} response${r.list.length > 1 ? "s" : ""}</span>`
+        ${list.length
+          ? spread(list) + stat("Overall", ov) + stat("Objectives", ob)
+            + (issues ? `<span class="sq-stat low">${issues} issue${issues > 1 ? "s" : ""}</span>` : "")
+            + (!onlyFlagged && flaggedN ? `<span class="sq-stat low">${flaggedN} flagged</span>` : "")
+            + (comments ? `<span class="sq-stat">${comments} comment${comments > 1 ? "s" : ""}</span>` : "")
+            + `<span class="sq-stat">${list.length} response${list.length > 1 ? "s" : ""}</span>`
+            + `<span class="sq-chev">${open ? "▾" : "▸"}</span>`
           : `<span class="sq-stat none">No responses yet</span>`}
       </div>
-      ${r.list.filter(x => x.otherComments || x.resourceNotes).map(respHtml).join("")}
+      ${open ? list.slice().sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)).map(respHtml).join("") : ""}
     </div>`;
-  }).join("") || `<div class="empty-msg">No sessions loaded.</div>`;
+  };
+
+  const flagged = qualityDocs.filter(d => d.cdFlag);
+  const badge = document.getElementById("navQualityBadge");
+  if (badge) { badge.textContent = flagged.length; badge.classList.toggle("hidden", flagged.length === 0); }
+
+  const flagHtml = rows.map(r => sessionRow(r, true)).join("");
+  flagBody.innerHTML = flagHtml || `<div class="empty-msg">Nothing flagged. A low rating or a resource issue shows here.</div>`;
+
+  const bar = `<div class="sq-bar"><span class="text-sm text-muted">Collated by session. Click a session to see each response.</span>
+    <span><a href="#" onclick="toggleAllQuality(true);return false;">Open all</a> · <a href="#" onclick="toggleAllQuality(false);return false;">Collapse all</a></span></div>`;
+  body.innerHTML = bar + (rows.map(r => sessionRow(r, false)).join("") || `<div class="empty-msg">No sessions loaded.</div>`);
 }
 
 function watchAlerts() {
