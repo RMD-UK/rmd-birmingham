@@ -243,6 +243,13 @@
     .fb-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 12px; align-items: start; }
     .fb-room { background: #fff; border: 1.5px solid #dde2ed; border-radius: 10px; overflow: hidden; }
     .fb-room-head { background: var(--rmd-navy); color: #fff; padding: 8px 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    /* 2026-10-08, Jon: the "No room assigned" box (assessors / senior
+       instructors) sits last and spans the full width, names in two columns. */
+    .fb-room.fb-room-none { grid-column: 1 / -1; }
+    .fb-room.fb-room-none .fb-room-body { column-count: 2; column-gap: 0; }
+    .fb-room.fb-room-none .fb-room-body { column-rule: 1px solid #eef1f5; }
+    .fb-room.fb-room-none .fb-person { break-inside: avoid; border-top: none; border-bottom: 1px solid #eef1f5; }
+    @media (max-width: 700px) { .fb-room.fb-room-none .fb-room-body { column-count: 1; } }
     .fb-room-name { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
     .fb-room-count { font-size: 11px; opacity: .65; }
     .fb-room-pills { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
@@ -2118,7 +2125,7 @@ function renderFeedback(day) {
       tally.none  ? `<span class="room-pill none">${tally.none} not yet rated</span>` : ""
     ].join("");
     return `
-      <div class="fb-room">
+      <div class="fb-room${key ? "" : " fb-room-none"}">
         <div class="fb-room-head">
           <span class="fb-room-name">${key ? esc(key) : "No room assigned"}</span>
           <span class="fb-room-count">${list.length} candidate${list.length !== 1 ? "s" : ""}</span>
