@@ -309,7 +309,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
-<script src="js/programme-data.js?v=202609171730"></script>
+<script src="js/programme-data.js?v=202610071300"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // State
@@ -559,7 +559,7 @@ function buildCard(c) {
       ${buildGatewayRow(c)}
 
       <div class="comment-wrap ${redVisible}" id="comment-${c.id}">
-        <div class="comment-label">Comment required for red rating *</div>
+        <div class="comment-label">Comment required for a red rating or a Gateway FAIL *</div>
         <textarea class="comment-textarea" id="text-${c.id}"
           placeholder="Describe what you observed and what support was given"
           oninput="onCommentInput('${c.id}')">${esc(comment)}</textarea>
@@ -618,6 +618,21 @@ async function setGateway(candidateId, outcome) {
   if (!canRecordGateway) { showToast("Your role can view but not record the gateway result", "red"); return; }
   const c = myCandidates.find(x => x.id === candidateId);
   if (!c || c.id.startsWith("demo")) { showToast("Demo candidate, nothing saved"); return; }
+  // A gateway FAIL needs the reason written here, in the room, by the person
+  // recording it. It is stored as the red-rating comment on this page, and the
+  // Course Director's sign-off page reads it from there. Pressing FAIL with no
+  // comment opens the comment box instead of saving.
+  if (outcome === "fail") {
+    const rr = ratings[candidateId] || {};
+    if (!(rr.comment || "").trim()) {
+      if (rr.rating !== "red") setRating(candidateId, "red");
+      const box = document.getElementById("text-" + candidateId);
+      if (box) { box.focus(); box.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      showToast("Write the reason for the FAIL in the comment box, then press FAIL again.", "red");
+      return;
+    }
+    if (rr.rating !== "red") setRating(candidateId, "red");
+  }
   const ref = db.collection("gateway_assessments").doc(candidateId);
   try {
     // Re-read inside a transaction so a result the Course Director has just

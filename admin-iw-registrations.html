@@ -582,6 +582,16 @@ async function loadAll() {
     .filter(r => r.status === "confirmed")
     .forEach(r => { r.facultyRole = facultyRoleMap[(r.email||"").toLowerCase()] || null; });
 
+  // Account drift (2026-10-07, Jon): the automatic registration -> account sync
+  // only CREATES an account record; it never changes an existing one. So if
+  // someone already had an account (e.g. as an Instructor Candidate) and is later
+  // registered as, say, Assessor Faculty, the account keeps the old role and they
+  // see the wrong site. Flag it here and offer a one-click, director-confirmed fix.
+  const accountMap = await loadAccountRoleMap();
+  allRegistrations
+    .filter(r => r.status === "confirmed")
+    .forEach(r => { r.account = accountMap[(r.email||"").toLowerCase()] || null; });
+
   updateSummary();
   renderTable();
 }
@@ -599,6 +609,93 @@ async function loadFacultyRoleMap() {
     });
   } catch (e) { console.warn("faculty_responses role map load failed:", e.message); }
   return map;
+}
+
+// email(lowercase) -> { uid, role } from people docs keyed by a real login UID
+// (28 chars; shorter ids are orphan auto-ID docs that resolveRole() never reads).
+// email -> role for people docs that are NOT keyed by a login UID (auto-ID orphans).
+// resolveRole() can never see these, so the person falls back to the default role.
+let orphanEmails = {};
+async function loadAccountRoleMap() {
+  const map = {};
+  // This year's Instructor Weekend function records (iw_assignments/{year}_{uid}).
+  // resolveIwFunction() reads THIS first and only falls back to people.role, so a
+  // stale one here overrides a correct people.role.
+  const fnByUid = {};
+  orphanEmails = {};
+  try {
+    const a = await db.collection(COLLECTIONS.iwAssignments).get();
+    a.forEach(doc => { const d = doc.data(); if (d.uid && String(d.year) === String(CURRENT_IW_YEAR)) fnByUid[d.uid] = d.function || ""; });
+  } catch (e) { console.warn("iw_assignments load failed:", e.message); }
+  try {
+    const snap = await db.collection(COLLECTIONS.people).get();
+    snap.forEach(doc => {
+      const d = doc.data();
+      const email = (d.email || "").toLowerCase().trim();
+      if (email && doc.id.length === 28) map[email] = { uid: doc.id, role: d.role || "", iwFunction: fnByUid[doc.id] || null };
+      else if (email) orphanEmails[email] = d.role || "";
+    });
+  } catch (e) { console.warn("people role map load failed:", e.message); }
+  return map;
+}
+
+// True when a confirmed registration's role maps to a different account role than
+// the one on the person's login. Directors are skipped: their access comes from the
+// platform config, not people.role.
+function hasAccountMismatch(r) {
+  if (r.status !== "confirmed" || !r.account) return false;
+  const want = IW_TO_PEOPLE_ROLE[r.role];
+  if (!want) return false;
+  if (r.account.role === ROLES.DIRECTOR || want === ROLES.DIRECTOR) return false;
+  // Mismatch if the login role differs, or this year's IW function record exists and differs.
+  return r.account.role !== want || (r.account.iwFunction && r.account.iwFunction !== want);
+}
+
+function hasOrphanOnly(r) {
+  const e = (r.email || "").toLowerCase().trim();
+  return r.status === "confirmed" && !r.account && Object.prototype.hasOwnProperty.call(orphanEmails, e);
+}
+
+function accountMismatchBadge(r) {
+  if (hasOrphanOnly(r)) {
+    return ` <div style="color:#b7410e;font-size:11px;margin-top:2px;" title="Their People record has an auto-generated ID, so the site cannot find it when they sign in and shows them the default role. Use Sync to People (top of page) to create the proper login-keyed record, then remove the old one on the dedupe page.">⚠ No login-keyed record (has an old orphan one) - run Sync to People</div>`;
+  }
+  if (!hasAccountMismatch(r)) return "";
+  return ` <div style="color:#b7410e;font-size:11px;margin-top:2px;">⚠ Login role is "${r.account.role || "none"}"${r.account.iwFunction ? ` (this year's IW record: "${r.account.iwFunction}")` : ""} <button type="button" class="btn-link-sm" style="font-size:11px;" onclick="syncAccountToRegistration('${r.id}')">Set login to ${r.role}</button></div>`;
+}
+
+// Director-driven: copies the registration's role ONTO the person's existing
+// login record (people/{uid}) and this year's Instructor Weekend function record.
+async function syncAccountToRegistration(docId) {
+  const r = allRegistrations.find(x => x.id === docId);
+  if (!r || !r.account) return;
+  const want = IW_TO_PEOPLE_ROLE[r.role];
+  if (!want) return;
+  if (!confirm(`Change ${r.name || r.email}'s login role from "${r.account.role || "none"}" to "${want}" (${r.role})?\n\nThis changes what they can see and do on the site the next time they load a page.`)) return;
+  try {
+    const by = (auth.currentUser && auth.currentUser.email) || null;
+    await db.collection(COLLECTIONS.people).doc(r.account.uid).update({
+      role: want,
+      roleLabel: r.role,
+      roleSyncedFrom: "iw_registrations",
+      roleSyncedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      roleSyncedBy: by
+    });
+    await db.collection(COLLECTIONS.iwAssignments).doc(`${CURRENT_IW_YEAR}_${r.account.uid}`).set({
+      year: CURRENT_IW_YEAR,
+      uid: r.account.uid,
+      email: (r.email || "").toLowerCase(),
+      function: want,
+      assignedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      assignedBy: by
+    }, { merge: true });
+    r.account.role = want;
+    r.account.iwFunction = want;
+    updateSummary();
+    renderTable();
+  } catch (err) {
+    alert("Couldn't update the login role: " + err.message);
+  }
 }
 
 // True when this registration's role has drifted from their latest
@@ -665,7 +762,7 @@ function updateSummary() {
   document.getElementById("sum-faculty").textContent    = r.filter(x => x.source === "faculty").length;
   document.getElementById("sum-assessorFaculty").textContent = r.filter(x => x.role === "Assessor Faculty").length;
   document.getElementById("sum-itc").textContent         = r.filter(x => x.role === "Instructor Trainer Candidate").length;
-  document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role" || hasRoleMismatch(x)).length;
+  document.getElementById("sum-flagged").textContent    = r.filter(x => x.syncFlag?.status === "unresolved_role" || hasRoleMismatch(x) || hasAccountMismatch(x) || hasOrphanOnly(x)).length;
 }
 
 // ── Table ────────────────────────────────────────────────────────────────────
@@ -699,7 +796,7 @@ function getFiltered() {
     case "faculty":     rows = allRegistrations.filter(r => r.source === "faculty"); break;
     case "assessorFaculty": rows = allRegistrations.filter(r => r.role === "Assessor Faculty"); break;
     case "itc":         rows = allRegistrations.filter(r => r.role === "Instructor Trainer Candidate"); break;
-    case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role" || hasRoleMismatch(r)); break;
+    case "flagged":     rows = allRegistrations.filter(r => r.syncFlag?.status === "unresolved_role" || hasRoleMismatch(r) || hasAccountMismatch(r) || hasOrphanOnly(r)); break;
     case "total":       rows = allRegistrations; break;
     default:            rows = allRegistrations;
   }
@@ -758,7 +855,7 @@ function renderTable() {
     return `<tr class="${isDecl?"status-declined":""}">
       <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(r)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">${r.email||"–"}</td>
-      <td>${roleBadge(r.role)}${roleMismatchBadge(r)}</td>
+      <td>${roleBadge(r.role)}${roleMismatchBadge(r)}${accountMismatchBadge(r)}</td>
       <td>${statusBadge(r.status)}</td>
       <td style="color:var(--rmd-muted);font-size:12px;">
         ${r.notes||""}

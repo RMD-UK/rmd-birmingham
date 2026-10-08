@@ -192,6 +192,7 @@ Jon Hulme, j.hulme.1@bham.ac.uk, senior, Course Director, , jon-hulme.jpg"></tex
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
 <script>
 
 initFirebase();
@@ -376,7 +377,7 @@ function populateTeamOptions() {
 function renderCurrentRosterTable() {
   const q = (document.getElementById("rosterSearch").value || "").trim().toLowerCase();
   const rows = currentRosterCache.filter(d =>
-    !q || (d.name||"").toLowerCase().includes(q) || (d.team||"").toLowerCase().includes(q) || (d.email||"").toLowerCase().includes(q)
+    !q || RMD_FUZZY.score(q, [d.name, d.team, d.email]) > 0
   );
   const tbody = document.getElementById("currentRosterBody");
   if (!rows.length) {

@@ -21,7 +21,12 @@
     const words = norm(query).split(/\s+/).filter(Boolean);
     if (!words.length) return false;
     const hay = norm([c.name, c.email, c.degree, c.course, c.room].join(" "));
-    return words.every(w => hay.includes(w));
+    if (words.every(w => hay.includes(w))) return true;
+    // Not an exact hit: fall back to fuzzy (typos, "Surname, First", partial words)
+    // when js/fuzzy-search.js is loaded on the page.
+    return (typeof RMD_FUZZY !== "undefined")
+      ? RMD_FUZZY.score(query, [c.name, c.email, c.degree, c.course, c.room]) > 0
+      : false;
   }
 
   // config/stage1_course_dates courses[] -> { "Course 1": "2026-10-12" }

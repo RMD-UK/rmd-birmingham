@@ -139,7 +139,8 @@ const PROGRAMME = {
         roles: ["instructor", "faculty", "director"],
         notes: "",
         resources: [
-          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" }
+          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" },
+          { title: "BLS/AED slides (RCUK adult BLS)", path: "resources/2a-bls-aed-lecture-rcuk.html", icon: "📊" }
         ],
         tags: []
       },
