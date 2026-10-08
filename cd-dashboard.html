@@ -238,6 +238,29 @@
     .sq-resp b { color: var(--rmd-navy); }
     .sq-issue { color: #b7410e; font-weight: 700; }
     /* Room grouping on the Feedback tab */
+    /* Feedback tab, rooms as boxes (2026-10-08, Jon): same look as the room
+       allocation page. Traffic light, name, chips and comments sit together. */
+    .fb-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 12px; align-items: start; }
+    .fb-room { background: #fff; border: 1.5px solid #dde2ed; border-radius: 10px; overflow: hidden; }
+    .fb-room-head { background: var(--rmd-navy); color: #fff; padding: 8px 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .fb-room-name { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+    .fb-room-count { font-size: 11px; opacity: .65; }
+    .fb-room-pills { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+    .fb-room-pills .room-pill { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; }
+    .fb-person { padding: 6px 10px 7px; border-top: 1px solid #eef1f5; }
+    .fb-person:first-child { border-top: none; }
+    .fb-p1 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .fb-p1 .tl-dot { flex: 0 0 auto; }
+    .fb-pname { font-size: 13px; font-weight: 700; color: var(--rmd-navy); cursor: pointer; }
+    .fb-pname:hover { text-decoration: underline; }
+    .fb-prole { font-size: 10.5px; color: var(--rmd-muted); }
+    .fb-pchips { display: inline-flex; gap: 3px; flex-wrap: wrap; margin-left: auto; }
+    .fb-pcomments { margin: 3px 0 0 19px; display: flex; flex-direction: column; gap: 2px; }
+    .fb-c { display: flex; gap: 6px; align-items: flex-start; font-size: 11.5px; color: #33414d; line-height: 1.4; cursor: pointer; }
+    .fb-c .tl-badge { flex: 0 0 auto; margin-top: 1px; cursor: pointer; }
+    .fb-c-txt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .fb-person.open .fb-pcomments { display: none; } /* full comments are in the detail card when open */
+    .fb-person .fb-detail { margin: 6px 0 0; }
     .room-group { margin-bottom: 14px; }
     .room-group:last-child { margin-bottom: 0; }
     .room-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 7px 10px; background: #eef2f6; border-radius: 6px; margin-bottom: 2px; }
@@ -2044,16 +2067,23 @@ function renderFeedback(day) {
           </div>`).join("")}
       </div>` : "";
 
+    // Compact row (2026-10-08, Jon): traffic light, name and the session chips
+    // sit together on one line; any comments follow directly underneath.
+    const commented = fb.filter(f => f.comment && String(f.comment).trim());
+    const comments = commented.length ? `<div class="fb-pcomments">${commented.map(f => `
+        <div class="fb-c" onclick="toggleFeedbackRow('${esc(c.id)}')" title="${esc(feedbackSessionTitle(f.sessionId))}${feedbackRater(f) ? " - by " + esc(feedbackRater(f)) : ""}">
+          <span class="tl-badge ${f.rating}">${f.rating.charAt(0).toUpperCase()}</span><span class="fb-c-txt">${esc(f.comment)}</span>
+        </div>`).join("")}</div>` : "";
+    const roleTxt = customRoleLabel(c.roleLabel) || c.stream || ROLE_LABELS[effectiveRole(c)] || "";
     return `
-      <div class="tl-item">
-        <div class="tl-row">
-          <div class="tl-name">
-            ${esc(c.name)}
-            <div class="tl-sub">${esc(customRoleLabel(c.roleLabel) || c.stream || ROLE_LABELS[effectiveRole(c)] || "")}</div>
-          </div>
-          <div class="tl-sessions">${chips}</div>
+      <div class="fb-person${open ? " open" : ""}">
+        <div class="fb-p1">
           <span class="tl-dot ${worst}" title="${worst === 'none' ? 'No ratings yet' : 'Worst rating today'}"></span>
+          <span class="fb-pname" onclick="toggleFeedbackRow('${esc(c.id)}')">${esc(c.name)}</span>
+          ${roleTxt ? `<span class="fb-prole">${esc(roleTxt)}</span>` : ""}
+          <span class="fb-pchips">${chips}</span>
         </div>
+        ${comments}
         ${detail}
       </div>`;
   };
@@ -2070,7 +2100,7 @@ function renderFeedback(day) {
     return a.localeCompare(b, undefined, { numeric: true });
   });
 
-  body.innerHTML = roomKeys.map(key => {
+  body.innerHTML = `<div class="fb-rooms">` + roomKeys.map(key => {
     const list = rooms[key].slice().sort((a, b) => a.name.localeCompare(b.name));
     const html = list.map(rowHtml).join("");
     // Room summary: how many of its candidates have a red / amber / green
@@ -2088,15 +2118,15 @@ function renderFeedback(day) {
       tally.none  ? `<span class="room-pill none">${tally.none} not yet rated</span>` : ""
     ].join("");
     return `
-      <div class="room-group">
-        <div class="room-head">
-          <span class="room-name">${key ? esc(key) : "No room assigned"}</span>
-          <span class="room-count">${list.length} candidate${list.length !== 1 ? "s" : ""}</span>
-          <span class="room-pills">${pills}</span>
+      <div class="fb-room">
+        <div class="fb-room-head">
+          <span class="fb-room-name">${key ? esc(key) : "No room assigned"}</span>
+          <span class="fb-room-count">${list.length} candidate${list.length !== 1 ? "s" : ""}</span>
+          <span class="fb-room-pills">${pills}</span>
         </div>
-        ${html}
+        <div class="fb-room-body">${html}</div>
       </div>`;
-  }).join("");
+  }).join("") + `</div>`;
 
   // Red details card
   const redCard = document.getElementById("redDetailsCard");
