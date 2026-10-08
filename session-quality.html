@@ -133,6 +133,18 @@
     .success-sub { font-size: 14px; color: var(--rmd-muted); margin-bottom: 24px; }
     .btn-another { padding: 12px 28px; border-radius: 8px; border: 2px solid var(--rmd-navy); background: white; color: var(--rmd-navy); font-family: var(--font); font-size: 14px; font-weight: 700; cursor: pointer; }
 
+    /* ── Fixed session header (when opened from the programme) ── */
+    .session-fixed-title { font-size: 16px; font-weight: 800; color: var(--rmd-navy); line-height: 1.3; }
+    .session-fixed-sub   { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
+    .session-change      { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--rmd-blue); }
+
+    /* ── Not-faculty message ── */
+    .access-msg { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.09); padding: 28px 20px; text-align: center; margin-top: 16px; }
+    .access-msg h2 { margin: 0 0 8px; font-size: 18px; color: var(--rmd-navy); }
+    .access-msg p  { margin: 0 0 16px; font-size: 14px; color: var(--rmd-muted); line-height: 1.5; }
+    .formerr { background: #fde8e4; border: 1px solid #f4bfb6; color: #b7410e; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-weight: 600; margin-bottom: 12px; display: none; }
+    .formerr.visible { display: block; }
+
     .hidden { display: none !important; }
   </style>
 </head>
@@ -153,15 +165,33 @@
 </div>
 
 <!-- Session picker -->
-<div class="session-picker">
-  <select id="sessionSelect" onchange="onSessionChange()">
-    <option value="">— Select the session just completed —</option>
-  </select>
-  <div class="session-picker-note">Complete this after each session you delivered or observed.</div>
+<div class="session-picker" id="pickerBar">
+  <!-- Opened from a programme session: the session is already known -->
+  <div id="sessionFixed" class="hidden">
+    <div class="session-fixed-title" id="sessionFixedTitle"></div>
+    <div class="session-fixed-sub" id="sessionFixedSub"></div>
+    <a class="session-change" href="#" onclick="showPicker(); return false;">Not this session? Choose another</a>
+  </div>
+  <!-- Opened without a session: choose one -->
+  <div id="sessionPickerWrap">
+    <select id="sessionSelect" onchange="onSessionChange()">
+      <option value="">— Select the session just completed —</option>
+    </select>
+    <div class="session-picker-note">Complete this after each session you delivered or observed. Faculty only.</div>
+  </div>
 </div>
 
 <!-- Main wrap -->
 <div class="wrap">
+
+  <!-- Not faculty -->
+  <div class="access-msg hidden" id="accessMsg">
+    <h2>Faculty only</h2>
+    <p>Session quality feedback is completed by faculty. If you should have access, ask the Course Director.</p>
+    <a class="btn-another" style="text-decoration:none;display:inline-block;" href="timetable.html">Back to programme</a>
+  </div>
+
+  <div class="formerr" id="formErr"></div>
 
   <!-- Already submitted notice -->
   <div class="submitted-notice" id="submittedNotice">
@@ -170,9 +200,9 @@
 
   <!-- Q1: Delivery quality -->
   <div class="q-card">
-    <div class="q-header"><span class="q-num">1</span> Session delivery</div>
+    <div class="q-header"><span class="q-num">1</span> Session overall</div>
     <div class="q-body">
-      <div class="q-label">How well was this session delivered overall?</div>
+      <div class="q-label">How would you rate this session overall?</div>
       <div class="scale-wrap" id="scale-1">
         <button class="scale-btn" onclick="setScale(1,1)"><span class="scale-emoji">😟</span><span class="scale-lbl">Poor</span></button>
         <button class="scale-btn" onclick="setScale(1,2)"><span class="scale-emoji">😕</span><span class="scale-lbl">Weak</span></button>
@@ -198,39 +228,24 @@
     </div>
   </div>
 
-  <!-- Q3: Candidate engagement -->
+  <!-- Q3: Resource / equipment issues -->
   <div class="q-card">
-    <div class="q-header"><span class="q-num">3</span> Candidate engagement</div>
-    <div class="q-body">
-      <div class="q-label">How engaged were the candidates during this session?</div>
-      <div class="scale-wrap" id="scale-3">
-        <button class="scale-btn" onclick="setScale(3,1)"><span class="scale-emoji">😴</span><span class="scale-lbl">Disengaged</span></button>
-        <button class="scale-btn" onclick="setScale(3,2)"><span class="scale-emoji">😑</span><span class="scale-lbl">Low</span></button>
-        <button class="scale-btn" onclick="setScale(3,3)"><span class="scale-emoji">🙂</span><span class="scale-lbl">Moderate</span></button>
-        <button class="scale-btn" onclick="setScale(3,4)"><span class="scale-emoji">😊</span><span class="scale-lbl">Good</span></button>
-        <button class="scale-btn" onclick="setScale(3,5)"><span class="scale-emoji">🔥</span><span class="scale-lbl">Excellent</span></button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Q4: Resource / equipment issues -->
-  <div class="q-card">
-    <div class="q-header"><span class="q-num">4</span> Resources &amp; equipment</div>
+    <div class="q-header"><span class="q-num">3</span> Resources &amp; equipment</div>
     <div class="q-body">
       <div class="q-label">Were there any issues with resources or equipment in this session?</div>
-      <div class="yn-wrap" id="yn-4">
-        <button class="yn-btn" onclick="setYN(4,'yes')">⚠ Yes — there were issues</button>
-        <button class="yn-btn" onclick="setYN(4,'no')">✓ No — all fine</button>
+      <div class="yn-wrap" id="yn-3">
+        <button class="yn-btn" onclick="setYN(3,'yes')">⚠ Yes — there were issues</button>
+        <button class="yn-btn" onclick="setYN(3,'no')">✓ No — all fine</button>
       </div>
-      <div id="yn4-detail" style="margin-top:10px;display:none;">
+      <div id="yn3-detail" style="margin-top:10px;display:none;">
         <textarea class="q-textarea" id="resourceIssues" placeholder="Briefly describe the issue (e.g. manikin malfunction, AED not present, projector problem)…"></textarea>
       </div>
     </div>
   </div>
 
-  <!-- Q5: Free text -->
+  <!-- Q4: Free text -->
   <div class="q-card">
-    <div class="q-header"><span class="q-num">5</span> Any other comments</div>
+    <div class="q-header"><span class="q-num">4</span> Any other comments</div>
     <div class="q-body">
       <div class="q-label">Anything else to note about this session — for the CD's awareness or the faculty meeting?</div>
       <textarea class="q-textarea" id="otherComments" placeholder="Optional — timing issues, content gaps, suggestions for next time…"></textarea>
@@ -243,7 +258,7 @@
     <div class="success-icon">✅</div>
     <div class="success-title">Feedback submitted</div>
     <div class="success-sub">Thank you — this has been recorded for the CD's review.</div>
-    <button class="btn-another" onclick="resetForm()">Submit for another session</button>
+    <a class="btn-another" style="text-decoration:none;display:inline-block;" href="timetable.html">Back to programme</a>
   </div>
 
 </div>
@@ -261,23 +276,34 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
-<script src="js/programme-data.js?v=202610071300"></script>
+<script src="js/programme-data.js?v=202610081330"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
 let currentUser = null;
+let currentName = "";
 let currentSession = params.get("session") || "";
 
+// Faculty only (2026-10-08, per Jon). Candidates and assessor candidates never
+// see this form; firestore.rules enforces the same list on write.
+const ALLOWED_ROLES = ["faculty", "full-instructor", "assessor-faculty", "director"];
+
 const answers = {
-  scale1: 0,   // delivery quality
+  scale1: 0,   // session overall
   scale2: 0,   // learning objectives
-  scale3: 0,   // engagement
-  yn4: "",     // resource issues (yes/no)
-  resourceIssues: "",
-  otherComments: ""
+  yn3: "",     // resource issues (yes/no)
 };
+
+function findSession(id) {
+  for (const day of ["friday", "saturday", "sunday"]) {
+    const s = (PROGRAMME[day]?.sessions || []).find(x => x.id === id);
+    if (s) return { s, day };
+  }
+  return null;
+}
+function dayLabel(day) { return day.charAt(0).toUpperCase() + day.slice(1); }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Boot
@@ -291,59 +317,99 @@ window.addEventListener("load", () => {
     if (!user) { window.location.href = "index.html"; return; }
     currentUser = user;
 
-    // Load role via the shared resolveRole() helper (config/platform.directors
-    // and superUsers, falling back to people.role) rather than reading
-    // people.role directly — the old inline read missed anyone who is a
-    // director/super-user via config/platform but doesn't also have
-    // people.role === "director", incorrectly bouncing them to timetable.html.
-    // Restrict to faculty/full-instructor/director; unchanged fail-open
-    // behaviour when there's no role on file or Firestore is unavailable.
+    // Role: the shared helpers (resolveRole + this year's Instructor Weekend
+    // function) so a person assigned to the weekend as a candidate is treated
+    // as a candidate even if their base role is something else. Anyone not on
+    // the faculty list is shown the Faculty-only message and cannot submit.
+    let role = null;
     try {
-      const role = await resolveRole(user.uid, user.email || "");
-      const allowed = ["faculty", "full-instructor", "director"];
-      if (role && !allowed.includes(role)) {
-        window.location.href = "timetable.html";
-        return;
+      role = await resolveRole(user.uid, user.email || "");
+      if (typeof resolveIwFunction === "function") {
+        const fn = await resolveIwFunction(user.uid);
+        if (fn) role = fn;
       }
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
       if (snap.exists && snap.data().name) {
-        document.getElementById("topBarSub").textContent = snap.data().name;
+        currentName = snap.data().name;
+        document.getElementById("topBarSub").textContent = currentName;
       }
-    } catch (e) { /* allow through if Firestore unavailable */ }
+    } catch (e) { /* role stays null: treated as not faculty */ }
 
-    if (currentSession) {
-      document.getElementById("sessionSelect").value = currentSession;
-      onSessionChange();
+    if (!ALLOWED_ROLES.includes(role)) { blockAccess(); return; }
+
+    // Opened from a programme session: show that session, no dropdown.
+    const hit = currentSession ? findSession(currentSession) : null;
+    if (hit && isSessionQualityEligible(hit.s)) {
+      showFixedSession(hit);
+      refreshSession();
+    } else {
+      currentSession = "";
     }
   });
 });
+
+function blockAccess() {
+  document.getElementById("pickerBar").classList.add("hidden");
+  document.querySelectorAll(".q-card").forEach(c => c.style.display = "none");
+  document.getElementById("submitBar").classList.add("hidden");
+  document.getElementById("accessMsg").classList.remove("hidden");
+}
+
+function showFixedSession(hit) {
+  document.getElementById("sessionFixedTitle").textContent = hit.s.title;
+  document.getElementById("sessionFixedSub").textContent =
+    `${dayLabel(hit.day)} ${hit.s.start} · ${hit.s.duration} min` + (hit.s.subtitle ? ` · ${hit.s.subtitle}` : "");
+  document.getElementById("sessionFixed").classList.remove("hidden");
+  document.getElementById("sessionPickerWrap").classList.add("hidden");
+}
+
+function showPicker() {
+  document.getElementById("sessionFixed").classList.add("hidden");
+  document.getElementById("sessionPickerWrap").classList.remove("hidden");
+  document.getElementById("sessionSelect").value = currentSession;
+}
 
 function populateSessionSelect() {
   const sel = document.getElementById("sessionSelect");
   ["friday","saturday","sunday"].forEach(day => {
     (PROGRAMME[day]?.sessions || []).forEach(s => {
-      if (s.tags.includes("break")) return;
+      if (!isSessionQualityEligible(s)) return;
       const opt = document.createElement("option");
       opt.value = s.id;
-      opt.textContent = `${day.charAt(0).toUpperCase() + day.slice(1)} ${s.start} — ${s.title}`;
-      if (s.id === currentSession) opt.selected = true;
+      opt.textContent = `${dayLabel(day)} ${s.start} — ${s.title}`;
       sel.appendChild(opt);
     });
   });
 }
 
-async function onSessionChange() {
+function onSessionChange() {
   currentSession = document.getElementById("sessionSelect").value;
+  refreshSession();
+}
+
+function clearAnswers() {
+  answers.scale1 = 0; answers.scale2 = 0; answers.yn3 = "";
+  document.querySelectorAll(".scale-btn").forEach(b => b.className = "scale-btn");
+  document.querySelectorAll(".yn-btn").forEach(b => b.className = "yn-btn");
+  document.getElementById("resourceIssues").value = "";
+  document.getElementById("otherComments").value  = "";
+  document.getElementById("yn3-detail").style.display = "none";
+  document.getElementById("formErr").classList.remove("visible");
+}
+
+async function refreshSession() {
+  clearAnswers();
+  const btn = document.getElementById("submitBtn");
   if (!currentSession) {
-    document.getElementById("submitBtn").disabled = true;
-    document.getElementById("submitBtn").textContent = "Select a session first";
+    btn.disabled = true;
+    btn.textContent = "Select a session first";
     document.getElementById("submittedNotice").classList.remove("visible");
     return;
   }
-  document.getElementById("submitBtn").disabled  = false;
-  document.getElementById("submitBtn").textContent = "Submit feedback";
+  btn.disabled = false;
+  btn.textContent = "Submit feedback";
 
-  // Check if already submitted
+  // Already submitted? Pre-fill so it can be updated.
   if (currentUser) {
     try {
       const snap = await db.collection("session_quality")
@@ -352,16 +418,15 @@ async function onSessionChange() {
         .limit(1).get();
       document.getElementById("submittedNotice").classList.toggle("visible", !snap.empty);
       if (!snap.empty) {
-        // Pre-fill form with previous answers
         const prev = snap.docs[0].data();
-        if (prev.delivery)    setScale(1, prev.delivery);
-        if (prev.objectives)  setScale(2, prev.objectives);
-        if (prev.engagement)  setScale(3, prev.engagement);
-        if (prev.resourceIssue) setYN(4, prev.resourceIssue);
+        const overall = prev.overall || prev.delivery;   // "delivery" = earlier field name
+        if (overall)            setScale(1, overall);
+        if (prev.objectives)    setScale(2, prev.objectives);
+        if (prev.resourceIssue) setYN(3, prev.resourceIssue);
         if (prev.resourceNotes) document.getElementById("resourceIssues").value = prev.resourceNotes;
         if (prev.otherComments) document.getElementById("otherComments").value  = prev.otherComments;
       }
-    } catch (e) { /* no index yet — skip */ }
+    } catch (e) { /* nothing saved yet */ }
   }
 }
 
@@ -374,6 +439,7 @@ function setScale(qNum, val) {
   wrap.querySelectorAll(".scale-btn").forEach((btn, i) => {
     btn.className = "scale-btn" + (i + 1 === val ? " sel-" + val : "");
   });
+  document.getElementById("formErr").classList.remove("visible");
 }
 
 function setYN(qNum, val) {
@@ -384,40 +450,51 @@ function setYN(qNum, val) {
       btn.className = "yn-btn" + (btn.textContent.includes("Yes") && val === "yes" ? " sel-yes" : btn.textContent.includes("No") && val === "no" ? " sel-no" : "");
     });
   }
-  if (qNum === 4) {
-    document.getElementById("yn4-detail").style.display = val === "yes" ? "block" : "none";
+  if (qNum === 3) {
+    document.getElementById("yn3-detail").style.display = val === "yes" ? "block" : "none";
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Submit
 // ─────────────────────────────────────────────────────────────────────────────
+function formError(msg) {
+  const el = document.getElementById("formErr");
+  el.textContent = msg;
+  el.classList.add("visible");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 async function submitFeedback() {
   if (!currentSession) return;
+  if (!answers.scale1) { formError("Please rate the session overall (question 1) before submitting."); return; }
 
   const btn = document.getElementById("submitBtn");
   btn.disabled    = true;
   btn.textContent = "Submitting…";
 
+  const hit = findSession(currentSession);
   const payload = {
     sessionId:       currentSession,
-    delivery:        answers.scale1,
+    sessionTitle:    hit ? hit.s.title : "",
+    day:             hit ? hit.day : "",
+    overall:         answers.scale1,
     objectives:      answers.scale2,
-    engagement:      answers.scale3,
-    resourceIssue:   answers.yn4,
+    resourceIssue:   answers.yn3,
     resourceNotes:   document.getElementById("resourceIssues").value.trim(),
     otherComments:   document.getElementById("otherComments").value.trim(),
     submittedByUid:  currentUser?.uid || null,
+    submittedByName: currentName || "",
     submittedAt:     firebase.firestore.FieldValue.serverTimestamp()
   };
 
-  // Flag low scores or resource issues for CD attention
-  const hasLowScore    = [payload.delivery, payload.objectives, payload.engagement].some(s => s > 0 && s <= 2);
-  const hasResIssue    = payload.resourceIssue === "yes";
-  if (hasLowScore || hasResIssue) payload.cdFlag = true;
+  // Flag a low overall / objectives score or a resource issue for the CD.
+  // Always written (true or false) so a corrected submission clears the flag.
+  const lowScore = [payload.overall, payload.objectives].some(v => v > 0 && v <= 2);
+  payload.cdFlag = lowScore || payload.resourceIssue === "yes";
 
   try {
-    // Upsert — one doc per faculty per session
+    // Upsert: one doc per faculty member per session
     const existingSnap = await db.collection("session_quality")
       .where("sessionId", "==", currentSession)
       .where("submittedByUid", "==", currentUser?.uid)
@@ -429,39 +506,16 @@ async function submitFeedback() {
       await db.collection("session_quality").add(payload);
     }
 
-    // Show success
     document.querySelector(".wrap").querySelectorAll(".q-card").forEach(c => c.style.display = "none");
     document.getElementById("submittedNotice").style.display = "none";
+    document.getElementById("formErr").classList.remove("visible");
     document.getElementById("successScreen").classList.add("visible");
     document.getElementById("submitBar").classList.add("hidden");
   } catch (err) {
     btn.disabled    = false;
     btn.textContent = "Submit feedback";
-    alert("Submit failed — check your connection and try again.");
+    formError("Submit failed. Check your connection and try again. If it keeps failing, tell the Course Director.");
   }
-}
-
-function resetForm() {
-  // Reset answers
-  Object.keys(answers).forEach(k => { answers[k] = typeof answers[k] === "number" ? 0 : ""; });
-
-  // Reset UI
-  document.querySelectorAll(".scale-btn").forEach(b => b.className = "scale-btn");
-  document.querySelectorAll(".yn-btn").forEach(b => b.className = "yn-btn");
-  document.getElementById("resourceIssues").value = "";
-  document.getElementById("otherComments").value  = "";
-  document.getElementById("yn4-detail").style.display = "none";
-  document.getElementById("sessionSelect").value  = "";
-  document.getElementById("submitBtn").disabled    = true;
-  document.getElementById("submitBtn").textContent = "Select a session first";
-  document.getElementById("submittedNotice").classList.remove("visible");
-
-  // Restore cards
-  document.querySelectorAll(".q-card").forEach(c => c.style.display = "");
-  document.getElementById("successScreen").classList.remove("visible");
-  document.getElementById("submitBar").classList.remove("hidden");
-
-  currentSession = "";
 }
 </script>
 </body>

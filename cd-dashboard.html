@@ -213,6 +213,20 @@
     .fb-session-link:hover { text-decoration-color: currentColor; }
     .fb-detail-meta { font-size: 11px; color: var(--rmd-muted); }
     .fb-comment { font-size: 12px; color: #33414d; margin-top: 4px; line-height: 1.5; }
+    /* Session quality tab */
+    .sq-row { padding: 10px 0; border-bottom: 1px solid #f0f3f6; }
+    .sq-row:last-child { border-bottom: none; }
+    .sq-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .sq-title { flex: 1; min-width: 200px; font-size: 14px; font-weight: 700; color: var(--rmd-navy); }
+    .sq-title small { display: block; font-weight: 400; font-size: 11px; color: var(--rmd-muted); }
+    .sq-stat { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: #f0f3f6; color: #5a6b7a; }
+    .sq-stat.good { background: #e6f4ea; color: #1a6e31; }
+    .sq-stat.mid  { background: #fff3cd; color: #c17a00; }
+    .sq-stat.low  { background: #fde8e4; color: #b7410e; }
+    .sq-stat.none { background: #f0f3f6; color: #9aa8b4; font-weight: 600; }
+    .sq-resp { margin: 8px 0 0 0; padding: 8px 10px; background: #f7f9fb; border-radius: 6px; font-size: 12px; line-height: 1.5; color: #33414d; }
+    .sq-resp b { color: var(--rmd-navy); }
+    .sq-issue { color: #b7410e; font-weight: 700; }
     /* Room grouping on the Feedback tab */
     .room-group { margin-bottom: 14px; }
     .room-group:last-child { margin-bottom: 0; }
@@ -488,6 +502,10 @@
         <span class="nav-icon">🚦</span><span>Feedback</span>
         <span class="nav-badge hidden" id="navBadge">0</span>
       </div>
+      <div class="nav-item" onclick="switchSection('quality')" id="nav-quality">
+        <span class="nav-icon">⭐</span><span>Session quality</span>
+        <span class="nav-badge hidden" id="navQualityBadge">0</span>
+      </div>
       <div class="nav-item" onclick="window.location.href='assessment-development.html'" id="nav-development">
         <span class="nav-icon">📝</span><span>Development</span>
       </div>
@@ -754,6 +772,19 @@
       </div>
     </section>
 
+    <!-- ── SESSION QUALITY (2026-10-08) ── -->
+    <section class="section" id="section-quality">
+      <div class="section-title">Session Quality — Faculty Ratings</div>
+      <div class="card">
+        <div class="card-header">Flagged by faculty</div>
+        <div class="card-body" id="qualityFlagged"><div class="loading">Loading…</div></div>
+      </div>
+      <div class="card">
+        <div class="card-header">All sessions</div>
+        <div class="card-body" id="qualityBody"><div class="loading">Loading…</div></div>
+      </div>
+    </section>
+
     <!-- ── REPORT ── -->
     <section class="section" id="section-report">
       <div class="section-title">Course Report</div>
@@ -890,7 +921,7 @@
 <script src="js/course-result.js"></script>
 <script src="js/course-report.js"></script>
 <script src="js/mini-docx.js"></script>
-<script src="js/programme-data.js?v=202610071300"></script>
+<script src="js/programme-data.js?v=202610081330"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // STATE
@@ -977,6 +1008,7 @@ window.addEventListener("load", () => {
     loadReport();
     watchAlerts();
     watchFeedbackLive();
+    watchSessionQuality();
 
     // Reset-practice-data button: only before the real event starts (9 Oct
     // 2026), so rehearsals can clean up after themselves but nobody can
@@ -2111,6 +2143,98 @@ function renderAlertStrip() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION QUALITY (2026-10-08, per Jon)
+// Faculty rate each taught session (session-quality.html). Live listener; the
+// tab lists flagged responses first, then every taught session in programme
+// order with its average ratings, issue count and comments.
+// ─────────────────────────────────────────────────────────────────────────────
+let qualityDocs = [];
+const QUAL_WORD = { 1: "Poor", 2: "Weak", 3: "OK", 4: "Good", 5: "Excellent" };
+const OBJ_WORD  = { 1: "Not at all", 2: "Partially", 3: "Mostly", 4: "Fully", 5: "Exceeded" };
+
+function watchSessionQuality() {
+  db.collection("session_quality").onSnapshot(snap => {
+    qualityDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderSessionQuality();
+  }, err => {
+    const el = document.getElementById("qualityBody");
+    if (el) el.innerHTML = `<div class="empty-msg">Could not read session quality ratings: ${esc(err.message)}</div>`;
+  });
+}
+
+function qualityAvg(list, key) {
+  const v = list.map(x => Number(key === "overall" ? (x.overall || x.delivery) : x[key])).filter(n => n > 0);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+function qualityClass(a) { return a == null ? "none" : a >= 4 ? "good" : a >= 3 ? "mid" : "low"; }
+function qualityWhen(x) {
+  const ms = (x.submittedAt && typeof x.submittedAt.toMillis === "function") ? x.submittedAt.toMillis() : 0;
+  return ms ? new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+}
+
+function renderSessionQuality() {
+  const body = document.getElementById("qualityBody");
+  const flagBody = document.getElementById("qualityFlagged");
+  if (!body || !flagBody) return;
+
+  const bySession = {};
+  qualityDocs.forEach(d => { (bySession[d.sessionId] = bySession[d.sessionId] || []).push(d); });
+
+  // Every taught session in programme order (even with no responses yet, so
+  // gaps are visible), plus any rated session no longer in the programme.
+  const rows = [];
+  const seen = new Set();
+  ["friday", "saturday", "sunday"].forEach(day => {
+    (PROGRAMME[day]?.sessions || []).forEach(s => {
+      if (typeof isSessionQualityEligible === "function" && !isSessionQualityEligible(s)) return;
+      seen.add(s.id);
+      rows.push({ id: s.id, title: s.title, sub: `${day.charAt(0).toUpperCase() + day.slice(1)} ${s.start}`, list: bySession[s.id] || [] });
+    });
+  });
+  Object.keys(bySession).filter(id => !seen.has(id)).forEach(id => {
+    rows.push({ id, title: bySession[id][0].sessionTitle || id, sub: "Not in programme", list: bySession[id] });
+  });
+
+  // Flagged responses first
+  const flagged = qualityDocs.filter(d => d.cdFlag);
+  const badge = document.getElementById("navQualityBadge");
+  if (badge) { badge.textContent = flagged.length; badge.classList.toggle("hidden", flagged.length === 0); }
+  const respHtml = x => {
+    const ov = x.overall || x.delivery;
+    const bits = [
+      ov ? `Overall: <b>${QUAL_WORD[ov] || ov}</b>` : "",
+      x.objectives ? `Objectives: <b>${OBJ_WORD[x.objectives] || x.objectives}</b>` : "",
+      x.resourceIssue === "yes" ? `<span class="sq-issue">Resource issue</span>${x.resourceNotes ? ": " + esc(x.resourceNotes) : ""}` : ""
+    ].filter(Boolean).join(" · ");
+    return `<div class="sq-resp">${bits}${x.otherComments ? `<div>${esc(x.otherComments)}</div>` : ""}
+      <div class="text-sm text-muted">${esc(x.submittedByName || "Faculty")}${qualityWhen(x) ? " · " + esc(qualityWhen(x)) : ""}</div></div>`;
+  };
+  flagBody.innerHTML = flagged.length
+    ? flagged.map(x => {
+        const hit = rows.find(r => r.id === x.sessionId);
+        return `<div class="sq-row"><div class="sq-title">${esc(hit ? hit.title : (x.sessionTitle || x.sessionId))}
+          <small>${esc(hit ? hit.sub : "")}</small></div>${respHtml(x)}</div>`;
+      }).join("")
+    : `<div class="empty-msg">Nothing flagged. A low rating or a resource issue shows here.</div>`;
+
+  body.innerHTML = rows.map(r => {
+    const ov = qualityAvg(r.list, "overall"), ob = qualityAvg(r.list, "objectives");
+    const issues = r.list.filter(x => x.resourceIssue === "yes").length;
+    const stat = (label, a) => `<span class="sq-stat ${qualityClass(a)}">${label} ${a == null ? "–" : a.toFixed(1)}</span>`;
+    return `<div class="sq-row">
+      <div class="sq-top">
+        <div class="sq-title">${esc(r.title)}<small>${esc(r.sub)}</small></div>
+        ${r.list.length
+          ? stat("Overall", ov) + stat("Objectives", ob) + (issues ? `<span class="sq-stat low">${issues} issue${issues > 1 ? "s" : ""}</span>` : "")
+            + `<span class="sq-stat">${r.list.length} response${r.list.length > 1 ? "s" : ""}</span>`
+          : `<span class="sq-stat none">No responses yet</span>`}
+      </div>
+      ${r.list.filter(x => x.otherComments || x.resourceNotes).map(respHtml).join("")}
+    </div>`;
+  }).join("") || `<div class="empty-msg">No sessions loaded.</div>`;
+}
+
 function watchAlerts() {
   db.collection("session_feedback")
     .where("cdAlert", "==", true)
@@ -2389,6 +2513,7 @@ function switchSection(name) {
   if (name === "itcs")       renderITCs();
   if (name === "rooms")      renderRooms();
   if (name === "feedback")   renderFeedback(currentFeedbackDay);
+  if (name === "quality")    renderSessionQuality();
   if (name === "programme")  renderProgramme(currentProgDay);
   if (name === "faculty")    { loadFacultyResponses(); renderFacultyList(); }
 

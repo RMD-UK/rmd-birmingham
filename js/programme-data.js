@@ -995,3 +995,14 @@ function sessionsForRole(day, role) {
     s.roles.includes("all") || s.roles.includes(effectiveRole) || s.roles.includes(role)
   );
 }
+
+// Session Quality Feedback (2026-10-08, per Jon): faculty rate each TAUGHT
+// session once it has finished, via session-quality.html?session=<id>. This is
+// the single definition of "taught" used by the timetable (to show the link),
+// the form's fallback dropdown and the Course Director's Session quality tab.
+// Breaks, faculty-only slots, placeholders and pure admin slots are excluded.
+function isSessionQualityEligible(s) {
+  const tags = (s && s.tags) || [];
+  if (tags.includes("break") || tags.includes("faculty-only") || tags.includes("placeholder")) return false;
+  return !/registration|whole course photo|faculty arrival|faculty meeting/i.test((s && s.title) || "");
+}
