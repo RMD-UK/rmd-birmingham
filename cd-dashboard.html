@@ -209,6 +209,8 @@
     .fb-detail-row .tl-badge { flex: 0 0 52px; text-align: center; }
     .fb-detail-main { flex: 1; min-width: 0; }
     .fb-detail-title { font-size: 13px; font-weight: 700; color: var(--rmd-navy); }
+    .fb-session-link { color: var(--rmd-navy); text-decoration: underline; text-decoration-color: rgba(0,43,92,.35); text-underline-offset: 2px; }
+    .fb-session-link:hover { text-decoration-color: currentColor; }
     .fb-detail-meta { font-size: 11px; color: var(--rmd-muted); }
     .fb-comment { font-size: 12px; color: #33414d; margin-top: 4px; line-height: 1.5; }
     /* Room grouping on the Feedback tab */
@@ -1993,7 +1995,7 @@ function renderFeedback(day) {
           <div class="fb-detail-row">
             <span class="tl-badge ${f.rating}" style="cursor:default;">${WORD[f.rating] || esc(f.rating)}</span>
             <div class="fb-detail-main">
-              <div class="fb-detail-title">${esc(feedbackSessionTitle(f.sessionId))}${f.strong ? ' <span class="tag strong">Notably strong</span>' : ''}${f.weak ? ' <span class="tag weak">Notably weak</span>' : ''}</div>
+              <div class="fb-detail-title">${f.sessionId ? `<a class="fb-session-link" href="session-feedback.html?session=${encodeURIComponent(f.sessionId)}" target="_blank" rel="noopener" title="Open this session's rating page">${esc(feedbackSessionTitle(f.sessionId))} &#8599;</a>` : esc(feedbackSessionTitle(f.sessionId))}${f.strong ? ' <span class="tag strong">Notably strong</span>' : ''}${f.weak ? ' <span class="tag weak">Notably weak</span>' : ''}</div>
               <div class="fb-detail-meta">${[feedbackRater(f) ? "by " + esc(feedbackRater(f)) : "", feedbackWhen(f) ? esc(feedbackWhen(f)) : ""].filter(Boolean).join(" · ") || "&nbsp;"}</div>
               ${f.comment ? `<div class="${f.rating === 'red' ? 'comment-detail' : 'fb-comment'}">${esc(f.comment)}</div>` : ""}
             </div>
@@ -2063,7 +2065,7 @@ function renderFeedback(day) {
       <div class="tl-row">
         <div>
           <div style="font-size:14px;font-weight:700;color:var(--rmd-navy);">${esc(candidate.name)}</div>
-          <div class="text-sm text-muted">${esc(feedbackSessionTitle(feedback.sessionId))} · ${esc(candidate.group || "No room assigned")}${feedbackRater(feedback) ? " · by " + esc(feedbackRater(feedback)) : ""}</div>
+          <div class="text-sm text-muted">${feedback.sessionId ? `<a class="fb-session-link" href="session-feedback.html?session=${encodeURIComponent(feedback.sessionId)}" target="_blank" rel="noopener">${esc(feedbackSessionTitle(feedback.sessionId))} &#8599;</a>` : esc(feedbackSessionTitle(feedback.sessionId))} · ${esc(candidate.group || "No room assigned")}${feedbackRater(feedback) ? " · by " + esc(feedbackRater(feedback)) : ""}</div>
           ${feedback.comment ? `<div class="comment-detail">${esc(feedback.comment)}</div>` : `<div class="text-sm text-muted mt-8">No comment provided.</div>`}
         </div>
       </div>`).join("");
