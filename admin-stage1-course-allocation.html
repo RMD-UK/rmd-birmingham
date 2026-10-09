@@ -78,7 +78,7 @@
   <div class="card">
     <div class="card-header">Step 5 — Confirm allocation by email</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Emails each person the course dates and how to check their room, using the same wording as the "Allocation" template on Bulk Comms. It only covers people placed with Allocate now (Step 3) or Place extras (Step 4) who haven't been emailed for their current course. If someone is moved to a different course later, they show up here again. Nothing is sent until you press a Send button.</p>
+      <p class="hint" style="margin-top:0;">Emails each person the course dates and how to check their room, using the same wording as the "Allocation" template on Bulk Comms. It only covers people placed with Allocate now (Step 3) or Place extras (Step 4) who haven't been emailed for their current course. If someone is moved to a different course later, they show up here again. Nothing is sent until you press a Send button. This card is for small mid-year additions only: if 50 or more are placed in one go (the annual import), it stays empty and you use Bulk Comms instead.</p>
       <div id="confirmEmailCard"></div>
     </div>
   </div>
@@ -481,7 +481,8 @@ async function allocateAllNow() {
   });
 
   const roomFor = assignRoomsForWrites(toWrite);
-  const stampNow = new Date().toISOString();
+  // A run placing EMAIL_CARD_MAX or more people is the annual bulk import: leave them unstamped so they never show in Step 5 (email them from Bulk Comms).
+  const stampNow = toWrite.length < EMAIL_CARD_MAX ? new Date().toISOString() : null;
 
   try {
     const CHUNK = 400;
@@ -517,6 +518,7 @@ async function allocateAllNow() {
         </div>
       </div>`;
     }
+    if (toWrite.length >= EMAIL_CARD_MAX) summaryHtml += `<p class="hint" style="margin:0 0 12px;">${toWrite.length} placed in one go, so Step 5 is not offered. Email them from <a href="admin-comms.html">Bulk Comms</a> using the "Allocation" template on each course.</p>`;
     if (notChecked.length) summaryHtml += `<p class="hint" style="margin:0 0 12px;">${notChecked.length} skipped — not yet checked for placement dates.</p>`;
     const summaryEl = document.getElementById("allocationSummary");
     if (summaryEl) { summaryEl.innerHTML = summaryHtml; summaryEl.scrollIntoView({ behavior: "smooth", block: "start" }); }
@@ -606,7 +608,8 @@ async function placeExtrasOverCapacity() {
   if (!confirm(`Place ${toWrite.length} candidate(s) over capacity, spread across ${selected.join(", ")}?\n\nThis puts more people in those courses' rooms than the configured per-room limit allows. The 12/10-per-room numbers are real room sizes — confirm your rooms can actually fit the extra people before continuing.\n\nThis never bypasses anyone's deadline or a placement-date clash — only the room-capacity limit.`)) return;
 
   const roomFor = assignRoomsForWrites(toWrite);
-  const stampNow = new Date().toISOString();
+  // A run placing EMAIL_CARD_MAX or more people is the annual bulk import: leave them unstamped so they never show in Step 5 (email them from Bulk Comms).
+  const stampNow = toWrite.length < EMAIL_CARD_MAX ? new Date().toISOString() : null;
   try {
     const CHUNK = 400;
     for (let start = 0; start < toWrite.length; start += CHUNK) {
@@ -657,6 +660,8 @@ async function placeExtrasOverCapacity() {
 // placed before this feature existed has no allocatedAt, so never appears here
 // (use Bulk Comms for them). Moving someone to another course on Stage 1
 // Candidates and re-placing them (Step 3) re-stamps allocatedAt, and because their course now differs from allocationEmailedCourse they come back as pending.
+// Step 5 is for small mid-year additions only (Jon, 2026-10-09). Allocating this many or more in one go, or having this many waiting, hides it: use Bulk Comms.
+const EMAIL_CARD_MAX = 50;
 const CANDIDATE_RESOURCES_URL = "https://rmd.uk.com/candidate-resources.html";
 const BLS_ADMIN_EMAIL = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
 const INSTAGRAM_URL = "https://www.instagram.com/rmdbirmingham/";
@@ -743,6 +748,10 @@ function renderConfirmEmailCard() {
   const total = groups.reduce((n, g) => n + g.people.length, 0);
   if (!total) {
     wrap.innerHTML = `<p class="hint" style="margin:0;">Nobody is waiting for an allocation email. People placed in Step 3 or Step 4 appear here until they've been emailed.</p>`;
+    return;
+  }
+  if (total >= EMAIL_CARD_MAX) {
+    wrap.innerHTML = `<p class="hint" style="margin:0;">${total} people are waiting for an allocation email. This card is only for small additions (fewer than ${EMAIL_CARD_MAX}), so send these from <a href="admin-comms.html">Bulk Comms</a> using the "Allocation" template button on each course.</p>`;
     return;
   }
   let html = `<p style="margin:0 0 12px;font-size:13px;font-weight:700;color:var(--rmd-navy);">${total} ${total === 1 ? "person" : "people"} not yet emailed</p>`;
