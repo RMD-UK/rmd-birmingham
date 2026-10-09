@@ -190,7 +190,7 @@
 <img class="full fragment" src="media/first-aid/b-28-1.png" alt="">
 <img class="full fragment" src="media/first-aid/b-28-2.png" alt="">
 <img class="full fragment" src="media/first-aid/b-28-3.png" alt="">
-<video class="vid" controls playsinline preload="metadata" poster="media/femoral-bleed-poster.jpg" style="left:43.96%;top:23.15%;width:52.92%;height:70.37%;" aria-label="Femoral bleed treated with direct pressure and a dressing"><source src="media/femoral-bleed.mp4" type="video/mp4"></video>
+<video class="vid" controls loop data-autoplay playsinline preload="metadata" poster="media/femoral-bleed-poster.jpg" style="left:43.96%;top:23.15%;width:52.92%;height:70.37%;" aria-label="Femoral bleed treated with direct pressure and a dressing"><source src="media/femoral-bleed.mp4" type="video/mp4"></video>
 </section>
 <section data-background-color="#ffffff">
 <img class="full" src="media/first-aid/b-28b-base.jpg" alt="28b">
@@ -198,7 +198,7 @@
 <img class="full fragment" src="media/first-aid/b-28b-2.png" alt="">
 <img class="full fragment" src="media/first-aid/b-28b-3.png" alt="">
 <img class="full fragment" src="media/first-aid/b-28b-4.png" alt="">
-<video class="vid" controls playsinline preload="metadata" poster="media/bleeding-rate-poster.jpg" style="left:73.59%;top:21.30%;width:23.28%;height:74.07%;" aria-label="Blood dripping at a rate of 2000 ml per hour"><source src="media/bleeding-rate.mp4" type="video/mp4"></video>
+<video class="vid" controls data-autoplay playsinline preload="metadata" poster="media/bleeding-rate-poster.jpg" style="left:73.59%;top:21.30%;width:23.28%;height:74.07%;" aria-label="Blood dripping at a rate of 2000 ml per hour"><source src="media/bleeding-rate.mp4" type="video/mp4"></video>
 </section>
 <section data-background-color="#ffffff">
 <img class="full" src="media/first-aid/b-29-base.jpg" alt="Catastrophic bleeding: tourniquet">
@@ -269,8 +269,12 @@
     plugins: (typeof RevealNotes !== "undefined") ? [RevealNotes] : []
   });
   // Pause any playing video when you move to another slide
-  Reveal.on("slidechanged", function () {
-    document.querySelectorAll("video").forEach(function (v) { v.pause(); });
+  // (the video on the slide you have just arrived at is left alone, so slides 28 and 29 can auto-play (28 also loops))
+  Reveal.on("slidechanged", function (e) {
+    document.querySelectorAll("video").forEach(function (v) {
+      if (e.currentSlide && e.currentSlide.contains(v)) return;
+      v.pause();
+    });
   });
 </script>
 </body>
