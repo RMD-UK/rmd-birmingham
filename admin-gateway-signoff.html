@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gateway Sign-off — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 980px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    .top-bar a.back { color:white; font-size:12px; opacity:0.85; text-decoration:underline; }
+    .note { background:#eaf2fb; border:1px solid #bcd4ee; border-radius:6px; padding:10px 14px; font-size:13px; color:#1b3a5c; margin-bottom:14px; line-height:1.5; }
+    .summary { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+    .chip { background:white; border-radius:8px; padding:8px 14px; box-shadow:0 1px 3px rgba(0,0,0,0.1); font-size:12px; color:var(--rmd-muted); }
+    .chip b { display:block; font-size:20px; color:var(--rmd-navy); line-height:1.1; }
+    .chip.warn b { color:#b7410e; }
+    .chip.ok b { color:#1a6e31; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:14px; }
+    .tabs { display:flex; flex-wrap:wrap; gap:6px; flex:1; }
+    .tab { padding:7px 12px; border:2px solid #ccd6dd; background:white; border-radius:18px; font-size:12px; font-weight:700; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
+    .tab.active { background:var(--rmd-navy); color:white; border-color:var(--rmd-navy); }
+    .btn { padding:9px 16px; background:#1a6e31; color:white; border:none; border-radius:8px; font-size:13px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn:disabled { background:#aab8c2; cursor:default; }
+    .btn.sm { padding:6px 12px; font-size:12px; }
+    .btn.ghost { background:white; color:var(--rmd-navy); border:2px solid #ccd6dd; }
+    .btn.ghost:hover { border-color:var(--rmd-blue); }
+    .room { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:14px; overflow:hidden; }
+    .room-head { background:var(--rmd-blue); color:white; padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .room-head .rn { font-weight:700; font-size:14px; }
+    .room-head .rp { font-size:12px; opacity:0.85; flex:1; }
+    table { width:100%; border-collapse:collapse; }
+    th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); padding:8px 14px; border-bottom:1px solid #e8edf2; }
+    td { padding:10px 14px; border-bottom:1px solid #f0f3f6; font-size:13px; vertical-align:middle; }
+    tr:last-child td { border-bottom:none; }
+    .pill { display:inline-block; padding:3px 12px; border-radius:12px; font-size:12px; font-weight:700; }
+    .pill.pass { background:#e1efe3; color:#1a6e31; }
+    .pill.fail { background:#fce8e6; color:#b7410e; }
+    .pill.none { background:#eef1f4; color:#6b7c88; }
+    .state { font-size:12px; color:var(--rmd-muted); }
+    .state.ok { color:#1a6e31; font-weight:700; }
+    .state.stale { color:#b7410e; font-weight:700; }
+    .by { font-size:11px; color:var(--rmd-muted); }
+    .reason { margin-top:6px; font-size:12px; line-height:1.45; color:#5a1f0a; background:#fdf1ef; border-left:3px solid #e0a79b; padding:6px 10px; border-radius:0 4px 4px 0; white-space:pre-wrap; }
+    .reason b { color:#b7410e; }
+    .reason.missing { background:#fff3cd; border-left-color:#e0b43a; color:#7a5a00; font-weight:700; }
+    .empty { padding:24px; text-align:center; color:var(--rmd-muted); font-size:13px; }
+    td.act { text-align:right; white-space:nowrap; }
+    @media (max-width:640px) { th.hide-sm, td.hide-sm { display:none; } body { padding:10px; } }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">BLS/AED Gateway: Course Director sign-off</div>
+      <div class="top-bar-sub">RMD Instructor Weekend · Director only</div>
+    </div>
+    <a class="back" href="cd-dashboard.html">CD dashboard</a>
+  </div>
+  <div id="authMsg" style="color:#b7410e;font-weight:700;margin-bottom:10px;"></div>
+
+  <div class="note">
+    Faculty record Pass or Fail in the room, on the <b>Group Practice: BLS/AED</b> rating page. This page is where you check those results and sign them off.
+    Signing off locks a result in the room. <b>Reopen</b> removes the sign-off and unlocks it. If a result is changed after sign-off, the sign-off no longer counts and it comes back to you here.
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="toolbar">
+    <div class="tabs" id="tabs"></div>
+    <button class="btn" id="confirmAllBtn">Sign off all recorded</button>
+  </div>
+
+  <div id="rooms"><div class="empty">Loading…</div></div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+let currentUser = null;
+let allPeople   = {};   // uid -> people doc data (everyone, used for "recorded by")
+let candidates  = [];   // Instructor Candidates this weekend: {id, name, group}
+let gw          = {};   // gateway_assessments by candidate id
+let fb          = {};   // session_feedback docs for the gateway session, by candidate id: [{...}]
+const GATEWAY_SESSION_ID = "sat-8";   // Group Practice: BLS/AED, where faculty record the result
+let filter      = "all";
+
+const FILTERS = [
+  ["all",     "All"],
+  ["tosign",  "Awaiting sign-off"],
+  ["missing", "Not recorded"],
+  ["fail",    "Fails"],
+  ["signed",  "Signed off"]
+];
+
+// A sign-off only counts while the result is still the one that was signed.
+function isSigned(g)  { return !!(g && g.outcome && g.cdConfirmedBy && g.cdConfirmedOutcome === g.outcome); }
+function isStale(g)   { return !!(g && g.outcome && g.cdConfirmedBy && g.cdConfirmedOutcome && g.cdConfirmedOutcome !== g.outcome); }
+
+requireDirector("timetable.html").then(user => { currentUser = user; boot(); });
+
+async function boot() {
+  // Effective role for this weekend: iw_assignments first, else people.role
+  // (same layered pattern as the other Instructor Weekend admin pages).
+  const iwAssignments = {};
+  try {
+    const aSnap = await db.collection(COLLECTIONS.iwAssignments).where("year", "==", CURRENT_IW_YEAR).get();
+    aSnap.forEach(d => { const a = d.data(); if (a.uid && a.function) iwAssignments[a.uid] = a.function; });
+  } catch (e) { console.warn("Could not load iw_assignments:", e.message); }
+
+  try {
+    const pSnap = await db.collection(COLLECTIONS.people).get();
+    pSnap.forEach(doc => {
+      const d = doc.data();
+      allPeople[doc.id] = d;
+      const role = iwAssignments[doc.id] || d.role || "";
+      if (role !== "instructor") return;
+      candidates.push({ id: doc.id, name: d.name || d.email || doc.id, group: String(d.group || d.room || "").toUpperCase() });
+    });
+  } catch (e) {
+    document.getElementById("rooms").innerHTML = '<div class="empty">Could not load candidates: ' + esc(e.message) + '</div>';
+    return;
+  }
+
+  document.getElementById("confirmAllBtn").addEventListener("click", () => signMany(toSignIds(), "all rooms"));
+  document.getElementById("rooms").addEventListener("click", onRoomClick);
+  document.getElementById("tabs").addEventListener("click", e => {
+    const b = e.target.closest("[data-filter]");
+    if (!b) return;
+    filter = b.dataset.filter;
+    render();
+  });
+
+  db.collection("gateway_assessments").onSnapshot(snap => {
+    snap.docChanges().forEach(ch => {
+      if (ch.type === "removed") delete gw[ch.doc.id]; else gw[ch.doc.id] = ch.doc.data();
+    });
+    render();
+  }, err => {
+    console.warn("Gateway listener:", err.message);
+    document.getElementById("rooms").innerHTML = '<div class="empty">Could not read gateway results: ' + esc(err.message) + '</div>';
+  });
+
+  // The reason for a FAIL is written in the room, as the comment on that
+  // candidate's rating on the Group Practice: BLS/AED page.
+  db.collection("session_feedback").where("sessionId", "==", GATEWAY_SESSION_ID).onSnapshot(snap => {
+    const next = {};
+    snap.forEach(d => { const x = d.data(); if (x.candidateId) (next[x.candidateId] = next[x.candidateId] || []).push(x); });
+    fb = next;
+    render();
+  }, err => console.warn("Feedback listener:", err.message));
+}
+
+// The comment written by the person who recorded the FAIL if there is one,
+// otherwise any non-empty comment from the room.
+function failComment(id) {
+  const list = fb[id] || [];
+  const g = gw[id] || {};
+  const withText = list.filter(x => (x.comment || "").trim());
+  const mine = withText.find(x => x.submittedByUid && x.submittedByUid === g.assessorUid);
+  const pick = mine || withText[0];
+  return pick ? { text: String(pick.comment).trim(), by: pick.submittedByUid } : null;
+}
+
+function stateOf(c) {
+  const g = gw[c.id] || {};
+  if (!g.outcome) return "missing";
+  if (isSigned(g)) return "signed";
+  return "tosign";
+}
+
+function toSignIds(ids) {
+  return (ids || candidates.map(c => c.id)).filter(id => stateOf({ id }) === "tosign");
+}
+
+function passesFilter(c) {
+  const g = gw[c.id] || {};
+  if (filter === "all")     return true;
+  if (filter === "tosign")  return stateOf(c) === "tosign";
+  if (filter === "missing") return stateOf(c) === "missing";
+  if (filter === "fail")    return g.outcome === "fail";
+  if (filter === "signed")  return stateOf(c) === "signed";
+  return true;
+}
+
+function fmtTime(ts) {
+  try {
+    const d = ts && ts.toDate ? ts.toDate() : null;
+    return d ? d.toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  } catch (e) { return ""; }
+}
+
+function render() {
+  const total = candidates.length;
+  let pass = 0, fail = 0, missing = 0, signed = 0;
+  candidates.forEach(c => {
+    const g = gw[c.id] || {};
+    if (g.outcome === "pass") pass++; else if (g.outcome === "fail") fail++; else missing++;
+    if (isSigned(g)) signed++;
+  });
+  const toSign = total - missing - signed;
+
+  document.getElementById("summary").innerHTML =
+    '<div class="chip">Candidates<b>' + total + '</b></div>' +
+    '<div class="chip ok">Pass<b>' + pass + '</b></div>' +
+    '<div class="chip warn">Fail<b>' + fail + '</b></div>' +
+    '<div class="chip ' + (missing ? 'warn' : '') + '">Not recorded<b>' + missing + '</b></div>' +
+    '<div class="chip ' + (toSign ? 'warn' : '') + '">Awaiting sign-off<b>' + toSign + '</b></div>' +
+    '<div class="chip ok">Signed off<b>' + signed + ' / ' + total + '</b></div>';
+
+  document.getElementById("tabs").innerHTML = FILTERS.map(f =>
+    '<button class="tab' + (filter === f[0] ? ' active' : '') + '" data-filter="' + f[0] + '">' + f[1] + '</button>').join("");
+
+  const btn = document.getElementById("confirmAllBtn");
+  btn.disabled = toSign === 0;
+  btn.textContent = toSign ? "Sign off all recorded (" + toSign + ")" : "Nothing to sign off";
+
+  if (!total) {
+    document.getElementById("rooms").innerHTML = '<div class="empty">No Instructor Candidates found for Instructor Weekend ' + CURRENT_IW_YEAR + '.</div>';
+    return;
+  }
+
+  // Group by room
+  const byRoom = {};
+  candidates.forEach(c => { const k = c.group || ""; (byRoom[k] = byRoom[k] || []).push(c); });
+  const keys = Object.keys(byRoom).sort((a, b) => {
+    if (!a) return 1; if (!b) return -1;
+    return a.localeCompare(b, undefined, { numeric: true });
+  });
+
+  let html = "";
+  keys.forEach(k => {
+    const list = byRoom[k].slice().sort((a, b) => a.name.localeCompare(b.name));
+    const shown = list.filter(passesFilter);
+    if (!shown.length) return;
+    const rMissing = list.filter(c => stateOf(c) === "missing").length;
+    const rSigned  = list.filter(c => stateOf(c) === "signed").length;
+    const rToSign  = list.filter(c => stateOf(c) === "tosign").length;
+    html += '<div class="room"><div class="room-head">' +
+      '<div class="rn">' + esc(k || "No room assigned") + '</div>' +
+      '<div class="rp">' + rSigned + ' of ' + list.length + ' signed off' +
+        (rMissing ? ' · ' + rMissing + ' not recorded' : '') + '</div>' +
+      (rToSign ? '<button class="btn sm" data-room="' + esc(k) + '">Sign off room (' + rToSign + ')</button>' : '') +
+      '</div><table><thead><tr><th>Candidate</th><th>Result</th><th class="hide-sm">Recorded by</th><th>Status</th><th></th></tr></thead><tbody>';
+    shown.forEach(c => {
+      const g = gw[c.id] || {};
+      const pill = g.outcome === "pass" ? '<span class="pill pass">PASS</span>'
+                 : g.outcome === "fail" ? '<span class="pill fail">FAIL</span>'
+                 : '<span class="pill none">Not recorded</span>';
+      const flag = g.flagged ? ' <span title="Concern flagged in the room" style="color:#c17a00;">⚑</span>' : "";
+      const who  = g.assessorUid && allPeople[g.assessorUid] ? (allPeople[g.assessorUid].name || allPeople[g.assessorUid].email || "") : "";
+      const when = fmtTime(g.updatedAt);
+      const by   = g.outcome ? esc(who || "Unknown") + (when ? '<br>' + esc(when) : '') : "";
+      let state, action = "";
+      const s = stateOf(c);
+      if (s === "missing") { state = '<span class="state">Awaiting result from the room</span>'; }
+      else if (s === "signed") {
+        state  = '<span class="state ok">✓ Signed off</span>';
+        action = '<button class="btn sm ghost" data-reopen="' + c.id + '">Reopen</button>';
+      } else {
+        state  = isStale(g) ? '<span class="state stale">Result changed after sign-off</span>'
+                            : '<span class="state">' + (g.lockedAt ? 'Locked, not signed off' : 'Recorded, awaiting sign-off') + '</span>';
+        action = '<button class="btn sm" data-sign="' + c.id + '">Sign off</button>';
+      }
+      let reason = "";
+      if (g.outcome === "fail") {
+        const fc = failComment(c.id);
+        reason = fc
+          ? '<div class="reason"><b>Reason from the room' + (allPeople[fc.by] && allPeople[fc.by].name ? ' (' + esc(allPeople[fc.by].name) + ')' : '') + ':</b> ' + esc(fc.text) + '</div>'
+          : '<div class="reason missing">No reason written yet. The room must add a comment on the Group Practice: BLS/AED rating page.</div>';
+      }
+      html += '<tr><td><strong>' + esc(c.name) + '</strong>' + reason + '</td><td>' + pill + flag + '</td>' +
+              '<td class="hide-sm by">' + by + '</td><td>' + state + '</td><td class="act">' + action + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  });
+  document.getElementById("rooms").innerHTML = html || '<div class="empty">Nothing matches this filter.</div>';
+}
+
+function onRoomClick(e) {
+  const t = e.target.closest("button");
+  if (!t) return;
+  if (t.dataset.sign)   { signMany([t.dataset.sign], null); return; }
+  if (t.dataset.reopen) { reopen(t.dataset.reopen); return; }
+  if (t.dataset.room !== undefined) {
+    const ids = toSignIds(candidates.filter(c => (c.group || "") === t.dataset.room).map(c => c.id));
+    signMany(ids, t.dataset.room || "this group");
+  }
+}
+
+async function signOne(id) {
+  const ref = db.collection("gateway_assessments").doc(id);
+  await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    const cur  = snap.exists ? snap.data() : {};
+    if (!cur.outcome) throw new Error("no result recorded");
+    tx.set(ref, {
+      cdConfirmedAt:      firebase.firestore.FieldValue.serverTimestamp(),
+      cdConfirmedBy:      currentUser.uid,
+      cdConfirmedOutcome: cur.outcome,
+      lockedAt:           firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  });
+}
+
+async function signMany(ids, label) {
+  if (!ids.length) { alert("Nothing to sign off."); return; }
+  const noReason = ids.filter(id => (gw[id] || {}).outcome === "fail" && !failComment(id))
+                      .map(id => (candidates.find(c => c.id === id) || {}).name || id);
+  if (label === null) {
+    // One candidate: only ask if this is a FAIL with no reason written.
+    if (noReason.length && !confirm(noReason[0] + " has a FAIL with no reason written in the room.\n\nSign off anyway?")) return;
+  } else {
+    const fails = ids.filter(id => (gw[id] || {}).outcome === "fail");
+    const names = id => (candidates.find(c => c.id === id) || {}).name || id;
+    const missing = candidates.filter(c => stateOf(c) === "missing").length;
+    const msg = "Sign off " + ids.length + " gateway result" + (ids.length !== 1 ? "s" : "") + " (" + label + ")?\n\n" +
+      (ids.length - fails.length) + " PASS and " + fails.length + " FAIL.\n" +
+      (fails.length ? "FAIL: " + fails.map(names).join(", ") + "\n" : "") +
+ (noReason.length ? "\nNO REASON WRITTEN for the FAIL of: " + noReason.join(", ") + "\n" : "") +
+      (missing ? "\n" + missing + " candidate" + (missing !== 1 ? "s have" : " has") + " no result recorded yet and will not be included.\n" : "") +
+      "\nSigned-off results are locked in the rooms until you reopen them.";
+    if (!confirm(msg)) return;
+  }
+  const results = await Promise.allSettled(ids.map(signOne));
+  const bad = results.map((r, i) => r.status === "rejected" ? ((candidates.find(c => c.id === ids[i]) || {}).name || ids[i]) : null).filter(Boolean);
+  if (bad.length) alert("These could not be signed off: " + bad.join(", "));
+}
+
+async function reopen(id) {
+  const c = candidates.find(x => x.id === id);
+  if (!confirm("Reopen the gateway result for " + (c ? c.name : id) + "?\n\nThis removes the sign-off and unlocks the result so it can be changed in the room.")) return;
+  try {
+    await db.collection("gateway_assessments").doc(id).set({
+      cdConfirmedAt: null, cdConfirmedBy: null, cdConfirmedOutcome: null, lockedAt: null
+    }, { merge: true });
+  } catch (e) { alert("Could not reopen: " + e.message); }
+}
+</script>
+</body>
+</html>

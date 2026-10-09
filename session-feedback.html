@@ -559,7 +559,7 @@ function buildCard(c) {
       ${buildGatewayRow(c)}
 
       <div class="comment-wrap ${redVisible}" id="comment-${c.id}">
-        <div class="comment-label">Comment required for red rating *</div>
+        <div class="comment-label">Comment required for a red rating or a Gateway FAIL *</div>
         <textarea class="comment-textarea" id="text-${c.id}"
           placeholder="Describe what you observed and what support was given"
           oninput="onCommentInput('${c.id}')">${esc(comment)}</textarea>
@@ -585,12 +585,12 @@ function buildGatewayRow(c) {
   if (!outcome)         status = "Not yet recorded. Deadline 12:00.";
   else if (g.cdConfirmedBy && g.cdConfirmedOutcome === outcome) status = "Confirmed by Course Director.";
   else if (locked)      status = "Locked. Ask the Course Director to unlock to change it.";
-  else                  status = "Recorded. Not yet confirmed by the Course Director.";
+  else                  status = "Recorded. Not yet confirmed by the Course Director. Press the same button again to clear it.";
   if (!canRecordGateway) status = (outcome ? status + " " : "") + "View only for your role. Ask room faculty or the Course Director to record it.";
   return `<div class="gateway-row" id="gw-${c.id}">
       <div class="gateway-label">BLS/AED gateway<small>Competency check, pass by 12:00</small></div>
-      <button class="gw-btn pass ${outcome === "pass" ? "on" : ""}" ${off} onclick="setGateway('${c.id}','pass')">PASS</button>
-      <button class="gw-btn fail ${outcome === "fail" ? "on" : ""}" ${off} onclick="setGateway('${c.id}','fail')">FAIL</button>
+      <button class="gw-btn pass ${outcome === "pass" ? "on" : ""}" ${off} title="${outcome === 'pass' ? 'Press again to clear' : ''}" onclick="setGateway('${c.id}','pass')">PASS</button>
+      <button class="gw-btn fail ${outcome === "fail" ? "on" : ""}" ${off} title="${outcome === 'fail' ? 'Press again to clear' : ''}" onclick="setGateway('${c.id}','fail')">FAIL</button>
       <div class="gw-status">${esc(status)}</div>
     </div>`;
 }
@@ -618,6 +618,24 @@ async function setGateway(candidateId, outcome) {
   if (!canRecordGateway) { showToast("Your role can view but not record the gateway result", "red"); return; }
   const c = myCandidates.find(x => x.id === candidateId);
   if (!c || c.id.startsWith("demo")) { showToast("Demo candidate, nothing saved"); return; }
+  // Pressing the button that is already selected takes the result back to
+  // blank ("Not yet recorded"), so a mis-tap can be undone.
+  const clearing = (gateway[candidateId]?.outcome || "") === outcome;
+  // A gateway FAIL needs the reason written here, in the room, by the person
+  // recording it. It is stored as the red-rating comment on this page, and the
+  // Course Director's sign-off page reads it from there. Pressing FAIL with no
+  // comment opens the comment box instead of saving.
+  if (outcome === "fail" && !clearing) {
+    const rr = ratings[candidateId] || {};
+    if (!(rr.comment || "").trim()) {
+      if (rr.rating !== "red") setRating(candidateId, "red");
+      const box = document.getElementById("text-" + candidateId);
+      if (box) { box.focus(); box.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      showToast("Write the reason for the FAIL in the comment box, then press FAIL again.", "red");
+      return;
+    }
+    if (rr.rating !== "red") setRating(candidateId, "red");
+  }
   const ref = db.collection("gateway_assessments").doc(candidateId);
   try {
     // Re-read inside a transaction so a result the Course Director has just
@@ -626,18 +644,20 @@ async function setGateway(candidateId, outcome) {
       const snap = await tx.get(ref);
       const cur  = snap.exists ? snap.data() : {};
       if (cur.lockedAt) throw new Error("locked");
+      const newOutcome = clearing ? "" : outcome;
       const payload = {
-        outcome,
+        outcome:     newOutcome,
         updatedAt:   firebase.firestore.FieldValue.serverTimestamp(),
         assessorUid: currentUser.uid,
         source:      "session-feedback"
       };
       // A changed result invalidates any earlier Course Director confirmation.
-      if (cur.outcome && cur.outcome !== outcome) {
+      if (cur.outcome && cur.outcome !== newOutcome) {
         payload.cdConfirmedAt = null; payload.cdConfirmedBy = null; payload.cdConfirmedOutcome = null;
       }
       tx.set(ref, payload, { merge: true });
     });
+    if (clearing) { showToast(`${c.name}: gateway result cleared`); return; }
     showToast(`${c.name}: gateway ${outcome === "pass" ? "PASS" : "FAIL"}`, outcome === "pass" ? "green" : "red");
     if (outcome === "fail" && !(ratings[candidateId]?.rating)) {
       showToast("Gateway FAIL recorded. Please also add a traffic light and comment for this candidate.", "red");
@@ -760,27 +780,43 @@ function scheduleAutoSave(candidateId) {
   setSaveIndicator("saving");
 }
 
-async function saveSingle(candidateId) {
+// Saves are queued per candidate so a quick colour-then-reset can never race
+// the first write (which is what gives the doc its id).
+const saveChain = {};
+function saveSingle(candidateId) {
+  saveChain[candidateId] = (saveChain[candidateId] || Promise.resolve())
+    .catch(() => {})
+    .then(() => saveSingleNow(candidateId));
+  return saveChain[candidateId];
+}
+
+async function saveSingleNow(candidateId) {
   if (!currentUser || !currentSession) return;
   const r = ratings[candidateId];
-  if (!r || !r.rating) return; // nothing to save yet
+  if (!r) return;
+  // Nothing chosen and nothing saved before: nothing to do. If a rating WAS
+  // saved before and has now been reset, fall through and clear it so it
+  // disappears from the Course Director's Feedback tab (faculty cannot delete
+  // documents, so the stored rating is blanked instead).
+  if (!r.rating && !r.firestoreId) return;
 
   const candidate = myCandidates.find(c => c.id === candidateId);
+  const cleared = !r.rating;
   const payload = {
     sessionId:       currentSession,
     candidateId,
     candidateName:   candidate?.name || "",
     candidateGroup:  candidate?.group || candidate?.room || "",
-    rating:          r.rating,
-    comment:         r.comment || "",
-    strong:          !!r.strong,
-    weak:            !!r.weak,
+    rating:          cleared ? "" : r.rating,
+    comment:         cleared ? "" : (r.comment || ""),
+    strong:          cleared ? false : !!r.strong,
+    weak:            cleared ? false : !!r.weak,
     submittedByUid:  currentUser.uid,
-    savedAt:         firebase.firestore.FieldValue.serverTimestamp()
+    savedAt:         firebase.firestore.FieldValue.serverTimestamp(),
+    // Red raises the Course Director alert; any other state (including a
+    // reset) takes it down again.
+    cdAlert:         r.rating === "red"
   };
-
-  // Flag red ratings for immediate CD alert
-  if (r.rating === "red") payload.cdAlert = true;
 
   try {
     const docRef = r.firestoreId
@@ -788,7 +824,7 @@ async function saveSingle(candidateId) {
       : db.collection("session_feedback").doc();
 
     await docRef.set(payload, { merge: true });
-    ratings[candidateId] = { ...r, firestoreId: docRef.id };
+    ratings[candidateId] = { ...ratings[candidateId], firestoreId: docRef.id };
 
     setSaveIndicator("saved");
     setTimeout(() => setSaveIndicator(""), 3000);

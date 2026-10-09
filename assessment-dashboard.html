@@ -337,7 +337,7 @@
 
   <!-- Quick links -->
   <div class="quick-links" style="margin-top:14px;">
-    <a class="quick-link" href="assessment-gateway.html">📋 Gateway tool</a>
+    <a class="quick-link" href="admin-gateway-signoff.html">📋 Gateway sign-off</a>
     <a class="quick-link" href="assessment-development.html">📝 Dev tracking</a>
     <a class="quick-link" href="timetable.html?role=director">📅 Timetable</a>
   </div>
@@ -603,7 +603,7 @@ function renderOverview() {
       const c   = CANDIDATES.find(x => x.id === id);
       if (!c) return "";
       const rec = gwStore[id];
-      const outcome = rec ? rec.outcome : "pending";
+      const outcome = (rec && rec.outcome) ? rec.outcome : "pending";
       const devRecs = devStore.filter(r => r.candidateId === id && r.flags && r.flags.concern);
       const latestDev = devRecs.length ? devRecs[devRecs.length-1] : null;
 
@@ -660,14 +660,14 @@ function renderGatewayTab() {
   const rows = CANDIDATES
     .filter(c => {
       const rec     = gwStore[c.id];
-      const outcome = rec ? rec.outcome : "pending";
+      const outcome = (rec && rec.outcome) ? rec.outcome : "pending";
       if (filter !== "all" && outcome !== filter) return false;
       if (search && !c.name.toLowerCase().includes(search)) return false;
       return true;
     })
     .map(c => {
       const rec     = gwStore[c.id];
-      const outcome = rec ? rec.outcome : "pending";
+      const outcome = (rec && rec.outcome) ? rec.outcome : "pending";
       const dotHtml = rec ? GW_SKILLS.map(sk => {
         const r = rec.skills ? (rec.skills[sk.id] || "none") : "none";
         return `<div class="dot dot-${r}" title="${sk.name}: ${r}"></div>`;

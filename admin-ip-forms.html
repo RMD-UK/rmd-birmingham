@@ -108,6 +108,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/candidate-lookup.js"></script>
+<script src="js/opis-util.js"></script>
 <script src="js/pdf-lib.min.js"></script>
 <script src="js/ip-form.js"></script>
 <script>
@@ -182,6 +183,8 @@ async function init() {
     ]);
     candidates = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     ratings = rSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // A rater's corrected rating replaces their earlier one for the form wording.
+    OPIS_UTIL.markSuperseded(ratings);
     courseDates = RMD_CAND_LOOKUP.dateMap(dSnap.exists ? dSnap.data().courses : []);
   } catch (err) {
     document.getElementById("tableWrap").innerHTML = `<div class="empty-state">Couldn't load the data: ${esc(err.message)}</div>`;
@@ -200,9 +203,10 @@ async function init() {
 
 function ratingsFor(c) {
   const email = (c.email || "").toLowerCase();
-  const byId = ratings.filter(r => r.candidateId === c.id);
+  const current = ratings.filter(r => !r._superseded);
+  const byId = current.filter(r => r.candidateId === c.id);
   if (byId.length) return byId;
-  return email ? ratings.filter(r => (r.candidateEmail || "").toLowerCase() === email) : [];
+  return email ? current.filter(r => (r.candidateEmail || "").toLowerCase() === email) : [];
 }
 
 function buildRows(course) {

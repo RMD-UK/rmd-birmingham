@@ -377,9 +377,11 @@ service cloud.firestore {
     match /session_quality/{docId} {
       allow read: if isSignedIn() &&
         (isDirector() || resource.data.submittedByUid == request.auth.uid);
-      allow create: if (isFaculty() || isFullInstructor() || isDirector()) &&
+      // 2026-10-08: Assessor Faculty added (the form is shown to them on the
+      // Assessor/SI programme). Candidates are not on this list, by design.
+      allow create: if (isFaculty() || isFullInstructor() || isAssessorFaculty() || isDirector()) &&
         request.resource.data.submittedByUid == request.auth.uid;
-      allow update: if (isFaculty() || isFullInstructor() || isDirector()) &&
+      allow update: if (isFaculty() || isFullInstructor() || isAssessorFaculty() || isDirector()) &&
         resource.data.submittedByUid == request.auth.uid &&
         request.resource.data.submittedByUid == request.auth.uid;
       allow delete: if isDirector();
@@ -527,7 +529,7 @@ service cloud.firestore {
         && resource.data.get('lockedAt', null) == null
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['outcome', 'updatedAt', 'assessorUid', 'source', 'cdConfirmedAt', 'cdConfirmedBy', 'cdConfirmedOutcome'])
-        && request.resource.data.outcome in ['pass', 'fail']
+        && request.resource.data.outcome in ['pass', 'fail', '']
         && request.resource.data.get('cdConfirmedBy', null) == null
         && request.resource.data.assessorUid == request.auth.uid;
       allow delete: if isDirector();
