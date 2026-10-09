@@ -1061,7 +1061,7 @@ function renderCandidates() {
             <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}${possibleRepeatBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
-            <td>${esc(RMD_CAND_LOOKUP.courseText(c, cdates).replace("Not on a course yet", "–"))}</td>
+            <td>${esc(RMD_CAND_LOOKUP.courseText(c, cdates).replace("Not on a course yet", "–"))}${!c.course && (c.preferredCourse || c.avoidCourse) ? `<br><span class="hint" style="margin:0;color:#b25e00;font-weight:700;">${c.preferredCourse ? "Prefers " + esc(c.preferredCourse) : "Not " + esc(c.avoidCourse)}</span>` : ""}</td>
             <td>${esc(c.room) || "–"}${c.course ? `<br><span class="hint" style="margin:0;">${esc(RMD_CAND_LOOKUP.assessmentText(c))}</span>` : ""}</td>
             <td><button class="btn-link-sm" onclick="startEditCandidate('${c.id}')">✎ Edit</button></td>
             <td>${c.linkedCandidateId
@@ -1123,16 +1123,52 @@ async function removePlacementBlock(id, index) {
 // dates changed). Clears just their course and room and marks them checked, so
 // the next "Allocate now" in Course allocation places them afresh, using their
 // current placement dates. Everyone else is untouched. Added 2026-10-07 (Jon).
-async function reallocateCandidate(id) {
+// 2026-10-09 (Jon): the seat they just left is the first one free again, so a
+// plain re-run put people straight back on the same course. This now asks where
+// they should go: a preferred course, "anywhere except the one they were on"
+// (the default), or no preference. The choice is stored on the candidate
+// (preferredCourse / avoidCourse) and read by Allocate now, which places people
+// with a preference first, and clears it once they have a course.
+function reallocateCandidate(id) {
   const c = allCandidates.find(x => x.id === id);
   if (!c || !c.course) return;
-  if (!confirm(`Re-allocate ${c.name}?\n\nThis clears their current course (${c.course}) and room (${c.room || "none"}). Nobody else is changed, and their placement dates are kept.\n\nThen open Course allocation and run "Allocate now": only unallocated, checked people are placed, so just this person will be.\n\nIf they've already been told their course, they will need telling again if it changes.`)) return;
+  const sorted = courseSessions.filter(s => s.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const opts = [
+    `<option value="__avoid__" selected>Anywhere except ${esc(c.course)} (auto-fit)</option>`,
+    `<option value="__any__">No preference (auto-fit, may be ${esc(c.course)} again)</option>`
+  ].concat(sorted.filter(s => s.name !== c.course).map(s => `<option value="${esc(s.name)}">Prefer ${esc(s.name)} (${esc(s.date)})</option>`)).join("");
+  const old = document.getElementById("reallocOverlay"); if (old) old.remove();
+  const ov = document.createElement("div");
+  ov.id = "reallocOverlay";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(10,10,40,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;";
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:460px;width:100%;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,.4);font-family:inherit;">
+    <div style="font-size:16px;font-weight:800;color:var(--rmd-navy);margin-bottom:8px;">Re-allocate ${esc(c.name)}</div>
+    <p class="hint" style="margin:0 0 12px;">Clears their current course (${esc(c.course)}) and room (${esc(c.room || "none")}). Nobody else changes and their placement dates are kept. Then run "Allocate now" in Course allocation: people with a preference are placed first.</p>
+    <label style="font-size:12px;font-weight:700;color:var(--rmd-navy);display:block;margin-bottom:4px;">Where should they go?</label>
+    <select id="reallocChoice" style="width:100%;padding:8px;border:1.5px solid #c9d3df;border-radius:6px;font-size:14px;margin-bottom:10px;">${opts}</select>
+    <p class="hint" style="margin:0 0 14px;">A preferred course is only used if they are eligible for it (programme deadline, placement dates) and it has room; otherwise they are auto-fitted and the result tells you. If they have already been told their course, they will need telling again.</p>
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn-link-sm" onclick="document.getElementById('reallocOverlay').remove()">Cancel</button>
+      <button class="btn-primary" onclick="confirmReallocate('${esc(id)}')">Re-allocate</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+}
+
+async function confirmReallocate(id) {
+  const c = allCandidates.find(x => x.id === id);
+  const choice = document.getElementById("reallocChoice").value;
+  if (!c) return;
+  const prevCourse = c.course;
+  const preferredCourse = (choice === "__avoid__" || choice === "__any__") ? null : choice;
+  const avoidCourse = choice === "__avoid__" ? prevCourse : null;
   try {
-    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ course: null, room: null, placementChecked: true });
-    c.course = null; c.room = null; c.placementChecked = true;
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ course: null, room: null, placementChecked: true, preferredCourse, avoidCourse });
+    c.course = null; c.room = null; c.placementChecked = true; c.preferredCourse = preferredCourse; c.avoidCourse = avoidCourse;
+    document.getElementById("reallocOverlay").remove();
     populateCourseFilter();
     renderCandidates();
-    alert(`${c.name} is now unallocated and checked. Run "Allocate now" in Course allocation to place them again.`);
+    const where = preferredCourse ? `to ${preferredCourse} if they are eligible and it has room` : (avoidCourse ? `anywhere except ${avoidCourse}` : "with no preference");
+    alert(`${c.name} is now unallocated and checked, set to be placed ${where}. Run "Allocate now" in Course allocation to place them.`);
   } catch (err) {
     alert("Re-allocate failed: " + err.message);
   }
