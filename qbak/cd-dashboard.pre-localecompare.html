@@ -1034,24 +1034,21 @@ window.addEventListener("load", () => {
     currentUser = user;
 
     await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
-    // Each step is isolated (2026-10-10): one bad record used to throw here and leave
-    // every later part of the dashboard (alerts, live feedback, session quality) blank.
-    const step = (label, fn) => { try { const r = fn(); if (r && typeof r.catch === "function") r.catch(e => console.warn("Dashboard step failed (" + label + "):", e.message)); } catch (e) { console.warn("Dashboard step failed (" + label + "):", e.message); } };
-    step("overview", () => renderOverview());
-    step("gateway", () => startGatewayWatch());
-    step("assessors", () => renderAssessors());
-    step("programme", () => renderProgramme("saturday"));
-    step("feedback", () => renderFeedback("saturday"));
-    step("meeting slides", () => renderMeetingSlides("saturday"));
-    step("itcs", () => renderITCs());
-    step("itc summaries", () => renderItcSummaries());
-    step("itc completion", () => renderItcCompletion());
-    step("rooms", () => renderRooms());
-    step("meeting notes", () => loadMeetingNotes());
-    step("report", () => loadReport());
-    step("alerts", () => watchAlerts());
-    step("live feedback", () => watchFeedbackLive());
-    step("session quality", () => watchSessionQuality());
+    renderOverview();
+    startGatewayWatch();
+    renderAssessors();
+    renderProgramme("saturday");
+    renderFeedback("saturday");
+    renderMeetingSlides("saturday");
+    renderITCs();
+    renderItcSummaries();
+    renderItcCompletion();
+    renderRooms();
+    loadMeetingNotes();
+    loadReport();
+    watchAlerts();
+    watchFeedbackLive();
+    watchSessionQuality();
 
     // Reset-practice-data button: only before the real event starts (9 Oct
     // 2026), so rehearsals can clean up after themselves but nobody can
@@ -1373,7 +1370,7 @@ function renderCandidates(filter) {
       if (!groupB) return -1;
       return groupA.localeCompare(groupB, undefined, { numeric: true });
     }
-    return (a.name || "").localeCompare(b.name || "");
+    return a.name.localeCompare(b.name);
   });
 
   const tbody = document.getElementById("candTableBody");
@@ -1673,7 +1670,7 @@ function renderItcCompletion() {
   if (reviewEl) { reviewEl.style.display = "none"; reviewEl.innerHTML = ""; }
 
   const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC)
-    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   if (!itcs.length) {
     body.innerHTML = `<div class="empty-msg">No ITCs assigned for Instructor Weekend ${CURRENT_IW_YEAR} yet.</div>`;
@@ -2128,7 +2125,7 @@ function renderFeedback(day) {
   });
 
   body.innerHTML = `<div class="fb-rooms">` + roomKeys.map(key => {
-    const list = rooms[key].slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const list = rooms[key].slice().sort((a, b) => a.name.localeCompare(b.name));
     const html = list.map(rowHtml).join("");
     // Room summary: how many of its candidates have a red / amber / green
     // as their worst rating today.
@@ -2481,7 +2478,7 @@ async function gatherReportData() {
       if (c.length) summary += ". Comments: " + c.join(" | ");
     }
     return { name: p.name || "", summary };
-  }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }).sort((a, b) => a.name.localeCompare(b.name));
 
   const itcRows = (itcSchedule.itcs || []).map(itc => {
     const s = itcSummaries[itc.email.replace(/[^a-z0-9]/g, "_")];
