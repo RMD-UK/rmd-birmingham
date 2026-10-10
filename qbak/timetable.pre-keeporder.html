@@ -301,7 +301,6 @@
       <label class="sh-tog"><input type="checkbox" id="shCascade" checked> Move everything later in this programme too</label>
     </div>
     <div class="sh-summary" id="shSummary"></div>
-    <div id="shOrderWarn" style="display:none;margin:8px 0;padding:8px 12px;border-radius:8px;background:#fdecea;color:#b3261e;font-weight:700;font-size:13px;"></div>
     <div class="sh-tablewrap">
       <table class="sh-table">
         <thead><tr>
@@ -904,88 +903,29 @@
     return { state: next };
   }
 
-  // ── Keep sessions in order (2026-10-10, Jon) ───────────────────────────────
-  // A shift must never leave a session starting before one that comes ahead of
-  // it in the original programme (Saturday: the Plenary was pulled 15 min
-  // earlier and ended up before the Welcome that precedes it). "Order" means
-  // original start time, then the programme's own order, within each stream.
-  function shOrig(id, state) { return SH_ORIGINAL_START[id] != null ? SH_ORIGINAL_START[id] : state[id]; }
-  function shOrigList(day, stream, state) {
-    return PROGRAMME[day].sessions.filter(s => shStreamOf(s) === stream)
-      .sort((a, b) => shOrig(a.id, state) - shOrig(b.id, state) || ((a.order ?? 0) - (b.order ?? 0)));
-  }
-  // Adjacent pairs (a should start before b) that are currently the wrong way round.
-  function shInversions(day, state) {
-    const out = {};
-    ["instructor", "assessor"].forEach(stream => {
-      const list = shOrigList(day, stream, state);
-      for (let i = 0; i < list.length - 1; i++) {
-        const a = list[i], b = list[i + 1];
-        if (state[b.id] < state[a.id] || (state[b.id] === state[a.id] && shOrig(a.id, state) < shOrig(b.id, state))) out[a.id + ">" + b.id] = { a, b };
-      }
-    });
-    return out;
-  }
-
   // Turn the staged intents into the exact ordered list of function calls,
-  // simulating as we go. Returns { calls, state, notes, error }.
-  // A cascade move EARLIER that would jump ahead of a session which comes before it
-  // is widened to carry those sessions too, so they all move together and stay in
-  // order. Any other move that would put sessions out of order is refused.
+  // simulating as we go. Returns { calls, state, error }.
   function shBuildCalls(day) {
     let state = shBase(day);
-    const calls = [], notes = [];
+    const calls = [];
     for (const it of shIntents) {
-      const prevInv = shInversions(day, state);
-      let anchorId = it.id;
-      if (it.cascade && it.delta < 0) {
-        const anchor = PROGRAMME[day].sessions.find(s => s.id === it.id);
-        if (anchor) {
-          const list = shSorted(day, state, shStreamOf(anchor));
-          let k = list.findIndex(s => s.id === it.id);
-          while (k > 0) {
-            const P = list[k - 1], Q = list[k];
-            if (shOrig(P.id, state) < shOrig(Q.id, state) && state[P.id] >= state[Q.id] + it.delta) k--; else break;
-          }
-          if (list[k].id !== it.id) {
-            anchorId = list[k].id;
-            notes.push("Also moved " + list.slice(k, list.findIndex(s => s.id === it.id)).map(s => '"' + s.title + '"').join(", ") + " so they stay in order.");
-          }
-        }
-      }
-      let nxtBefore = null;
-      if (!it.cascade) {
-        const a0 = PROGRAMME[day].sessions.find(s => s.id === it.id);
-        const l0 = shSorted(day, state, shStreamOf(a0));
-        nxtBefore = l0[l0.findIndex(s => s.id === it.id) + 1] || null;
-      }
-      const r = shApplyCall(day, state, anchorId, it.delta);
-      if (r.error) return { error: r.error, calls, state, notes };
+      const r = shApplyCall(day, state, it.id, it.delta);
+      if (r.error) return { error: r.error, calls, state };
       state = r.state;
-      calls.push({ sessionId: anchorId, deltaMinutes: it.delta });
+      calls.push({ sessionId: it.id, deltaMinutes: it.delta });
       if (!it.cascade) {
         const anchor = PROGRAMME[day].sessions.find(s => s.id === it.id);
         const list = shSorted(day, state, shStreamOf(anchor));
         const nxt = list[list.findIndex(s => s.id === it.id) + 1];
-        if (nxtBefore && (!nxt || nxt.id !== nxtBefore.id)) {
-          return { error: 'Moving "' + anchor.title + '" on its own that far would jump it over another session. Tick "Move everything later" and move sessions one at a time, or move the other session too.', calls, state, notes };
-        }
         if (nxt) {
           const r2 = shApplyCall(day, state, nxt.id, -it.delta);
-          if (r2.error) return { error: r2.error, calls, state, notes };
+          if (r2.error) return { error: r2.error, calls, state };
           state = r2.state;
           calls.push({ sessionId: nxt.id, deltaMinutes: -it.delta });
         }
       }
-      const newInv = shInversions(day, state);
-      for (const key in newInv) {
-        if (!prevInv[key]) {
-          const { a, b } = newInv[key];
-          return { error: '"' + b.title + '" would start before "' + a.title + '", which comes first in the programme. Move "' + a.title + '" too, or tick "Move everything later" so they move together.', calls, state, notes };
-        }
-      }
     }
-    return { calls, state, notes };
+    return { calls, state };
   }
 
   function shSetStart(id, newMins) {
@@ -1089,18 +1029,6 @@
         " (" + (d > 0 ? "+" : "-") + Math.abs(d) + " min, now " + shFmt(sim[first.id]) + ")." +
         (other > 0 ? " " + other + " shared session" + (other === 1 ? "" : "s") + " in the other programme move too." : "") +
         " The programme will finish at " + shFmt(endSim) + ". Sent as " + built.calls.length + " update" + (built.calls.length === 1 ? "" : "s") + ".";
-    }
-
-    const warnEl = document.getElementById("shOrderWarn");
-    const invNow = shInversions(shDay, sim), invKeys = Object.keys(invNow);
-    if (invKeys.length) {
-      warnEl.style.display = "";
-      warnEl.textContent = "Out of order: " + invKeys.map(k => '"' + invNow[k].b.title + '" starts before "' + invNow[k].a.title + '"').join("; ") +
-        ". Move them so each session starts after the one before it.";
-    } else { warnEl.style.display = "none"; warnEl.textContent = ""; }
-    if (built.notes && built.notes.length) {
-      const pm = document.getElementById("shPendingMsg");
-      if (pm) pm.textContent += " " + built.notes.join(" ");
     }
 
     document.getElementById("shDayTabs").innerHTML = ["friday", "saturday", "sunday"].map(d =>
