@@ -2001,22 +2001,7 @@ function toggleFeedbackRow(candidateId) {
   renderFeedback(currentFeedbackDay);
 }
 
-// Assessor / Senior Instructor ratings (assessor_feedback) are not tied to a
-// programme session, so they have no sessionId and used to be dropped by the
-// per-session filter in renderFeedback (2026-10-10: the Feedback page showed
-// every assessor as "not yet rated" while the Assessors tab showed dots).
-// They are shown on the day they were saved (Fri/Sat/Sun).
-function assessorFbOnDay(f, day) {
-  if (!f.isAssessorFeedback) return false;
-  const ms = (f.savedAt && typeof f.savedAt.toMillis === "function") ? f.savedAt.toMillis() : ((f.savedAt?.seconds || 0) * 1000);
-  if (!ms) return day === currentFeedbackDay;   // timestamp not back from the server yet
-  const dow = new Date(ms).getDay();            // 5 = Fri, 6 = Sat, 0 = Sun
-  const name = dow === 5 ? "friday" : dow === 6 ? "saturday" : dow === 0 ? "sunday" : "";
-  return name ? name === day : day === "saturday";
-}
-
 function feedbackSessionTitle(id) {
-  if (!id) return "Assessor / SI feedback";
   for (const d of ["friday", "saturday", "sunday"]) {
     const s = (PROGRAMME[d]?.sessions || []).find(x => x.id === id);
     if (s) return s.title;
@@ -2048,7 +2033,7 @@ function renderFeedback(day) {
   // Group feedback by candidate
   const byCand = {};
   feedbackData
-    .filter(f => f.rating && (daySessions.includes(f.sessionId) || assessorFbOnDay(f, day)))
+    .filter(f => f.rating && daySessions.includes(f.sessionId))
     .forEach(f => {
       if (!byCand[f.candidateId]) byCand[f.candidateId] = [];
       byCand[f.candidateId].push(f);
