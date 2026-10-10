@@ -2300,43 +2300,42 @@ function renderItcOverview(day) {
     return;
   }
 
-  const BLOCK = { sat_conv: "Conversation", sun_teaching: "Teaching", sun_assess: "Assessment" };
   const dayKeys = ITC_DAY_KEYS[day] || [];
   const assignments = itcSchedule.assignments || {};
   const dayObs = itcObsDocs.filter(o => itcObsDay(o) === day);
   const tally = { red: 0, amber: 0, green: 0, none: 0 };
-  let seenTotal = 0, dueTotal = 0;
 
   const rows = itcs.map(itc => {
-    const mine = itc.email ? dayObs.filter(o => String(o.itcEmail || "").trim().toLowerCase() === itc.email) : [];
+    const mine = dayObs.filter(o => String(o.itcEmail || "").trim().toLowerCase() === itc.email && itc.email)
+      .sort((a, b) => (b.savedAt?.seconds || 0) - (a.savedAt?.seconds || 0));
     const worstMin = mine.reduce((m, o) => { const v = itcObsMin(o); return v && (!m || v < m) ? v : m; }, 0);
     const worst = itcLevel(worstMin);
     tally[worst]++;
 
-    // One chip per observed block for the day: coloured once rated, grey until then.
-    const sched = assignments[itc.email] || assignments[itc.key] || {};
-    const keys = dayKeys.filter(k => sched[k] || mine.some(o => o.itcSessionKey === k));
-    const chips = keys.map(k => {
-      const obs = mine.filter(o => o.itcSessionKey === k);
-      dueTotal++;
-      if (!obs.length) return `<button type="button" class="tl-badge none" data-k="${esc(itc.key)}" title="${BLOCK[k]}${sched[k] ? ", room " + esc(sched[k]) : ""}: not observed yet" onclick="toggleItcRow(this.dataset.k)">${BLOCK[k]}</button>`;
-      seenTotal++;
-      const lv = itcLevel(Math.min(...obs.map(itcObsMin).filter(Boolean).concat([9])) % 9 || 0);
-      return `<button type="button" class="tl-badge ${lv}" data-k="${esc(itc.key)}" title="${BLOCK[k]}${sched[k] ? ", room " + esc(sched[k]) : ""}: ${obs.length} observation${obs.length === 1 ? "" : "s"}" onclick="toggleItcRow(this.dataset.k)">${BLOCK[k]}</button>`;
+    const sched = assignments[itc.email] || {};
+    const assigned = dayKeys.filter(k => sched[k]).length;
+    const seenKeys = new Set(mine.map(o => o.itcSessionKey || o.sessionId));
+    const rooms = [...new Set(mine.map(o => o.roomId).filter(Boolean))];
+
+    // Average per dimension across everyone who rated this ITC today.
+    const dimCells = ITC_DIMS.map(d => {
+      const v = mine.map(o => Number((o.dims || {})[d.key])).filter(n => n > 0);
+      const avg = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+      return `<span class="tl-badge ${itcAvgLevel(avg)}" title="${esc(d.label)}${avg == null ? ": not rated" : ": average " + avg.toFixed(1) + " of 4 from " + v.length + " rating" + (v.length === 1 ? "" : "s")}">${esc(d.short)} ${avg == null ? "–" : avg.toFixed(1)}</span>`;
     }).join("");
 
-    const vals = mine.flatMap(o => Object.values(o.dims || {}).map(Number).filter(n => n > 0));
-    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-    const avgTxt = avg == null ? "" : `<span class="tl-badge ${itcAvgLevel(avg)}" title="Average of all ratings today, out of 4">${avg.toFixed(1)}</span>`;
+    const chips = mine.map(o => {
+      const lv = itcLevel(itcObsMin(o));
+      return `<button type="button" class="tl-badge ${lv}" data-k="${esc(itc.key)}" title="${esc(feedbackSessionTitle(o.sessionId))}${o.roomId ? " - " + esc(o.roomId) : ""} - click for detail" onclick="toggleItcRow(this.dataset.k)">${lv === "none" ? "–" : lv.charAt(0).toUpperCase()}</button>`;
+    }).join("");
 
-    // Only concerns (red or amber) are shown inline; everything else is in the detail.
-    const concerns = mine.filter(o => o.comment && String(o.comment).trim() && itcObsMin(o) && itcObsMin(o) <= 2);
-    const comments = concerns.length ? `<div class="fb-pcomments">${concerns.map(o => `
-        <div class="fb-c" data-k="${esc(itc.key)}" onclick="toggleItcRow(this.dataset.k)" title="${esc(o.raterName || "")}">
+    const commented = mine.filter(o => o.comment && String(o.comment).trim());
+    const open = mine.length && openItcRows.has(itc.key);
+    const comments = commented.length ? `<div class="fb-pcomments">${commented.map(o => `
+        <div class="fb-c" data-k="${esc(itc.key)}" onclick="toggleItcRow(this.dataset.k)" title="${esc(feedbackSessionTitle(o.sessionId))}${o.raterName ? " - by " + esc(o.raterName) : ""}">
           <span class="tl-badge ${itcLevel(itcObsMin(o))}">${itcLevel(itcObsMin(o)).charAt(0).toUpperCase()}</span><span class="fb-c-txt">${esc(o.comment)}</span>
         </div>`).join("")}</div>` : "";
 
-    const open = mine.length && openItcRows.has(itc.key);
     const detail = open ? `
       <div class="fb-detail">
         ${mine.map(o => {
@@ -2349,7 +2348,7 @@ function renderItcOverview(day) {
           <div class="fb-detail-row">
             <span class="tl-badge ${lv}" style="cursor:default;">${lv === "red" ? "Red" : lv === "amber" ? "Amber" : lv === "green" ? "Green" : "–"}</span>
             <div class="fb-detail-main">
-              <div class="fb-detail-title">${esc(BLOCK[o.itcSessionKey] || feedbackSessionTitle(o.sessionId))}${o.roomId ? " - " + esc(o.roomId) : ""}</div>
+              <div class="fb-detail-title">${esc(feedbackSessionTitle(o.sessionId))}${o.roomId ? " - " + esc(o.roomId) : ""}</div>
               <div class="fb-detail-meta">${[o.raterName ? "by " + esc(o.raterName) : "", feedbackWhen(o) ? esc(feedbackWhen(o)) : ""].filter(Boolean).join(" · ") || "&nbsp;"}</div>
               <div style="margin:4px 0;display:flex;gap:3px;flex-wrap:wrap;">${dims}</div>
               ${o.comment ? `<div class="${lv === 'red' ? 'comment-detail' : 'fb-comment'}">${esc(o.comment)}</div>` : ""}
@@ -2358,13 +2357,18 @@ function renderItcOverview(day) {
         }).join("")}
       </div>` : "";
 
+    const progress = assigned
+      ? `${seenKeys.size} of ${assigned} block${assigned === 1 ? "" : "s"} observed`
+      : (mine.length ? `${mine.length} observation${mine.length === 1 ? "" : "s"}` : "");
     return `
       <div class="fb-person${open ? " open" : ""}">
         <div class="fb-p1">
           <span class="tl-dot ${worst}" title="${worst === "none" ? "No observations yet" : "Worst rating today"}"></span>
           <span class="fb-pname" data-k="${esc(itc.key)}" onclick="toggleItcRow(this.dataset.k)">${esc(itc.name)}</span>
-          <span class="fb-pchips">${chips || `<span class="tl-badge none">no block today</span>`}${avgTxt}</span>
+          <span class="fb-prole">${[progress, rooms.length ? "room" + (rooms.length === 1 ? " " : "s ") + rooms.map(esc).join(", ") : ""].filter(Boolean).join(" · ")}</span>
+          <span class="fb-pchips">${chips || `<span class="tl-badge none" title="No observations yet today">–</span>`}</span>
         </div>
+        ${mine.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin:4px 0 0 18px;">${dimCells}</div>` : ""}
         ${comments}
         ${detail}
       </div>`;
@@ -2378,12 +2382,13 @@ function renderItcOverview(day) {
   ].join("");
   body.innerHTML = `<div class="fb-rooms"><div class="fb-room fb-room-none">
       <div class="fb-room-head">
-        <span class="fb-room-name">${seenTotal} of ${dueTotal} blocks observed</span>
+        <span class="fb-room-name">${day === "sunday" ? "Sunday" : "Saturday"}</span>
+        <span class="fb-room-count">${itcs.length} ITC${itcs.length !== 1 ? "s" : ""} · ${dayObs.length} observation${dayObs.length !== 1 ? "s" : ""}</span>
         <span class="fb-room-pills">${pills}</span>
       </div>
       <div class="fb-room-body">${rows}</div>
     </div></div>
-    <div class="text-sm text-muted mt-8">Grey = not observed yet. Colour = worst rating (1 red, 2 amber, 3-4 green). Number = average out of 4. Click a name for detail.</div>`;
+    <div class="text-sm text-muted mt-8">Dot and letters: 1 = red (needs development), 2 = amber (developing), 3 or 4 = green. Dimension badges show the average across all observers today. Only the Course Director can see these.</div>`;
 }
 
 function showFeedbackDay(day, btn) {
