@@ -255,7 +255,6 @@ function render() {
       '<div class="rn">' + esc(k || "No room assigned") + '</div>' +
       '<div class="rp">' + rSigned + ' of ' + list.length + ' signed off' +
         (rMissing ? ' · ' + rMissing + ' not recorded' : '') + '</div>' +
-      (rMissing ? '<button class="btn sm ghost" data-recroom="' + esc(k) + '">Record PASS for the ' + rMissing + ' not recorded</button> ' : '') +
       (rToSign ? '<button class="btn sm" data-room="' + esc(k) + '">Sign off room (' + rToSign + ')</button>' : '') +
       '</div><table><thead><tr><th>Candidate</th><th>Result</th><th class="hide-sm">Recorded by</th><th>Status</th><th></th></tr></thead><tbody>';
     shown.forEach(c => {
@@ -269,7 +268,7 @@ function render() {
       const by   = g.outcome ? esc(who || "Unknown") + (when ? '<br>' + esc(when) : '') : "";
       let state, action = "";
       const s = stateOf(c);
-      if (s === "missing") { state = '<span class="state">Awaiting result from the room</span>'; action = '<button class="btn sm ghost" data-rec="' + c.id + '">Record PASS</button>'; }
+      if (s === "missing") { state = '<span class="state">Awaiting result from the room</span>'; }
       else if (s === "signed") {
         const np = (allPeople[c.id] || {}).iwOutcome === "not-passed";
         state  = '<span class="state ok">✓ Signed off</span>' +
@@ -300,12 +299,6 @@ function onRoomClick(e) {
   const t = e.target.closest("button");
   if (!t) return;
   if (t.dataset.sign)   { signMany([t.dataset.sign], null); return; }
-  if (t.dataset.rec)    { recordPass([t.dataset.rec], null); return; }
-  if (t.dataset.recroom !== undefined) {
-    const ids = candidates.filter(c => (c.group || "") === t.dataset.recroom && stateOf(c) === "missing").map(c => c.id);
-    recordPass(ids, t.dataset.recroom || "this group");
-    return;
-  }
   if (t.dataset.reopen) { reopen(t.dataset.reopen); return; }
   if (t.dataset.np) {
     const id = t.dataset.np;
@@ -317,23 +310,6 @@ function onRoomClick(e) {
     const ids = toSignIds(candidates.filter(c => (c.group || "") === t.dataset.room).map(c => c.id));
     signMany(ids, t.dataset.room || "this group");
   }
-}
-
-// Course Director records a PASS himself when the room could not save it (2026-10-10).
-// Writes the same gateway_assessments record the room page writes, marked as recorded
-// here, then it appears as "Recorded, awaiting sign-off" and is signed off as usual.
-// PASS only: a FAIL needs the reason written in the room.
-async function recordPass(ids, label) {
-  ids = ids.filter(id => stateOf({ id }) === "missing");
-  if (!ids.length) { alert("Nothing to record."); return; }
-  const names = ids.map(id => (candidates.find(c => c.id === id) || {}).name || id);
-  if (!confirm("Record gateway PASS" + (label ? " for " + ids.length + " candidate" + (ids.length !== 1 ? "s" : "") + " in " + label : " for " + names[0]) + "?\n\n" + names.join("\n") + "\n\nThis is recorded as entered by you. You still need to sign off afterwards.")) return;
-  const FV = firebase.firestore.FieldValue;
-  const results = await Promise.allSettled(ids.map(id => db.collection("gateway_assessments").doc(id).set({
-    outcome: "pass", updatedAt: FV.serverTimestamp(), assessorUid: currentUser.uid, source: "cd-signoff-page"
-  }, { merge: true })));
-  const bad = results.map((r, i) => r.status === "rejected" ? names[i] + " (" + (r.reason && (r.reason.code || r.reason.message)) + ")" : null).filter(Boolean);
-  if (bad.length) alert("These could not be recorded: " + bad.join(", "));
 }
 
 async function signOne(id) {
