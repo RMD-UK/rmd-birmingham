@@ -336,7 +336,6 @@ let saveDebounce    = {};
 // "Group Practice: BLS/AED" session, only for Instructor Candidates.
 const GATEWAY_SESSION_ID = "sat-8";
 let gateway          = {};     // { candidateId: gateway_assessments data }
-let isTrainerRole    = false;  // role === "full-instructor" (Instructor Trainer)
 let canRecordGateway = false;  // faculty / director, or an Instructor Trainer for their own room (see firestore.rules gateway_assessments)
 let gatewayUnsub     = null;
 
@@ -400,7 +399,6 @@ window.addEventListener("load", () => {
     // (full-instructor) can record for their OWN room only (firestore.rules
     // checks people.group matches), so not if they are also viewing all groups.
     canRecordGateway = (role === "faculty" || role === "director" || (role === "full-instructor" && !seeAllGroups));
-    isTrainerRole = (role === "full-instructor");
     // (assessor-faculty is deliberately NOT here: firestore.rules only lets
     // faculty / full-instructor / director create session_feedback.)
     const allowed = ["faculty", "full-instructor", "director"];
@@ -640,28 +638,18 @@ function isGatewayCandidate(c) {
   return currentSession === GATEWAY_SESSION_ID && c.role === ROLES.INSTRUCTOR;
 }
 
-// 2026-10-10: an Instructor Trainer who is ALSO on the Senior/Student Faculty
-// roster used to be greyed out ("view only") because that roster flag sets
-// seeAllGroups. firestore.rules lets an Instructor Trainer record for the
-// candidates in their OWN room, so allow exactly that: same room only.
-function canRecordGatewayFor(c) {
-  if (canRecordGateway) return true;
-  return !!(isTrainerRole && myRoomId && c && c.group === myRoomId);
-}
-
 function buildGatewayRow(c) {
   if (!isGatewayCandidate(c)) return "";
   const g       = gateway[c.id] || {};
   const outcome = g.outcome || "";
   const locked  = !!g.lockedAt;
-  const canRec  = canRecordGatewayFor(c);
-  const off     = (!canRec || locked) ? "disabled" : "";
+  const off     = (!canRecordGateway || locked) ? "disabled" : "";
   let status;
   if (!outcome)         status = "Not yet recorded. Deadline 12:00.";
   else if (g.cdConfirmedBy && g.cdConfirmedOutcome === outcome) status = "Confirmed by Course Director.";
   else if (locked)      status = "Locked. Ask the Course Director to unlock to change it.";
   else                  status = "Recorded. Not yet confirmed by the Course Director. Press the same button again to clear it.";
-  if (!canRec) status = (outcome ? status + " " : "") + "View only for your role. Ask room faculty or the Course Director to record it.";
+  if (!canRecordGateway) status = (outcome ? status + " " : "") + "View only for your role. Ask room faculty or the Course Director to record it.";
   return `<div class="gateway-row" id="gw-${c.id}">
       <div class="gateway-label">BLS/AED gateway<small>Competency check, pass by 12:00</small></div>
       <button class="gw-btn pass ${outcome === "pass" ? "on" : ""}" ${off} title="${outcome === 'pass' ? 'Press again to clear' : ''}" onclick="setGateway('${c.id}','pass')">PASS</button>
@@ -690,8 +678,8 @@ function startGatewayListener() {
 }
 
 async function setGateway(candidateId, outcome) {
+  if (!canRecordGateway) { showToast("Your role can view but not record the gateway result", "red"); return; }
   const c = myCandidates.find(x => x.id === candidateId);
-  if (!canRecordGatewayFor(c)) { showToast("You can record the gateway for your own room only", "red"); return; }
   if (!c || c.id.startsWith("demo")) { showToast("Demo candidate, nothing saved"); return; }
   // Pressing the button that is already selected takes the result back to
   // blank ("Not yet recorded"), so a mis-tap can be undone.
