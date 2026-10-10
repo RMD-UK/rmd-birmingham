@@ -399,23 +399,9 @@ window.addEventListener("load", () => {
     // (full-instructor) can record for their OWN room only (firestore.rules
     // checks people.group matches), so not if they are also viewing all groups.
     canRecordGateway = (role === "faculty" || role === "director" || (role === "full-instructor" && !seeAllGroups));
-    // assessor-faculty added 2026-10-10: the timetable already shows them the
-    // "Rate candidates" button, so the page must let them in too.
-    const allowed = ["faculty", "full-instructor", "assessor-faculty", "director"];
+    const allowed = ["faculty", "full-instructor", "director"];
     if (!seeAllGroups && !(role && allowed.includes(role))) {
-      // Used to bounce silently back to the timetable, which just looked like
-      // "the button does nothing". Say why instead, with what Jon needs to fix it.
-      const box = document.createElement("div");
-      box.style.cssText = "position:fixed;inset:0;z-index:9999;background:#fff;padding:28px 20px;font-family:inherit;overflow:auto;";
-      box.innerHTML = '<div style="max-width:520px;margin:40px auto;">' +
-        '<h2 style="color:#10264a;margin:0 0 12px;">Rating is not switched on for this account</h2>' +
-        '<p style="line-height:1.5;">Rating candidates is open to Faculty, Instructor Trainer, Assessor Faculty and Course Director accounts. This sign-in is set up as <strong></strong>.</p>' +
-        '<p style="line-height:1.5;">Screenshot this page and send it to Jon. It is a one-minute fix on his side.</p>' +
-        '<p style="font-size:13px;color:#637282;" id="sfBlockDetail"></p>' +
-        '<p><a href="timetable.html" style="font-weight:700;">Back to the timetable</a></p></div>';
-      document.body.appendChild(box);
-      box.querySelector("strong").textContent = role || "no role found";
-      document.getElementById("sfBlockDetail").textContent = "Signed in as " + (email || "unknown email") + " (" + user.uid + ")";
+      window.location.href = "timetable.html";
       return;
     }
     // Load the faculty member's people doc to find their group (used only
