@@ -260,7 +260,8 @@
              onkeydown="if(event.key==='Enter') sendMessage()">
       <button class="btn" onclick="sendMessage()">Send</button>
     </div>
-    <p class="text-sm text-muted mt-8">Messages appear on room screens and candidate noticeboards immediately.</p>
+    <div id="msgStatus" role="status" aria-live="polite" style="min-height:20px;margin-top:8px;font-size:13px;font-weight:700;"></div>
+    <p class="text-sm text-muted mt-8">Messages appear on room screens and candidate noticeboards immediately. You will not see them on your own screen: the noticeboard is hidden for the Course Director.</p>
   </div>
 </div>
 
@@ -276,6 +277,7 @@
              onkeydown="if(event.key==='Enter') sendAssessorStreamMessage()">
       <button class="btn" onclick="sendAssessorStreamMessage()">Send</button>
     </div>
+    <div id="msgStatusAssessor" role="status" aria-live="polite" style="min-height:20px;margin-top:8px;font-size:13px;font-weight:700;"></div>
     <p class="text-sm text-muted mt-8">Goes to assessor-programme faculty only — not candidates, not the instructor programme.</p>
   </div>
 </div>
@@ -793,17 +795,35 @@
     });
   }
 
+  // Visible result line under the compose box. 2026-10-10: a send used to
+  // clear the box and say nothing (and the director's own noticeboard is
+  // hidden), so a successful send and a silent failure looked identical.
+  function showMsgStatus(id, ok, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.color = ok ? "#1a6e31" : "#b7410e";
+    el.textContent = text;
+    if (ok) setTimeout(() => { if (el.textContent === text) el.textContent = ""; }, 8000);
+  }
+  function msgTimeNow() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+
   async function sendMessage() {
     const textEl = document.getElementById("msgText");
     const text   = textEl.value.trim();
     const target = document.getElementById("msgTarget").value;
     if (!text) return;
+    if (!db || !currentUser) { showMsgStatus("msgStatus", false, "Not sent: you are not signed in on this page. Reload and sign in again."); return; }
+    showMsgStatus("msgStatus", true, "Sending...");
     try {
       await writeMessage(text, target);
       textEl.value = "";
+      showMsgStatus("msgStatus", true, "Sent " + msgTimeNow() + " to: " + target);
     } catch (e) {
-      console.warn("Message send failed:", e.message);
-      alert("Send failed: " + e.message);
+      console.warn("Message send failed:", e.code, e.message);
+      showMsgStatus("msgStatus", false, "NOT sent (" + (e.code || "error") + "): " + (e.message || "unknown error"));
     }
   }
 
@@ -811,13 +831,15 @@
     const textEl = document.getElementById("msgTextAssessor");
     const text   = textEl.value.trim();
     if (!text) return;
+    if (!db || !currentUser) { showMsgStatus("msgStatusAssessor", false, "Not sent: you are not signed in on this page. Reload and sign in again."); return; }
+    showMsgStatus("msgStatusAssessor", true, "Sending...");
     try {
       await writeMessage(text, "assessor-stream");
       textEl.value = "";
-      togglePanel("assessorMessagePanel");
+      showMsgStatus("msgStatusAssessor", true, "Sent " + msgTimeNow() + " to the assessor programme.");
     } catch (e) {
-      console.warn("Message send failed:", e.message);
-      alert("Send failed: " + e.message);
+      console.warn("Message send failed:", e.code, e.message);
+      showMsgStatus("msgStatusAssessor", false, "NOT sent (" + (e.code || "error") + "): " + (e.message || "unknown error"));
     }
   }
 
