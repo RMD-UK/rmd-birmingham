@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RMD Screen Display</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700;800;900&display=swap">
+<style>
+  /* Room / big-screen display for faculty (2026-10-09, Jon: wanted the "now / up next /
+     countdown" screen from the critical care transfer course timetable, for any faculty
+     teaching). Reads the same programme as timetable.html (static programme-data.js,
+     then the live Firestore sessions collection so any shifted times show here too). */
+  :root{
+    --bg1:#1b0f3d; --bg2:#2d1a5e; --bar:#140a2e;
+    --card:#ffffff14; --card-edge:#ffffff26;
+    --text:#ffffff; --muted:#c9bfe6; --dim:#9d90c4;
+    --accent:#F49001;     /* brand orange */
+    --blue:#6cc0ff;       /* progress, normal */
+    --amber:#ffc24d;      /* last 10 minutes */
+    --red:#ff5a6a;        /* last 5 minutes (matches the timetable's red) */
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg1);color:var(--text);font-family:'Inter','Segoe UI',Arial,sans-serif;overflow:hidden}
+  body{display:flex;flex-direction:column;background:linear-gradient(160deg,var(--bg1),var(--bg2))}
+  body.idle{cursor:none}
+
+  header,footer{flex:none;display:flex;align-items:center;justify-content:space-between;gap:2vw;background:var(--bar);padding:1.2vh 2.4vw}
+  header .event{font-size:clamp(13px,1.5vw,28px);font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  header .event b{color:#fff;font-weight:800}
+  #clock{font-size:clamp(28px,4.6vw,88px);font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;line-height:1}
+  footer{font-size:clamp(11px,1.1vw,20px);font-weight:700;color:var(--dim);letter-spacing:.04em}
+
+  main{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;gap:3vh;padding:3vh 2.4vw}
+  .card{background:var(--card);border:1.5px solid var(--card-edge);border-left:.8vw solid var(--accent);border-radius:1.2vw;padding:3vh 3vw}
+  .card.now{border-left-color:var(--accent);background:#ffffff1c}
+  .card.next{border-left-color:var(--blue);padding:2.4vh 3vw}
+  .card.done{border-left-color:var(--dim)}
+  .tag{display:flex;align-items:center;gap:.8vw;font-size:clamp(12px,1.3vw,24px);font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--accent)}
+  .next .tag{color:var(--blue)}
+  .tag i{display:inline-block;width:.9vw;height:.9vw;min-width:9px;min-height:9px;border-radius:50%;background:var(--accent)}
+  .next .tag i{background:var(--blue)}
+  .title{font-weight:900;line-height:1.05;margin:1.2vh 0 .8vh;text-wrap:balance}
+  .now .title{font-size:clamp(30px,6.2vw,128px)}
+  .next .title{font-size:clamp(22px,3.4vw,70px);color:#f0ebff}
+  .meta{font-weight:700;color:var(--muted);font-size:clamp(15px,2vw,40px)}
+  .next .meta{font-size:clamp(14px,1.6vw,32px);color:var(--dim)}
+  .loc{display:inline-block;margin-left:1.2vw;padding:.15em .7em;border-radius:99px;background:#ffffff1f;color:#fff;font-weight:800;font-size:.85em}
+  .prog{display:flex;align-items:center;gap:2.4vw;margin-top:2.6vh;padding-top:2.4vh;border-top:1.5px solid var(--card-edge)}
+  .track{flex:1;height:1.6vh;min-height:8px;background:#ffffff26;border-radius:99px;overflow:hidden}
+  .fill{height:100%;width:0;background:var(--blue);border-radius:99px;transition:width 1s linear,background .4s}
+  .remain{font-size:clamp(26px,4.6vw,96px);font-weight:900;font-variant-numeric:tabular-nums;color:var(--blue);white-space:nowrap;line-height:1}
+  .remain small{font-size:.42em;font-weight:800;letter-spacing:.04em;margin-left:.3em}
+  .warn .fill{background:var(--amber)} .warn .remain{color:var(--amber)}
+  .urgent .fill{background:var(--red)} .urgent .remain{color:var(--red)}
+  .brk .title{color:#ffe3b0}
+  .ribbon{position:fixed;left:50%;transform:translateX(-50%);top:9vh;background:#ffffff22;border:1px solid #ffffff44;border-radius:99px;padding:.4em 1.2em;font-weight:700;font-size:clamp(12px,1.1vw,20px);color:#fff;display:none}
+
+  /* controls: appear on movement, hide when idle */
+  #ctl{position:fixed;right:1.2vw;bottom:5vh;display:flex;flex-direction:column;gap:8px;align-items:flex-end;background:#140a2ee6;border:1px solid #ffffff33;border-radius:12px;padding:12px 14px;font-size:14px;transition:opacity .4s}
+  body.idle #ctl{opacity:0;pointer-events:none}
+  #ctl .row{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  #ctl button,#ctl select,#ctl a{font:inherit;font-weight:700;border-radius:8px;border:1px solid #ffffff55;background:#ffffff1a;color:#fff;padding:6px 11px;cursor:pointer;text-decoration:none}
+  #ctl button.on{background:var(--accent);border-color:var(--accent);color:#1b0f3d}
+  #ctl select option{color:#000}
+  #ctl .hint{font-size:12px;color:var(--dim);max-width:260px;text-align:right}
+  body.fs #ctl a.back{display:none}
+  #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg1);font-size:clamp(16px,2vw,28px);font-weight:700;text-align:center;padding:2rem;z-index:9}
+  @media (prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head>
+<body>
+<div id="gate"><span id="gateMsg">Loading…</span></div>
+
+<header>
+  <div class="event"><b>RMD Instructor Weekend 2026</b> &nbsp;|&nbsp; <span id="dayLabel"></span></div>
+  <div id="clock">--:--</div>
+</header>
+
+<main id="main"></main>
+<div class="ribbon" id="ribbon"></div>
+
+<footer>
+  <span>Birmingham Medical School</span>
+  <span id="streamLabel"></span>
+</footer>
+
+<div id="ctl">
+  <div class="row" id="dayBtns"></div>
+  <div class="row"><select id="streamSel" aria-label="Programme">
+    <option value="instructor">Instructor candidate programme</option>
+    <option value="assessor">Assessor programme</option>
+    <option value="faculty">Faculty programme</option>
+  </select></div>
+  <div class="row"><button id="fsBtn" type="button">Full screen</button><a class="back" href="timetable.html">Back to timetable</a></div>
+  <div class="hint" id="awake"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/programme-data.js?v=202610082100"></script>
+<script>
+(function () {
+  // Roles that teach and may run a screen. Instructor candidates, assessor candidates and ITCs are not included.
+  var ALLOWED = ["director", "faculty", "full-instructor", "assessor-faculty", "logistics"];
+  var DAYS = [
+    { key: "friday",   label: "Fri 9 Oct",  date: "2026-10-09" },
+    { key: "saturday", label: "Sat 10 Oct", date: "2026-10-10" },
+    { key: "sunday",   label: "Sun 11 Oct", date: "2026-10-11" }
+  ];
+  var STREAM_LABEL = { instructor: "Instructor candidate programme", assessor: "Assessor programme", faculty: "Faculty programme" };
+
+  // Optional rehearsal: ?day=saturday&at=10:50 starts the clock at that time on the chosen day.
+  var qs = new URLSearchParams(location.search);
+  var offsetMs = 0;
+  if (/^\d{1,2}:\d{2}$/.test(qs.get("at") || "")) {
+    var p = qs.get("at").split(":"), t = new Date(); t.setHours(+p[0], +p[1], 0, 0);
+    offsetMs = t.getTime() - Date.now();
+  }
+  function now() { return new Date(Date.now() + offsetMs); }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function ymd(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function realDay() { var k = ymd(now()), m = DAYS.filter(function (d) { return d.date === k; })[0]; return m ? m.key : null; }
+
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+
+  var day = qs.get("day") || realDay() || "saturday";
+  if (!PROGRAMME[day]) day = "saturday";
+  var stream = qs.get("stream") || store("rmd_screen_stream") || "instructor";
+  if (!STREAM_LABEL[stream]) stream = "instructor";
+
+  // ── Data: same sessions the timetable uses ───────────────────────────────
+  function listenProgramme() {
+    if (!db) return;
+    db.collection(COLLECTIONS.sessions).onSnapshot(function (snap) {
+      var byDay = { friday: [], saturday: [], sunday: [] };
+      snap.forEach(function (doc) { var s = Object.assign({ id: doc.id }, doc.data()); if (byDay[s.day]) byDay[s.day].push(s); });
+      ["friday", "saturday", "sunday"].forEach(function (d) { if (byDay[d].length) PROGRAMME[d].sessions = byDay[d]; });
+      tick();
+    }, function (err) { console.warn("Programme listener:", err.message); });
+  }
+
+  function sessionsToday() {
+    return sessionsForRole(day, stream).slice().sort(function (a, b) {
+      return timeToMinutes(a.start) - timeToMinutes(b.start) || ((a.order || 0) - (b.order || 0));
+    });
+  }
+  function isBreak(s) { return ((s.tags || []).indexOf("break") >= 0) || /\b(break|lunch)\b/i.test(s.title || ""); }
+
+  // ── Rendering ─────────────────────────────────────────────────────────────
+  var main = document.getElementById("main");
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function endMin(s) { return timeToMinutes(s.start) + s.duration; }
+  function hhmm(mins) { return pad(Math.floor(mins / 60)) + ":" + pad(mins % 60); }
+  function mmss(sec) { sec = Math.max(0, Math.round(sec)); var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60; return (h ? h + ":" + pad(m) : pad(m)) + ":" + pad(s); }
+  function withLoc(parent, s) { if (s.location && !/^tbc$/i.test(s.location)) parent.appendChild(el("span", "loc", s.location)); }
+
+  function nowCard(s, nowSec) {
+    var c = el("section", "card now" + (isBreak(s) ? " brk" : ""));
+    var tag = el("div", "tag"); tag.appendChild(el("i")); tag.appendChild(document.createTextNode(isBreak(s) ? "Break" : "Now")); c.appendChild(tag);
+    c.appendChild(el("div", "title", s.title));
+    var meta = el("div", "meta", hhmm(timeToMinutes(s.start)) + " to " + hhmm(endMin(s))); withLoc(meta, s); c.appendChild(meta);
+    var remain = endMin(s) * 60 - nowSec, total = s.duration * 60;
+    var prog = el("div", "prog" + (remain <= 300 ? " urgent" : remain <= 600 ? " warn" : ""));
+    var track = el("div", "track"), fill = el("div", "fill"); fill.style.width = Math.min(100, Math.max(0, (total - remain) / total * 100)) + "%"; track.appendChild(fill);
+    var r = el("div", "remain", mmss(remain)); r.appendChild(el("small", "", "remaining"));
+    prog.appendChild(track); prog.appendChild(r); c.appendChild(prog);
+    return c;
+  }
+  function nextCard(s, nowSec, label) {
+    var c = el("section", "card next");
+    var tag = el("div", "tag"); tag.appendChild(el("i")); tag.appendChild(document.createTextNode(label)); c.appendChild(tag);
+    c.appendChild(el("div", "title", s.title));
+    var until = timeToMinutes(s.start) * 60 - nowSec;
+    var meta = el("div", "meta", "Starts " + hhmm(timeToMinutes(s.start)) + "  to  " + hhmm(endMin(s)) + (until > 0 && until < 3600 ? "   (in " + mmss(until) + ")" : "")); withLoc(meta, s); c.appendChild(meta);
+    return c;
+  }
+  function plainCard(title, sub) {
+    var c = el("section", "card now done");
+    c.appendChild(el("div", "title", title)); if (sub) c.appendChild(el("div", "meta", sub));
+    return c;
+  }
+
+  var lastKey = "";
+  function tick() {
+    var d = now(), nowSec = d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
+    document.getElementById("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    document.getElementById("dayLabel").textContent = PROGRAMME[day].date || PROGRAMME[day].label;
+    document.getElementById("streamLabel").textContent = STREAM_LABEL[stream];
+
+    var rd = realDay(), rib = document.getElementById("ribbon");
+    if (rd !== day) { rib.textContent = "Showing the " + PROGRAMME[day].label + " programme against today's clock"; rib.style.display = "block"; } else rib.style.display = "none";
+
+    var list = sessionsToday(), nowMin = nowSec / 60;
+    var live = list.filter(function (s) { return nowMin >= timeToMinutes(s.start) && nowMin < endMin(s); }).slice(0, 3);
+    var upcoming = list.filter(function (s) { return timeToMinutes(s.start) > nowMin && live.indexOf(s) < 0; });
+    var next = upcoming[0];
+
+    var frag = document.createDocumentFragment();
+    if (live.length) {
+      live.forEach(function (s) { frag.appendChild(nowCard(s, nowSec)); });
+      if (next) frag.appendChild(nextCard(next, nowSec, "Up next"));
+    } else if (next) {
+      var first = list[0] === next;
+      frag.appendChild(plainCard(first ? "Starting soon" : "Between sessions", first ? "First session at " + hhmm(timeToMinutes(next.start)) : "Next session at " + hhmm(timeToMinutes(next.start))));
+      frag.appendChild(nextCard(next, nowSec, "Up next"));
+    } else {
+      frag.appendChild(plainCard(list.length ? "That is the end of the programme for today" : "No sessions listed", list.length ? "Thank you" : "Choose another day or programme"));
+    }
+    main.replaceChildren(frag);
+  }
+
+  // ── Controls ──────────────────────────────────────────────────────────────
+  function buildControls() {
+    var box = document.getElementById("dayBtns");
+    DAYS.forEach(function (dd) {
+      var b = el("button", dd.key === day ? "on" : "", dd.label); b.type = "button"; b.dataset.day = dd.key;
+      b.addEventListener("click", function () { day = dd.key; box.querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x.dataset.day === day); }); tick(); });
+      box.appendChild(b);
+    });
+    var sel = document.getElementById("streamSel"); sel.value = stream;
+    sel.addEventListener("change", function () { stream = sel.value; store("rmd_screen_stream", stream); tick(); });
+    document.getElementById("fsBtn").addEventListener("click", toggleFs);
+    document.addEventListener("keydown", function (e) { if (e.key === "f" || e.key === "F") toggleFs(); });
+    document.addEventListener("fullscreenchange", function () { document.body.classList.toggle("fs", !!document.fullscreenElement); document.getElementById("fsBtn").textContent = document.fullscreenElement ? "Exit full screen" : "Full screen"; });
+    var idleT; function wake() { document.body.classList.remove("idle"); clearTimeout(idleT); idleT = setTimeout(function () { document.body.classList.add("idle"); }, 4000); }
+    ["mousemove", "touchstart", "keydown", "click"].forEach(function (ev) { document.addEventListener(ev, wake, { passive: true }); });
+    wake();
+  }
+  function toggleFs() {
+    var root = document.documentElement;
+    if (!document.fullscreenElement) { if (root.requestFullscreen) root.requestFullscreen().catch(function () {}); }
+    else if (document.exitFullscreen) document.exitFullscreen();
+  }
+
+  // Keep the screen awake while this page is open (browser support varies).
+  var lock = null, awakeEl = document.getElementById("awake");
+  function showAwake() { awakeEl.textContent = lock ? "Screen will stay awake" : ("wakeLock" in navigator ? "Screen may sleep. Click once to retry." : "This browser cannot stop the screen sleeping."); }
+  async function keepAwake() {
+    if (!("wakeLock" in navigator) || lock || document.visibilityState !== "visible") { showAwake(); return; }
+    try { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", function () { lock = null; showAwake(); }); } catch (e) { lock = null; }
+    showAwake();
+  }
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") keepAwake(); });
+  ["click", "keydown", "touchstart"].forEach(function (ev) { document.addEventListener(ev, keepAwake, { passive: true }); });
+
+  // ── Start: sign in and role check ─────────────────────────────────────────
+  function gate(msg) { document.getElementById("gateMsg").textContent = msg; }
+  initFirebase();
+  auth.onAuthStateChanged(async function (user) {
+    if (!user) { location.href = "index.html"; return; }
+    var role = null;
+    try {
+      role = await resolveRole(user.uid, user.email || "");
+      if (role && role !== ROLES.DIRECTOR) { var iw = await resolveIwFunction(user.uid); if (iw) role = iw; }
+    } catch (e) { console.warn("Role lookup:", e.message); }
+    if (ALLOWED.indexOf(role) < 0) { gate("The screen display is for faculty and Course Directors."); setTimeout(function () { location.href = "timetable.html"; }, 2500); return; }
+    document.getElementById("gate").style.display = "none";
+    buildControls(); listenProgramme(); tick(); keepAwake();
+    setInterval(tick, 1000);
+  });
+})();
+</script>
+</body>
+</html>
