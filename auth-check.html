@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Sign-in Check - RMD Birmingham</title>
+<style>
+  :root { --purple:#44247C; --blue:#0067A4; --orange:#F49001; --text:#1A2233; --muted:#6B7C93; --line:#E8ECF1; --pale:#F5F7FA; --ok:#1e8449; --bad:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--pale); color:var(--text); font-family:Inter,-apple-system,"Segoe UI",Arial,sans-serif; font-size:15px; line-height:1.45; }
+  header { background:var(--purple); color:#fff; padding:14px 16px; }
+  header h1 { margin:0; font-size:18px; }
+  header p { margin:2px 0 0; font-size:13px; opacity:.8; }
+  main { max-width:640px; margin:0 auto; padding:16px; }
+  .card { background:#fff; border:1.5px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:14px; }
+  h2 { font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
+  .row { display:flex; gap:10px; align-items:flex-start; padding:7px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:0; }
+  .mark { flex:0 0 auto; width:56px; font-weight:800; font-size:13px; }
+  .mark.ok { color:var(--ok); } .mark.bad { color:var(--bad); } .mark.wait { color:var(--muted); } .mark.warn { color:#b7791f; }
+  .row small { display:block; color:var(--muted); font-size:12.5px; }
+  #verdict { border:2px solid var(--orange); }
+  #verdict.good { border-color:var(--ok); }
+  #verdict p { margin:6px 0; }
+  button { font:inherit; font-weight:700; border:0; border-radius:8px; padding:11px 18px; background:var(--purple); color:#fff; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--purple); border:1.5px solid var(--purple); }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+  pre { white-space:pre-wrap; word-break:break-word; font-size:12px; background:var(--pale); border-radius:8px; padding:10px; margin:8px 0 0; }
+  .note { font-size:12.5px; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sign-in check</h1>
+  <p>RMD Birmingham. Takes about 20 seconds.</p>
+</header>
+<main>
+  <div class="card">
+    <p style="margin:0">This page checks whether your browser can stay signed in to rmd.uk.com. It does not sign you in and it does not send or save anything. Wait for the checks to finish, then follow the box at the top of the results.</p>
+  </div>
+
+  <div class="card" id="verdict" hidden>
+    <h2>Result</h2>
+    <div id="verdictBody"></div>
+    <div class="actions" id="verdictActions"></div>
+  </div>
+
+  <div class="card"><h2>This browser</h2><div id="g-env"></div></div>
+  <div class="card"><h2>Can it remember you?</h2><div id="g-store"></div></div>
+  <div class="card"><h2>Can it reach the sign-in service?</h2><div id="g-net"></div></div>
+  <div class="card" id="reportCard" hidden>
+    <h2>Copy for Jon</h2>
+    <pre id="report"></pre>
+    <div class="actions"><button class="secondary" id="copyBtn">Copy these results</button></div>
+    <p class="note" id="copyNote"></p>
+  </div>
+</main>
+
+<script src="js/firebase-config.js"></script>
+<script>
+(function () {
+  var STEP = new URLSearchParams(location.search).get("step") === "2" ? 2 : 1;
+  var results = [];   // { group, name, status: ok|bad|warn, detail }
+  var UA = navigator.userAgent || "";
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function add(group, name, status, detail) {
+    results.push({ group: group, name: name, status: status, detail: detail || "" });
+    var el = document.getElementById("g-" + group);
+    var mark = status === "ok" ? "OK" : status === "bad" ? "FAILED" : status === "warn" ? "CHECK" : "...";
+    var row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<span class="mark ' + status + '">' + mark + '</span><span>' + esc(name) +
+      (detail ? '<small>' + esc(detail) + '</small>' : '') + '</span>';
+    el.appendChild(row);
+  }
+  function get(name) { for (var i = 0; i < results.length; i++) if (results[i].name === name) return results[i]; return null; }
+  function timeout(p, ms, label) {
+    return new Promise(function (resolve, reject) {
+      var t = setTimeout(function () { reject(new Error(label + " timed out")); }, ms);
+      p.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+    });
+  }
+
+  // ---- storage helpers ----
+  function idbOpen() {
+    return new Promise(function (resolve, reject) {
+      var r = indexedDB.open("rmd-signin-check", 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore("kv"); };
+      r.onsuccess = function () { resolve(r.result); };
+      r.onerror = function () { reject(r.error || new Error("open failed")); };
+      r.onblocked = function () { reject(new Error("blocked")); };
+    });
+  }
+  function idbPut(db, k, v) {
+    return new Promise(function (res, rej) {
+      var tx = db.transaction("kv", "readwrite"); tx.objectStore("kv").put(v, k);
+      tx.oncomplete = function () { res(); }; tx.onerror = function () { rej(tx.error); }; tx.onabort = function () { rej(tx.error || new Error("aborted")); };
+    });
+  }
+  function idbGet(db, k) {
+    return new Promise(function (res, rej) {
+      var q = db.transaction("kv").objectStore("kv").get(k);
+      q.onsuccess = function () { res(q.result); }; q.onerror = function () { rej(q.error); };
+    });
+  }
+
+  // ---- 1. environment ----
+  function envChecks() {
+    var inApp = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|LinkedInApp|Snapchat|Twitter|GSA\/|Teams\/|Outlook|WhatsApp|; wv\)/i.test(UA);
+    var iosNotSafari = /iPhone|iPad|iPod/.test(UA) && !/Safari\//.test(UA);   // WebView: no "Safari/" token
+    if (inApp || iosNotSafari) {
+      add("env", "Opened inside another app's built-in browser", "bad",
+        "It looks like this page was opened from an email or messaging app. These mini-browsers often forget your sign-in.");
+    } else {
+      add("env", "Opened in a normal browser", "ok", "");
+    }
+    add("env", "Browser", "ok", UA.length > 110 ? UA.slice(0, 110) + "..." : UA);
+    add("env", "Network type", "ok", navigator.connection && navigator.connection.effectiveType ? navigator.connection.effectiveType + (navigator.connection.saveData ? " (data saver on)" : "") : "not reported");
+    add("env", "Browser language / time zone", "ok", (navigator.language || "?") + " / " + (Intl.DateTimeFormat().resolvedOptions().timeZone || "?"));
+  }
+
+  // ---- 2. storage ----
+  async function storageChecks() {
+    var stamp = String(Date.now());
+    var wrote = { local: false, session: false, cookie: false, idb: false };
+
+    try { localStorage.setItem("rmdchk", stamp); wrote.local = localStorage.getItem("rmdchk") === stamp;
+      add("store", "Local storage", wrote.local ? "ok" : "bad", wrote.local ? "" : "Wrote a value but could not read it back."); }
+    catch (e) { add("store", "Local storage", "bad", "Blocked: " + (e && e.name || e)); }
+
+    try { sessionStorage.setItem("rmdchk", stamp); wrote.session = sessionStorage.getItem("rmdchk") === stamp;
+      add("store", "Session storage", wrote.session ? "ok" : "bad", ""); }
+    catch (e) { add("store", "Session storage", "bad", "Blocked: " + (e && e.name || e)); }
+
+    try { document.cookie = "rmdchk=" + stamp + "; path=/; SameSite=Lax"; wrote.cookie = document.cookie.indexOf("rmdchk=" + stamp) >= 0;
+      add("store", "Cookies", wrote.cookie ? "ok" : "bad", wrote.cookie ? "" : "Cookies are switched off or blocked."); }
+    catch (e) { add("store", "Cookies", "bad", "Blocked"); }
+
+    try {
+      var db = await timeout(idbOpen(), 5000, "IndexedDB open");
+      await timeout(idbPut(db, "rmdchk", stamp), 5000, "IndexedDB write");
+      var back = await timeout(idbGet(db, "rmdchk"), 5000, "IndexedDB read");
+      wrote.idb = back === stamp; db.close();
+      add("store", "Browser database (IndexedDB)", wrote.idb ? "ok" : "bad", wrote.idb ? "This is where the sign-in is normally kept." : "Wrote a value but could not read it back.");
+    } catch (e) { add("store", "Browser database (IndexedDB)", "bad", "This is where the sign-in is normally kept. " + (e && e.message || e)); }
+
+    if (navigator.storage && navigator.storage.estimate) {
+      try { var est = await navigator.storage.estimate();
+        if (est && est.quota && est.quota < 130 * 1024 * 1024) add("store", "Storage allowance", "warn", "Only " + Math.round(est.quota / 1048576) + " MB. This is typical of private browsing."); }
+      catch (e) {}
+    }
+
+    // Step 2: did what we wrote on the previous page survive moving to another page?
+    if (STEP === 2) {
+      var prev = null;
+      try { prev = localStorage.getItem("rmdchk_prev"); } catch (e) {}
+      var prevSession = null; try { prevSession = sessionStorage.getItem("rmdchk_prev"); } catch (e) {}
+      var prevCookie = (document.cookie.match(/rmdchk_prev=(\d+)/) || [])[1] || null;
+      var prevIdb = null;
+      try { var d2 = await idbOpen(); prevIdb = await idbGet(d2, "rmdchk_prev"); d2.close(); } catch (e) {}
+      var lost = [];
+      if (!prev) lost.push("local storage"); if (!prevSession) lost.push("session storage");
+      if (!prevCookie) lost.push("cookies"); if (!prevIdb) lost.push("browser database");
+      if (lost.length === 0) add("store", "Kept everything after moving to a new page", "ok", "");
+      else add("store", "Kept everything after moving to a new page", "bad", "Lost: " + lost.join(", ") + ". This is what makes a sign-in vanish.");
+    } else {
+      try {
+        localStorage.setItem("rmdchk_prev", stamp); sessionStorage.setItem("rmdchk_prev", stamp);
+        document.cookie = "rmdchk_prev=" + stamp + "; path=/; SameSite=Lax";
+        var d1 = await idbOpen(); await idbPut(d1, "rmdchk_prev", stamp); d1.close();
+      } catch (e) {}
+    }
+  }
+
+  // ---- 3. network ----
+  var HOSTS = [
+    ["Sign-in service (identitytoolkit.googleapis.com)", "https://identitytoolkit.googleapis.com/"],
+    ["Session service (securetoken.googleapis.com)", "https://securetoken.googleapis.com/"],
+    ["Database (firestore.googleapis.com)", "https://firestore.googleapis.com/"],
+    ["Google scripts (www.gstatic.com)", "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"],
+    ["Security check (www.google.com/recaptcha)", "https://www.google.com/recaptcha/api.js"]
+  ];
+  async function networkChecks() {
+    var all = HOSTS.map(function (h) {
+      var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      return timeout(fetch(h[1], { mode: "no-cors", cache: "no-store", signal: ctrl ? ctrl.signal : undefined }), 8000, h[0])
+        .then(function () { return { h: h, ok: true }; })
+        .catch(function (e) { if (ctrl) { try { ctrl.abort(); } catch (x) {} } return { h: h, ok: false, err: e }; });
+    });
+    var res = await Promise.all(all);
+    res.forEach(function (r) { add("net", r.h[0], r.ok ? "ok" : "bad", r.ok ? "" : "Could not connect. A VPN, ad-blocker, firewall or the wifi network may be blocking it."); });
+
+    // Does the real sign-in library start and settle?
+    try {
+      if (typeof firebase === "undefined") {
+        await new Promise(function (resolve, reject) {
+          var s1 = document.createElement("script"); s1.src = "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js";
+          s1.onload = function () {
+            var s2 = document.createElement("script"); s2.src = "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js";
+            s2.onload = resolve; s2.onerror = function () { reject(new Error("auth library did not load")); }; document.head.appendChild(s2);
+          };
+          s1.onerror = function () { reject(new Error("app library did not load")); }; document.head.appendChild(s1);
+        });
+      }
+      if (typeof FIREBASE_CONFIG === "undefined") throw new Error("config missing");
+      var app = firebase.apps.length ? firebase.app() : firebase.initializeApp(FIREBASE_CONFIG);
+      var a = firebase.auth(app);
+      await timeout(new Promise(function (resolve) { var un = a.onAuthStateChanged(function () { un(); resolve(); }); }), 8000, "Sign-in library start-up");
+      add("net", "Sign-in library starts correctly", "ok", "");
+    } catch (e) {
+      add("net", "Sign-in library starts correctly", "bad", String(e && e.message || e));
+    }
+  }
+
+  // ---- verdict ----
+  function failed(name) { var r = get(name); return r && r.status === "bad"; }
+  function verdict() {
+    var advice = [];
+    var inApp = failed("Opened inside another app's built-in browser");
+    var storeBad = ["Local storage", "Session storage", "Cookies", "Browser database (IndexedDB)"].some(failed);
+    var lostAfterMove = failed("Kept everything after moving to a new page");
+    var netBad = HOSTS.slice(0, 3).some(function (h) { return failed(h[0]); });
+    var libBad = failed("Sign-in library starts correctly");
+    var warnPrivate = get("Storage allowance");
+
+    if (inApp) advice.push("<p><b>You are inside an app's built-in browser.</b> Copy the address <b>rmd.uk.com/signin.html</b>, open Safari or Chrome yourself, and paste it there. Then sign in again.</p>");
+    if (storeBad) advice.push("<p><b>Your browser is blocking the storage that keeps you signed in.</b></p><ul><li>Use a normal window, not a private or incognito one.</li><li>iPhone or iPad: Settings, Safari, turn off <i>Block All Cookies</i>; and in Settings, Privacy &amp; Security check Lockdown Mode is off. Or try Chrome.</li><li>Chrome or Edge: turn off any ad-blocker or privacy extension for rmd.uk.com, and check the cookie setting is not <i>Block all cookies</i>.</li><li>A work or university laptop may lock this down. Use your own phone or laptop instead.</li></ul>");
+    if (lostAfterMove && !storeBad) advice.push("<p><b>Your browser forgets the site every time you move to a new page.</b> That is exactly why you are being signed out. Try another browser (Chrome or Safari), clear website data for rmd.uk.com, then restart the browser. If it still fails, it is a setting or extension on this device: use another device.</p>");
+    if (warnPrivate && !storeBad) advice.push("<p>The storage allowance looks like <b>private browsing</b>. Open the page in a normal window.</p>");
+    if (netBad || (libBad && !storeBad && !inApp)) advice.push("<p><b>This connection cannot reach the sign-in service.</b> Switch off any VPN and ad-blocker, then try mobile data instead of the venue or hotel wifi.</p>");
+
+    var v = document.getElementById("verdict"), body = document.getElementById("verdictBody"), act = document.getElementById("verdictActions");
+    v.hidden = false;
+    if (!advice.length) {
+      v.className = "card good";
+      body.innerHTML = STEP === 1
+        ? "<p><b>Step 1 looks fine.</b> Now press the button below to test moving to another page. That is when sign-ins usually get lost.</p>"
+        : "<p><b>Everything passed.</b> This browser can stay signed in. If you are still being signed out, copy the results below and send them to Jon.</p>";
+    } else {
+      v.className = "card";
+      body.innerHTML = advice.join("");
+    }
+    if (STEP === 1) {
+      act.innerHTML = '<button id="goStep2">Test moving to another page</button>';
+      document.getElementById("goStep2").onclick = function () { location.href = "auth-check.html?step=2"; };
+    } else {
+      act.innerHTML = '<button class="secondary" id="again">Run again</button>';
+      document.getElementById("again").onclick = function () { location.href = "auth-check.html"; };
+    }
+  }
+
+  function report() {
+    var lines = ["RMD sign-in check, step " + STEP, new Date().toString(), ""];
+    results.forEach(function (r) { lines.push((r.status === "ok" ? "OK     " : r.status === "bad" ? "FAILED " : "CHECK  ") + r.name + (r.detail ? " - " + r.detail : "")); });
+    var txt = lines.join("\n");
+    document.getElementById("report").textContent = txt;
+    document.getElementById("reportCard").hidden = false;
+    document.getElementById("copyBtn").onclick = function () {
+      var note = document.getElementById("copyNote");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function () { note.textContent = "Copied. Paste it into a message to Jon."; }, function () { note.textContent = "Could not copy. Take a screenshot of this page instead."; });
+      } else { note.textContent = "Could not copy. Take a screenshot of this page instead."; }
+    };
+  }
+
+  (async function main() {
+    envChecks();
+    try { await storageChecks(); } catch (e) { add("store", "Storage test", "bad", String(e && e.message || e)); }
+    try { await networkChecks(); } catch (e) { add("net", "Network test", "bad", String(e && e.message || e)); }
+    verdict(); report();
+    window.__done = true;
+  })();
+})();
+</script>
+</body>
+</html>
