@@ -1,0 +1,300 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OPIS rating form - example</title>
+<style>:root{--rmd-navy:#44247C;--rmd-blue:#0067A4;--font:'Inter','Segoe UI',Arial,sans-serif;}</style>
+<style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 16px; }
+
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:6px 12px; display:flex; align-items:center; gap:10px; }
+    .top-bar img { height:22px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:14px; font-weight:700; }
+    .top-bar-sub { font-size:11px; font-weight:400; opacity:.65; margin-left:8px; }
+    .top-bar-back { color:rgba(255,255,255,.7); text-decoration:none; font-size:12px; }
+    .top-bar-back:hover { color:#fff; }
+
+    .picker-bar { background:#fff; border-bottom:1px solid #e0e4ee; padding:6px 12px; display:flex; align-items:center; gap:6px 12px; flex-wrap:wrap; position:relative; z-index:20; }
+    .picker-bar label { font-size:12px; font-weight:700; color:var(--rmd-navy); }
+    .picker-bar select, .picker-bar input[type=text] { padding:6px 9px; border:1.5px solid #d0d5e0; border-radius:7px; font-size:13px; font-family: var(--font); }
+    .picker-bar select { min-width:200px; max-width:100%; }
+    .picker-bar input[type=text]:focus { outline:none; border-color:var(--rmd-blue); }
+    #searchWrap { position:relative; }
+    #candidateSearch { width:200px; }
+    #searchResultsWrap { position:absolute; top:100%; left:0; margin-top:4px; background:#fff; border:1px solid #d0d5e0; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,.18); min-width:300px; max-height:260px; overflow:auto; z-index:60; }
+    .sr-item { display:block; width:100%; text-align:left; background:#fff; border:none; border-bottom:1px solid #eef1f8; padding:7px 12px; font:inherit; cursor:pointer; }
+    .sr-item:hover { background:#f2f6fd; }
+    .sr-item .n { font-weight:700; font-size:13px; color:var(--rmd-navy); }
+    .sr-item .m { font-size:11px; color:#8893b0; }
+    #roomPickerWrap { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    #roomPickerWrap .cap { font-size:12px; font-weight:700; color:var(--rmd-navy); }
+
+    .room-row { display:flex; flex-wrap:wrap; gap:6px; }
+    .room-chip { background:#fff; border:1.5px solid #dde2ed; border-radius:7px; padding:5px 10px; font-size:12px; font-weight:700; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
+    .room-chip .n { font-weight:400; color:#8893b0; margin-left:4px; }
+    .room-chip.active { background:var(--rmd-navy); color:#fff; border-color:var(--rmd-navy); }
+    .room-chip.active .n { color:rgba(255,255,255,.7); }
+
+    .wrap { max-width: 1040px; margin:0 auto; padding: 0 12px; }
+    .no-course { padding:30px 16px; text-align:center; color:#8893b0; font-size:14px; }
+
+    .cand-strip { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 0 0; }
+    .cand-chip { background:#fff; border:1.5px solid #dde2ed; border-radius:999px; padding:5px 12px; font-size:12.5px; font-weight:600; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
+    .cand-chip:hover { border-color:var(--rmd-blue); }
+    .cand-chip.done { background:#e6f4ea; border-color:#bfe0c9; color:#1a6e31; }
+    .cand-chip.active { box-shadow:0 0 0 2px var(--rmd-blue); border-color:var(--rmd-blue); }
+    .strip-count { font-size:11.5px; color:#8893b0; margin-left:4px; }
+
+    section.detail { padding:0; background:#fff; border:1px solid #dde2ed; border-radius:10px; overflow:hidden; margin-top:8px; }
+    .detail-head { background:var(--rmd-navy); color:#fff; padding:7px 14px; display:flex; align-items:baseline; gap:4px 14px; flex-wrap:wrap; }
+    .detail-head h3 { margin:0; font-size:15px; }
+    .detail-head .sub { font-size:12px; color:rgba(255,255,255,.75); }
+
+    .matrix { display:grid; grid-template-columns:150px repeat(3, 1fr); gap:4px; padding:8px 10px 6px; }
+    .m-head { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; text-align:center; padding:3px 4px; border-radius:5px; }
+    .m-head.s1 { background:#fbe3e6; color:#b0001a; }
+    .m-head.s2 { background:#fbeedd; color:#c17a00; }
+    .m-head.s3 { background:#e6f4ea; color:#1a6e31; }
+    .m-label { font-weight:700; font-size:12.5px; color:var(--rmd-navy); display:flex; align-items:center; padding-right:6px; line-height:1.2; }
+    .m-cell { border:1.5px solid #e3e7f0; background:#fff; border-radius:7px; padding:5px 8px; font:inherit; font-size:11.5px; line-height:1.3; color:#5a6472; text-align:left; cursor:pointer; min-height:44px; display:flex; align-items:center; gap:7px; }
+    .m-cell:hover { background:#f7f9fc; }
+    .m-cell .lv { flex-shrink:0; width:18px; height:18px; border-radius:50%; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+    .m-cell .lv.s1 { background:#fbe3e6; color:#b0001a; }
+    .m-cell .lv.s2 { background:#fbeedd; color:#c17a00; }
+    .m-cell .lv.s3 { background:#e6f4ea; color:#1a6e31; }
+    .m-cell.sel.s1 { background:#fbe3e6; border-color:#b0001a; color:#5c0010; }
+    .m-cell.sel.s2 { background:#fbeedd; border-color:#c17a00; color:#5a3700; }
+    .m-cell.sel.s3 { background:#e6f4ea; border-color:#1a6e31; color:#0e4020; }
+    .locked { opacity:.55; pointer-events:none; }
+
+    .checks { display:flex; gap:8px; padding:0 10px 8px; flex-wrap:wrap; }
+    .check { flex:1; min-width:260px; display:flex; align-items:flex-start; gap:8px; border-radius:0 6px 6px 0; padding:6px 10px; font-size:12px; line-height:1.35; cursor:pointer; }
+    .check input { width:auto; margin-top:2px; flex-shrink:0; }
+    .check.pot { background:#e8f0fe; border-left:4px solid var(--rmd-blue); }
+    .check.cred { background:#fff8e1; border-left:4px solid #b8860b; }
+
+    .cred-bar { display:flex; align-items:center; gap:8px; margin:6px 10px 0; padding:5px 10px; border-radius:0 6px 6px 0; background:#fff8e1; border-left:4px solid #b8860b; font-size:12px; line-height:1.35; cursor:pointer; }
+    .cred-bar input { width:auto; flex-shrink:0; }
+    .cred-bar.need { box-shadow:0 0 0 2px #b8860b; }
+    .matrix.gated { opacity:.45; }
+    .m-cell:disabled { cursor:not-allowed; }
+    .check.off { opacity:.45; filter:grayscale(1); cursor:default; }
+    .check.mistake { background:#fce8e6; border-left:4px solid #b7410e; }
+    .link-btn { background:none; border:none; padding:2px 4px; font:inherit; font-size:11.5px; color:#8893b0; text-decoration:underline; cursor:pointer; align-self:center; }
+    .link-btn:hover { color:var(--rmd-navy); }
+    .link-btn .sm { display:none; }
+    .foot { display:flex; align-items:center; gap:10px 14px; padding:8px 12px; background:#f7f9fc; border-top:1px solid #eef1f8; flex-wrap:wrap; }
+    .foot .tot-label { font-size:11px; color:#8893b0; text-transform:uppercase; letter-spacing:.5px; font-weight:700; }
+    .foot .tot-val { font-size:18px; font-weight:700; color:var(--rmd-navy); }
+    .foot .spacer { flex:1; }
+    .btn-submit { padding:9px 18px; background:var(--rmd-blue); color:#fff; border:none; border-radius:8px; font-size:13.5px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-submit:hover:not(:disabled) { background:var(--rmd-navy); }
+    .btn-submit:disabled { background:#aab8c2; cursor:default; }
+    .btn-next { padding:9px 18px; background:#1a6e31; color:#fff; border:none; border-radius:8px; font-size:13.5px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-next:hover { background:#14562a; }
+    .btn-reset { padding:8px 14px; background:#fff; color:var(--rmd-navy); border:2px solid #ccd6dd; border-radius:8px; font-size:13px; font-weight:700; font-family:var(--font); cursor:pointer; }
+    .btn-reset:hover:not(:disabled) { border-color:#b7410e; color:#b7410e; }
+    .btn-reset:disabled { opacity:.45; cursor:default; }
+    .submit-msg { font-size:13px; font-weight:700; color:#1a6e31; background:#e6f4ea; border:1px solid #bfe0c9; padding:6px 10px; border-radius:8px; }
+    .submit-err { font-size:12.5px; color:#b7410e; }
+    .hint { font-size:12px; color:#8893b0; }
+
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family: var(--font); }
+    #authMsg { font-size:15px; opacity:.7; }
+
+    @media (max-width: 640px) {
+      .top-bar-sub { display:none; }
+      .picker-bar { padding:5px 8px; gap:5px 8px; }
+      .picker-bar select { flex:1 1 100%; min-width:0; }
+      #candidateSearch { width:130px; }
+      .wrap { padding:0 8px; }
+      .cand-strip { gap:5px; padding-top:6px; }
+      .cand-chip { padding:4px 10px; font-size:12px; }
+      .detail-head { padding:5px 10px; }
+      .detail-head h3 { font-size:14px; }
+      .detail-head .sub { font-size:11px; }
+      .matrix { grid-template-columns:repeat(3, 1fr); gap:3px; padding:4px 6px 2px; }
+      .m-head { display:none; }
+      .m-label { grid-column:1 / -1; padding:3px 0 0; font-size:11.5px; }
+      .m-cell { flex-direction:column; align-items:flex-start; gap:2px; padding:3px 5px; min-height:0; font-size:10px; line-height:1.2; }
+      .m-cell .lv { width:15px; height:15px; font-size:10px; }
+      .checks { padding:0 6px 6px; gap:4px; }
+      .check { min-width:0; flex-basis:100%; padding:4px 8px; font-size:11px; }
+      .cred-bar { margin:4px 6px 0; padding:4px 8px; font-size:11px; }
+      .foot { padding:6px 8px; gap:6px 10px; }
+      .foot .hint { display:none; }
+      .foot .tot-label { display:none; }
+      .link-btn .lg { display:none; }
+      .link-btn .sm { display:inline; }
+      .btn-reset { padding:6px 10px; font-size:12px; }
+      .btn-submit, .btn-next { padding:8px 14px; }
+    }
+  
+.example-note{background:#fff8e1;border-bottom:1px solid #e8d9a8;color:#6b5200;font-size:12.5px;padding:6px 12px;text-align:center}
+</style></head><body>
+<div class="example-note">EXAMPLE ONLY: a static copy of the rating form with a made-up candidate. Nothing here is saved.</div>
+<div class="top-bar"><div class="top-bar-title">OPIS Candidate Rating<span class="top-bar-sub">RMD Birmingham</span></div></div>
+<div class="picker-bar"><label>Course</label><select><option>Course 1</option></select>
+<div id="roomPickerWrap"><span class="cap">Room</span><div class="room-row"><button class="room-chip active">CM07<span class="n">12</span></button><button class="room-chip">CM08<span class="n">12</span></button></div></div></div>
+<div class="wrap">
+<div class="cand-strip"><button class="cand-chip done">Alex Example</button><button class="cand-chip active">Sam Sample</button><button class="cand-chip">Jo Placeholder</button><button class="cand-chip">Taylor Demo</button><span class="strip-count">1 of 4 rated</span></div>
+<section class="detail" id="detail"></section></div>
+<script>
+const CRITERIA = [
+  { key: "communication", label: "Communication", levels: {
+      1: "Difficulty communicating clearly with fellow candidates",
+      2: "Communicates clearly with fellow candidates",
+      3: "Excellent communication: clear, confident and easily understood"
+  }},
+  { key: "teamMember", label: "Team member", levels: {
+      1: "Finds it hard to work as part of a team",
+      2: "Works well as a team member",
+      3: "Excellent team member: helps and includes others"
+  }},
+  { key: "confidentAdaptable", label: "Confident, flexible and adaptable", levels: {
+      1: "Hesitant, and finds it hard to adjust when things change",
+      2: "Reasonably confident, and adjusts when things change",
+      3: "Confident, flexible and readily adaptable"
+  }},
+  { key: "interactiveSupportive", label: "Interactive, supportive and enthusiastic", levels: {
+      1: "Passive, with little interaction with or support for others",
+      2: "Joins in and supports others when prompted",
+      3: "Consistently interactive, supportive and enthusiastic"
+  }},
+  { key: "punctuality", label: "Punctuality and reliability", levels: {
+      1: "Often late",
+      2: "Sometimes late",
+      3: "Always on time"
+  }}
+];
+
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+
+let currentScores={communication:3,teamMember:3,confidentAdaptable:2,interactiveSupportive:3,punctuality:3};
+let credibilityChecked=true, teachingPotential=false, justSubmitted=false, mistakeChecked=false, mistakeOpen=false;
+let selectedRoom="CM07", selectedCourse="Course 1", selectedCandidateId="c2";
+const CANDS=[{id:"c2",name:"Sam Sample",degree:"Medicine MBChB"}];
+function candidatesForCourse(){return CANDS;}
+function isDone(){return false;}
+function nextUnsubmittedId(){return null;}
+function submitRating(){justSubmitted=true;renderDetail();}
+function evaluate() {
+  const vals = CRITERIA.map(c => currentScores[c.key]);
+  const scoredCount = vals.filter(v => v !== undefined && v !== null).length;
+  const complete = scoredCount === CRITERIA.length;
+  const total = vals.reduce((a, b) => a + (b || 0), 0);
+  return { total, complete, scoredCount };
+}
+
+function renderDetail() {
+  const candidate = candidatesForCourse(selectedCourse).find(c => c.id === selectedCandidateId);
+  const detail = document.getElementById("detail");
+  if (!candidate) { detail.style.display = "none"; return; }
+  detail.style.display = "";
+
+  const { total, complete, scoredCount } = evaluate();
+  // Outstanding teaching ability can only be ticked once all five are scored
+  // and the total is 12 or more; otherwise it is greyed out and cleared.
+  const potOk = complete && total >= 12;
+  if (!potOk) teachingPotential = false;
+  // A second submission for someone already rated needs the "I made a mistake"
+  // box. It is saved as a correction, and the Course Director views show the
+  // newer one as current and the earlier one as superseded.
+  const mistakeRequired = isDone(candidate.id);
+  const showMistake = mistakeRequired || mistakeOpen;
+  const ready = complete && credibilityChecked && !justSubmitted && (!mistakeRequired || mistakeChecked);
+  const LEVELS = { 1: "Unsatisfactory", 2: "Adequate", 3: "Excellent" };
+  // The scores can't be filled in until the "spent enough time" box is ticked.
+  const gated = !credibilityChecked && !justSubmitted;
+
+  const rows = CRITERIA.map(crit => {
+    const selected = currentScores[crit.key];
+    const cells = [3, 2, 1].map(level => `
+      <button type="button" class="m-cell ${level === selected ? "sel s" + level : ""}" ${gated ? "disabled" : ""} onclick="setScore('${crit.key}', ${level})">
+        <span class="lv s${level}">${level}</span><span>${esc(crit.levels[level])}</span>
+      </button>`).join("");
+    return `<div class="m-label">${esc(crit.label)}</div>${cells}`;
+  }).join("");
+
+  let foot;
+  if (justSubmitted) {
+    const nextId = nextUnsubmittedId();
+    foot = `<span class="submit-msg">✓ Rating submitted (${total} / 15)</span><span class="spacer"></span>` +
+      (nextId
+        ? `<button type="button" class="btn-next" id="nextBtn" onclick="nextCandidate()">Next candidate →</button>`
+        : (selectedRoom ? `<span class="submit-msg">Everyone in Room ${esc(selectedRoom)} is rated ✓</span>` : ""));
+  } else {
+    const hint = !credibilityChecked ? "Tick the confirmation under the name to start"
+               : !complete ? "Score all 5 criteria"
+               : (mistakeRequired && !mistakeChecked) ? "Tick the box about your first submission"
+               : "";
+    foot = `<span class="tot-label">Total${complete ? "" : ` (${scoredCount} of 5)`}</span>
+      <span class="tot-val">${complete ? total : "–"} <span style="font-size:12px;color:#8893b0;font-weight:400;">/ 15</span></span>
+      ${showMistake ? "" : `<button type="button" class="link-btn" onclick="openMistake()"><span class="lg">Correcting an earlier submission?</span><span class="sm">Correcting?</span></button>`}
+      <span class="spacer"></span>
+      <span class="hint" id="submitHint" style="${ready ? "display:none;" : ""}">${hint}</span>
+      <span class="submit-err" id="submitErr" style="display:none;"></span>
+      <button type="button" class="btn-reset" id="resetBtn" ${(scoredCount || credibilityChecked || teachingPotential || mistakeChecked) ? "" : "disabled"} onclick="resetRating()">Reset</button>
+      <button type="button" class="btn-submit" id="submitBtn" ${ready ? "" : "disabled"} onclick="submitRating()">Submit rating</button>`;
+  }
+
+  detail.innerHTML = `
+    <div class="detail-head">
+      <h3>${esc(candidate.name)}</h3>
+      <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom || "not yet assigned")} · ${esc(selectedCourse)}</div>
+    </div>
+    <label class="cred-bar ${justSubmitted ? "locked" : ""} ${gated ? "need" : ""}">
+      <input type="checkbox" id="credibilityCheckbox" ${credibilityChecked ? "checked" : ""} onchange="setCredibility(this.checked)">
+      <span>I've spent enough time with this person to make a credible submission.</span>
+    </label>
+    <div class="matrix ${justSubmitted ? "locked" : ""} ${gated ? "gated" : ""}">
+      <div></div>
+      <div class="m-head s3">3 · ${LEVELS[3]}</div><div class="m-head s2">2 · ${LEVELS[2]}</div><div class="m-head s1">1 · ${LEVELS[1]}</div>
+      ${rows}
+    </div>
+    <div class="checks ${justSubmitted ? "locked" : ""}">
+      <label class="check pot ${potOk ? "" : "off"}">
+        <input type="checkbox" id="teachingCheckbox" ${teachingPotential ? "checked" : ""} ${potOk ? "" : "disabled"} onchange="setTeachingPotential(this.checked)">
+        <span><b>Potential outstanding teaching ability</b> ${potOk ? "(optional: tick only if you saw it)" : "(only available when the total is 12 or more)"}</span>
+      </label>
+      ${showMistake ? `
+      <label class="check mistake">
+        <input type="checkbox" id="mistakeCheckbox" ${mistakeChecked ? "checked" : ""} onchange="setMistake(this.checked)">
+        <span><b>I made a mistake with my first submission and need to enter a new, correct one.</b>${mistakeRequired ? " (needed to submit again for this candidate)" : ""}</span>
+      </label>` : ""}
+    </div>
+    <div class="foot">${foot}</div>
+  `;
+  const nb = document.getElementById("nextBtn");
+  if (nb) nb.focus();
+}
+
+// Clear this candidate's scores and both ticks before submitting. Nothing has been
+// saved yet at this point, so this only resets the form.
+function resetRating() {
+  currentScores = {};
+  credibilityChecked = false;
+  teachingPotential = false;
+  mistakeChecked = false;
+  renderDetail();
+}
+
+function setMistake(v) { mistakeChecked = !!v; renderDetail(); }
+function openMistake() { mistakeOpen = true; renderDetail(); }
+
+function setScore(key, level) {
+  currentScores[key] = level;
+  renderDetail();
+}
+
+function setTeachingPotential(v) { teachingPotential = !!v; }
+
+function setCredibility(checked) {
+  credibilityChecked = checked;
+  renderDetail();
+}
+
+renderDetail();
+</script></body></html>

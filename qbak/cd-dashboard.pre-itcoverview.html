@@ -328,15 +328,6 @@
     .itc-check { display: flex; gap: 4px; }
     .itc-cb { width: 24px; height: 24px; border-radius: 4px; border: 2px solid #dce3ea; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.12s; }
     .itc-cb.done { background: #1a6e31; border-color: #145727; color: white; }
-    .itc-cb.wait { background: #fff; border-color: #002B5C; color: #002B5C; font-weight: 700; }
-    .itc-cb.nobs { background: #f0f3f6; border-color: #dce3ea; color: #7a8a97; }
-    .itc-cb.o-green { background: #1a6e31; border-color: #145727; color: #fff; font-weight: 700; }
-    .itc-cb.o-amber { background: #c17a00; border-color: #9a6200; color: #fff; font-weight: 700; }
-    .itc-cb.o-red   { background: #b7410e; border-color: #8f330b; color: #fff; font-weight: 700; }
-    .itc-blk { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-    .itc-blk-lbl { font-size: 9.5px; color: var(--rmd-muted); white-space: nowrap; }
-    .itc-legend { font-size: 11px; color: var(--rmd-muted); margin: 0 0 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
-    .itc-legend .itc-cb { width: 16px; height: 16px; border-width: 2px; cursor: default; display: inline-flex; vertical-align: middle; margin-right: 4px; }
 
     /* ── ITC completion (2026-10-01, per Jon) ── */
     .itc-outcome-select {
@@ -815,10 +806,6 @@
         <div class="card-header">Candidate Summary</div>
         <div class="card-body" id="feedbackBody"><div class="loading">Loading feedback…</div></div>
       </div>
-      <div class="card" id="itcOverviewCard">
-        <div class="card-header">Instructor Trainer Candidates — Overview</div>
-        <div class="card-body" id="itcOverviewBody"><div class="loading">Loading ITC observations…</div></div>
-      </div>
       <div class="card" id="redDetailsCard" style="display:none;">
         <div class="card-header" style="background:#b7410e;">🔴 Red Rating Details</div>
         <div class="card-body" id="redDetailsBody"></div>
@@ -1065,7 +1052,6 @@ window.addEventListener("load", () => {
     step("alerts", () => watchAlerts());
     step("live feedback", () => watchFeedbackLive());
     step("session quality", () => watchSessionQuality());
-    step("itc observations", () => watchItcObservations());
 
     // Reset-practice-data button: only before the real event starts (9 Oct
     // 2026), so rehearsals can clean up after themselves but nobody can
@@ -1588,47 +1574,21 @@ function renderITCs() {
     return;
   }
 
-  // Progress markers (2026-10-10, per Jon): each block shows the assigned room, and once
-  // an observer has rated that ITC in that block the box fills with the worst rating
-  // given (1 = red, 2 = amber, 3-4 = green). Equipment/BLS/First Aid is not an observed block.
-  const OBSERVED = { sat_conv: true, sun_teaching: true, sun_assess: true };
-  const SHORT = { sat_group: "Sat equip", sat_conv: "Sat conv", sun_teaching: "Sun teach", sun_assess: "Sun assess" };
-  let done = 0, due = 0;
-  const rows = itcs.map(itc => {
-    const em = String(itc.email || "").trim().toLowerCase();
-    const sched = assignments[itc.email] || assignments[em] || {};
-    const cells = ITC_SESSIONS.map(s => {
-      const room = sched[s.key];
-      const lbl = `<div class="itc-blk-lbl">${SHORT[s.key] || ""}</div>`;
-      if (!room) return `<div class="itc-blk"><div class="itc-cb" style="width:auto;min-width:24px;padding:0 6px;cursor:default;" title="${esc(s.label)} — not assigned">—</div>${lbl}</div>`;
-      if (!OBSERVED[s.key]) return `<div class="itc-blk"><div class="itc-cb nobs" style="width:auto;min-width:24px;padding:0 6px;cursor:default;" title="${esc(s.label)}: ${esc(room)} (not an observed block)">${esc(room)}</div>${lbl}</div>`;
-      due++;
-      const obs = em ? itcObsDocs.filter(o => String(o.itcEmail || "").trim().toLowerCase() === em && o.itcSessionKey === s.key) : [];
-      if (!obs.length) return `<div class="itc-blk"><div class="itc-cb wait" style="width:auto;min-width:24px;padding:0 6px;cursor:default;" title="${esc(s.label)}: ${esc(room)} - not observed yet">${esc(room)}</div>${lbl}</div>`;
-      done++;
-      const mins = obs.map(itcObsMin).filter(Boolean);
-      const lv = itcLevel(mins.length ? Math.min(...mins) : 0);
-      return `<div class="itc-blk"><div class="itc-cb o-${lv === "none" ? "green" : lv}" style="width:auto;min-width:24px;padding:0 6px;cursor:default;" title="${esc(s.label)}: ${esc(room)} - ${obs.length} observation${obs.length === 1 ? "" : "s"}, worst rating ${lv}">${esc(room)}</div>${lbl}</div>`;
-    }).join("");
+  body.innerHTML = itcs.map(itc => {
+    const sched = assignments[itc.email] || {};
     return `
     <div class="itc-row">
       <div>
         <div class="itc-name">${esc(itc.name)}</div>
       </div>
-      <div class="itc-check">${cells}</div>
+      <div class="itc-check">
+        ${ITC_SESSIONS.map(s => {
+          const room = sched[s.key];
+          return `<div class="itc-cb ${room ? "done" : ""}" style="width:auto;min-width:24px;padding:0 6px;" title="${esc(s.label)}${room ? ": " + esc(room) : " — not assigned"}">${room || "—"}</div>`;
+        }).join("")}
+      </div>
     </div>`;
   }).join("");
-
-  const legend = `<div class="itc-legend">
-      <span><span class="itc-cb wait"></span>room assigned, not observed yet</span>
-      <span><span class="itc-cb o-green"></span>observed, green</span>
-      <span><span class="itc-cb o-amber"></span>amber</span>
-      <span><span class="itc-cb o-red"></span>red</span>
-      <span><span class="itc-cb nobs"></span>not an observed block</span>
-      <span><strong>${done} of ${due}</strong> observed blocks have a rating${itcObsError ? " (ratings unreadable: " + esc(itcObsError) + ")" : ""}</span>
-      <span>Full detail: <a href="#" onclick="event.preventDefault();switchSection('feedback')">Feedback page</a></span>
-    </div>`;
-  body.innerHTML = legend + rows;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2080,7 +2040,6 @@ function feedbackRater(f) {
 
 function renderFeedback(day) {
   currentFeedbackDay = day;
-  try { renderItcOverview(day); } catch (e) { console.warn("ITC overview:", e.message); }
   const body = document.getElementById("feedbackBody");
   // People whose gateway FAIL was confirmed (people.iwOutcome = "not-passed") are out of
   // the rooms from sign-off, so they are not listed here. Their ratings are kept.
@@ -2212,183 +2171,6 @@ function renderFeedback(day) {
   } else {
     redCard.style.display = "none";
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ITC OVERVIEW on the Feedback page (2026-10-10, per Jon)
-// Instructor Trainer Candidates rotate through rooms and are rated by the room
-// observers on itc-observations.html (blind, 1-4 on five dimensions, saved to
-// itc_observations). Only the Course Director can read those records, which is
-// why this card lives here. Same day tabs as the candidate summary: Saturday =
-// Learning Conversation block, Sunday = Teaching + Continuous Assessment.
-// Scale: 1 Needs development (red), 2 Developing (amber), 3-4 meeting or
-// exceeding (green). The dot shows the WORST rating given that day, like the
-// candidate rows above.
-// ─────────────────────────────────────────────────────────────────────────────
-let itcObsDocs = [];
-let itcObsLoaded = false;
-let itcObsError = "";
-const openItcRows = new Set();
-const ITC_DIMS = [
-  { key: "clarity",    short: "Clarity",    label: "Clarity of instruction" },
-  { key: "engagement", short: "Engagement", label: "Candidate engagement" },
-  { key: "accuracy",   short: "Accuracy",   label: "Technical accuracy" },
-  { key: "space",      short: "Space",      label: "Management of teaching space" },
-  { key: "response",   short: "Difficulty", label: "Response to difficulty or questions" }
-];
-const ITC_SCALE_WORD = { 1: "Needs development", 2: "Developing", 3: "Meeting expectations", 4: "Exceeding expectations" };
-const ITC_DAY_KEYS = { saturday: ["sat_conv"], sunday: ["sun_teaching", "sun_assess"] };
-let itcObsTimer;
-
-function watchItcObservations() {
-  db.collection(COLLECTIONS.itcObs).onSnapshot(snap => {
-    itcObsDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    itcObsLoaded = true; itcObsError = "";
-    clearTimeout(itcObsTimer);
-    itcObsTimer = setTimeout(() => {
-      try { renderItcOverview(currentFeedbackDay); } catch (e) { console.warn("ITC overview:", e.message); }
-      try { renderITCs(); } catch (e) { console.warn("ITC tracker:", e.message); }
-    }, 200);
-  }, err => {
-    itcObsLoaded = true; itcObsError = err.message || "permission denied";
-    console.warn("ITC observations:", itcObsError);
-    try { renderItcOverview(currentFeedbackDay); } catch (e) {}
-    try { renderITCs(); } catch (e) {}
-  });
-}
-
-function itcLevel(v) { v = Number(v); return v === 1 ? "red" : v === 2 ? "amber" : v >= 3 ? "green" : "none"; }
-function itcAvgLevel(a) { return a == null ? "none" : a < 1.5 ? "red" : a < 2.5 ? "amber" : "green"; }
-function itcObsMin(o) {
-  const v = Object.values(o.dims || {}).map(Number).filter(n => n > 0);
-  return v.length ? Math.min(...v) : 0;
-}
-function itcObsDay(o) {
-  const k = String(o.itcSessionKey || ""), id = String(o.sessionId || "");
-  if (k.startsWith("sat") || id.startsWith("sat")) return "saturday";
-  if (k.startsWith("sun") || id.startsWith("sun")) return "sunday";
-  return "";
-}
-function toggleItcRow(key) {
-  if (openItcRows.has(key)) openItcRows.delete(key); else openItcRows.add(key);
-  renderItcOverview(currentFeedbackDay);
-}
-
-function renderItcOverview(day) {
-  const body = document.getElementById("itcOverviewBody");
-  if (!body) return;
-  if (!itcObsLoaded) { body.innerHTML = `<div class="loading">Loading ITC observations…</div>`; return; }
-  if (itcObsError) {
-    body.innerHTML = `<div class="empty-msg">Could not read ITC observations (${esc(itcObsError)}). Only the Course Director can see them.</div>`;
-    return;
-  }
-
-  // Who the ITCs are: the rotation schedule first, then anyone with the ITC role.
-  const itcMap = {};
-  const addItc = (name, email, uid) => {
-    const em = String(email || "").trim().toLowerCase();
-    const key = em || (uid ? "uid:" + uid : "name:" + String(name || "").toLowerCase());
-    if (!itcMap[key]) itcMap[key] = { key, email: em, name: name || em || "Unnamed" };
-  };
-  (itcSchedule.itcs || []).forEach(i => addItc(i.name, i.email));
-  allPeople.filter(p => effectiveRole(p) === ROLES.ITC && p.iwOutcome !== "not-passed")
-    .forEach(p => addItc(p.name, p.email, p.id));
-  const itcs = Object.values(itcMap).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-
-  if (!itcs.length) {
-    body.innerHTML = `<div class="empty-msg">No Instructor Trainer Candidates set up yet. Add them in Room Allocation, ITC Schedule.</div>`;
-    return;
-  }
-
-  const dayKeys = ITC_DAY_KEYS[day] || [];
-  const assignments = itcSchedule.assignments || {};
-  const dayObs = itcObsDocs.filter(o => itcObsDay(o) === day);
-  const tally = { red: 0, amber: 0, green: 0, none: 0 };
-
-  const rows = itcs.map(itc => {
-    const mine = dayObs.filter(o => String(o.itcEmail || "").trim().toLowerCase() === itc.email && itc.email)
-      .sort((a, b) => (b.savedAt?.seconds || 0) - (a.savedAt?.seconds || 0));
-    const worstMin = mine.reduce((m, o) => { const v = itcObsMin(o); return v && (!m || v < m) ? v : m; }, 0);
-    const worst = itcLevel(worstMin);
-    tally[worst]++;
-
-    const sched = assignments[itc.email] || {};
-    const assigned = dayKeys.filter(k => sched[k]).length;
-    const seenKeys = new Set(mine.map(o => o.itcSessionKey || o.sessionId));
-    const rooms = [...new Set(mine.map(o => o.roomId).filter(Boolean))];
-
-    // Average per dimension across everyone who rated this ITC today.
-    const dimCells = ITC_DIMS.map(d => {
-      const v = mine.map(o => Number((o.dims || {})[d.key])).filter(n => n > 0);
-      const avg = v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-      return `<span class="tl-badge ${itcAvgLevel(avg)}" title="${esc(d.label)}${avg == null ? ": not rated" : ": average " + avg.toFixed(1) + " of 4 from " + v.length + " rating" + (v.length === 1 ? "" : "s")}">${esc(d.short)} ${avg == null ? "–" : avg.toFixed(1)}</span>`;
-    }).join("");
-
-    const chips = mine.map(o => {
-      const lv = itcLevel(itcObsMin(o));
-      return `<button type="button" class="tl-badge ${lv}" data-k="${esc(itc.key)}" title="${esc(feedbackSessionTitle(o.sessionId))}${o.roomId ? " - " + esc(o.roomId) : ""} - click for detail" onclick="toggleItcRow(this.dataset.k)">${lv === "none" ? "–" : lv.charAt(0).toUpperCase()}</button>`;
-    }).join("");
-
-    const commented = mine.filter(o => o.comment && String(o.comment).trim());
-    const open = mine.length && openItcRows.has(itc.key);
-    const comments = commented.length ? `<div class="fb-pcomments">${commented.map(o => `
-        <div class="fb-c" data-k="${esc(itc.key)}" onclick="toggleItcRow(this.dataset.k)" title="${esc(feedbackSessionTitle(o.sessionId))}${o.raterName ? " - by " + esc(o.raterName) : ""}">
-          <span class="tl-badge ${itcLevel(itcObsMin(o))}">${itcLevel(itcObsMin(o)).charAt(0).toUpperCase()}</span><span class="fb-c-txt">${esc(o.comment)}</span>
-        </div>`).join("")}</div>` : "";
-
-    const detail = open ? `
-      <div class="fb-detail">
-        ${mine.map(o => {
-          const lv = itcLevel(itcObsMin(o));
-          const dims = ITC_DIMS.map(d => {
-            const v = Number((o.dims || {})[d.key]);
-            return v > 0 ? `<span class="tl-badge ${itcLevel(v)}" title="${esc(ITC_SCALE_WORD[v] || "")}">${esc(d.short)} ${v}</span>` : "";
-          }).join(" ");
-          return `
-          <div class="fb-detail-row">
-            <span class="tl-badge ${lv}" style="cursor:default;">${lv === "red" ? "Red" : lv === "amber" ? "Amber" : lv === "green" ? "Green" : "–"}</span>
-            <div class="fb-detail-main">
-              <div class="fb-detail-title">${esc(feedbackSessionTitle(o.sessionId))}${o.roomId ? " - " + esc(o.roomId) : ""}</div>
-              <div class="fb-detail-meta">${[o.raterName ? "by " + esc(o.raterName) : "", feedbackWhen(o) ? esc(feedbackWhen(o)) : ""].filter(Boolean).join(" · ") || "&nbsp;"}</div>
-              <div style="margin:4px 0;display:flex;gap:3px;flex-wrap:wrap;">${dims}</div>
-              ${o.comment ? `<div class="${lv === 'red' ? 'comment-detail' : 'fb-comment'}">${esc(o.comment)}</div>` : ""}
-            </div>
-          </div>`;
-        }).join("")}
-      </div>` : "";
-
-    const progress = assigned
-      ? `${seenKeys.size} of ${assigned} block${assigned === 1 ? "" : "s"} observed`
-      : (mine.length ? `${mine.length} observation${mine.length === 1 ? "" : "s"}` : "");
-    return `
-      <div class="fb-person${open ? " open" : ""}">
-        <div class="fb-p1">
-          <span class="tl-dot ${worst}" title="${worst === "none" ? "No observations yet" : "Worst rating today"}"></span>
-          <span class="fb-pname" data-k="${esc(itc.key)}" onclick="toggleItcRow(this.dataset.k)">${esc(itc.name)}</span>
-          <span class="fb-prole">${[progress, rooms.length ? "room" + (rooms.length === 1 ? " " : "s ") + rooms.map(esc).join(", ") : ""].filter(Boolean).join(" · ")}</span>
-          <span class="fb-pchips">${chips || `<span class="tl-badge none" title="No observations yet today">–</span>`}</span>
-        </div>
-        ${mine.length ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin:4px 0 0 18px;">${dimCells}</div>` : ""}
-        ${comments}
-        ${detail}
-      </div>`;
-  }).join("");
-
-  const pills = [
-    tally.red   ? `<span class="room-pill red">${tally.red} red</span>` : "",
-    tally.amber ? `<span class="room-pill amber">${tally.amber} amber</span>` : "",
-    tally.green ? `<span class="room-pill green">${tally.green} green</span>` : "",
-    tally.none  ? `<span class="room-pill none">${tally.none} not yet observed</span>` : ""
-  ].join("");
-  body.innerHTML = `<div class="fb-rooms"><div class="fb-room fb-room-none">
-      <div class="fb-room-head">
-        <span class="fb-room-name">${day === "sunday" ? "Sunday" : "Saturday"}</span>
-        <span class="fb-room-count">${itcs.length} ITC${itcs.length !== 1 ? "s" : ""} · ${dayObs.length} observation${dayObs.length !== 1 ? "s" : ""}</span>
-        <span class="fb-room-pills">${pills}</span>
-      </div>
-      <div class="fb-room-body">${rows}</div>
-    </div></div>
-    <div class="text-sm text-muted mt-8">Dot and letters: 1 = red (needs development), 2 = amber (developing), 3 or 4 = green. Dimension badges show the average across all observers today. Only the Course Director can see these.</div>`;
 }
 
 function showFeedbackDay(day, btn) {
