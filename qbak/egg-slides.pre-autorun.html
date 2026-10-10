@@ -35,8 +35,6 @@
   .media-slide video.wide { width:1620px; height:auto; }
   .full-img { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
   .full-img img { height:1040px; width:auto; }
-.egg-dance { position:absolute; top:40px; right:90px; width:380px; padding:26px 26px 22px; background:#160B52; border-radius:40px; box-shadow:0 14px 40px rgba(22,11,82,.28); box-sizing:border-box; }
-  .egg-dance img { display:block; width:100%; height:auto; }
 </style>
 </head>
 <body>
@@ -61,27 +59,27 @@
 </section>
 <section data-background-color="#0d0630">
 <div class="media-slide"><div class="bg" style="background-image:url(media/egg/egg-1-boil-poster.jpg)"></div>
-<div class="frame"><video class="" controls playsinline preload="metadata" data-run="loop" data-delay="0" poster="media/egg/egg-1-boil-poster.jpg"><source src="media/egg/egg-1-boil.mp4" type="video/mp4"></video></div></div>
+<div class="frame"><video class="" controls playsinline preload="metadata" poster="media/egg/egg-1-boil-poster.jpg"><source src="media/egg/egg-1-boil.mp4" type="video/mp4"></video></div></div>
 </section>
 <section data-background-color="#0d0630">
 <div class="media-slide"><div class="bg" style="background-image:url(media/egg/egg-2-in-poster.jpg)"></div>
-<div class="frame"><video class="" controls playsinline preload="metadata" data-run="once" data-delay="2000" poster="media/egg/egg-2-in-poster.jpg"><source src="media/egg/egg-2-in.mp4" type="video/mp4"></video></div></div>
+<div class="frame"><video class="" controls playsinline preload="metadata" poster="media/egg/egg-2-in-poster.jpg"><source src="media/egg/egg-2-in.mp4" type="video/mp4"></video></div></div>
 </section>
 <section data-background-color="#0d0630">
 <div class="media-slide"><div class="bg" style="background-image:url(media/egg/egg-3-timer-poster.jpg)"></div>
-<div class="frame"><video class="wide" controls playsinline preload="metadata" data-run="once" data-delay="2000" poster="media/egg/egg-3-timer-poster.jpg"><source src="media/egg/egg-3-timer.mp4" type="video/mp4"></video></div></div>
+<div class="frame"><video class="wide" controls playsinline preload="metadata" poster="media/egg/egg-3-timer-poster.jpg"><source src="media/egg/egg-3-timer.mp4" type="video/mp4"></video></div></div>
 </section>
 <section data-background-color="#0d0630">
 <div class="media-slide"><div class="bg" style="background-image:url(media/egg/egg-4-lift-poster.jpg)"></div>
-<div class="frame"><video class="" controls playsinline preload="metadata" data-run="once" data-delay="0" poster="media/egg/egg-4-lift-poster.jpg"><source src="media/egg/egg-4-lift.mp4" type="video/mp4"></video></div></div>
+<div class="frame"><video class="" controls playsinline preload="metadata" poster="media/egg/egg-4-lift-poster.jpg"><source src="media/egg/egg-4-lift.mp4" type="video/mp4"></video></div></div>
 </section>
 <section data-background-color="#0d0630">
 <div class="media-slide"><div class="bg" style="background-image:url(media/egg/egg-5-soldiers-poster.jpg)"></div>
-<div class="frame"><video class="" controls playsinline preload="metadata" data-run="once" data-delay="0" poster="media/egg/egg-5-soldiers-poster.jpg"><source src="media/egg/egg-5-soldiers.mp4" type="video/mp4"></video></div></div>
+<div class="frame"><video class="" controls playsinline preload="metadata" poster="media/egg/egg-5-soldiers-poster.jpg"><source src="media/egg/egg-5-soldiers.mp4" type="video/mp4"></video></div></div>
 </section>
 <section data-background-color="#0d0630">
 <div class="media-slide"><div class="bg" style="background-image:url(media/egg/egg-6-eat-poster.jpg)"></div>
-<div class="frame"><video class="" controls playsinline preload="metadata" data-run="loop" data-delay="0" poster="media/egg/egg-6-eat-poster.jpg"><source src="media/egg/egg-6-eat.mp4" type="video/mp4"></video></div></div>
+<div class="frame"><video class="" controls loop data-autoplay playsinline preload="metadata" poster="media/egg/egg-6-eat-poster.jpg"><source src="media/egg/egg-6-eat.mp4" type="video/mp4"></video></div></div>
 </section>
 <section data-background-color="#ffffff">
 <div class="pane"><div class="txt"><div class="head">OTHER TIPS</div><div class="rule"></div><ul class="list"><li class="fragment" data-fragment-index="0">Other eggs</li><li class="fragment" data-fragment-index="1">Sequential egg boiling</li><li class="fragment" data-fragment-index="2">Bash in the shell</li></ul></div><div class="pic"><img src="media/egg/kinder.jpg" alt="Kinder Surprise eggs in an egg box"></div></div>
@@ -91,7 +89,6 @@
 </section>
 <section data-background-color="#ffffff">
 <div class="pane solo"><div class="txt"><div class="head">SUMMARY</div><div class="rule"></div><ul class="list"><li class="fragment" data-fragment-index="0">Eggs are good for you</li><li class="fragment" data-fragment-index="1">Raw eggs actually taste pretty good</li><li class="fragment" data-fragment-index="2">Perfect boiled eggs in 4 minutes</li><li class="fragment" data-fragment-index="3">‘Soldier fingers’ are perfect with eggs</li></ul></div></div>
-<div class="egg-dance"><img src="media/egg/egg-dance.webp" alt="Egg dancing in a party hat"></div>
 </section>
   </div>
 </div>
@@ -103,29 +100,14 @@
     width: 1920, height: 1080, margin: 0,
     minScale: 0.2, maxScale: 2.0, center: false
   });
-  // Video rules: each <video data-run="loop|once" data-delay="ms"> starts by itself when its slide
-  // appears (after the delay), from the start. "loop" repeats, "once" plays then stops.
-  // Videos on other slides are paused. If the browser blocks sound autoplay it falls back to
-  // muted autoplay (use the video controls to unmute).
-  function runVideos(slide) {
+  // Pause any playing video when you move to another slide
+  // (the video on the slide you have just arrived at is left alone, so slide 11 can auto-play and loop)
+  Reveal.on("slidechanged", function (e) {
     document.querySelectorAll("video").forEach(function (v) {
-      clearTimeout(v._t);
-      if (!(slide && slide.contains(v))) v.pause();
-    });
-    if (!slide) return;
-    slide.querySelectorAll("video[data-run]").forEach(function (v) {
+      if (e.currentSlide && e.currentSlide.contains(v)) return;
       v.pause();
-      try { v.currentTime = 0; } catch (err) {}
-      v.loop = v.getAttribute("data-run") === "loop";
-      v._t = setTimeout(function () {
-        v.muted = false;
-        var p = v.play();
-        if (p && p.catch) p.catch(function () { v.muted = true; v.play().catch(function () {}); });
-      }, parseInt(v.getAttribute("data-delay") || "0", 10));
     });
-  }
-  Reveal.on("ready", function (e) { runVideos(e.currentSlide); });
-  Reveal.on("slidechanged", function (e) { runVideos(e.currentSlide); });
+  });
 </script>
 </body>
 </html>
