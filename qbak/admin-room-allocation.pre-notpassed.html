@@ -269,14 +269,6 @@ requireDirector("timetable.html").then(async () => {
 async function loadData() {
   // ① Build mou_roster role map — used to classify Faculty respondents
   //   Candidates (role=instructor) always attend and come directly from this
-  // 2026-10-10: candidates whose gateway FAIL was confirmed by the Course Director
-  // (admin-gateway-signoff.html) are recorded on people/{uid}.iwOutcome = "not-passed"
-  // and must not be offered for, or kept in, a weekend room.
-  const notPassedEmails = new Set();
-  try {
-    const npSnap = await db.collection(COLLECTIONS.people).where("iwOutcome", "==", "not-passed").get();
-    npSnap.forEach(d => { const em = String(d.data().email || "").toLowerCase(); if (em) notPassedEmails.add(em); });
-  } catch (e) { console.warn("Not-passed list load failed:", e.message); }
   const rosterRoleByEmail = {};
   try {
     const rSnap = await db.collection(COLLECTIONS.mouRoster).get();
@@ -289,7 +281,7 @@ async function loadData() {
       // -- see admin-mou-dashboard.html ROSTER_ROLE_ORDER), NOT the platform
       // ROLES enum (ROLES.INSTRUCTOR = "instructor"). Comparing against
       // ROLES.INSTRUCTOR here always failed, silently, giving 0 Candidates.
-      if (d.role === "Instructor" && !notPassedEmails.has(em)) {
+      if (d.role === "Instructor") {
         const p = { name: d.name || doc.id, email: em };
         allCandidates.push(p);
         allPeople.push(p);
@@ -340,7 +332,7 @@ async function loadData() {
       const rid = doc.id;
       if (groups[rid]) {
         const d = doc.data();
-        groups[rid].candidates   = (d.candidates || []).filter(x => !notPassedEmails.has(String(x.email || "").toLowerCase()));
+        groups[rid].candidates   = d.candidates   || [];
         groups[rid].instructors  = d.instructors  || [];
       }
     });

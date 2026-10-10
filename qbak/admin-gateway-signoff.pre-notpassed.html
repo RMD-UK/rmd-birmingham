@@ -130,7 +130,7 @@ async function boot() {
       allPeople[doc.id] = d;
       const role = iwAssignments[doc.id] || d.role || "";
       if (role !== "instructor") return;
-      candidates.push({ id: doc.id, name: d.name || d.email || doc.id, group: String(d.group || d.room || (d.iwOutcome === "not-passed" ? d.iwGroupBeforeFail : "") || "").toUpperCase() });
+      candidates.push({ id: doc.id, name: d.name || d.email || doc.id, group: String(d.group || d.room || "").toUpperCase() });
     });
   } catch (e) {
     document.getElementById("rooms").innerHTML = '<div class="empty">Could not load candidates: ' + esc(e.message) + '</div>';
@@ -270,11 +270,8 @@ function render() {
       const s = stateOf(c);
       if (s === "missing") { state = '<span class="state">Awaiting result from the room</span>'; }
       else if (s === "signed") {
-        const np = (allPeople[c.id] || {}).iwOutcome === "not-passed";
-        state  = '<span class="state ok">✓ Signed off</span>' +
-                 (np ? '<div class="state" style="color:#b3261e;font-weight:700;">Not passed. Out of the room and Monday teaching.</div>' : '');
-        action = '<button class="btn sm ghost" data-reopen="' + c.id + '">Reopen</button>' +
-                 (g.outcome === "fail" && !np ? ' <button class="btn sm" data-np="' + c.id + '">Apply not passed</button>' : '');
+        state  = '<span class="state ok">✓ Signed off</span>';
+        action = '<button class="btn sm ghost" data-reopen="' + c.id + '">Reopen</button>';
       } else {
         state  = isStale(g) ? '<span class="state stale">Result changed after sign-off</span>'
                             : '<span class="state">' + (g.lockedAt ? 'Locked, not signed off' : 'Recorded, awaiting sign-off') + '</span>';
@@ -300,12 +297,6 @@ function onRoomClick(e) {
   if (!t) return;
   if (t.dataset.sign)   { signMany([t.dataset.sign], null); return; }
   if (t.dataset.reopen) { reopen(t.dataset.reopen); return; }
-  if (t.dataset.np) {
-    const id = t.dataset.np;
-    if (!confirm("Remove this person from their room and Monday teaching and record them as not passed?")) return;
-    applyNotPassed(id).then(render).catch(e => alert("Could not apply: " + e.message));
-    return;
-  }
   if (t.dataset.room !== undefined) {
     const ids = toSignIds(candidates.filter(c => (c.group || "") === t.dataset.room).map(c => c.id));
     signMany(ids, t.dataset.room || "this group");
@@ -314,7 +305,7 @@ function onRoomClick(e) {
 
 async function signOne(id) {
   const ref = db.collection("gateway_assessments").doc(id);
-  const outcome = await db.runTransaction(async tx => {
+  await db.runTransaction(async tx => {
     const snap = await tx.get(ref);
     const cur  = snap.exists ? snap.data() : {};
     if (!cur.outcome) throw new Error("no result recorded");
@@ -324,82 +315,7 @@ async function signOne(id) {
       cdConfirmedOutcome: cur.outcome,
       lockedAt:           firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
-    return cur.outcome;
   });
-  // A confirmed FAIL ends the person's involvement (Jon, 2026-10-10).
-  if (outcome === "fail") {
-    try { await applyNotPassed(id); }
-    catch (e) { console.warn("Not-passed step failed for " + id + ":", e.message); return { removalFailed: true }; }
-  }
-  return {};
-}
-
-// A Course Director-confirmed gateway FAIL (Jon, 2026-10-10): the person does not
-// progress to Monday teaching. From the moment of sign-off they are taken out of
-// their weekend room, left out of the Monday teaching pool, and recorded as "not
-// passed". Their record is KEPT (nothing is deleted) and flagged purgeAtYearEnd so
-// the end-of-academic-year clean-up can find and delete it.
-async function applyNotPassed(id) {
-  const FV = firebase.firestore.FieldValue;
-  const p  = allPeople[id] || {};
-  const email = String(p.email || "").toLowerCase();
-  const nameKey = String(p.name || "").trim().toLowerCase();
-  const prevGroup = String(p.group || p.room || p.iwGroupBeforeFail || "").toUpperCase();
-  const batch = db.batch();
-  batch.set(db.collection(COLLECTIONS.people).doc(id), {
-    iwOutcome: "not-passed",
-    iwOutcomeYear: CURRENT_IW_YEAR,
-    iwOutcomeAt: FV.serverTimestamp(),
-    iwOutcomeBy: currentUser.uid,
-    iwOutcomeReason: "Gateway FAIL confirmed by the Course Director",
-    iwGroupBeforeFail: prevGroup || FV.delete(),
-    group: FV.delete(),
-    room: FV.delete(),
-    notTeachingThisTerm: true,
-    notTeachingSetAt: FV.serverTimestamp(),
-    notTeachingSetBy: currentUser.email || null,
-    notTeachingSource: "gateway-fail",
-    purgeAtYearEnd: true
-  }, { merge: true });
-  const gSnap = await db.collection("groups").get();
-  gSnap.forEach(doc => {
-    const list = doc.data().candidates || [];
-    const next = list.filter(x => {
-      const em = String(x.email || "").toLowerCase();
-      if (email && em === email) return false;
-      return !(nameKey && String(x.name || "").trim().toLowerCase() === nameKey);
-    });
-    if (next.length !== list.length) batch.update(doc.ref, { candidates: next });
-  });
-  await batch.commit();
-  allPeople[id] = Object.assign({}, p, { iwOutcome: "not-passed", iwGroupBeforeFail: prevGroup, group: "", room: "", notTeachingThisTerm: true, notTeachingSource: "gateway-fail" });
-}
-
-// Reverse of the above when a sign-off is reopened (only for people this flow removed).
-async function undoNotPassed(id) {
-  const FV = firebase.firestore.FieldValue;
-  const p  = allPeople[id] || {};
-  if (p.iwOutcome !== "not-passed" || p.notTeachingSource !== "gateway-fail") return;
-  const prev = String(p.iwGroupBeforeFail || "").toUpperCase();
-  const batch = db.batch();
-  const upd = {
-    iwOutcome: FV.delete(), iwOutcomeYear: FV.delete(), iwOutcomeAt: FV.delete(), iwOutcomeBy: FV.delete(), iwOutcomeReason: FV.delete(),
-    iwGroupBeforeFail: FV.delete(), notTeachingThisTerm: FV.delete(), notTeachingSetAt: FV.delete(), notTeachingSetBy: FV.delete(),
-    notTeachingSource: FV.delete(), purgeAtYearEnd: FV.delete()
-  };
-  if (prev) upd.group = prev;
-  batch.set(db.collection(COLLECTIONS.people).doc(id), upd, { merge: true });
-  if (prev) {
-    const gref = db.collection("groups").doc(prev);
-    const gdoc = await gref.get();
-    if (gdoc.exists) {
-      const list = gdoc.data().candidates || [];
-      const email = String(p.email || "").toLowerCase();
-      if (!list.some(x => String(x.email || "").toLowerCase() === email)) batch.update(gref, { candidates: list.concat([{ name: p.name || "", email: p.email || "" }]) });
-    }
-  }
-  await batch.commit();
-  allPeople[id] = Object.assign({}, p, { group: prev, iwOutcome: null, notTeachingThisTerm: false, notTeachingSource: null });
 }
 
 async function signMany(ids, label) {
@@ -409,7 +325,6 @@ async function signMany(ids, label) {
   if (label === null) {
     // One candidate: only ask if this is a FAIL with no reason written.
     if (noReason.length && !confirm(noReason[0] + " has a FAIL with no reason written in the room.\n\nSign off anyway?")) return;
-    if ((gw[ids[0]] || {}).outcome === "fail" && !confirm("Signing off a FAIL ends this person's involvement:\n\n- removed from their weekend room\n- left out of Monday teaching\n- recorded as not passed (record kept until the end-of-year clean-up)\n\nContinue?")) return;
   } else {
     const fails = ids.filter(id => (gw[id] || {}).outcome === "fail");
     const names = id => (candidates.find(c => c.id === id) || {}).name || id;
@@ -419,29 +334,21 @@ async function signMany(ids, label) {
       (fails.length ? "FAIL: " + fails.map(names).join(", ") + "\n" : "") +
  (noReason.length ? "\nNO REASON WRITTEN for the FAIL of: " + noReason.join(", ") + "\n" : "") +
       (missing ? "\n" + missing + " candidate" + (missing !== 1 ? "s have" : " has") + " no result recorded yet and will not be included.\n" : "") +
-      (fails.length ? "\nSigning off a FAIL removes that person from their weekend room and from Monday teaching, and records them as not passed. The record is kept until the end-of-year clean-up. Reopening the sign-off puts them back.\n" : "") +
       "\nSigned-off results are locked in the rooms until you reopen them.";
     if (!confirm(msg)) return;
   }
   const results = await Promise.allSettled(ids.map(signOne));
-  const nm = i => (candidates.find(c => c.id === ids[i]) || {}).name || ids[i];
-  const bad = results.map((r, i) => r.status === "rejected" ? nm(i) : null).filter(Boolean);
-  const noRemoval = results.map((r, i) => (r.status === "fulfilled" && r.value && r.value.removalFailed) ? nm(i) : null).filter(Boolean);
+  const bad = results.map((r, i) => r.status === "rejected" ? ((candidates.find(c => c.id === ids[i]) || {}).name || ids[i]) : null).filter(Boolean);
   if (bad.length) alert("These could not be signed off: " + bad.join(", "));
-  if (noRemoval.length) alert("Signed off, but NOT yet removed from their room / Monday teaching: " + noRemoval.join(", ") + "\n\nUse the 'Apply not passed' button on their row.");
-  render();
 }
 
 async function reopen(id) {
   const c = candidates.find(x => x.id === id);
-  const wasNp = (allPeople[id] || {}).iwOutcome === "not-passed" && (allPeople[id] || {}).notTeachingSource === "gateway-fail";
-  if (!confirm("Reopen the gateway result for " + (c ? c.name : id) + "?\n\nThis removes the sign-off and unlocks the result so it can be changed in the room." + (wasNp ? "\n\nThey will also be put back in their weekend room and back in the Monday teaching pool." : ""))) return;
+  if (!confirm("Reopen the gateway result for " + (c ? c.name : id) + "?\n\nThis removes the sign-off and unlocks the result so it can be changed in the room.")) return;
   try {
     await db.collection("gateway_assessments").doc(id).set({
       cdConfirmedAt: null, cdConfirmedBy: null, cdConfirmedOutcome: null, lockedAt: null
     }, { merge: true });
-    if (wasNp) await undoNotPassed(id);
-    render();
   } catch (e) { alert("Could not reopen: " + e.message); }
 }
 </script>

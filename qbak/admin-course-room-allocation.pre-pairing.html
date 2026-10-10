@@ -85,24 +85,6 @@
     .room-body { flex:1; padding:5px; min-height:50px; }
     .room-drop-hint { text-align:center; color:#c8cede; font-size:12px; padding:16px 8px; }
 
-    /* Instructor allocation checklist (2026-10-10, Jon): the steps to follow, in
-       order, before saving instructor teams to the live site. */
-    .chk { margin:10px 14px; background:#fff; border:2px solid #dde1ec; border-radius:10px; font-size:13px; color:#1c2540; }
-    .chk > summary { cursor:pointer; padding:10px 14px; font-weight:800; font-size:14px; list-style:none; display:flex; gap:10px; align-items:center; }
-    .chk > summary::-webkit-details-marker { display:none; }
-    .chk-sum { margin-left:auto; font-weight:700; font-size:12px; }
-    .chk-sum.ok { color:#1a7a3c; } .chk-sum.todo { color:#b25d00; }
-    .chk-step { display:flex; gap:12px; padding:10px 14px; border-top:1px solid #e6e9f2; }
-    .chk-num { flex:none; width:26px; height:26px; border-radius:50%; background:#e6e9f2; font-weight:800; display:flex; align-items:center; justify-content:center; }
-    .chk-step.done .chk-num { background:#1a7a3c; color:#fff; }
-    .chk-body { flex:1; min-width:0; }
-    .chk-h { font-weight:800; margin-bottom:3px; }
-    .chk-note { color:#5b6482; font-size:12px; margin:2px 0; }
-    .chk-warn { color:#b25d00; font-weight:700; } .chk-bad { color:#b3261e; font-weight:700; } .chk-good { color:#1a7a3c; font-weight:700; }
-    .chk-btn { background:var(--rmd-navy); color:#fff; border:none; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer; font-family:var(--font); font-size:12px; margin-top:4px; }
-    .chk-btn:disabled { opacity:.4; cursor:not-allowed; }
-    .chk-tick { display:flex; gap:7px; align-items:center; margin-top:6px; font-weight:700; }
-    .chk-list { margin:4px 0 0; padding-left:18px; }
     .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
     #authMsg { font-size:15px; opacity:.7; }
 
@@ -140,7 +122,6 @@
 <div id="noCourse" class="no-course">Pick a course above to allocate its candidates into rooms and build its instructor teams.<br>Courses come from what's already been imported on the Stage 1 Candidates page — nothing to type here.</div>
 
 <div id="allocationUI" style="display:none">
-  <details class="chk" id="chkPanel" open></details>
   <div class="cra-stats">
     <div>Candidates: <b id="statCand">—</b></div>
     <div>Assigned: <b id="statAssigned">0</b></div>
@@ -206,14 +187,6 @@ let roomTeams        = {};  // {CM01: {uids:[...], prefilled:bool}, ...}
 
 let dragging = null;   // {id, source, kind}
 let selected = null;   // {kind:"candidate"|"instructor", id}
-let gwByUid = {};            // gateway_assessments by candidate (people) id
-let gwLoaded = false;
-let excludedUids = new Set(); // left out of this allocation (on screen only; nothing is written)
-let chk = { ratings: false, gateway: false, room: false }; // ticked steps
-let instrTouched = false;    // instructor teams changed on screen since the course was opened / last saved
-let allocRan = false;        // "Allocate" has been run since the last reset
-let lastAllocSummary = "";
-function escH(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 let poolView = "candidates"; // which sidebar pool is showing: "candidates" | "instructors"
 
 function setPoolView(view) {
@@ -277,22 +250,9 @@ async function loadData() {
       // field hasn't been written yet (nobody's rated them, or this is from
       // before the feature existed).
       const iwTier = data.iwRatingSummary ? data.iwRatingSummary.tier : "unrated";
-      const iwAvg = (data.iwRatingSummary && typeof data.iwRatingSummary.average === "number") ? data.iwRatingSummary.average : null;
-      return { uid: d.id, name, iwTier, iwAvg };
+      return { uid: d.id, name, iwTier };
     }).sort((a,b) => a.name.localeCompare(b.name));
   } catch(e) { console.warn("Instructor load failed:", e.message); }
-
-  try {
-    const gsnap = await db.collection("gateway_assessments").get();
-    gsnap.forEach(d => { gwByUid[d.id] = d.data(); });
-    gwLoaded = true;
-    // Anyone with a recorded or signed-off gateway FAIL starts out left out of
-    // the allocation; the checklist lets the director put them back.
-    allInstructors.forEach(i => {
-      const g = gwByUid[i.uid];
-      if (g && (g.cdConfirmedOutcome === "fail" || (!g.cdConfirmedOutcome && g.outcome === "fail"))) excludedUids.add(i.uid);
-    });
-  } catch (e) { console.warn("gateway_assessments load failed:", e.message); }
 
   try {
     const snap = await db.collection(COLLECTIONS.courseAllocations).get();
@@ -356,9 +316,6 @@ function selectCourse(course) {
   document.getElementById("allocationUI").style.display = currentCourse ? "" : "none";
   if (!currentCourse) return;
 
-  chk = { ratings: false, gateway: false, room: false };
-  instrTouched = false; allocRan = false; lastAllocSummary = "";
-
   // Working copy of this course's candidates.
   courseCandidates = allCandidates.filter(c => c.course === currentCourse).map(c => {
     const room = ROOMS.includes(c.room) ? c.room : null;
@@ -393,7 +350,6 @@ function selectCourse(course) {
     document.getElementById("courseHint").textContent = "First course of the year — instructor teams start empty. Save, then use ⭐ Set as default so every later course starts from it.";
   }
 
-  applyExclusions();
   render();
 }
 
@@ -453,7 +409,6 @@ function resetInstructors() {
   if (!confirm(`Move all instructors on "${currentCourse}" back to Unassigned?\n\nThis only changes what's on screen — nothing is saved until you click 💾 Save all, and it does not touch the last saved version.`)) return;
   ROOMS.forEach(r => { roomTeams[r] = { uids: [], prefilled: false }; });
   clearSelection();
-  instrTouched = true; allocRan = false; chk.room = false; lastAllocSummary = "";
   render();
   showStatus("Instructors reset to unallocated (not yet saved)", "ok");
 }
@@ -464,7 +419,6 @@ function render() {
   renderInstructorPool();
   renderRooms();
   updateStats();
-  renderChecklist();
 }
 
 function assignedIds() {
@@ -504,7 +458,7 @@ function renderInstructorPool() {
   ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
   const q = (document.getElementById("instrPoolSearch")?.value || "").toLowerCase();
   const unassigned = allInstructors
-    .filter(i => !assigned.has(i.uid) && !excludedUids.has(i.uid) && (!q || RMD_FUZZY.score(q, [i.name]) > 0))
+    .filter(i => !assigned.has(i.uid) && (!q || RMD_FUZZY.score(q, [i.name]) > 0))
     .sort((a, b) => surnameOf(a.name).localeCompare(surnameOf(b.name)) || a.name.localeCompare(b.name));
   document.getElementById("instrPoolCount").textContent = unassigned.length;
   document.getElementById("instrPoolList").innerHTML = unassigned.length
@@ -578,46 +532,35 @@ function addInstructorFromPool(rid, uid) {
   if (!team || team.uids.length >= 5 || team.uids.includes(uid)) return;
   team.uids.push(uid);
   team.prefilled = false;
-  instrTouched = true; chk.room = false;
   render();
 }
 function removeInstructor(rid, uid) {
   const team = roomTeams[rid];
   team.uids = team.uids.filter(x => x !== uid);
   team.prefilled = false;
-  instrTouched = true; chk.room = false;
   render();
 }
 
 // ── Randomize instructors (unassigned only, respects the 5-per-room cap,
 // never reshuffles an existing team) ────────────────────────────────────
-// Skill-paired as of 2026-10-10 (Jon): every weak instructor is paired with
-// a strong one, two weak instructors NEVER share a room, and numbers and
-// total skill are kept level across rooms. Order of play:
-//   1. Weak: at most one per room, into rooms that have none (fewest people
-//      first). If there are MORE weak instructors than rooms, the extras are
-//      left unassigned and flagged - the rule is never broken silently.
-//   2. Strong: each weak room that has no strong yet gets one (the strongest
-//      strong instructor goes with the weakest weak instructor). Strong
-//      instructors left over go one per room into rooms with no weak and no
-//      strong, and only double up if every room already has one.
-//   3. Not enough strong for every weak room: those rooms get the best
-//      available STANDARD instructor instead (highest weekend average;
-//      not-yet-rated count as neutral), strongest substitute to the weakest
-//      weak instructor. The status line says how many rooms this affected.
-//   4. Everyone else (standard / not yet rated) fills in by headcount, then
-//      lowest total skill, so no room ends up both fuller and stronger.
-// Rooms already holding people (carried over or hand-placed) are respected
-// and counted; they are never reshuffled.
-function instScore(inst) {            // tier-based skill points used to level rooms
-  return inst ? (inst.iwTier === "strong" ? 1 : inst.iwTier === "weak" ? -1 : 0) : 0;
-}
-function instRank(inst) {             // finer ranking inside a tier: weekend average, neutral 1.0 if unrated
-  return (inst && typeof inst.iwAvg === "number") ? inst.iwAvg : 1.0;
-}
+// Skill-balanced as of 2026-10-01 (Jon): "split them equally between the
+// teaching rooms, but taking account of how weak/strong they have been on
+// instructor weekend. Do not pair weak instructors together. Only pair
+// strong instructors together if there is not other option." Weak
+// instructors are placed first, each going to whichever open room doesn't
+// already have one, if such a room exists; strong instructors next, same
+// rule in reverse; standard and not-yet-rated instructors fill in last,
+// purely to even out headcount and total skill — they carry no pairing
+// constraint of their own. Processing order matters here: the constrained
+// tiers get first pick of rooms while there's still room to honour the
+// rule, rather than being squeezed into whatever's left.
 function teamSkillScore(rid) {
   const team = roomTeams[rid] || { uids: [] };
-  return team.uids.reduce((sum, uid) => sum + instScore(allInstructors.find(i => i.uid === uid)), 0);
+  return team.uids.reduce((sum, uid) => {
+    const inst = allInstructors.find(i => i.uid === uid);
+    const tier = inst ? inst.iwTier : "unrated";
+    return sum + (tier === "strong" ? 1 : tier === "weak" ? -1 : 0);
+  }, 0);
 }
 function teamHasTier(rid, tier) {
   const team = roomTeams[rid] || { uids: [] };
@@ -629,75 +572,38 @@ function teamHasTier(rid, tier) {
 function randomizeInstructors() {
   const assigned = new Set();
   ROOMS.forEach(r => (roomTeams[r]?.uids || []).forEach(uid => assigned.add(uid)));
-  const pool = allInstructors.filter(i => !assigned.has(i.uid) && !excludedUids.has(i.uid));
+  const pool = allInstructors.filter(i => !assigned.has(i.uid));
   if (!pool.length) { showStatus("Nothing unassigned to allocate", "ok"); return; }
 
-  const size = r => roomTeams[r]?.uids?.length || 0;
-  const hasRoom = r => size(r) < 5;
-  const put = (inst, r) => { roomTeams[r].uids.push(inst.uid); roomTeams[r].prefilled = false; };
-  const shuffle = a => { for (let k = a.length - 1; k > 0; k--) { const m = Math.floor(Math.random() * (k + 1)); [a[k], a[m]] = [a[m], a[k]]; } return a; };
-  const byLevel = (a, b) => size(a) - size(b) || teamSkillScore(a) - teamSkillScore(b) || Math.random() - .5;
+  const tierOrder = { weak: 0, strong: 1, standard: 2, unrated: 2 };
+  const ordered = pool.slice()
+    .sort(() => Math.random() - .5) // random within each tier
+    .sort((a, b) => tierOrder[a.iwTier || "unrated"] - tierOrder[b.iwTier || "unrated"]); // stable: tier groups stay in this order
 
-  const weak     = shuffle(pool.filter(i => i.iwTier === "weak")).sort((a, b) => instRank(a) - instRank(b));        // weakest first
-  const strong   = shuffle(pool.filter(i => i.iwTier === "strong")).sort((a, b) => instRank(b) - instRank(a));      // strongest first
-  const standard = shuffle(pool.filter(i => i.iwTier !== "weak" && i.iwTier !== "strong"));
-  const left = { weakNoRoom: [], pairedStandard: 0, pairedStrong: 0 };
+  ordered.forEach(inst => {
+    let open = ROOMS.filter(r => (roomTeams[r]?.uids?.length || 0) < 5);
+    if (!open.length) return; // every room already at 5/5 — leftover instructors stay unassigned
 
-  // 1. Weak: never two in a room.
-  const weakRooms = [];            // rooms that now need a strong partner, weakest instructor first
-  weak.forEach(inst => {
-    const open = ROOMS.filter(r => hasRoom(r) && !teamHasTier(r, "weak")).sort(byLevel);
-    if (!open.length) { left.weakNoRoom.push(inst); return; }
-    put(inst, open[0]);
-    weakRooms.push(open[0]);
-  });
-  // rooms that already held a weak instructor (carried over) also need a partner
-  ROOMS.forEach(r => { if (teamHasTier(r, "weak") && !weakRooms.includes(r)) weakRooms.push(r); });
-  const needPartner = weakRooms.filter(r => !teamHasTier(r, "strong") && hasRoom(r));
+    const tier = inst.iwTier || "unrated";
+    if (tier === "weak") {
+      const withoutWeak = open.filter(r => !teamHasTier(r, "weak"));
+      if (withoutWeak.length) open = withoutWeak; // soft constraint — only applied when it's actually possible to honour
+    } else if (tier === "strong") {
+      const withoutStrong = open.filter(r => !teamHasTier(r, "strong"));
+      if (withoutStrong.length) open = withoutStrong;
+    }
 
-  // 2. Strong: one into each weak room that lacks one.
-  needPartner.slice().forEach(r => {
-    if (!strong.length) return;
-    put(strong.shift(), r);
-    left.pairedStrong++;
-    needPartner.splice(needPartner.indexOf(r), 1);
+    // Among whichever rooms are still eligible, balance headcount first,
+    // then total skill score, so no room ends up both fuller and
+    // stronger/weaker than the rest.
+    open.sort((a, b) =>
+      roomTeams[a].uids.length - roomTeams[b].uids.length ||
+      teamSkillScore(a) - teamSkillScore(b));
+    const target = open[0];
+    roomTeams[target].uids.push(inst.uid);
+    roomTeams[target].prefilled = false;
   });
-  // 3. Not enough strong: best available standard instructor instead.
-  if (needPartner.length && standard.length) {
-    standard.sort((a, b) => instRank(b) - instRank(a));                    // best first
-    needPartner.slice().forEach(r => {
-      if (!standard.length) return;
-      put(standard.shift(), r);
-      left.pairedStandard++;
-    });
-    shuffle(standard);                                                      // back to random for the fill-in
-  }
-  // 2b. Strong instructors left over: one per room, rooms with no weak and no strong first.
-  strong.forEach(inst => {
-    let open = ROOMS.filter(hasRoom);
-    if (!open.length) return;
-    const clean = open.filter(r => !teamHasTier(r, "weak") && !teamHasTier(r, "strong"));
-    const noStrong = open.filter(r => !teamHasTier(r, "strong"));
-    open = clean.length ? clean : noStrong.length ? noStrong : open;        // doubling up only as a last resort
-    open.sort(byLevel);
-    put(inst, open[0]);
-  });
-  // 4. Everyone else levels the rooms.
-  standard.forEach(inst => {
-    const open = ROOMS.filter(hasRoom).sort(byLevel);
-    if (!open.length) return;
-    put(inst, open[0]);
-  });
-
-  instrTouched = true; allocRan = true; chk.room = false;
   render();
-  const bits = [];
-  if (left.pairedStrong)   bits.push(left.pairedStrong + " weak instructor" + (left.pairedStrong > 1 ? "s" : "") + " paired with a strong one");
-  if (left.pairedStandard) bits.push(left.pairedStandard + " room" + (left.pairedStandard > 1 ? "s" : "") + " with a weak instructor had no strong one left, so got the best standard instructor");
-  if (left.weakNoRoom.length) bits.push(left.weakNoRoom.length + " weak instructor" + (left.weakNoRoom.length > 1 ? "s" : "") + " NOT placed (more weak instructors than rooms - never two together): " + left.weakNoRoom.map(i => i.name).join(", "));
-  lastAllocSummary = bits.length ? bits.join(". ") + "." : "Instructors allocated.";
-  showStatus(lastAllocSummary, left.weakNoRoom.length ? "err" : "ok", true);
-  renderChecklist();
 }
 
 // ── Drag & drop ──────────────────────────────────────────────────────────
@@ -978,9 +884,6 @@ function quickAddCandidate() {
 // ── Save ─────────────────────────────────────────────────────────────────
 async function saveAll() {
   if (!currentCourse) return;
-  const todo = checklistOutstanding();
-  if (instrTouched && todo.length &&
-      !confirm("Instructor teams have changed, but the allocation checklist is not finished:\n\n- " + todo.join("\n- ") + "\n\nSave to the live site anyway?")) return;
   showStatus("Saving…", "");
   try {
     const uid = auth.currentUser?.uid;
@@ -1055,110 +958,17 @@ async function saveAll() {
       defaultAllocDoc = { id: "_default", instructorTeams, updatedAt: { toMillis: () => Date.now() }, isDefault: true };
     }
 
-    instrTouched = false;
     showStatus(settingDefaultNow ? "✓ All saved (also set as the default)" : "✓ All saved", "ok");
-    renderChecklist();
   } catch(e) {
     console.error(e);
     showStatus("Save failed — check Firestore rules", "err");
   }
 }
 
-function showStatus(msg, cls, keep) {
+function showStatus(msg, cls) {
   const el = document.getElementById("saveStatus");
   el.textContent = msg; el.className = cls;
-  if (cls === "ok" && !keep) setTimeout(() => { el.textContent = ""; el.className = ""; }, 3000);
-}
-
-// ── Instructor allocation checklist ─────────────────────────────────────
-function applyExclusions() {                       // take left-out people out of any team they sit in
-  ROOMS.forEach(r => { if (roomTeams[r]) roomTeams[r].uids = roomTeams[r].uids.filter(u => !excludedUids.has(u)); });
-}
-function toggleExclude(uid, leaveOut) {
-  if (leaveOut) excludedUids.add(uid); else excludedUids.delete(uid);
-  if (leaveOut) { applyExclusions(); instrTouched = true; chk.room = false; }
-  chk.gateway = false;
-  render();
-}
-function setChk(k, v) { chk[k] = !!v; renderChecklist(); }
-function roomIssues() {
-  const issues = [];
-  const sizes = [];
-  ROOMS.forEach(r => {
-    const team = (roomTeams[r]?.uids || []).map(u => allInstructors.find(i => i.uid === u)).filter(Boolean);
-    sizes.push(team.length);
-    const w = team.filter(i => i.iwTier === "weak").length, st = team.filter(i => i.iwTier === "strong").length;
-    if (w > 1) issues.push({ bad: true, text: r + ": " + w + " weak instructors together" });
-    else if (w === 1 && st === 0 && team.length) issues.push({ bad: false, text: r + ": weak instructor with no strong partner" });
-    if (team.length > 5) issues.push({ bad: true, text: r + ": " + team.length + " instructors (max 5)" });
-  });
-  const placed = sizes.reduce((a, b) => a + b, 0);
-  if (placed && Math.max(...sizes) - Math.min(...sizes) > 1) issues.push({ bad: false, text: "Uneven numbers: rooms range from " + Math.min(...sizes) + " to " + Math.max(...sizes) + " instructors" });
-  return { issues, placed };
-}
-function checklistOutstanding() {
-  const t = [];
-  if (!chk.ratings) t.push("Step 1: confirm the weekend ratings are complete");
-  if (!chk.gateway) t.push("Step 2: confirm the gateway results have been checked");
-  if (!allocRan) t.push("Step 4: run the allocation (after resetting)");
-  const ri = roomIssues();
-  if (ri.issues.some(x => x.bad)) t.push("Step 5: fix the rooms marked in red");
-  if (!chk.room) t.push("Step 5: look at every room and tick the box");
-  return t;
-}
-function renderChecklist() {
-  const el = document.getElementById("chkPanel");
-  if (!el || !currentCourse) return;
-  const live = allInstructors.filter(i => !excludedUids.has(i.uid));
-  const n = t => live.filter(i => i.iwTier === t).length;
-  const unrated = live.filter(i => i.iwTier !== "weak" && i.iwTier !== "strong" && i.iwTier !== "standard").length;
-  const placedUids = new Set(); let carried = 0;
-  ROOMS.forEach(r => { (roomTeams[r]?.uids || []).forEach(u => placedUids.add(u)); if (roomTeams[r]?.prefilled) carried += roomTeams[r].uids.length; });
-  const ri = roomIssues();
-  const leftover = live.filter(i => !placedUids.has(i.uid));
-  const fails = allInstructors.filter(i => { const g = gwByUid[i.uid]; return g && (g.cdConfirmedOutcome === "fail" || (!g.cdConfirmedOutcome && g.outcome === "fail")); });
-  const awaiting = allInstructors.filter(i => { const g = gwByUid[i.uid]; return g && g.outcome && !g.cdConfirmedAt && g.outcome !== "fail"; });
-  const todo = checklistOutstanding();
-  const d1 = chk.ratings, d2 = chk.gateway, d3 = placedUids.size === 0 || allocRan, d4 = allocRan, d5 = chk.room && !ri.issues.some(x => x.bad), d6 = !instrTouched;
-  const step = (num, done, title, body) => `<div class="chk-step${done ? " done" : ""}"><div class="chk-num">${done ? "✓" : num}</div><div class="chk-body"><div class="chk-h">${title}</div>${body}</div></div>`;
-  const tick = (k, label, dis) => `<label class="chk-tick"><input type="checkbox" ${chk[k] ? "checked" : ""} ${dis ? "disabled" : ""} onchange="setChk('${k}',this.checked)"> ${label}</label>`;
-
-  let h = `<summary>Instructor allocation checklist <span class="chk-sum ${todo.length ? "todo" : "ok"}">${todo.length ? todo.length + " to do before saving" : "Ready to save"}</span></summary>`;
-
-  h += step(1, d1, "Weekend ratings are complete",
-    `<div class="chk-note">${n("weak")} weak, ${n("strong")} strong, ${n("standard")} standard, ${unrated} not rated (experienced instructors who were not rated at the weekend count as middle).</div>
-     <div class="chk-note">Open <a href="admin-iw-monday-ready.html" target="_blank" rel="noopener">Monday ready check</a> and confirm nobody who should have been rated is missing. Do this after the last ratings are in.</div>${tick("ratings", "Ratings are complete")}`);
-
-  let gwBody = "";
-  if (!gwLoaded) gwBody += `<div class="chk-bad">Could not read the gateway results, so nobody was left out automatically. Check the Gateway sign-off page.</div>`;
-  if (fails.length) gwBody += `<div class="chk-note">Gateway FAIL recorded but not yet signed off by the Course Director (left out unless you untick; confirmed fails are already out of the pool):</div>` + fails.map(i => `<label class="chk-tick" style="font-weight:600"><input type="checkbox" ${excludedUids.has(i.uid) ? "checked" : ""} onchange="toggleExclude('${i.uid}',this.checked)"> Leave out ${escH(i.name)}</label>`).join("");
-  else if (gwLoaded) gwBody += `<div class="chk-good">No gateway FAILs in the teaching pool.</div>`;
-  if (awaiting.length) gwBody += `<div class="chk-warn" style="margin-top:6px">Result recorded but not yet signed off by the Course Director: ${awaiting.map(i => escH(i.name)).join(", ")}</div>`;
-  h += step(2, d2, "Gateway results", gwBody + tick("gateway", "Gateway results checked"));
-
-  h += step(3, d3, "Reset instructors to unallocated",
-    `<div class="chk-note">${placedUids.size} instructor${placedUids.size !== 1 ? "s" : ""} currently placed${carried ? ", " + carried + " carried over from the saved default or an earlier allocation" : ""}. Reset first, or the balancing cannot move them.</div>
-     <button class="chk-btn" onclick="resetInstructors()" ${placedUids.size ? "" : "disabled"}>↺ Reset instructors now</button>`);
-
-  h += step(4, d4, "Allocate",
-    `<div class="chk-note">Pairs every weak instructor with a strong one, never two weak together. If strong run out, the best standard instructor is used.</div>
-     <button class="chk-btn" onclick="randomizeInstructors()">🎲 Allocate now</button>
-     ${lastAllocSummary ? `<div class="chk-note" style="margin-top:4px">${escH(lastAllocSummary)}</div>` : ""}`);
-
-  const roomLines = ri.issues.map(x => `<li class="${x.bad ? "chk-bad" : "chk-warn"}">${escH(x.text)}</li>`).join("");
-  h += step(5, d5, "Check every room",
-    `${ri.placed ? (ri.issues.length ? `<ul class="chk-list">${roomLines}</ul>` : `<div class="chk-good">No pairing or numbers problems found.</div>`) : `<div class="chk-note">Nothing placed yet.</div>`}
-     ${leftover.length ? `<div class="chk-warn">${leftover.length} instructor${leftover.length !== 1 ? "s" : ""} not placed: ${leftover.slice(0, 12).map(i => escH(i.name)).join(", ")}${leftover.length > 12 ? "…" : ""}</div>` : ""}
-     <div class="chk-note">Scan each room below: who is with whom, and whether the mix looks right to you.</div>${tick("room", "I have looked at every room", !ri.placed)}`);
-
-  h += step(6, d6 && !todo.length, "Save to the live site",
-    `<div class="chk-note">Saving writes the teams to the live site and gives each room's instructors access to their candidates' ratings.</div>
-     ${todo.length ? `<ul class="chk-list">${todo.map(t => `<li class="chk-warn">${escH(t)}</li>`).join("")}</ul>` : `<div class="chk-good">All steps done.</div>`}
-     <button class="chk-btn" onclick="saveAll()">💾 Save all</button>`);
-
-  const wasOpen = el.open;
-  el.innerHTML = h;
-  el.open = wasOpen;
+  if (cls === "ok") setTimeout(() => { el.textContent = ""; el.className = ""; }, 3000);
 }
 
 function escAttr(s) { return String(s).replace(/"/g, "&quot;"); }
