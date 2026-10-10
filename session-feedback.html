@@ -274,6 +274,7 @@
     <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--rmd-muted);margin-bottom:2px;">Current session</div>
     <div id="sessionHeaderTitle" style="font-size:15px;font-weight:700;color:var(--rmd-navy);"></div>
   </div>
+  <span id="roomToggleWrap" style="display:none;"><button type="button" onclick="toggleRooms()" style="font:inherit;font-size:12px;font-weight:700;color:var(--rmd-blue);background:#fff;border:1.5px solid var(--rmd-blue);border-radius:6px;padding:5px 9px;cursor:pointer;white-space:nowrap;">Show all rooms</button></span>
   <a href="timetable.html" style="font-size:12px;color:var(--rmd-blue);text-decoration:none;white-space:nowrap;">← Timetable</a>
 </div>
 
@@ -321,7 +322,9 @@ const preSession = params.get("session") || "";
 let currentUser     = null;
 let currentUserDoc  = null;    // people doc for the signed-in faculty member
 let seeAllGroups    = false;   // Director/Super-user/Student Faculty/Senior Faculty — set in the auth handler
-let myCandidates    = [];      // candidates in this instructor's group (or every group, if seeAllGroups)
+let myCandidates    = [];      // candidates in this instructor's room (or every room, when showAllRooms)
+let myRoomId        = null;    // the room this person is allocated to: groups collection first (what Room Allocation saves), then people.group
+let showAllRooms    = false;   // view toggle: every room, or only myRoomId
 let currentSession  = preSession;
 let ratings         = {};      // { candidateId: { rating, comment, strong, weak, savedAt } }
 let saveDebounce    = {};
@@ -401,17 +404,24 @@ window.addEventListener("load", () => {
       window.location.href = "timetable.html";
       return;
     }
-    if (seeAllGroups) {
-      const sub = document.getElementById("topBarSub");
-      if (sub) sub.textContent = "Traffic light rating — all groups";
-    }
-
     // Load the faculty member's people doc to find their group (used only
     // when seeAllGroups is false — an ordinary group-lead instructor).
     try {
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
       if (snap.exists) currentUserDoc = { id: snap.id, ...snap.data() };
     } catch (e) { console.warn("Could not load user doc:", e.message); }
+
+    // Work out which room this person is actually teaching. 2026-10-10: RMD
+    // Student/Senior Faculty used to be sent to EVERY room (83 candidates)
+    // because seeAllGroups skipped the room filter outright, even though they
+    // teach a room like any other faculty. Now everyone with an allocated
+    // room starts on their own room only. The Director still starts on all
+    // rooms, and Student/Senior Faculty (and the Director) can switch with
+    // the "Show all rooms" button. Someone with no room anywhere still sees
+    // everyone, with a note saying so, rather than a blank screen.
+    myRoomId = (await findMyRoom(email)) || currentUserDoc?.group || currentUserDoc?.room || null;
+    showAllRooms = (role === "director") ? true : (seeAllGroups ? !myRoomId : false);
+    updateRoomHeader();
 
     await loadCandidates();
     startGatewayListener();
@@ -448,14 +458,53 @@ function onSessionChange() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Load candidates in this instructor's group
 // ─────────────────────────────────────────────────────────────────────────────
+// Which room is this person teaching? Same source the timetable's room banner
+// uses: the groups collection (written by Room Allocation), matched by email.
+async function findMyRoom(email) {
+  const em = String(email || "").toLowerCase();
+  if (!em) return null;
+  try {
+    const snap = await db.collection(COLLECTIONS.groups).get();
+    let rid = null;
+    snap.forEach(doc => {
+      if (rid) return;
+      const d = doc.data() || {};
+      const all = [...(d.instructors || []), ...(d.candidates || [])];
+      if (all.some(p => String(p.email || "").toLowerCase() === em)) rid = doc.id;
+    });
+    return rid;
+  } catch (e) { console.warn("Could not look up room:", e.message); return null; }
+}
+
+function updateRoomHeader() {
+  const sub = document.getElementById("topBarSub");
+  const wrap = document.getElementById("roomToggleWrap");
+  if (sub) {
+    if (showAllRooms) sub.textContent = "Traffic light rating - all rooms";
+    else if (myRoomId) sub.textContent = "Traffic light rating - Room " + myRoomId;
+    else sub.textContent = "Traffic light rating - all rooms (no room allocated to you yet)";
+  }
+  if (wrap) {
+    const canSwitch = (seeAllGroups || showAllRooms) && !!myRoomId;
+    wrap.style.display = canSwitch ? "" : "none";
+    const b = wrap.querySelector("button");
+    if (b) b.textContent = showAllRooms ? "Show only Room " + myRoomId : "Show all rooms";
+  }
+}
+
+async function toggleRooms() {
+  showAllRooms = !showAllRooms;
+  updateRoomHeader();
+  await loadCandidates();
+  renderCandidates();
+}
+
 async function loadCandidates() {
   try {
-    // seeAllGroups (Director/Super-user/Student Faculty/Senior Faculty) —
-    // deliberately skip the group filter below regardless of any group
-    // value that happens to be sitting on this person's own people doc
-    // (e.g. left over from before they were promoted to Faculty), rather
-    // than relying on it being accidentally absent.
-    const myGroup = seeAllGroups ? null : (currentUserDoc?.group || currentUserDoc?.room || null);
+    // showAllRooms skips the room filter (Director by default; Student/Senior
+    // Faculty and the Director when they press "Show all rooms"). Everyone
+    // else is limited to the room they are allocated to (myRoomId).
+    const myGroup = showAllRooms ? null : myRoomId;
 
     let query = db.collection(COLLECTIONS.people)
       .where("role", "in", [ROLES.INSTRUCTOR, ROLES.ASSESSOR]);

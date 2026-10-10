@@ -301,7 +301,8 @@
 // ── URL params ──────────────────────────────────────────────────────────────
 const params     = new URLSearchParams(window.location.search);
 const myRole     = (params.get("role") || "faculty").toLowerCase();
-const myRoom     = (params.get("room") || "").toUpperCase();
+let myRoom         = (params.get("room") || "").toUpperCase();  // ?room= link, else the signed-in faculty member's allocated room (looked up in boot)
+var userEmail      = "";
 // isDirector used to be trusted straight from the URL's ?role= param, and
 // ANY signed-in user booted regardless of what it said — the actual data
 // writes were always protected server-side by firestore.rules' canAssess()
@@ -364,6 +365,7 @@ if (!firebaseReady) {
     authResolved = true;
     clearTimeout(authTimeout);
     if (user) {
+      userEmail = user.email || "";
       resolveRole(user.uid, user.email || "").then(role => {
         if (role === ROLES.DIRECTOR) { isDirector = true; boot(); return; }
         if (role === ROLES.FACULTY)  { isDirector = false; boot(); return; }
@@ -381,9 +383,32 @@ if (!firebaseReady) {
   });
 }
 
+// 2026-10-10: faculty who opened this page without a ?room= link saw every room.
+// If they are allocated a room (groups collection, same source as the timetable
+// room banner), start them on that room only. Directors keep every room.
+async function findMyRoomByEmail(email) {
+  const em = String(email || "").toLowerCase();
+  if (!em || typeof db === "undefined" || !db) return null;
+  try {
+    const snap = await db.collection(COLLECTIONS.groups).get();
+    let rid = null;
+    snap.forEach(doc => {
+      if (rid) return;
+      const d = doc.data() || {};
+      const all = [...(d.instructors || []), ...(d.candidates || [])];
+      if (all.some(p => String(p.email || "").toLowerCase() === em)) rid = doc.id;
+    });
+    return rid;
+  } catch (e) { return null; }
+}
+
 async function boot() {
   updateClock();
   setInterval(updateClock, 10000);
+  if (!isDirector && !myRoom && userEmail) {
+    const rid = await findMyRoomByEmail(userEmail);
+    if (rid) { myRoom = rid.toUpperCase(); currentRoom = myRoom; }
+  }
   await loadCandidates();
   buildRoomStrips();
   startListener();
