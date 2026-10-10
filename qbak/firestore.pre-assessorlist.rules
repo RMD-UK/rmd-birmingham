@@ -175,12 +175,8 @@ service cloud.firestore {
       // Faculty above) — only name/email were requested — but Firestore
       // can't grant get/list on a subset of fields, so this line opens the
       // whole document, same all-or-nothing limit as before.
-      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
-        (isAssessorFaculty() && resource.data.role == 'assessor'));
-      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
-        // 2026-10-10: Assessor Faculty may list ONLY Assessor / Senior Instructor
-        // candidates (assessor-feedback.html's query), not the whole roster.
-        (isAssessorFaculty() && resource.data.role == 'assessor');
+      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor();
       allow write: if isDirector();
 
       // Self-service "My Account" (added 2026-09-06): a signed-in member may
@@ -453,10 +449,7 @@ service cloud.firestore {
     // director-only, same as the admin-bulk-users.html page that writes it.
     match /iw_assignments/{docId} {
       allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
-      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
-        // 2026-10-10: Assessor Faculty may list ONLY Assessor / Senior Instructor
-        // candidates (assessor-feedback.html's query), not the whole roster.
-        (isAssessorFaculty() && resource.data.role == 'assessor');
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor();
       allow write: if isDirector();
     }
 
