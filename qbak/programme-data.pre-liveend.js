@@ -930,61 +930,11 @@ function timeToMinutes(t) {
  * Get end time string from start + duration
  */
 function sessionEndTime(session) {
-  const end = sessionEndMins(session);
+  const start = timeToMinutes(session.start);
+  const end = start + session.duration;
   const h = Math.floor(end / 60).toString().padStart(2, "0");
   const m = (end % 60).toString().padStart(2, "0");
   return `${h}:${m}`;
-}
-
-/**
- * Planned start of every session as written in this file (before the live
- * Firestore overlay and the shift tool change any start times). Used by
- * sessionEndMins() to know which sessions were meant to run back to back.
- */
-const ORIGINAL_START = {};
-(function () {
-  Object.keys(PROGRAMME).forEach(function (d) {
-    (PROGRAMME[d].sessions || []).forEach(function (s) { ORIGINAL_START[s.id] = s.start; });
-  });
-})();
-
-/**
- * Live end of a session, in minutes since midnight.
- *
- * Normally start + duration. But the shift tool only moves START times, so a
- * session that was planned to run straight into the next one (its planned end
- * equals that session's planned start) would otherwise keep its old end when
- * the next session is pushed back. The running session would then finish on
- * the old clock and leave a gap. For those back-to-back pairs the end follows
- * the next session's current start, so pushing the next session back by 10
- * minutes gives the running session 10 more minutes (and pulling it forward
- * shortens it). Sessions with a planned gap after them (breaks, transfers)
- * keep start + duration.
- */
-function sessionEndMins(session) {
-  const start = timeToMinutes(session.start);
-  const plain = start + session.duration;
-  const origStart = ORIGINAL_START[session.id];
-  if (origStart == null) return plain;
-  const origEnd = timeToMinutes(origStart) + session.duration;
-  const isAssessor = (session.tags || []).includes("assessor-stream");
-  const myRoles = session.roles || [];
-  let day = null;
-  Object.keys(PROGRAMME).forEach(function (d) {
-    if ((PROGRAMME[d].sessions || []).some(function (x) { return x.id === session.id; })) day = d;
-  });
-  if (!day) return plain;
-  let best = null;
-  PROGRAMME[day].sessions.forEach(function (n) {
-    if (n.id === session.id) return;
-    if (((n.tags || []).includes("assessor-stream")) !== isAssessor) return;
-    if (ORIGINAL_START[n.id] == null || timeToMinutes(ORIGINAL_START[n.id]) !== origEnd) return;
-    if (!(n.roles || []).some(function (r) { return myRoles.includes(r); })) return;
-    const ns = timeToMinutes(n.start);
-    if (ns <= start) return;
-    if (best === null || ns < best) best = ns;
-  });
-  return best === null ? plain : best;
 }
 
 /**
@@ -994,7 +944,7 @@ function isSessionCurrent(session) {
   const now = new Date();
   const nowMins = now.getHours() * 60 + now.getMinutes();
   const start = timeToMinutes(session.start);
-  const end = sessionEndMins(session);
+  const end = start + session.duration;
   return nowMins >= start && nowMins < end;
 }
 
@@ -1004,7 +954,7 @@ function isSessionCurrent(session) {
 function isSessionPast(session) {
   const now = new Date();
   const nowMins = now.getHours() * 60 + now.getMinutes();
-  const end = sessionEndMins(session);
+  const end = timeToMinutes(session.start) + session.duration;
   return nowMins >= end;
 }
 
