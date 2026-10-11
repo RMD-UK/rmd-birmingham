@@ -421,7 +421,10 @@ function selectCourse(course) {
   const own = allAllocDocs.find(d => d.id === slugify(currentCourse) || d.course === currentCourse);
   roomTeams = {};
   ROOMS.forEach(r => { roomTeams[r] = { uids: [], prefilled: false }; });
-  if (own && own.instructorTeams) {
+  // An own doc with no instructors at all (saving candidate rooms writes one)
+  // does not count as an allocation: fall through to the default pre-fill.
+  const ownHasInstructors = !!(own && own.instructorTeams && Object.values(own.instructorTeams).some(a => (a || []).length));
+  if (ownHasInstructors) {
     ROOMS.forEach(r => { roomTeams[r].uids = (own.instructorTeams[r] || []).slice(); });
     document.getElementById("courseHint").textContent = "Editing this course's saved allocation.";
   } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {

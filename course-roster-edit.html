@@ -295,7 +295,10 @@ function teamsFor(course) {
   const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
   const teams = {};
   ROOMS.forEach(r => { teams[r] = []; });
-  const src = own && own.instructorTeams ? own.instructorTeams
+  // A course whose saved team is completely empty (saving candidate rooms writes
+  // one) falls back to the shared default team, same as a course with no doc.
+  const hasMembers = t => !!t && Object.values(t).some(a => (a || []).length);
+  const src = own && hasMembers(own.instructorTeams) ? own.instructorTeams
     : (defaultAllocDoc && defaultAllocDoc.instructorTeams ? defaultAllocDoc.instructorTeams : null);
   if (src) ROOMS.forEach(r => { teams[r] = (src[r] || []).slice(); });
   return teams;

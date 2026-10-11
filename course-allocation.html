@@ -103,6 +103,9 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .tools .seg button{color:var(--pur)}
 .tools .seg button.on{background:var(--pur);color:#fff}
 .tools .search{margin:0;flex:1;min-width:200px}
+.bigsearch{font-size:18px;padding:14px 16px;border:2px solid var(--pur);border-radius:12px;margin-bottom:10px}
+.bigsearch:focus{outline:3px solid var(--purtint)}
+.tools .btn{padding:8px 14px;font-size:14px}
 .sched{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
 .rowhead,.row{display:grid;grid-template-columns:64px minmax(0,1.3fr) minmax(0,1fr) 190px;gap:10px;align-items:center;padding:10px 14px}
 .rowhead{background:#F8F9FC;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
@@ -203,15 +206,18 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
     </aside>
 
     <section class="pane" id="pane">
+      <input class="search bigsearch" id="listSearch" type="search" placeholder="Search anyone on any course by name or email..." autocomplete="off">
+      <div class="hint" id="searchHint" style="margin:-2px 0 12px"></div>
       <div class="plain" id="plain"></div>
       <div class="sumstrip" id="sum"></div>
       <div id="msgs"></div>
       <div class="rooms" id="rooms"></div>
       <div class="tools">
         <div class="seg" id="filterTabs"></div>
-        <input class="search" id="listSearch" type="search" placeholder="Search everyone by name or email..." autocomplete="off">
+        <button class="btn" id="toggleList" type="button"></button>
       </div>
-      <div class="sched">
+      <div class="hint hidden" id="legend" style="margin:0 0 8px"><b>Status tags:</b> <b>Waiting</b> = no course yet · <b>Dates not checked</b> = placement dates not checked yet · <b>Not emailed</b> = placed or moved, and their email has not been sent (Step 3) · <b>Placement clash</b> = one of the course Mondays falls inside their placement dates · <b>Changed now</b> = changed during this visit. Blank = nothing to do.</div>
+      <div class="sched hidden" id="schedWrap">
         <div class="rowhead"><div>Room</div><div>Name</div><div>Programme</div><div>Status</div></div>
         <div id="rows"></div>
       </div>
@@ -509,12 +515,30 @@ function pendingConfirmationsByCourse(candidates, sessions) {
 }
 
 // ═══ Page logic (everything above this line is copied from the older allocation page) ═══
-let view = null, filter = "course", sel = null, log = [], touched = new Set(), sheetTimer = null, placing = false, attnList = [];
+let expanded = false, view = null, filter = "course", sel = null, log = [], touched = new Set(), sheetTimer = null, placing = false, attnList = [];
 const $ = id => document.getElementById(id);
 const ROW_CAP = 400;
 // On this screen a room is full at 12 people, and a course is over capacity above 12 x the number of rooms (Jon, 2026-10-11).
 const ROOM_LIMIT = 12;
 
+// ─── Instructor team copies ───
+// OPIS and the Firestore rules read a flat copy of each candidate's room team
+// (instructorTeamUids / instructorTeamNames) saved on the candidate. Whenever
+// this page places or moves someone it refreshes that copy from the same team
+// the roster pages show: the course's own saved team if it has instructors in
+// it, otherwise the shared default (course_allocations/_default).
+let allocDocs = [], defaultDoc = null, instrNames = new Map();
+function slugify(x) { return (x || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "course"; }
+function teamsHaveMembers(t) { return !!t && Object.values(t).some(a => (a || []).length); }
+function teamsForCourse(course) {
+  const own = allocDocs.find(d => d.id === slugify(course) || d.course === course);
+  if (own && teamsHaveMembers(own.instructorTeams)) return own.instructorTeams;
+  return defaultDoc && defaultDoc.instructorTeams ? defaultDoc.instructorTeams : {};
+}
+function teamFields(course, room) {
+  const uids = (course && room) ? ((teamsForCourse(course)[room] || []).slice()) : [];
+  return { instructorTeamUids: uids, instructorTeamNames: uids.map(u => instrNames.get(u) || u) };
+}
 function londonToday() { return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); }
 function addDays(iso, n) { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 function fmt(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }); }
@@ -643,11 +667,11 @@ async function placeAllNow() {
     for (let start = 0; start < toWrite.length; start += CHUNK) {
       const batch = db.batch();
       toWrite.slice(start, start + CHUNK).forEach(({ c, course, overridden }) => {
-        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: overridden ? course : null, allocatedAt: stampNow });
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: overridden ? course : null, allocatedAt: stampNow, ...teamFields(course, roomFor.get(c.id) || null) });
       });
       await batch.commit();
     }
-    toWrite.forEach(({ c, course, overridden }) => { c.course = course; c.room = roomFor.get(c.id) || null; c.preferredCourse = null; c.avoidCourse = null; c.overridePreferred = null; c.eligibilityOverrideCourse = overridden ? course : null; c.allocatedAt = stampNow; touched.add(c.id); });
+    toWrite.forEach(({ c, course, overridden }) => { c.course = course; c.room = roomFor.get(c.id) || null; c.preferredCourse = null; c.avoidCourse = null; c.overridePreferred = null; c.eligibilityOverrideCourse = overridden ? course : null; c.allocatedAt = stampNow; Object.assign(c, teamFields(course, c.room)); touched.add(c.id); });
     addLog(`Placed ${toWrite.length} waiting ${toWrite.length === 1 ? "person" : "people"} on courses and rooms in one go.`);
     let extra = "";
     if (toWrite.length >= EMAIL_CARD_MAX) extra = ` Because ${toWrite.length} were placed at once, email them from Bulk Comms using the Allocation template on each course.`;
@@ -801,14 +825,14 @@ async function applyNow() {
   let upd, logText, goView = null;
   if (sel.mode === "course") {
     const r = reasonsFor(c, sel.target), room = pickRoom(sel.target, c);
-    upd = { course: sel.target, room, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: r.length ? sel.target : null, allocatedAt: now(), placementChecked: true, overCapacity: null };
+    upd = { course: sel.target, room, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: r.length ? sel.target : null, allocatedAt: now(), placementChecked: true, overCapacity: null, ...teamFields(sel.target, room) };
     logText = `${c.name}: ${c.course || "waiting"} → ${sel.target}, room ${room}${r.length ? " (voluntary override: " + r.join("; ") + ")" : ""}.`;
     goView = sel.target;
   } else if (sel.mode === "room") {
-    upd = { room: sel.target };
+    upd = { room: sel.target, ...teamFields(c.course, sel.target) };
     logText = `${c.name}: room ${c.room || "none"} → ${sel.target} on ${c.course}.`;
   } else {
-    upd = { course: null, room: null, preferredCourse: null, avoidCourse: c.course, overridePreferred: null, eligibilityOverrideCourse: null, allocatedAt: null, overCapacity: null };
+    upd = { course: null, room: null, preferredCourse: null, avoidCourse: c.course, overridePreferred: null, eligibilityOverrideCourse: null, allocatedAt: null, overCapacity: null, instructorTeamUids: [], instructorTeamNames: [] };
     logText = `${c.name} taken off ${c.course}; now waiting.`;
   }
   $("apply").disabled = true;
@@ -833,7 +857,7 @@ async function applyNow() {
 function isOver(name) { return isOverCapacity(name); }
 function renderTabs() {
   $("courseTabs").innerHTML = sortedSessions().map(s => `<button type="button" class="${s.name === view ? "on" : ""}" data-c="${esc(s.name)}">${esc(s.name)}${isOn(s) ? '<span class="nowdot">NOW</span>' : ""}${isOver(s.name) ? '<span class="nowdot over">OVER</span>' : ""}</button>`).join("");
-  $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => { view = b.dataset.c; filter = "course"; $("listSearch").value = ""; renderAll(); });
+  $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => { view = b.dataset.c; filter = "course"; expanded = false; $("listSearch").value = ""; renderAll(); });
 }
 function renderPane(keepMsgs) {
   const pl = plan();
@@ -865,11 +889,20 @@ function renderPane(keepMsgs) {
     return `<div class="r ${cls}"><b>${esc(r)}</b><small>${n} of ${cap}${n > cap ? " · over" : n === cap ? " · full" : ""}</small><div class="bar2"><i style="width:${pct}%"></i></div></div>`;
   }).join("") + ((view && ins.some(p => !ROOMS.includes(p.room))) ? `<div class="r"><b>No room</b><small>${ins.filter(p => !ROOMS.includes(p.room)).length}</small></div>` : "");
   $("filterTabs").innerHTML = [["course", view || "Course"], ["wait", "Waiting (" + w + ")"], ["attn", "Placement clashes (" + attn.length + ")"]].map(([k, l]) => `<button type="button" class="${filter === k ? "on" : ""}" data-f="${k}">${esc(l)}</button>`).join("");
-  $("filterTabs").querySelectorAll("button").forEach(b => b.onclick = () => { filter = b.dataset.f; $("listSearch").value = ""; renderAll(); });
+  $("filterTabs").querySelectorAll("button").forEach(b => b.onclick = () => { filter = b.dataset.f; expanded = true; $("listSearch").value = ""; renderAll(); });
   const q = $("listSearch").value.trim().toLowerCase();
   let list, truncated = false;
   if (q.length >= 2) list = allCandidates.filter(p => (p.name || "").toLowerCase().includes(q) || (p.email || "").toLowerCase().includes(q));
   else list = filter === "wait" ? waiting() : filter === "attn" ? attn : ins.slice().sort((a, b) => (a.room || "").localeCompare(b.room || "") || (a.name || "").localeCompare(b.name || ""));
+  const listTotal = list.length;
+  const searching = q.length >= 2;
+  const showList = expanded || searching;
+  $("schedWrap").classList.toggle("hidden", !showList);
+  $("legend").classList.toggle("hidden", !showList);
+  $("toggleList").classList.toggle("hidden", searching);
+  $("toggleList").textContent = expanded ? "Hide the list" : `Show the list (${listTotal})`;
+  $("toggleList").onclick = () => { expanded = !expanded; renderPane(true); };
+  $("searchHint").textContent = searching ? (listTotal ? `${listTotal} match${listTotal === 1 ? "" : "es"}. Tap a name to select them.` : "No one matches that.") : "";
   if (list.length > ROW_CAP) { list = list.slice(0, ROW_CAP); truncated = true; }
   $("rows").innerHTML = list.length ? list.map(p => {
     const st = [];
@@ -903,12 +936,16 @@ function defaultView() {
 async function boot() {
   try {
     await requireDirector("timetable.html");
-    const [snap, dl, cs, ca] = await Promise.all([
+    const [snap, dl, cs, ca, al, pe] = await Promise.all([
       db.collection(COLLECTIONS.stage1Candidates).get(),
       db.collection("config").doc("stage1_programme_deadlines").get().catch(() => null),
       db.collection("config").doc("stage1_course_dates").get().catch(() => null),
       db.collection("config").doc("candidate_access").get().catch(() => null),
+      db.collection("course_allocations").get().catch(() => null),
+      db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get().catch(() => null),
     ]);
+    if (al) { const docs = al.docs.map(d => ({ id: d.id, ...d.data() })); defaultDoc = docs.find(d => d.id === "_default") || null; allocDocs = docs.filter(d => d.id !== "_default"); }
+    if (pe) pe.docs.forEach(d => { const x = d.data(); const surname = x.passportLastName || (x.name ? x.name.trim().split(/\s+/).pop() : ""); const first = x.preferredName ? x.preferredName.trim().split(/\s+/)[0] : null; instrNames.set(d.id, first ? [first, surname].filter(Boolean).join(" ") : (x.name || d.id)); });
     allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     programmeDeadlines = dl && dl.exists ? (dl.data().deadlines || {}) : {};
     courseSessions = cs && cs.exists ? (cs.data().courses || []) : [];
@@ -920,6 +957,7 @@ async function boot() {
     $("discard").onclick = () => { sel = null; $("pickSearch").value = ""; $("pickList").classList.add("hidden"); $("msgs").innerHTML = ""; renderAll(); };
     $("pickSearch").oninput = renderPick;
     $("listSearch").oninput = () => renderPane(true);
+    $("listSearch").focus();
     renderAll();
     const q = new URLSearchParams(location.search).get("find");
     if (q) { $("pickSearch").value = q; renderPick(); }
