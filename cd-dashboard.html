@@ -1234,8 +1234,9 @@ function iwEntryScore(f) {
   if (base === undefined) return null;
   return base + (f.strong ? 1 : 0) - (f.weak ? 1 : 0);
 }
-function iwTierFromAverage(average) {
-  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+function iwTierFromAverage(average, hasRed) {
+  const t = average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+  return (t === "strong" && hasRed) ? "standard" : t;   // one RED = never "strong" (2026-10-11, Jon)
 }
 function iwTierDotClass(tier) {
   return tier === "strong" ? "green" : tier === "weak" ? "red" : tier === "standard" ? "amber" : "grey";
@@ -1247,19 +1248,22 @@ function candidateIwScore(candidateId) {
     .sort((a, b) => (a.savedAt?.seconds || 0) - (b.savedAt?.seconds || 0))
     .map(f => ({ ...f, score: iwEntryScore(f) }))
     .filter(f => f.score !== null);
-  if (!entries.length) return { entries: [], average: null, tier: "unrated" };
+  if (!entries.length) return { entries: [], average: null, tier: "unrated", strongTags: 0, weakTags: 0 };
   const average = entries.reduce((sum, f) => sum + f.score, 0) / entries.length;
-  return { entries, average, tier: iwTierFromAverage(average) };
+  const strongTags = entries.filter(f => f.strong).length, weakTags = entries.filter(f => f.weak).length;
+  return { entries, average, strongTags, weakTags, tier: iwTierFromAverage(average, entries.some(f => f.rating === "red")) };
 }
 function statusDotsHtml(candidateId) {
-  const { entries, average, tier } = candidateIwScore(candidateId);
+  const { entries, average, tier, strongTags, weakTags } = candidateIwScore(candidateId);
   if (!entries.length) return `<span class="tl-badge none">Not yet rated</span>`;
   const small = entries.map(f => {
     const flagNote = f.strong ? " — notably strong" : f.weak ? " — notably weak" : "";
     const sessionNote = f.isAssessorFeedback ? "Assessor/SI feedback" : esc(f.sessionId || "Session");
     return `<span class="tl-dot-sm ${f.rating}" title="${sessionNote}${flagNote}"></span>`;
   }).join("");
-  return `<span class="status-dots">${small}<span class="tl-dot ${iwTierDotClass(tier)}" title="Average ${average.toFixed(2)} — ${tier}" style="width:14px;height:14px;margin-left:4px;"></span></span>`;
+  const tags = (strongTags ? `<span class="tag strong" style="margin-left:6px;" title="${strongTags} 'notably strong' tag${strongTags > 1 ? "s" : ""} from faculty; each adds a point to the average">⭐ ${strongTags}</span>` : "")
+             + (weakTags ? `<span class="tag weak" style="margin-left:4px;" title="${weakTags} 'notably weak' tag${weakTags > 1 ? "s" : ""} from faculty; each takes a point off the average">⚠ ${weakTags}</span>` : "");
+  return `<span class="status-dots">${small}<span class="tl-dot ${iwTierDotClass(tier)}" title="Average ${average.toFixed(2)} — ${tier}" style="width:14px;height:14px;margin-left:4px;"></span>${tags}</span>`;
 }
 
 async function loadItcSchedule() {

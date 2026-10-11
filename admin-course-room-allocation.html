@@ -279,9 +279,15 @@ async function loadData() {
       // recomputeInstructorIwScore), never raw ratings. "unrated" when the
       // field hasn't been written yet (nobody's rated them, or this is from
       // before the feature existed).
-      const iwTier = data.iwRatingSummary ? data.iwRatingSummary.tier : "unrated";
+      let iwTier = data.iwRatingSummary ? data.iwRatingSummary.tier : "unrated";
+      // 2026-10-11 (Jon): anyone with a RED (serious concern) rating is never treated as
+      // "strong". The server writes redCount into the summary; older summaries without it
+      // are corrected below from the raw ratings when the director can read them.
+      let iwRedCapped = false;
+      if (iwTier === "strong" && data.iwRatingSummary && data.iwRatingSummary.redCount > 0) { iwTier = "standard"; iwRedCapped = true; }
       const iwAvg = (data.iwRatingSummary && typeof data.iwRatingSummary.average === "number") ? data.iwRatingSummary.average : null;
-      return { uid: d.id, name, iwTier, iwAvg };
+      const iwStar = (data.iwRatingSummary && data.iwRatingSummary.strongCount) || 0;
+      return { uid: d.id, name, iwTier, iwAvg, iwRedCapped, iwStar };
     }).sort((a,b) => a.name.localeCompare(b.name));
   } catch(e) { console.warn("Instructor load failed:", e.message); }
 
@@ -304,15 +310,20 @@ async function loadData() {
   // Anyone whose final result is FAIL starts out left out; the checklist lets the
   // director put them back.
   try {
-    const [dsnap, csnap, fsnap] = await Promise.all([
+    const [dsnap, csnap, fsnap, asnap] = await Promise.all([
       db.collection("development_assessments").get(),
       db.collection("cd_course_results").get(),
-      db.collection("session_feedback").get()
+      db.collection("session_feedback").get(),
+      db.collection("assessor_feedback").get().catch(() => null)
     ]);
-    const devBy = {}, cdBy = {}, fbBy = {};
+    const devBy = {}, cdBy = {}, fbBy = {}, redBy = {}, starBy = {};
     dsnap.forEach(d => { devBy[d.id] = d.data(); });
     csnap.forEach(d => { cdBy[d.id] = d.data(); });
-    fsnap.forEach(d => { const f = d.data(); if (f && f.candidateId) (fbBy[f.candidateId] = fbBy[f.candidateId] || []).push(f); });
+    fsnap.forEach(d => { const f = d.data(); if (f && f.candidateId) { (fbBy[f.candidateId] = fbBy[f.candidateId] || []).push(f); if (f.rating === "red") redBy[f.candidateId] = true; if (f.strong) starBy[f.candidateId] = (starBy[f.candidateId] || 0) + 1; } });
+    if (asnap) asnap.forEach(d => { const f = d.data(); if (f && f.candidateId) { if (f.rating === "red") redBy[f.candidateId] = true; if (f.strong) starBy[f.candidateId] = (starBy[f.candidateId] || 0) + 1; } });
+    allInstructors.forEach(i => { if ((starBy[i.uid] || 0) > (i.iwStar || 0)) i.iwStar = starBy[i.uid]; });
+    // One RED anywhere = never "strong" (covers summaries written before redCount existed).
+    allInstructors.forEach(i => { if (i.iwTier === "strong" && redBy[i.uid]) { i.iwTier = "standard"; i.iwRedCapped = true; } });
     if (typeof RMD_COURSE_RESULT !== "undefined") {
       allInstructors.forEach(i => {
         const auto = RMD_COURSE_RESULT.autoCourseResult({ dev: devBy[i.uid], feedback: fbBy[i.uid], gateway: gwByUid[i.uid] });
@@ -556,7 +567,7 @@ function makeInstructorCard(i) {
                ondragstart="onDragStart(event,'${i.uid}','instructorPool','instructor')"
                onclick="onCardClick(event,'${i.uid}','instructorPool','instructor')"
                title="${i.iwTier === "strong" ? "Instructor Weekend: notably strong" : i.iwTier === "weak" ? "Instructor Weekend: notably weak" : ""}">
-            <span class="pcard-name">${iwTierBadge(i.iwTier)}${i.name}</span>
+            <span class="pcard-name">${iwTierBadge(i.iwTier)}${i.name}${i.iwStar ? ` <span title="${i.iwStar} 'notably strong' tag${i.iwStar > 1 ? "s" : ""} from faculty" style="font-size:11px;font-weight:700;color:#1a6e31;">(${i.iwStar} strong tag${i.iwStar > 1 ? "s" : ""})</span>` : ""}</span>
           </div>`;
 }
 
@@ -642,7 +653,8 @@ function instScore(inst) {            // tier-based skill points used to level r
   return inst ? (inst.iwTier === "strong" ? 1 : inst.iwTier === "weak" ? -1 : 0) : 0;
 }
 function instRank(inst) {             // finer ranking inside a tier: weekend average, neutral 1.0 if unrated
-  return (inst && typeof inst.iwAvg === "number") ? inst.iwAvg : 1.0;
+  // average first, then the number of "notably strong" tags as a tie-break (2026-10-11, Jon)
+  return ((inst && typeof inst.iwAvg === "number") ? inst.iwAvg : 1.0) + 0.001 * ((inst && inst.iwStar) || 0);
 }
 function teamSkillScore(rid) {
   const team = roomTeams[rid] || { uids: [] };
@@ -1156,6 +1168,7 @@ function renderChecklist() {
 
   h += step(1, d1, "Weekend ratings are complete",
     `<div class="chk-note">${n("weak")} weak, ${n("strong")} strong, ${n("standard")} standard, ${unrated} not rated (experienced instructors who were not rated at the weekend count as middle).</div>
+     ${live.filter(i => i.iwRedCapped).length ? `<div class="chk-note">${live.filter(i => i.iwRedCapped).length} instructor${live.filter(i => i.iwRedCapped).length !== 1 ? "s" : ""} would have ranked as strong but have a red (serious concern) rating, so count as standard: ${live.filter(i => i.iwRedCapped).map(i => escH(i.name)).join(", ")}.</div>` : ""}
      <div class="chk-note">Open <a href="admin-iw-monday-ready.html" target="_blank" rel="noopener">Monday ready check</a> and confirm nobody who should have been rated is missing. Do this after the last ratings are in.</div>${tick("ratings", "Ratings are complete")}`);
 
   let gwBody = "";

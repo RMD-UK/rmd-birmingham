@@ -2722,8 +2722,10 @@ function iwEntryScore(data) {
   if (base === undefined) return null;
   return base + (data.strong ? 1 : 0) - (data.weak ? 1 : 0);
 }
-function iwTierFromAverage(average) {
-  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+function iwTierFromAverage(average, hasRed) {
+  const t = average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+  // 2026-10-11 (Jon): one RED (serious concern) rating anywhere means never "strong".
+  return (t === "strong" && hasRed) ? "standard" : t;
 }
 
 async function recomputeAndWriteIwScore(candidateId) {
@@ -2746,10 +2748,19 @@ async function recomputeAndWriteIwScore(candidateId) {
     return;
   }
   const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  const allDocs = [...sessionSnap.docs, ...assessorSnap.docs];
+  const redCount = allDocs.filter((d) => d.data().rating === "red").length;
+  // Number of "notably strong" / "notably weak" tags (2026-10-11, Jon): shown in the
+  // rankings and used to break ties. They already move the average by +1 / -1 each.
+  const strongCount = allDocs.filter((d) => d.data().strong === true).length;
+  const weakCount = allDocs.filter((d) => d.data().weak === true).length;
   await peopleRef.set({
     iwRatingSummary: {
       average: Math.round(average * 100) / 100,
-      tier: iwTierFromAverage(average),
+      tier: iwTierFromAverage(average, redCount > 0),
+      redCount,
+      strongCount,
+      weakCount,
       count: scores.length,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }
