@@ -2574,7 +2574,9 @@ exports.syncIwRegistrationToPeople = onDocumentWritten(
 const STAGE1_SHEET_ID = "1vLFVFM3inl3iE-_8NnMzLjEiGrxlJo5wq-DXXyxLBLQ";
 const STAGE1_SHEET_TAB = "Candidates"; // update here if the tab is ever renamed
 const STAGE1_SHEET_COURSE_COL = "G"; // "Allocated course" — 7th column, after Year of study
-const STAGE1_SHEET_ROOM_COL = "H";   // "Allocated room" — 8th column, added 2026-10-11 (column I is RAP, never touched here)
+const STAGE1_SHEET_ROOM_COL = "H";   // "Allocated room" — 8th column, added 2026-10-11
+const STAGE1_SHEET_RAP_COL = "I";     // "RAP" — a Yes/blank tag chosen on the website (candidate.rap)
+const STAGE1_SHEET_TWOPLUS_COL = "J"; // "Two-plus assessments" — a Yes/blank tag chosen on the website (candidate.twoPlusAssessments)
 
 let stage1SheetsAuth = null;
 async function stage1SheetsAccessToken() {
@@ -2636,8 +2638,8 @@ async function stage1SheetsApiFetch(path, options = {}, attempt = 0) {
 // website with no row in the sheet is, by definition, not part of the
 // original list. They get a new row at the bottom, tinted amber, with a note
 // in column J ("Added after bulk import (date)").
-const STAGE1_SHEET_NOTE_COL = "J"; // 10th column — "Website note"; A–I are the team's own columns
-const STAGE1_SHEET_NOTE_HEADER = "Website note";
+const STAGE1_SHEET_NOTE_COL = "K"; // 11th column — "Notes" (layout agreed with Jon 2026-10-11: A–H details, I RAP, J Two-plus assessments, K Notes)
+const STAGE1_SHEET_NOTE_HEADER = "Notes";
 const STAGE1_REMOVED_RE = /(?:\s*\|\s*)?Removed from website[^|]*/;
 
 function stage1Today() {
@@ -2663,11 +2665,20 @@ function stage1SplitName(c) {
   }
   return { first, last };
 }
+// Tags chosen on the website: true -> "Yes", false -> blank, never set (undefined)
+// -> null, meaning "leave whatever is in the sheet alone".
+function stage1TagCell(v) { return v === true ? "Yes" : v === false ? "" : null; }
+function stage1TagDiffers(cur, want) {
+  if (want === null) return false;
+  const c = String(cur || "").trim();
+  if (want === "") return c !== "";
+  return !/^(y|yes|true|x|✓)$/i.test(c);
+}
 function stage1NewSheetRow(c, today) {
   const { first, last } = stage1SplitName(c);
   const course = c.course || "";
   return [last, first, String(c.email).trim(), c.degree || "", c.studentId || "", c.yearOfStudy || "",
-    course, course ? (c.room || "") : "", "", `Added after bulk import (${today})`];
+    course, course ? (c.room || "") : "", stage1TagCell(c.rap) || "", stage1TagCell(c.twoPlusAssessments) || "", `Added after bulk import (${today})`];
 }
 
 let stage1SheetNumericId = null;
@@ -2680,7 +2691,7 @@ async function stage1SheetsNumericId() {
   return stage1SheetNumericId;
 }
 function stage1FormatRequest(sheetId, row, kind) {
-  const range = { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: 10 };
+  const range = { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: 11 };
   if (kind === "late") {
     return { repeatCell: { range, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 0.949, blue: 0.8 } } }, fields: "userEnteredFormat.backgroundColor" } };
   }
@@ -2729,7 +2740,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
   const [snap, removalsSnap, sheetData, headerData] = await Promise.all([
     db.collection("stage1_candidates").get(),
     db.collection("stage1_sheet_removals").where("applied", "==", false).get(),
-    stage1SheetsApiFetch(`/values/${tab}!A2:J`),
+    stage1SheetsApiFetch(`/values/${tab}!A2:K`),
     stage1SheetsApiFetch(`/values/${tab}!${STAGE1_SHEET_NOTE_COL}1`),
   ]);
 
@@ -2757,7 +2768,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
   const fmt = [];
   const struckRows = new Set();
   const added = [], restored = [], struck = [], notOnWebsite = [];
-  let courseRoomUpdates = 0;
+  let courseRoomUpdates = 0, tagUpdates = 0;
 
   for (const c of cands) {
     const row = rowByEmail.get(c._email);
@@ -2769,7 +2780,10 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
       valueUpdates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_COURSE_COL}${row}:${STAGE1_SHEET_ROOM_COL}${row}`, values: [[wantCourse, wantRoom]] });
       courseRoomUpdates++;
     }
-    const note = cur[9] || "";
+    const wantRap = stage1TagCell(c.rap), wantTwo = stage1TagCell(c.twoPlusAssessments);
+    if (stage1TagDiffers(cur[8], wantRap)) { valueUpdates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_RAP_COL}${row}`, values: [[wantRap]] }); tagUpdates++; }
+    if (stage1TagDiffers(cur[9], wantTwo)) { valueUpdates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_TWOPLUS_COL}${row}`, values: [[wantTwo]] }); tagUpdates++; }
+    const note = cur[10] || "";
     if (STAGE1_REMOVED_RE.test(note)) { // put back on the website after being removed
       valueUpdates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_NOTE_COL}${row}`, values: [[stage1NoteWithoutRemoval(note)]] });
       fmt.push({ row, kind: "unstruck" });
@@ -2778,7 +2792,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
   }
 
   const strikeRow = (row, email, name) => {
-    const note = (rows[row - 2] || [])[9] || "";
+    const note = (rows[row - 2] || [])[10] || "";
     if (STAGE1_REMOVED_RE.test(note) || struckRows.has(row)) return;
     valueUpdates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_NOTE_COL}${row}`, values: [[stage1NoteWithRemoval(note, today)]] });
     fmt.push({ row, kind: "struck" });
@@ -2802,7 +2816,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
   for (const [e, row] of rowByEmail) {
     if (siteEmails.has(e)) continue;
     const cur = rows[row - 2] || [];
-    if (STAGE1_REMOVED_RE.test(cur[9] || "") || struckRows.has(row)) continue;
+    if (STAGE1_REMOVED_RE.test(cur[10] || "") || struckRows.has(row)) continue;
     const name = `${cur[1] || ""} ${cur[0] || ""}`.trim();
     notOnWebsite.push({ email: e, name, row });
     if (strikeMissing) strikeRow(row, e, name);
@@ -2833,7 +2847,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
     notFoundEmails: added.map(c => c.email),
   };
 
-  if (dryRun) return { dryRun: true, wouldUpdate: courseRoomUpdates, ...summary };
+  if (dryRun) return { dryRun: true, wouldUpdate: courseRoomUpdates, wouldUpdateTags: tagUpdates, ...summary };
 
   if (added.length) await stage1EnsureRows(next - 1);
   await stage1WriteValues(valueUpdates);
@@ -2845,7 +2859,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
   removalRefsCancelled.forEach(ref => batch.delete(ref));
   if (removalRefsApplied.length || removalRefsCancelled.length) await batch.commit();
 
-  return { dryRun: false, updated: courseRoomUpdates, formatError, ...summary };
+  return { dryRun: false, updated: courseRoomUpdates, tagsUpdated: tagUpdates, formatError, ...summary };
 }
 
 exports.backfillStage1CourseToSheet = onCall({ region: "us-central1" }, async (request) => {
@@ -2890,11 +2904,11 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
         if (!email) return;
         const ref = db.collection("stage1_sheet_removals").doc(email);
         await ref.set({ email, name: before.name || "", removedAt: admin.firestore.FieldValue.serverTimestamp(), applied: false });
-        const rows = ((await stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!A2:J`)).values) || [];
+        const rows = ((await stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!A2:K`)).values) || [];
         const idx = rows.findIndex(r => String(r[2] || "").trim().toLowerCase() === email);
         if (idx !== -1) {
           const row = idx + 2;
-          const note = rows[idx][9] || "";
+          const note = rows[idx][10] || "";
           if (!STAGE1_REMOVED_RE.test(note)) {
             await stage1WriteValues([{ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_NOTE_COL}${row}`, values: [[stage1NoteWithRemoval(note, stage1Today())]] }]);
             await stage1WriteFormats([{ row, kind: "struck" }]);
@@ -2922,10 +2936,14 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
       const courseWas = before.course || "";
       const roomWas = courseWas ? (before.room || "") : "";
       const emailWas = emailOf(before);
-      if (courseWas === courseNow && roomWas === roomNow && emailWas === email) return; // nothing the sheet shows has changed
+      const rapNow = stage1TagCell(after.rap), rapWas = stage1TagCell(before.rap);
+      const twoNow = stage1TagCell(after.twoPlusAssessments), twoWas = stage1TagCell(before.twoPlusAssessments);
+      const courseChanged = courseWas !== courseNow || roomWas !== roomNow;
+      const tagsChanged = rapNow !== rapWas || twoNow !== twoWas;
+      if (!courseChanged && !tagsChanged && emailWas === email) return; // nothing the sheet shows has changed
 
       const tab = encodeURIComponent(STAGE1_SHEET_TAB);
-      const rows = ((await stage1SheetsApiFetch(`/values/${tab}!A2:J`)).values) || [];
+      const rows = ((await stage1SheetsApiFetch(`/values/${tab}!A2:K`)).values) || [];
       const find = e => rows.findIndex(r => String(r[2] || "").trim().toLowerCase() === e);
       let idx = find(email);
       if (idx === -1 && emailWas && emailWas !== email) {
@@ -2941,8 +2959,12 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
         return;
       }
       const row = idx + 2;
-      await stage1WriteValues([{ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_COURSE_COL}${row}:${STAGE1_SHEET_ROOM_COL}${row}`, values: [[courseNow, roomNow]] }]);
-      console.log(`syncStage1CourseToSheet: wrote "${courseNow}" / "${roomNow}" for ${email} at row ${row}.`);
+      const upd = [];
+      if (courseChanged || emailWas !== email) upd.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_COURSE_COL}${row}:${STAGE1_SHEET_ROOM_COL}${row}`, values: [[courseNow, roomNow]] });
+      if (rapNow !== null && rapNow !== rapWas) upd.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_RAP_COL}${row}`, values: [[rapNow]] });
+      if (twoNow !== null && twoNow !== twoWas) upd.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_TWOPLUS_COL}${row}`, values: [[twoNow]] });
+      if (upd.length) await stage1WriteValues(upd);
+      console.log(`syncStage1CourseToSheet: wrote "${courseNow}" / "${roomNow}" / RAP "${rapNow ?? ""}" / two-plus "${twoNow ?? ""}" for ${email} at row ${row}.`);
     } catch (err) {
       console.error(`syncStage1CourseToSheet: failed (${emailOf(after || before)}) — the scheduled reconcile will repair it.`, err.message);
     }
