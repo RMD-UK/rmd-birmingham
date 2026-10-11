@@ -2291,6 +2291,26 @@ exports.changeMyEmail = onCall({ region: "us-central1" }, async (request) => {
 
   const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
 
+  // 2026-10-11 (Jon): candidates and instructors / senior instructors / assessors
+  // cannot change their own login email. A Course Director can still do it for them
+  // (changePersonEmail). Directors listed in config/platform are never blocked.
+  try {
+    const cfg = await db.collection("config").doc("platform").get();
+    const c = cfg.exists ? cfg.data() : {};
+    const lc = (x) => String(x || "").toLowerCase();
+    const isDir = [...(c.directors || []), ...(c.superUsers || [])].map(lc).includes(lc(oldEmailRaw));
+    if (!isDir) {
+      const person = await db.collection("people").doc(auth.uid).get();
+      const role = person.exists ? person.data().role : null;
+      if (["instructor", "assessor"].includes(role)) {
+        throw new HttpsError("permission-denied", "Email changes are handled by the RMD team for your account. Please contact the Course Director.");
+      }
+    }
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError("internal", "Could not check your account type, so the email was not changed.");
+  }
+
   return performEmailChange(oldEmailRaw, newEmailRaw, oldEmailRaw);
 });
 
