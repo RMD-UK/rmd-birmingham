@@ -1,0 +1,1058 @@
+/**
+ * RMD Instructor Weekend 2026 — Programme Data
+ *
+ * Source: 2025 programme (xlsx). Update timings/sessions for 2026.
+ * Assessor/Senior Instructor stream (Saturday + Sunday) — added 2026-07-18 from Jon's
+ * draft deck ("BLS assessor course 2026.pptx"). Locations mostly TBC pending Naveed's
+ * confirmation; timings and session content are as specified in the deck.
+ *
+ * Session roles:
+ *   "all"        — everyone sees this
+ *   "director"   — course director only
+ *   "faculty"    — faculty (including director)
+ *   "instructor" — instructor candidates
+ *   "assessor"   — assessor candidates
+ *
+ * Resource links: replace Google Doc URLs with platform-hosted paths once uploaded.
+ */
+
+const PROGRAMME = {
+
+  friday: {
+    label: "Friday 9 Oct",
+    date: "Friday 9 October 2026",
+    sessions: [
+      {
+        id: "fri-1",
+        start: "18:00",
+        duration: 60,
+        title: "Faculty Arrival",
+        location: "TBC",
+        lead: "",
+        roles: ["faculty", "director"],
+        notes: "Arrival and informal networking before the meeting.",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "fri-2",
+        start: "19:00",
+        duration: 120,
+        title: "Faculty Meeting & Dinner",
+        location: "TBC",
+        lead: "Jon",
+        roles: ["faculty", "director"],
+        notes: "Briefing for the weekend. Includes catered meal — headcount confirmed pre-course.",
+        resources: [],
+        tags: ["faculty-only"]
+      }
+    ]
+  },
+
+  saturday: {
+    label: "Saturday 10 Oct",
+    date: "Saturday 10 October 2026",
+    sessions: [
+      {
+        id: "sat-0",
+        start: "07:45",
+        duration: 15,
+        title: "Faculty Meeting",
+        location: "WF15",
+        lead: "Jon",
+        roles: ["faculty", "director", "full-instructor", "itc"],
+        notes: "Pre-course briefing for faculty before candidates arrive.",
+        resources: [],
+        tags: ["faculty-only"]
+      },
+      {
+        id: "sat-1",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
+        start: "08:00",
+        duration: 45,
+        title: "Registration",
+        location: "ATH",
+        lead: "Student faculty",
+        roles: ["all"],
+        notes: "Report to the registration desk on arrival.",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sat-2",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
+        start: "08:45",
+        duration: 30,
+        title: "Plenary Introduction & Welcome",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["all"],
+        notes: "",
+        resources: [
+          { title: "Intro slides", path: "resources/1-intro-to-weekend.html", icon: "📊" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-3",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
+        start: "09:15",
+        duration: 20,
+        title: "Equipment Demonstration",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        needsHelper: true,
+        roles: ["all"],
+        notes: "",
+        resources: [
+          { title: "QCPR App", url: "https://laerdal.com/gb/products/simulation-training/resuscitation-training/qcpr-app/", icon: "📱" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-4",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
+        start: "09:35",
+        duration: 30,
+        title: "Equipment Practice",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["all"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      // 2026-09-14: assessor/SI candidates now split off into their own room at 09:30
+      // (see the assessor-stream block above) instead of joining this shared BLS/AED
+      // block until midday as before — "assessor" removed from roles below, per Jon.
+      {
+        id: "sat-6",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "10:10",
+        duration: 20,
+        title: "Plenary Lecture: BLS/AED",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" },
+          { title: "BLS/AED slides (RCUK adult BLS)", path: "resources/2a-bls-aed-lecture-rcuk.html", icon: "📊" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-7",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "10:30",
+        duration: 15,
+        title: "Plenary Demonstration: BLS/AED",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        needsHelper: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sat-8",
+        start: "10:45",
+        duration: 60,
+        title: "Group Practice: BLS/AED",
+        subtitle: "Including: Closing the Gender Gap",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["instructor", "faculty", "director"],
+        notes: "Small group practice. ⚠ Gateway assessment: all Instructor Candidates must pass the BLS/AED competency check by 12:00 noon. Candidates who have not passed by noon cannot progress to the afternoon instructor development sessions.",
+        resources: [
+          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" }
+        ],
+        tags: ["gateway-deadline"]
+      },
+      {
+        id: "sat-9",
+        start: "11:45",
+        duration: 15,
+        title: "Break",
+        location: "",
+        lead: "",
+        roles: ["all"],
+        notes: "",
+        resources: [],
+        tags: ["break", "gateway-deadline"]
+      },
+      {
+        id: "sat-10",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "12:00",
+        duration: 30,
+        title: "Plenary Lecture: First Aid",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "First Aid slides", path: "resources/3-first-aid.html", icon: "📊" },
+          { title: "Catastrophic haemorrhage slides", path: "resources/3a-catastrophic-haemorrhage.html", icon: "📊" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-11",
+        start: "12:30",
+        duration: 60,
+        title: "Group Practice: First Aid & Catastrophic Haemorrhage",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["instructor", "faculty", "director"],
+        notes: "To include: Choking, Bleeding, Recovery position, Drowning, Paediatrics.",
+        resources: [
+          { title: "Session guide", path: "resources/provider/5-first-aid-practice.html", icon: "📄" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-12",
+        start: "13:30",
+        duration: 45,
+        title: "Lunch",
+        location: "WF19",
+        lead: "Logistics team",
+        roles: ["all"],
+        notes: "Faculty meeting in WF15 during lunch — gateway results reviewed and confirmed.",
+        resources: [],
+        tags: ["break"]
+      },
+
+      // ── Assessor / Senior Instructor stream (Saturday) — from draft deck, 2026-07-18;
+      // restructured 2026-09-14 per Jon's revised programme. Morning matches the
+      // instructor stream exactly through the 08:45 Welcome (sat-1/sat-2 above); real
+      // "assessor"-role viewers see those two directly since they're tagged roles:["all"].
+      // The duplicates below exist ONLY so the dedicated "Assessor / Senior Instructor
+      // Programme" tab (toggled via setStream(), filtered purely on the "assessor-stream"
+      // tag — see timetable.html renderDay()) also shows this content. Deliberately
+      // roles:["faculty","director"] (no "assessor") on sat-assessor-0a/0b, so real
+      // assessor-role viewers don't see the morning listed twice — see
+      // [[project_instructor_weekend_2026]].
+      //
+      // 2026-09-14: assessor/SI candidates now split off from the main course at 09:30
+      // (not midday as before) into their own room for a dedicated introduction, then
+      // straight into a 2-hour BLS Provider recertification block — they no longer join
+      // the shared Equipment Demo/Practice or Plenary BLS/AED Lecture/Demo/Group Practice
+      // (sat-3/4/6/7/8), per Jon. "assessor" removed from sat-6/7/8's roles accordingly
+      // (see above). sat-assessor-0c/0d repurposed in place (same ids, new content) for
+      // the new Introduction + Recertification sessions below; sat-assessor-0e/0f/0g/0h
+      // (the old shared BLS/AED lecture/demo/practice/break duplicates) and
+      // sat-assessor-8b (old "Grey Areas continued", no longer needed now Grey Areas runs
+      // uninterrupted — see sat-assessor-8 below) are gone from here and from Firestore —
+      // admin-migrate-programme.html's import now prunes any session doc whose id is no
+      // longer in this file, so re-running the migration after this edit removes them. ──
+      {
+        id: "sat-assessor-0a",
+        start: "08:00",
+        duration: 45,
+        title: "Registration",
+        location: "ATH",
+        lead: "Student faculty",
+        roles: ["faculty", "director"],
+        notes: "Report to the registration desk on arrival.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0b",
+        start: "08:45",
+        duration: 30,
+        title: "Plenary Introduction & Welcome",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Intro slides", path: "resources/1-intro-to-weekend.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0c",
+        start: "09:30",
+        duration: 30,
+        title: "Assessor Course Introduction",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Assessors and Senior Instructors only. Objectives; what is new and to note (current guidelines, RCUK, nurse refresher course, breasted manikins, assessment night checklist, QCPR).",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-0d",
+        start: "10:00",
+        duration: 120,
+        title: "BLS Provider Recertification",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Demonstrate your own competence in basic life support skills and recertify.",
+        resources: [
+          { title: "BLS/AED slides", path: "resources/2-bls-aed-lecture.html", icon: "📊" },
+          { title: "Session guide", path: "resources/provider/3-bls-aed-practice.html", icon: "📄" },
+          { title: "BLS Algorithm", path: "resources/provider/bls-algorithm.pdf", icon: "📄" },
+          { title: "AED Settings", path: "resources/provider/aed-settings.pdf", icon: "📄" },
+          { title: "QCPR How-to Guide", path: "resources/provider/qcpr-how-to-guide.pdf", icon: "📄" },
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-3",
+        start: "12:00",
+        duration: 30,
+        title: "Introduction to Assessing a BLS Candidate",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Assessment night: preparing your room (environment, equipment, checklist), role of teachers and when to have the assistant in or out of the room, timing, clean up.",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-4",
+        start: "12:30",
+        duration: 60,
+        title: "Lunch",
+        location: "WF15",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Assessor/SI stream breaks for lunch an hour earlier than the instructor stream (12:30, not 13:30).",
+        resources: [],
+        tags: ["assessor-stream", "break"]
+      },
+      {
+        id: "sat-assessor-5",
+        start: "13:30",
+        duration: 45,
+        title: "Assessment of the Successful Candidate",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        needsHelper: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Introduction, making the candidate feel at ease, observing, delivering the verdict, learning conversation, closure — followed by group sessions.",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-6",
+        start: "14:15",
+        duration: 45,
+        title: "Assessment of the Unsuccessful Candidate",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        needsHelper: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Delivering the verdict, being direct, learning conversation, re-sits, avoiding confrontation/debate — followed by group sessions.",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-7",
+        start: "15:00",
+        duration: 15,
+        title: "Coffee Break",
+        location: "",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "break"]
+      },
+      {
+        id: "sat-assessor-8",
+        start: "15:15",
+        duration: 90,
+        title: "Grey Areas & Assessing the Borderline Candidate",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Standardisation, common issues from previous assessments, and fail-point criteria (approach, 999 call, chest compressions, rescue breaths, AED). Runs straight through to 16:45 — no longer paused for the Whole Course Photo, which now sits after Feedback & Closure instead.",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" },
+          { title: "Grey Areas slides", path: "resources/assessor-grey-areas.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-9",
+        start: "16:45",
+        duration: 15,
+        title: "Feedback & Course Closure",
+        location: "",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Course closure: form completion, first night debrief, assessment irregularity form, assessment sit-ins. Assessor candidate training concludes here. Senior Instructors continue with an additional session Sunday morning.",
+        resources: [
+          { title: "Assessor Course slides", path: "resources/9-assessor-course.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sat-assessor-8x",
+        start: "17:00",
+        duration: 30,
+        title: "Whole Course Photo",
+        location: "Medical School steps",
+        lead: "",
+        // Duplicate of sat-21, roles:["faculty","director"] only — real "assessor"-role
+        // viewers already see it via sat-21's roles:["all"]; this copy exists purely so
+        // the assessor-stream tab (tag-filtered) shows it too, same pattern as the
+        // sat-assessor-0a/0b morning duplicates above.
+        roles: ["faculty", "director"],
+        notes: "All groups please. Wear your course polo shirts.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      // ── Instructor development (Saturday afternoon) ──
+      {
+        id: "sat-13",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "14:15",
+        duration: 10,
+        title: "BLS/AED/First Aid: Q&A & Feedback",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sat-14",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "14:25",
+        duration: 20,
+        title: "Life Support & Real Life",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Life Support & Real Life", embedUrl: "https://www.youtube.com/embed/LSEfAfSGRY0", icon: "🎬" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-15",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "14:45",
+        duration: 5,
+        title: "Welcome & Goals of the BLS Instructor Course",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sat-16",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "14:50",
+        duration: 20,
+        title: "Plenary Lecture: Principles of Adult Learning & Teaching",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Teaching Adults CPR slides", path: "resources/4-teaching-adults-cpr-aed.html", icon: "📊" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-17",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "15:10",
+        duration: 15,
+        title: "Effective Teaching: 5-Minute Presentation",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Slides: How to Boil an Egg", path: "resources/egg-slides.html", icon: "📊" },
+          { title: "Session guide", path: "resources/instructor/2-five-minute-lecture-summary.html", icon: "📄" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-18",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "15:25",
+        duration: 20,
+        title: "Debrief: 5-Minute Presentation",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Session guide", path: "resources/instructor/3-debrief-5-min-presentation.html", icon: "📄" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-19",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "15:45",
+        duration: 15,
+        title: "Plenary Lecture: The Learning Conversation",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Learning conversation slides", path: "resources/5-learning-conversation.html", icon: "📊" }
+        ],
+        tags: []
+      },
+      {
+        id: "sat-20",
+        start: "16:00",
+        duration: 45,
+        title: "Group Practice: The Learning Conversation",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Session guide", path: "resources/instructor/4-learning-conversation-group-practice.html", icon: "📄" }
+        ],
+        tags: ["itc-observation"]
+      },
+      {
+        id: "sat-21",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session
+        start: "17:00",
+        duration: 30,
+        title: "Whole Course Photo",
+        location: "Medical School steps",
+        lead: "",
+        roles: ["all"],
+        notes: "All groups please. Wear your course polo shirts.",
+        resources: [],
+        tags: []
+      }
+    ]
+  },
+
+  sunday: {
+    label: "Sunday 11 Oct",
+    date: "Sunday 11 October 2026",
+    sessions: [
+      // ── Senior Instructor stream (Sunday) — from draft deck, 2026-07-18 ──
+      // Assessor candidates do not return Sunday — this is for Senior Instructors only,
+      // shown under the combined "Assessor / Senior Instructor" role per Jon's confirmation.
+      {
+        id: "sun-assessor-1",
+        start: "09:30",
+        duration: 15,
+        title: "Senior Instructor Registration & Arrival",
+        location: "WF15",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "Senior Instructors only — assessor candidates do not return Sunday.",
+        resources: [],
+        tags: ["assessor-stream"]
+      },
+      // ── Senior Instructor Role Briefing (Sunday) — real times confirmed 2026-09-14
+      // per Jon, replacing the "placeholder" stack that previously sat here (order was
+      // confirmed 2026-07-18, timings were not). sun-assessor-2i ("Senior Instructors
+      // Rejoin Instructors") removed entirely 2026-09-14 per Jon — no longer part of
+      // the Sunday programme. ──
+      {
+        id: "sun-assessor-2a",
+        start: "09:45",
+        duration: 15,
+        title: "Introduction to BLS Senior Instructor Role",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2b",
+        start: "10:00",
+        duration: 30,
+        title: "Discuss Role on Monday Evenings",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2c",
+        start: "10:30",
+        duration: 30,
+        title: "Reinforce Grey Areas Covered in the Assessor Course",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "And how to navigate these with instructors / common questions.",
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2d",
+        start: "11:00",
+        duration: 30,
+        title: "Reasonable Adjustment Plan (RAP) Students",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "Including teaching and assessing.",
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2e",
+        start: "11:30",
+        duration: 30,
+        title: "Kit Issues and Troubleshooting",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2f",
+        start: "12:00",
+        duration: 30,
+        title: "Difficult Students",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2g",
+        start: "12:30",
+        duration: 30,
+        title: "Research Opportunities and Wider Involvement with RMD",
+        location: "WF15",
+        lead: "",
+        needsPresenter: true,
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Senior Instructor slides", path: "resources/8-senior-instructors.html", icon: "📊" }
+        ],
+        tags: ["assessor-stream"]
+      },
+      {
+        id: "sun-assessor-2h",
+        start: "13:00",
+        duration: 30,
+        title: "Lunch Break",
+        location: "WF15",
+        lead: "",
+        roles: ["assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["assessor-stream", "break"]
+      },
+      {
+        id: "sun-1",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "09:30",
+        duration: 15,
+        title: "Registration",
+        location: "Foyer",
+        lead: "RMD student faculty",
+        roles: ["instructor", "faculty", "director"],
+        notes: "Instructor candidates only. QR login required.",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sun-2",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "09:45",
+        duration: 15,
+        title: "Learning",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Learning slides", path: "resources/6-learning.html", icon: "📊" },
+          { title: "Session guide", path: "resources/instructor/5-learning-lecture.html", icon: "📄" }
+        ],
+        tags: []
+      },
+      {
+        id: "sun-3",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "10:00",
+        duration: 30,
+        title: "Plenary Demonstration: Skills Teaching (BLS/AED)",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        needsHelper: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Session guide", path: "resources/instructor/6-skills-teaching-demonstration.html", icon: "📄" }
+        ],
+        tags: []
+      },
+      {
+        id: "sun-4",
+        start: "10:30",
+        duration: 90,
+        title: "Group Practice: Teaching",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Session guide", path: "resources/instructor/7-skills-teaching-practical.html", icon: "📄" }
+        ],
+        tags: ["itc-observation"]
+      },
+      {
+        id: "sun-6",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "12:00",
+        duration: 20,
+        title: "Plenary Lecture: Assessing",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Assessing slides", path: "resources/7-assessing.html", icon: "📊" },
+          { title: "Session guide", path: "resources/instructor/8-how-to-assess-lecture-and-demo.html", icon: "📄" }
+        ],
+        tags: []
+      },
+      {
+        id: "sun-7",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "12:20",
+        duration: 15,
+        title: "Plenary Demonstration: Assessing",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        needsHelper: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sun-8",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "12:35",
+        duration: 10,
+        title: "RMD Reasonable Adjustments Pathway",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sun-9",
+        start: "12:45",
+        duration: 30,
+        title: "Lunch",
+        location: "Atrium",
+        lead: "",
+        roles: ["instructor", "assessor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["break"]
+      },
+      {
+        id: "sun-10",
+        start: "13:15",
+        duration: 90,
+        title: "Group Practice: Continuous Assessment",
+        location: "Teaching rooms",
+        lead: "Room faculty lead",
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Session guide", path: "resources/instructor/9-skills-assessing-practical.html", icon: "📄" }
+        ],
+        tags: ["itc-observation"]
+      },
+      {
+        id: "sun-11",
+        start: "14:45",
+        duration: 15,
+        title: "Break",
+        location: "",
+        lead: "",
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["break"]
+      },
+      {
+        id: "sun-12",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "15:00",
+        duration: 30,
+        title: "Course Logistics & Briefing",
+        location: "ATH",
+        lead: "RMD student faculty",
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sun-13",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "15:30",
+        duration: 30,
+        title: "Food for Thought",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [
+          { title: "Food for Thought", embedUrl: "https://www.youtube.com/embed/UCtEHo9-Ck4", icon: "🎬" }
+        ],
+        tags: []
+      },
+      {
+        id: "sun-14",
+        noCandidateRating: true, // 2026-10-06 Jon: no "Rate candidates" on this session (lecture/demo/admin, nothing to rate)
+        start: "16:00",
+        duration: 15,
+        title: "Summary Plenary & End of Course",
+        location: "ATH",
+        lead: "",
+        needsPresenter: true,
+        roles: ["instructor", "faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: []
+      },
+      {
+        id: "sun-15",
+        start: "16:15",
+        duration: 45,
+        title: "Faculty Meeting",
+        location: "WF19",
+        lead: "",
+        roles: ["faculty", "director"],
+        notes: "",
+        resources: [],
+        tags: ["faculty-only"]
+      }
+    ]
+  }
+};
+
+/**
+ * Parse "HH:MM" to total minutes since midnight
+ */
+function timeToMinutes(t) {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * Get end time string from start + duration
+ */
+function sessionEndTime(session) {
+  const end = sessionEndMins(session);
+  const h = Math.floor(end / 60).toString().padStart(2, "0");
+  const m = (end % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+/**
+ * Planned start of every session as written in this file (before the live
+ * Firestore overlay and the shift tool change any start times). Used by
+ * sessionEndMins() to know which sessions were meant to run back to back.
+ */
+const ORIGINAL_START = {};
+(function () {
+  Object.keys(PROGRAMME).forEach(function (d) {
+    (PROGRAMME[d].sessions || []).forEach(function (s) { ORIGINAL_START[s.id] = s.start; });
+  });
+})();
+
+/**
+ * Live end of a session, in minutes since midnight.
+ *
+ * Normally start + duration. But the shift tool only moves START times, so a
+ * session that was planned to run straight into the next one (its planned end
+ * equals that session's planned start) would otherwise keep its old end when
+ * the next session is pushed back. The running session would then finish on
+ * the old clock and leave a gap. For those back-to-back pairs the end follows
+ * the next session's current start, so pushing the next session back by 10
+ * minutes gives the running session 10 more minutes (and pulling it forward
+ * shortens it). Sessions with a planned gap after them (breaks, transfers)
+ * keep start + duration.
+ */
+function sessionEndMins(session) {
+  const start = timeToMinutes(session.start);
+  const plain = start + session.duration;
+  const origStart = ORIGINAL_START[session.id];
+  if (origStart == null) return plain;
+  const origEnd = timeToMinutes(origStart) + session.duration;
+  const isAssessor = (session.tags || []).includes("assessor-stream");
+  const myRoles = session.roles || [];
+  let day = null;
+  Object.keys(PROGRAMME).forEach(function (d) {
+    if ((PROGRAMME[d].sessions || []).some(function (x) { return x.id === session.id; })) day = d;
+  });
+  if (!day) return plain;
+  let best = null;
+  PROGRAMME[day].sessions.forEach(function (n) {
+    if (n.id === session.id) return;
+    if (((n.tags || []).includes("assessor-stream")) !== isAssessor) return;
+    if (ORIGINAL_START[n.id] == null || timeToMinutes(ORIGINAL_START[n.id]) !== origEnd) return;
+    if (!(n.roles || []).some(function (r) { return myRoles.includes(r); })) return;
+    const ns = timeToMinutes(n.start);
+    if (ns <= start) return;
+    if (best === null || ns < best) best = ns;
+  });
+  return best === null ? plain : best;
+}
+
+/**
+ * Returns true if the session is currently live
+ */
+function isSessionCurrent(session) {
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const start = timeToMinutes(session.start);
+  const end = sessionEndMins(session);
+  return nowMins >= start && nowMins < end;
+}
+
+/**
+ * Returns true if session is in the past
+ */
+function isSessionPast(session) {
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const end = sessionEndMins(session);
+  return nowMins >= end;
+}
+
+/**
+ * Some sign-in roles aren't distinct programme tracks in their own right —
+ * they just need the same session visibility as one of the core tracks
+ * ("director", "faculty", "instructor", "assessor") used in each session's
+ * `roles` array above. Rather than repeating every role name in every
+ * session object (fragile — easy to miss one when adding a session), map
+ * those roles here to the track they should see.
+ *
+ *   assessor-faculty  — faculty running the assessor stream; sees both
+ *                       programmes (same content access as "faculty")
+ *   logistics         — course logistics team; sees both programmes
+ *   full-instructor   — Instructor Trainer; instructor programme only
+ *   itc               — Instructor Trainer Candidate; instructor programme only
+ */
+const ROLE_CONTENT_ALIAS = {
+  "assessor-faculty": "faculty",
+  "logistics":        "faculty",
+  "full-instructor":  "instructor",
+  "itc":              "instructor"
+};
+
+/**
+ * Filter sessions for a given role
+ */
+function sessionsForRole(day, role) {
+  const effectiveRole = ROLE_CONTENT_ALIAS[role] || role;
+  // Checks both the content-track alias (effectiveRole) AND the raw sign-in
+  // role. This lets a session opt a specific alias role (e.g. "full-instructor",
+  // "itc") into visibility without also pulling in every other role that
+  // shares that alias's content track — e.g. the Faculty Meeting can list
+  // "full-instructor" directly without becoming visible to every
+  // "instructor" (candidate), even though full-instructor's content alias
+  // IS "instructor". Per Jon: 2026-09-16.
+  return PROGRAMME[day].sessions.filter(s =>
+    s.roles.includes("all") || s.roles.includes(effectiveRole) || s.roles.includes(role)
+  );
+}
+
+// Session Quality Feedback (2026-10-08, per Jon): faculty rate each TAUGHT
+// session once it has finished, via session-quality.html?session=<id>. This is
+// the single definition of "taught" used by the timetable (to show the link),
+// the form's fallback dropdown and the Course Director's Session quality tab.
+// Breaks, faculty-only slots, placeholders and pure admin slots are excluded.
+function isSessionQualityEligible(s) {
+  const tags = (s && s.tags) || [];
+  if (tags.includes("break") || tags.includes("faculty-only") || tags.includes("placeholder")) return false;
+  return !/registration|whole course photo|faculty arrival|faculty meeting/i.test((s && s.title) || "");
+}

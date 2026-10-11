@@ -155,8 +155,15 @@
     }, function (err) { console.warn("Programme listener:", err.message); });
   }
 
+  // The Faculty view is the instructor programme plus the faculty-only slots (Faculty Meeting etc.).
+  // sessionsForRole("faculty") also returns every assessor-stream session, which is why the two
+  // programmes appeared merged on top of each other (fixed 2026-10-11, per Jon). Assessor faculty
+  // choose the Assessor programme view instead.
+  function inFacultyView(s) { return (s.tags || []).indexOf("assessor-stream") < 0; }
   function sessionsToday() {
-    return sessionsForRole(day, stream).slice().sort(function (a, b) {
+    var list = sessionsForRole(day, stream);
+    if (stream === "faculty") list = list.filter(inFacultyView);
+    return list.slice().sort(function (a, b) {
       return timeToMinutes(a.start) - timeToMinutes(b.start) || ((a.order || 0) - (b.order || 0));
     });
   }
