@@ -129,6 +129,10 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .rooms .bar2{height:5px;background:#EEF1F6;border-radius:3px;margin-top:5px;overflow:hidden}
 .rooms .bar2 i{display:block;height:100%;background:var(--pur)}
 .rooms .r.over .bar2 i{background:var(--bad)}
+.rooms .r.full{border-color:var(--org);background:var(--warnbg)}
+.rooms .r.full .bar2 i{background:var(--org)}
+.rooms .r.over{border-color:var(--bad);background:var(--badbg)}
+.seg button .nowdot.over{background:var(--bad)}
 .grp{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff}
 .grp .gh{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-weight:800;font-size:14px;color:var(--pur)}
 .grp .gn{font-size:12px;color:var(--mut);margin-top:6px;line-height:1.5}
@@ -508,6 +512,8 @@ function pendingConfirmationsByCourse(candidates, sessions) {
 let view = null, filter = "course", sel = null, log = [], touched = new Set(), sheetTimer = null, placing = false, attnList = [];
 const $ = id => document.getElementById(id);
 const ROW_CAP = 400;
+// On this screen a room is full at 12 people, and a course is over capacity above 12 x the number of rooms (Jon, 2026-10-11).
+const ROOM_LIMIT = 12;
 
 function londonToday() { return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); }
 function addDays(iso, n) { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
@@ -520,9 +526,11 @@ function isOn(s) { const t = londonToday(); return t >= addDays(s.date, -14) && 
 function byId(id) { return allCandidates.find(c => c.id === id); }
 function inCourse(name) { return allCandidates.filter(c => c.course === name); }
 function waiting() { return allCandidates.filter(c => !c.course); }
-function capsNow() { return buildEffectiveCapacities(); }
-function perRoomCap(name) { const v = capsNow()[name]; return (v || v === 0) ? v : null; }
-function seatsLeft(name) { const cap = perRoomCap(name); return cap == null ? Infinity : cap * ROOMS.length - inCourse(name).length; }
+function capsNow() { return buildEffectiveCapacities(); } // used only by the automatic placing (unchanged)
+function perRoomCap() { return ROOM_LIMIT; }
+function courseCapacity() { return ROOM_LIMIT * ROOMS.length; }
+function seatsLeft(name) { return courseCapacity() - inCourse(name).length; } // negative = over capacity
+function isOverCapacity(name) { return seatsLeft(name) < 0; }
 function now() { return new Date().toISOString(); }
 function addLog(t) { log.unshift(`${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ${esc(t)}`); }
 
@@ -559,10 +567,16 @@ function pickRoom(courseName, c) {
   return best ? best.r : null;
 }
 
+// The placement block (if any) that overlaps one of this person's three course Mondays.
+function placementClashFor(c) {
+  const s = c.course && sess(c.course);
+  if (!s || !s.date) return null;
+  return (c.placementBlocks || []).find(b => b.start && b.end && placementClashesWithCourse([b], s.date)) || null;
+}
 function isPending(c) { return !!(c.course && c.email && c.allocatedAt && c.allocationEmailedCourse !== c.course); }
 function isOverridden(c) { return !!c.course && c.eligibilityOverrideCourse === c.course; }
 function computeAttention() {
-  return allCandidates.filter(c => c.course && (isOverridden(c) || c.overCapacity || reasonsFor(c, c.course).length));
+  return allCandidates.filter(c => placementClashFor(c));
 }
 
 // ─── Sheet ───
@@ -744,7 +758,7 @@ function renderSide() {
     body.innerHTML = `<div class="fieldlab" style="margin-top:4px">Which course?</div>` + sortedSessions().filter(s => s.name !== c.course).map(s => {
       const r = reasonsFor(c, s.name), left = seatsLeft(s.name), full = left <= 0;
       const tag = full ? `<span class="tag full">Full</span>` : r.length ? `<span class="tag no">Not normally allowed</span>` : `<span class="tag ok">OK</span>`;
-      const sub = full ? "No seats left on this course" : r.length ? esc(r.join(". ")) : (left === Infinity ? "Seats available" : `${left} seats left`);
+      const sub = full ? "No seats left on this course" : r.length ? esc(r.join(". ")) : `${left} seats left`;
       return `<div class="radio ${sel.target === s.name ? "on" : ""} ${r.length ? "bad" : ""} ${full ? "full" : ""}" data-c="${esc(s.name)}"><b>${esc(s.name)} · ${fmt(s.date)} ${tag}</b><small>${sub}</small></div>`;
     }).join("");
     body.querySelectorAll(".radio").forEach(el => el.onclick = () => { if (seatsLeft(el.dataset.c) <= 0) return; sel.target = el.dataset.c; sel.override = false; renderAll(); });
@@ -816,8 +830,9 @@ async function applyNow() {
 }
 
 // ─── Right-hand pane ───
+function isOver(name) { return isOverCapacity(name); }
 function renderTabs() {
-  $("courseTabs").innerHTML = sortedSessions().map(s => `<button type="button" class="${s.name === view ? "on" : ""}" data-c="${esc(s.name)}">${esc(s.name)}${isOn(s) ? '<span class="nowdot">NOW</span>' : ""}</button>`).join("");
+  $("courseTabs").innerHTML = sortedSessions().map(s => `<button type="button" class="${s.name === view ? "on" : ""}" data-c="${esc(s.name)}">${esc(s.name)}${isOn(s) ? '<span class="nowdot">NOW</span>' : ""}${isOver(s.name) ? '<span class="nowdot over">OVER</span>' : ""}</button>`).join("");
   $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => { view = b.dataset.c; filter = "course"; $("listSearch").value = ""; renderAll(); });
 }
 function renderPane(keepMsgs) {
@@ -830,23 +845,26 @@ function renderPane(keepMsgs) {
   else if (!s) $("plain").innerHTML = `<span class="lbl">No courses</span>No course dates are set yet. Add this year's dates on <a href="admin-stage1-settings.html">Stage 1 Settings</a>.`;
   else {
     const sl = seatsLeft(view);
-    $("plain").innerHTML = `<span class="lbl">${esc(view)}${isOn(s) ? " · running now" : ""}</span><b>${esc(view)}</b> exam night is <b>${fmt(s.date)}</b>; teaching starts ${fmt(addDays(s.date, -14))}. <span class="mut">${ins.length} candidates${sl === Infinity ? "" : ", " + sl + " seats left"}${w ? `, ${w} people waiting for a course` : ""}.</span>`;
+    const capTxt = sl < 0 ? `<b style="color:var(--bad)">over capacity by ${-sl}</b> (limit ${courseCapacity()}: ${ROOM_LIMIT} per room)` : `${sl} seats left`;
+    $("plain").innerHTML = `<span class="lbl">${esc(view)}${isOn(s) ? " · running now" : ""}${sl < 0 ? " · over capacity" : ""}</span><b>${esc(view)}</b> exam night is <b>${fmt(s.date)}</b>; teaching starts ${fmt(addDays(s.date, -14))}. <span class="mut">${ins.length} candidates, ${capTxt}${w ? `, ${w} people waiting for a course` : ""}.</span>`;
   }
   const attn = attnList;
   $("sum").innerHTML = `<div class="tile"><div class="n">${ins.length}</div><div class="l">On ${esc(view || "this course")}</div></div>` +
-    `<div class="tile"><div class="n">${view ? (seatsLeft(view) === Infinity ? "–" : seatsLeft(view)) : "–"}</div><div class="l">Seats left</div></div>` +
+    (view && seatsLeft(view) < 0 ? `<div class="tile warn"><div class="n">+${-seatsLeft(view)}</div><div class="l">Over capacity</div></div>` : `<div class="tile"><div class="n">${view ? seatsLeft(view) : "–"}</div><div class="l">Seats left</div></div>`) +
     `<div class="tile ${w ? "warn" : ""}"><div class="n">${w}</div><div class="l">Waiting for a course</div></div>` +
-    `<div class="tile ${attn.length ? "warn" : ""}"><div class="n">${attn.length}</div><div class="l">Overridden or clashing</div></div>`;
+    `<div class="tile ${attn.length ? "warn" : ""}"><div class="n">${attn.length}</div><div class="l">Placement clashes</div></div>`;
   if (!keepMsgs) {
     const at = attn.filter(p => p.course === view);
-    $("msgs").innerHTML = at.length ? `<div class="msg warn">${at.length} on ${esc(view)} ${at.length === 1 ? "was" : "were"} placed by override or ${at.length === 1 ? "has" : "have"} a clash: ${at.slice(0, 8).map(p => esc(p.name)).join(", ")}${at.length > 8 ? " and more" : ""}.</div>` : "";
+    const over = view && seatsLeft(view) < 0 ? `<div class="msg err">${esc(view)} is over capacity: ${ins.length} candidates for ${courseCapacity()} places (${ROOM_LIMIT} in each of ${ROOMS.length} rooms).</div>` : "";
+    $("msgs").innerHTML = over + (at.length ? `<div class="msg warn">${at.length} on ${esc(view)} ${at.length === 1 ? "has" : "have"} a placement clash: ${at.slice(0, 8).map(p => esc(p.name)).join(", ")}${at.length > 8 ? " and more" : ""}.</div>` : "");
   }
-  const cap = view ? perRoomCap(view) : null;
+  const cap = ROOM_LIMIT;
   $("rooms").innerHTML = ROOMS.map(r => {
-    const n = ins.filter(p => p.room === r).length, pct = cap ? Math.min(100, n / cap * 100) : 0;
-    return `<div class="r ${cap != null && n > cap ? "over" : ""}"><b>${esc(r)}</b><small>${n}${cap != null ? " of " + cap : ""}</small><div class="bar2"><i style="width:${pct}%"></i></div></div>`;
+    const n = ins.filter(p => p.room === r).length, pct = Math.min(100, n / cap * 100);
+    const cls = n > cap ? "over" : n === cap ? "full" : "";
+    return `<div class="r ${cls}"><b>${esc(r)}</b><small>${n} of ${cap}${n > cap ? " · over" : n === cap ? " · full" : ""}</small><div class="bar2"><i style="width:${pct}%"></i></div></div>`;
   }).join("") + ((view && ins.some(p => !ROOMS.includes(p.room))) ? `<div class="r"><b>No room</b><small>${ins.filter(p => !ROOMS.includes(p.room)).length}</small></div>` : "");
-  $("filterTabs").innerHTML = [["course", view || "Course"], ["wait", "Waiting (" + w + ")"], ["attn", "Needs attention (" + attn.length + ")"]].map(([k, l]) => `<button type="button" class="${filter === k ? "on" : ""}" data-f="${k}">${esc(l)}</button>`).join("");
+  $("filterTabs").innerHTML = [["course", view || "Course"], ["wait", "Waiting (" + w + ")"], ["attn", "Placement clashes (" + attn.length + ")"]].map(([k, l]) => `<button type="button" class="${filter === k ? "on" : ""}" data-f="${k}">${esc(l)}</button>`).join("");
   $("filterTabs").querySelectorAll("button").forEach(b => b.onclick = () => { filter = b.dataset.f; $("listSearch").value = ""; renderAll(); });
   const q = $("listSearch").value.trim().toLowerCase();
   let list, truncated = false;
@@ -855,12 +873,10 @@ function renderPane(keepMsgs) {
   if (list.length > ROW_CAP) { list = list.slice(0, ROW_CAP); truncated = true; }
   $("rows").innerHTML = list.length ? list.map(p => {
     const st = [];
-    const r = p.course ? reasonsFor(p, p.course) : [];
+    const clash = placementClashFor(p);
     if (!p.course) st.push(`<span class="pill wait">Waiting</span>`);
     if (!p.course && !p.placementChecked) st.push(`<span class="pill clash">Dates not checked</span>`);
-    if (isOverridden(p)) st.push(`<span class="pill ovr">Override</span>`);
-    else if (r.length) st.push(`<span class="pill clash">Check dates</span>`);
-    if (p.overCapacity) st.push(`<span class="pill cap">Over capacity</span>`);
+    if (clash) st.push(`<span class="pill clash">Placement clash ${esc(fmtShort(clash.start))} to ${esc(fmtShort(clash.end))}</span>`);
     if (isPending(p)) st.push(`<span class="pill mail">Not emailed</span>`);
     if (touched.has(p.id)) st.push(`<span class="pill new">Changed now</span>`);
     return `<div class="row ${sel && sel.id === p.id ? "sel" : ""} ${touched.has(p.id) ? "moved" : ""}" data-id="${esc(p.id)}"><div class="rm ${p.room ? "" : "none"}">${esc(p.room || "–")}</div><div class="nm"><b>${esc(p.name)}</b><small>${esc(p.course || "no course yet")}</small></div><div class="rest" style="font-size:13px;color:var(--mut)">${esc(p.degree)}</div><div class="rest st">${st.join("")}</div></div>`;
