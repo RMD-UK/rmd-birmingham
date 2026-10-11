@@ -2172,6 +2172,7 @@ function renderFeedback(day) {
               <div class="fb-detail-meta">${[feedbackRater(f) ? "by " + esc(feedbackRater(f)) : "", feedbackWhen(f) ? esc(feedbackWhen(f)) : ""].filter(Boolean).join(" · ") || "&nbsp;"}</div>
               ${f.comment ? `<div class="${f.rating === 'red' ? 'comment-detail' : 'fb-comment'}">${esc(f.comment)}</div>` : ""}
             </div>
+            <button class="btn-sm" style="padding:2px 8px;font-size:11px;color:#b3261e;border-color:#b3261e;flex:none;" onclick="event.stopPropagation();deleteFeedbackDoc('${f.isAssessorFeedback ? 'assessor_feedback' : 'session_feedback'}', '${esc(f.id)}')" title="Permanently delete this rating (Course Director only)">Delete</button>
           </div>`).join("")}
       </div>` : "";
 
@@ -2248,6 +2249,7 @@ function renderFeedback(day) {
           <div class="text-sm text-muted">${feedback.sessionId ? `<a class="fb-session-link" href="session-feedback.html?session=${encodeURIComponent(feedback.sessionId)}" target="_blank" rel="noopener">${esc(feedbackSessionTitle(feedback.sessionId))} &#8599;</a>` : esc(feedbackSessionTitle(feedback.sessionId))} · ${esc(candidate.group || "No room assigned")}${feedbackRater(feedback) ? " · by " + esc(feedbackRater(feedback)) : ""}</div>
           ${feedback.comment ? `<div class="comment-detail">${esc(feedback.comment)}</div>` : `<div class="text-sm text-muted mt-8">No comment provided.</div>`}
         </div>
+        <button class="btn-sm" style="padding:2px 8px;font-size:11px;color:#b3261e;border-color:#b3261e;flex:none;" onclick="event.stopPropagation();deleteFeedbackDoc('${feedback.isAssessorFeedback ? 'assessor_feedback' : 'session_feedback'}', '${esc(feedback.id)}')" title="Permanently delete this rating (Course Director only)">Delete</button>
       </div>`).join("");
   } else {
     redCard.style.display = "none";
@@ -2309,6 +2311,20 @@ function itcObsDay(o) {
   if (k.startsWith("sun") || id.startsWith("sun")) return "sunday";
   return "";
 }
+// Course Director: permanently delete any entered rating (2026-10-11, per Jon).
+// firestore.rules allow delete for the Director on session_feedback,
+// assessor_feedback, session_quality and itc_observations. The live listeners
+// redraw the screens once the document is gone.
+async function deleteFeedbackDoc(col, id) {
+  if (!col || !id) return;
+  if (!confirm("Permanently delete this rating?\n\nThis cannot be undone.")) return;
+  try {
+    await db.collection(col).doc(id).delete();
+  } catch (err) {
+    alert("Could not delete: " + (err.message || err.code || "unknown error"));
+  }
+}
+
 // Course Director only (firestore.rules: itc_observations delete = isDirector()).
 // Permanent: the live listener then redraws the card without it.
 async function deleteItcObservation(id) {
@@ -2528,7 +2544,7 @@ function renderSessionQuality() {
       x.resourceIssue === "yes" ? `<span class="sq-issue">Resource issue</span>${x.resourceNotes ? ": " + esc(x.resourceNotes) : ""}` : ""
     ].filter(Boolean).join(" · ");
     return `<div class="sq-resp">${bits || "No ratings given"}${x.otherComments ? `<div>${esc(x.otherComments)}</div>` : ""}
-      <div class="text-sm text-muted">${esc(x.submittedByName || "Faculty")}${qualityWhen(x) ? " · " + esc(qualityWhen(x)) : ""}${x.cdFlag ? " · <span class=\"sq-issue\">Flagged</span>" : ""}</div></div>`;
+      <div class="text-sm text-muted">${esc(x.submittedByName || "Faculty")}${qualityWhen(x) ? " · " + esc(qualityWhen(x)) : ""}${x.cdFlag ? " · <span class=\"sq-issue\">Flagged</span>" : ""} · <button class="btn-sm" style="padding:2px 8px;font-size:11px;color:#b3261e;border-color:#b3261e;flex:none;" onclick="event.stopPropagation();deleteFeedbackDoc('session_quality', '${esc(x.id)}')" title="Permanently delete this rating (Course Director only)">Delete</button></div></div>`;
   };
 
   // Overall rating spread: a five-part bar, Poor to Excellent.

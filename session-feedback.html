@@ -615,11 +615,33 @@ async function loadSessionRatings() {
     myCandidates.forEach(c => sfRefreshTick(c.id));
     sfUpdateBanner();
     if (restored) showToast("Restored " + restored + " unsaved rating" + (restored === 1 ? "" : "s") + " from this device", "green");
+    watchRemovedRatings();
   } catch (e) {
     console.error("Could not load saved ratings:", e.code, e.message);
     DraftGuard.banner("sfBanner", "statusBar", "Could not load your saved ratings (" + (e.code || "error") + "). Do not reload: anything you enter is still kept on this device.", "err");
     renderCandidates();
   }
+}
+
+// 2026-10-11: the Course Director can now delete a rating. If one of MY ratings is
+// deleted while this page is open, drop it from the screen too (otherwise it keeps
+// showing, and an edit would quietly re-create it). Ratings with unsent edits are kept.
+var _sfRemovedWatch = null;
+function watchRemovedRatings() {
+  if (_sfRemovedWatch || !currentSession || !currentUser) return;
+  _sfRemovedWatch = db.collection("session_feedback")
+    .where("sessionId", "==", currentSession)
+    .where("submittedByUid", "==", currentUser.uid)
+    .onSnapshot(function (snap) {
+      var n = 0;
+      snap.docChanges().forEach(function (ch) {
+        if (ch.type !== "removed") return;
+        var cid = (ch.doc.data() || {}).candidateId;
+        if (!cid || sfPending[cid] || !ratings[cid] || ratings[cid].firestoreId !== ch.doc.id) return;
+        delete ratings[cid]; n++;
+      });
+      if (n) { renderCandidates(); myCandidates.forEach(function (c) { sfRefreshTick(c.id); }); sfUpdateBanner(); showToast("A rating was removed by the Course Director", "green"); }
+    }, function (err) { console.warn("Removed-rating watch:", err.message); });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

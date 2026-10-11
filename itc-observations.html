@@ -388,6 +388,7 @@ async function loadMyRatings() {
     console.error("Could not load saved observations:", e.code, e.message);
     ioLoadError = e.code || e.message || "error";
   }
+  watchRemovedRatings();
   // Put back anything entered on this device that the server never confirmed.
   const draft = DraftGuard.read(ioDraftKey());
   ioRestored = 0;
@@ -403,6 +404,25 @@ async function loadMyRatings() {
   });
 }
 let ioLoadError = "", ioRestored = 0;
+
+// 2026-10-11: drop an observation from this screen if the Course Director deletes it.
+var _ioRemovedWatch = null;
+function watchRemovedRatings() {
+  if (_ioRemovedWatch || !currentUser || !currentSession) return;
+  _ioRemovedWatch = db.collection(COLLECTIONS.itcObs)
+    .where("sessionId", "==", currentSession)
+    .where("raterUid", "==", currentUser.uid)
+    .onSnapshot(function (snap) {
+      var n = 0;
+      snap.docChanges().forEach(function (ch) {
+        if (ch.type !== "removed") return;
+        var em = (ch.doc.data() || {}).itcEmail;
+        if (!em || ioPending[em] || !ratings[em] || ratings[em].firestoreId !== ch.doc.id) return;
+        delete ratings[em]; n++;
+      });
+      if (n) { try { renderItcs(); } catch (e) {} if (typeof showToast === "function") showToast("An observation was removed by the Course Director", "green"); }
+    }, function (err) { console.warn("Removed-observation watch:", err.message); });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Render
