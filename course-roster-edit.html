@@ -344,7 +344,13 @@ function selectCourse(course) {
     candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length)
   );
 
-  document.getElementById("roomsGrid").innerHTML = roomsWithContent.length
+  // Courses whose instructor teams have not been saved yet (Course Room &
+  // Instructor Allocation) show candidates only; say so rather than looking broken.
+  const teamTotal = ROOMS.reduce((n, r) => n + ((teams[r] || []).length), 0);
+  const noTeamNote = (!teamTotal && candidates.length)
+    ? `<div class="no-course" style="grid-column:1/-1;background:#FFF1D6;color:#8A5200;border-radius:12px;padding:12px 14px;text-align:left;font-weight:600;">No instructor teams have been allocated to ${esc(course)} yet, so only candidates are shown. Instructors appear here once teams are saved for this course on Course Room &amp; Instructor Allocation.</div>`
+    : "";
+  document.getElementById("roomsGrid").innerHTML = noTeamNote + (roomsWithContent.length
     ? roomsWithContent.map(rid => {
         const inRoom = candidates.filter(c => c.room === rid);
         const instrs = (teams[rid] || []);
@@ -359,7 +365,7 @@ function selectCourse(course) {
                   </div>
                 </div>`;
       }).join("")
-    : `<div class="no-course" style="grid-column:1/-1">No rooms have been set up for this course yet.</div>`;
+    : `<div class="no-course" style="grid-column:1/-1">No rooms have been set up for this course yet.</div>`);
 
   const unassigned = candidates.filter(c => !c.room);
   document.getElementById("unassignedWrap").style.display = unassigned.length ? "" : "none";
