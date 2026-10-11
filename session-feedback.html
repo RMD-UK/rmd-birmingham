@@ -440,6 +440,7 @@ window.addEventListener("load", () => {
     // rooms, and Student/Senior Faculty (and the Director) can switch with
     // the "Show all rooms" button. Someone with no room anywhere still sees
     // everyone, with a note saying so, rather than a blank screen.
+    _sfEmail = email;
     myRoomId = (await findMyRoom(email)) || currentUserDoc?.group || currentUserDoc?.room || null;
     showAllRooms = (role === "director") ? true : (seeAllGroups ? !myRoomId : false);
     updateRoomHeader();
@@ -481,6 +482,32 @@ function onSessionChange() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Which room is this person teaching? Same source the timetable's room banner
 // uses: the groups collection (written by Room Allocation), matched by email.
+// 2026-10-11: an Instructor Trainer moved to another room kept rating the OLD room
+// until the page was reloaded, because the room is worked out once at sign-in.
+// Re-check it whenever the tab comes back into view; if it changed, reload the
+// candidate list for the new room (unsaved ratings in the old room are kept in
+// the form state only until re-render, so we do this only when the room changed).
+var _sfEmail = "", _sfRefreshing = false;
+async function refreshMyRoom() {
+  if (_sfRefreshing || !_sfEmail || showAllRooms || document.hidden) return;
+  _sfRefreshing = true;
+  try {
+    var uid = auth && auth.currentUser && auth.currentUser.uid;
+    if (uid) { var snap = await db.collection(COLLECTIONS.people).doc(uid).get(); if (snap.exists) currentUserDoc = { id: snap.id, ...snap.data() }; }
+    var rid = (await findMyRoom(_sfEmail)) || currentUserDoc?.group || currentUserDoc?.room || null;
+    if (rid && rid !== myRoomId) {
+      myRoomId = rid;
+      updateRoomHeader();
+      await loadCandidates();
+      renderCandidates();
+      if (typeof showToast === "function") showToast("Your room is now " + rid, "green");
+    }
+  } catch (e) { console.warn("Room refresh failed:", e.message); }
+  _sfRefreshing = false;
+}
+document.addEventListener("visibilitychange", refreshMyRoom);
+window.addEventListener("focus", refreshMyRoom);
+
 async function findMyRoom(email) {
   const em = String(email || "").toLowerCase();
   if (!em) return null;

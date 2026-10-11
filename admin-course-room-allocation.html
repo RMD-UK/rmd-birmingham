@@ -186,6 +186,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/fuzzy-search.js"></script>
+<script src="js/course-result.js"></script>
 <script>
 // ── Constants ────────────────────────────────────────────────────────────
 // STAGE1_TEACHING_ROOMS is declared once in js/firebase-config.js — do not
@@ -206,6 +207,8 @@ let roomTeams        = {};  // {CM01: {uids:[...], prefilled:bool}, ...}
 
 let dragging = null;   // {id, source, kind}
 let selected = null;   // {kind:"candidate"|"instructor", id}
+let crFails = {};            // uid -> {source:'cd'|'auto', reasons:[]} for people whose final course result (as on Assessment Development) is FAIL
+let crLoaded = false;
 let gwByUid = {};            // gateway_assessments by candidate (people) id
 let gwLoaded = false;
 let excludedUids = new Set(); // left out of this allocation (on screen only; nothing is written)
@@ -293,6 +296,32 @@ async function loadData() {
       if (g && (g.cdConfirmedOutcome === "fail" || (!g.cdConfirmedOutcome && g.outcome === "fail"))) excludedUids.add(i.uid);
     });
   } catch (e) { console.warn("gateway_assessments load failed:", e.message); }
+
+  // Final course PASS/FAIL (2026-10-11, per Jon: the Assessment Development page is
+  // the final result). Same calculation as that page: automatic result from the
+  // development ratings, Session Feedback reds, concern flag and gateway fail,
+  // overridden by the Course Director's own PASS/FAIL (cd_course_results) if set.
+  // Anyone whose final result is FAIL starts out left out; the checklist lets the
+  // director put them back.
+  try {
+    const [dsnap, csnap, fsnap] = await Promise.all([
+      db.collection("development_assessments").get(),
+      db.collection("cd_course_results").get(),
+      db.collection("session_feedback").get()
+    ]);
+    const devBy = {}, cdBy = {}, fbBy = {};
+    dsnap.forEach(d => { devBy[d.id] = d.data(); });
+    csnap.forEach(d => { cdBy[d.id] = d.data(); });
+    fsnap.forEach(d => { const f = d.data(); if (f && f.candidateId) (fbBy[f.candidateId] = fbBy[f.candidateId] || []).push(f); });
+    if (typeof RMD_COURSE_RESULT !== "undefined") {
+      allInstructors.forEach(i => {
+        const auto = RMD_COURSE_RESULT.autoCourseResult({ dev: devBy[i.uid], feedback: fbBy[i.uid], gateway: gwByUid[i.uid] });
+        const eff = RMD_COURSE_RESULT.effectiveCourseResult(auto, cdBy[i.uid]);
+        if (eff.result === "fail") { crFails[i.uid] = { source: eff.source, reasons: eff.source === "cd" ? ["Course Director set FAIL"] : auto.reasons }; excludedUids.add(i.uid); }
+      });
+      crLoaded = true;
+    }
+  } catch (e) { console.warn("Course result load failed:", e.message); }
 
   try {
     const snap = await db.collection(COLLECTIONS.courseAllocations).get();
@@ -1099,7 +1128,7 @@ function roomIssues() {
 function checklistOutstanding() {
   const t = [];
   if (!chk.ratings) t.push("Step 1: confirm the weekend ratings are complete");
-  if (!chk.gateway) t.push("Step 2: confirm the gateway results have been checked");
+  if (!chk.gateway) t.push("Step 2: confirm the gateway and final course results have been checked");
   if (!allocRan) t.push("Step 4: run the allocation (after resetting)");
   const ri = roomIssues();
   if (ri.issues.some(x => x.bad)) t.push("Step 5: fix the rooms marked in red");
@@ -1131,10 +1160,14 @@ function renderChecklist() {
 
   let gwBody = "";
   if (!gwLoaded) gwBody += `<div class="chk-bad">Could not read the gateway results, so nobody was left out automatically. Check the Gateway sign-off page.</div>`;
+  const crList = allInstructors.filter(i => crFails[i.uid]);
+  if (!crLoaded) gwBody += `<div class="chk-bad">Could not read the final course results (Assessment Development), so nobody was left out for failing the course. Check that page before saving.</div>`;
+  else if (crList.length) gwBody += `<div class="chk-note">Final course result is FAIL on Assessment Development (left out unless you untick):</div>` + crList.map(i => `<label class="chk-tick" style="font-weight:600"><input type="checkbox" ${excludedUids.has(i.uid) ? "checked" : ""} onchange="toggleExclude('${i.uid}',this.checked)"> Leave out ${escH(i.name)} <span style="font-weight:400;color:#637282">(${escH((crFails[i.uid].reasons || []).join("; ") || "fail")})</span></label>`).join("");
+  else gwBody += `<div class="chk-good">No final course FAILs in the teaching pool.</div>`;
   if (fails.length) gwBody += `<div class="chk-note">Gateway FAIL recorded but not yet signed off by the Course Director (left out unless you untick; confirmed fails are already out of the pool):</div>` + fails.map(i => `<label class="chk-tick" style="font-weight:600"><input type="checkbox" ${excludedUids.has(i.uid) ? "checked" : ""} onchange="toggleExclude('${i.uid}',this.checked)"> Leave out ${escH(i.name)}</label>`).join("");
   else if (gwLoaded) gwBody += `<div class="chk-good">No gateway FAILs in the teaching pool.</div>`;
   if (awaiting.length) gwBody += `<div class="chk-warn" style="margin-top:6px">Result recorded but not yet signed off by the Course Director: ${awaiting.map(i => escH(i.name)).join(", ")}</div>`;
-  h += step(2, d2, "Gateway results", gwBody + tick("gateway", "Gateway results checked"));
+  h += step(2, d2, "Gateway and final course results", gwBody + tick("gateway", "Gateway and course results checked"));
 
   h += step(3, d3, "Reset instructors to unallocated",
     `<div class="chk-note">${placedUids.size} instructor${placedUids.size !== 1 ? "s" : ""} currently placed${carried ? ", " + carried + " carried over from the saved default or an earlier allocation" : ""}. Reset first, or the balancing cannot move them.</div>
