@@ -237,7 +237,7 @@
     tr.grp-row.itc td { background: #f1e8fa; color: #5a2d8a; border-top-color: #b99be0; }
     tr.row-itc > td:first-child { border-left: 5px solid #6b3d9a; background: #faf6fd; }
     tr.row-ic  > td:first-child { border-left: 5px solid #3d52a0; }
-    td.cp-na .tl-cell { opacity: .3; }
+    table.atbl.no-itc-col .cp-itc { display: none; }
 
     .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
     .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
@@ -292,7 +292,7 @@
           <th class="fb-col" title="From Session Feedback: Group Practice: The Learning Conversation (Sat)">Sat<br>Learning<br>conv.<span class="sub">faculty feedback</span></th>
           <th class="fb-col day-start" title="From Session Feedback: Group Practice: Teaching (Sun)">Sun<br>Teaching<span class="sub">faculty feedback</span></th>
           <th class="cp-col cp-sun-teach" title="Your own rating (Sun)">Sun<br>Teach<span class="sub">your rating</span></th>
-          <th class="cp-col" title="Your own rating (Sun)">Sun<br>ITC obs<span class="sub">your rating</span></th>
+          <th class="cp-col cp-itc" title="Your own rating: ITC observation (Instructor Trainer Candidates only)">Sun<br>ITC obs<span class="sub">ITCs only</span></th>
           <th class="cp-col" title="Your own rating (Sun)">Sun<br>Final<span class="sub">your rating</span></th>
           <th>Overall</th>
           <th>Flag</th>
@@ -635,6 +635,8 @@ function renderAssessTable() {
     if (row.style.display !== "none") openNotes.add(row.id.replace("notes-row-",""));
   });
   const ics = cands.filter(c => !isITCand(c)), itcs = cands.filter(isITCand);
+  // Nobody in this view can be ITC-observed, so drop that column altogether.
+  const atbl = document.getElementById("assessTable"); if (atbl) atbl.classList.toggle("no-itc-col", itcs.length === 0);
   const grp = (label, n, cls) => `<tr class="grp-row ${cls}"><td colspan="14">${label} (${n})</td></tr>`;
   tbody.innerHTML =
     (ics.length ? grp("Instructor Candidates", ics.length, "ic") + ics.map(c => buildCandidateRows(c, openNotes.has(c.id))).join("") : "") +
@@ -649,7 +651,8 @@ function buildCandidateRows(c, notesOpen) {
   const cpCellMap = {};
   CHECKPOINTS.forEach(cp => {
     const v = s.ratings[cp.id] || null;
-    cpCellMap[cp.id] = `<td class="cp-col${cp.id==='sun-teach'?' cp-sun-teach':''}${cp.id==='sun-itc' && !isITCand(c) ? ' cp-na' : ''}"${cp.id==='sun-itc' && !isITCand(c) ? ' title="ITC observation applies to Instructor Trainer Candidates"' : ''}><div class="tl-cell">
+    if (cp.id === 'sun-itc' && !isITCand(c)) { cpCellMap[cp.id] = `<td class="cp-col cp-itc" style="text-align:center;color:#c0c7d2" title="ITC observation applies to Instructor Trainer Candidates only">-</td>`; return; }
+    cpCellMap[cp.id] = `<td class="cp-col${cp.id==='sun-teach'?' cp-sun-teach':''}${cp.id==='sun-itc' ? ' cp-itc' : ''}"><div class="tl-cell">
       <button class="tl g ${v==='green'?'on':''}" onclick="setRating('${c.id}','${cp.id}','green')" title="Green: no concerns">G</button>
       <button class="tl a ${v==='amber'?'on':''}" onclick="setRating('${c.id}','${cp.id}','amber')" title="Amber: some concerns">A</button>
       <button class="tl r ${v==='red'?'on':''}"   onclick="setRating('${c.id}','${cp.id}','red')"   title="Red: serious concerns">R</button>
