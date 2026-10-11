@@ -48,9 +48,11 @@
   <div class="card">
     <div class="card-header">Google Sheet</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">The master list sheet gets each candidate's allocated course and room (columns G and H) automatically whenever someone is placed, re-allocated or moved. Use this if you want to check it is fully up to date: it writes any differences and clears anyone who is no longer on a course.</p>
-      <button class="btn-primary" id="pushSheetBtn" onclick="pushSheetNow()">Push course and room to the sheet now</button>
+      <p class="hint" style="margin-top:0;">The website is the master and the sheet follows it, automatically: allocated course and room (columns G and H) update whenever someone is placed, re-allocated or moved; anyone added on the website who is not in the sheet is added at the bottom, shaded amber with a note in column J ("Added after bulk import"); anyone deleted from the website is struck through and greyed out with "Removed from website" in column J; and anyone put back is un-struck. A background check repeats all of this every 30 minutes. Use the buttons below to check it by hand.</p>
+      <button class="btn-secondary" id="checkSheetBtn" onclick="checkSheetNow()">Check the sheet (no changes)</button>
+      <button class="btn-primary" id="pushSheetBtn" onclick="pushSheetNow()">Sync the sheet now</button>
       <div id="pushSheetMsg" class="hint" style="margin-top:8px;"></div>
+      <div id="sheetOrphans" style="margin-top:8px;"></div>
     </div>
   </div>
 
@@ -451,20 +453,68 @@ function updateAllocateButtonState() {
 async function syncCourseSheetAfterAllocation() {
   try {
     const res = await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: false });
-    return { ok: true, updated: res.data.updated };
+    return { ok: true, updated: res.data.updated, added: res.data.added || 0 };
   } catch (err) {
     console.error("Course sheet sync failed:", err.code, err.message);
     return { ok: false, error: err.message };
   }
 }
 
+function sheetSummaryHtml(d, verb) {
+  const list = (arr, n = 8) => arr.slice(0, n).map(x => escHtml(x)).join(", ") + (arr.length > n ? ` and ${arr.length - n} more` : "");
+  const parts = [];
+  const upd = d.dryRun ? d.wouldUpdate : d.updated;
+  parts.push(`${upd} course/room change${upd === 1 ? "" : "s"}`);
+  if (d.added) parts.push(`${d.added} ${verb} added at the bottom (${list(d.addedNames)})`);
+  if (d.restored) parts.push(`${d.restored} un-struck (back on the website)`);
+  if (d.struck) parts.push(`${d.struck} struck through (${list(d.struckNames || [])})`);
+  if (d.duplicatesInSheet && d.duplicatesInSheet.length) parts.push(`⚠ duplicate emails in the sheet: ${list(d.duplicatesInSheet)}`);
+  return parts.join(" · ");
+}
+function escHtml(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch])); }
+
+function renderSheetOrphans(d) {
+  const box = document.getElementById("sheetOrphans");
+  const o = d.notOnWebsite || [];
+  if (!o.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="hint" style="color:#8a5a00;">${o.length} row${o.length === 1 ? " is" : "s are"} in the sheet but not on the website, and not recorded as removed: ${o.slice(0, 12).map(x => escHtml(x.name || x.email)).join(", ")}${o.length > 12 ? ` and ${o.length - 12} more` : ""}. This is normal for people never imported to the website. If they should be treated as removed:</div>
+    <button class="btn-secondary" style="margin-top:6px;" onclick="strikeSheetOrphans(${o.length})">Strike through these ${o.length} row${o.length === 1 ? "" : "s"}</button>`;
+}
+
+async function checkSheetNow() {
+  const btn = document.getElementById("checkSheetBtn"), msg = document.getElementById("pushSheetMsg");
+  btn.disabled = true; msg.style.color = ""; msg.textContent = "Checking the sheet (nothing is changed)…";
+  try {
+    const d = (await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: true })).data;
+    const nothing = !d.wouldUpdate && !d.added && !d.restored && !d.struck;
+    msg.style.color = nothing ? "#1a6e31" : "#8a5a00";
+    msg.innerHTML = nothing ? `The sheet is fully up to date (${d.checked} candidates checked).` : `Would change: ${sheetSummaryHtml(d, "would be")}.`;
+    renderSheetOrphans(d);
+  } catch (err) { msg.style.color = "#b00020"; msg.textContent = "The check failed: " + err.message; }
+  btn.disabled = false;
+}
+
 async function pushSheetNow() {
   const btn = document.getElementById("pushSheetBtn"), msg = document.getElementById("pushSheetMsg");
-  btn.disabled = true; msg.textContent = "Updating the sheet…";
-  const r = await syncCourseSheetAfterAllocation();
+  btn.disabled = true; msg.style.color = ""; msg.textContent = "Updating the sheet…";
+  try {
+    const d = (await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: false })).data;
+    msg.style.color = d.formatError ? "#8a5a00" : "#1a6e31";
+    msg.innerHTML = `Done. ${sheetSummaryHtml(d, "")}.` + (d.formatError ? " (Rows were written but shading/strike-through failed: " + escHtml(d.formatError) + ")" : "");
+    renderSheetOrphans(d);
+  } catch (err) { msg.style.color = "#b00020"; msg.textContent = "The sheet could not be updated: " + err.message; }
   btn.disabled = false;
-  msg.style.color = r.ok ? "#1a6e31" : "#b00020";
-  msg.textContent = r.ok ? `Done. ${r.updated} row${r.updated === 1 ? "" : "s"} changed in the sheet.` : "The sheet could not be updated: " + (r.error || "unknown error");
+}
+
+async function strikeSheetOrphans(n) {
+  if (!confirm(`Strike through the ${n} sheet row${n === 1 ? "" : "s"} that have no matching candidate on the website?\n\nTheir details stay in the sheet, greyed out with "Removed from website" in column J. You can undo this by hand in the sheet.`)) return;
+  const msg = document.getElementById("pushSheetMsg");
+  msg.style.color = ""; msg.textContent = "Striking through…";
+  try {
+    const d = (await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: false, strikeMissing: true })).data;
+    msg.style.color = "#1a6e31"; msg.innerHTML = `Done. ${sheetSummaryHtml(d, "")}.`;
+    renderSheetOrphans(d);
+  } catch (err) { msg.style.color = "#b00020"; msg.textContent = "Failed: " + err.message; }
 }
 
 async function allocateAllNow() {

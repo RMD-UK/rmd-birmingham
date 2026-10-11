@@ -644,7 +644,7 @@ async function confirmImport() {
         const finalDegree = r.degreeOverride || r.degree;
         const isPharmacy = (resolveStage1Degree(finalDegree) || {}).exact === "Pharmacy MPharm";
         batch.set(ref, {
-          name: r.name, email: r.email.toLowerCase(), degree: finalDegree, course: "", room: null,
+          name: r.name, firstName: r.firstName || "", surname: r.surname || "", email: r.email.toLowerCase(), degree: finalDegree, course: "", room: null,
           studentId: r.studentId || "", yearOfStudy: r.yearOfStudy || "",
           placementChecked: !isPharmacy, placementBlocks: [],
           promotedToUid: null, promotedAt: null,
@@ -654,9 +654,16 @@ async function confirmImport() {
       await batch.commit();
     }
     document.getElementById("pasteBox").value = "";
-    document.getElementById("previewWrap").innerHTML = `<div class="empty-state">Imported ${parsedRows.length} candidate(s).</div>`;
+    const importedCount = parsedRows.length;
+    document.getElementById("previewWrap").innerHTML = `<div class="empty-state">Imported ${importedCount} candidate(s). Updating the Google Sheet…</div>`;
     parsedRows = null;
     await loadCandidates();
+    // Anyone not already in the master sheet is added at the bottom, shaded
+    // amber and noted as "Added after bulk import" (2026-10-11, Jon).
+    const sh = await syncStage1Sheet();
+    document.getElementById("previewWrap").innerHTML = `<div class="empty-state">Imported ${importedCount} candidate(s). ` +
+      (sh.ok ? `Google Sheet updated: ${sh.added} new row${sh.added === 1 ? "" : "s"} added at the bottom (marked "Added after bulk import").`
+             : `⚠ The Google Sheet could not be updated just now. It catches up automatically within 30 minutes, or press "Sync the sheet now" on Course allocation.`) + `</div>`;
   } catch (err) {
     alert("Import failed: " + err.message);
   }
@@ -1141,12 +1148,16 @@ async function removePlacementBlock(id, index) {
 async function syncStage1Sheet() {
   try {
     const res = await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: false });
-    return { ok: true, updated: res.data.updated };
+    return { ok: true, updated: res.data.updated, added: res.data.added || 0, struck: res.data.struck || 0, restored: res.data.restored || 0 };
   } catch (err) {
     console.error("Google Sheet sync failed:", err.code, err.message);
     return { ok: false, error: err.message };
   }
 }
+// After a delete the server records the removal and strikes the person
+// through in the sheet; this follow-up just makes sure it has happened
+// (and picks up the rest of a bulk delete the server was too busy to finish).
+function syncStage1SheetSoon() { setTimeout(() => { syncStage1Sheet(); }, 4000); }
 
 // Why a course would NOT normally be offered to this candidate (programme
 // deadline, placement clash). Empty array = it is a normal option. Mirrors
@@ -1669,6 +1680,7 @@ async function deleteCandidate(id) {
     computeDuplicateColors();
     populateCourseFilter();
     renderCandidates();
+    syncStage1SheetSoon();
   } catch (err) {
     alert("Delete failed: " + err.message);
   }
@@ -1755,7 +1767,8 @@ async function deleteAllUnallocated() {
     computeDuplicateColors();
     populateCourseFilter();
     renderCandidates();
-    alert(`Deleted ${targets.length} unallocated candidate(s).`);
+    syncStage1SheetSoon();
+    alert(`Deleted ${targets.length} unallocated candidate(s). They are struck through in the Google Sheet.`);
   } catch (err) {
     alert("Bulk delete failed: " + err.message);
   }
@@ -1794,6 +1807,7 @@ async function deleteTestCandidates() {
     computeDuplicateColors();
     populateCourseFilter();
     renderCandidates();
+    syncStage1SheetSoon();
     alert(`Deleted ${targets.length} test candidate(s).`);
   } catch (err) {
     alert("Bulk delete failed: " + err.message);
