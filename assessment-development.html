@@ -53,6 +53,12 @@
     table.atbl.no-fb .fb-col { display: none; }
     table.atbl th.fb-col { background: #6a3fb0; }
     td.fb-col { text-align: center; }
+    table.atbl th .sub { display:block; font-size:9px; font-weight:600; letter-spacing:.03em; text-transform:none; opacity:.75; margin-top:2px; }
+    /* day divider: Saturday columns, then Sunday */
+    table.atbl .day-start { border-left: 3px solid #fff; }
+    table.atbl td.day-start { border-left: 3px solid #d9dde6; }
+    table.atbl.no-fb th.cp-sun-teach { border-left: 3px solid #fff; }
+    table.atbl.no-fb td.cp-sun-teach { border-left: 3px solid #d9dde6; }
     .fbdot { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-weight: 800; font-size: 12px; border: 2px solid; cursor: default; position: relative; }
     .fbdot.green { background: #e1efe3; color: #1a6e31; border-color: #1a6e31; }
     .fbdot.amber { background: #fdf1d8; color: #8a5200; border-color: #d99a1b; }
@@ -226,7 +232,12 @@
       text-transform: uppercase;
     }
     .stream-ic  { background: #e8f0fe; color: #3d52a0; }
-    .stream-itc { background: #f3e8fd; color: #6b3d9a; }
+    .stream-itc { background: #6b3d9a; color: #fff; }
+    tr.grp-row td { background: #eef1f6; color: var(--rmd-navy); font-weight: 800; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; padding: 7px 12px; border-top: 2px solid #c9d1de; }
+    tr.grp-row.itc td { background: #f1e8fa; color: #5a2d8a; border-top-color: #b99be0; }
+    tr.row-itc > td:first-child { border-left: 5px solid #6b3d9a; background: #faf6fd; }
+    tr.row-ic  > td:first-child { border-left: 5px solid #3d52a0; }
+    td.cp-na .tl-cell { opacity: .3; }
 
     .empty-state { text-align: center; padding: 40px; color: var(--rmd-muted); font-size: 14px; }
     .loading     { text-align: center; padding: 40px; color: var(--rmd-muted); }
@@ -268,21 +279,21 @@
     <span><span style="width:12px;height:12px;border-radius:50%;background:#b7410e;display:inline-block;"></span> Red: serious concerns</span>
     <span>· Tap 📝 for notes · Notes required for ⚠️</span>
   </div>
-  <div class="fbnote" id="fbNote">Purple columns show the ratings faculty gave in <b>Session Feedback</b> (worst rating if more than one; hover for comments). The G / A / R buttons are your own checkpoint ratings.</div>
+  <div class="fbnote" id="fbNote">Columns run in session order, Saturday then Sunday. <b>Purple</b> = ratings faculty gave in Session Feedback (worst rating if more than one; hover for comments). <b>Dark</b> = your own G / A / R checkpoint ratings. Provider-programme candidates only; assessor-stream sessions are not rated here.</div>
   <div class="table-wrap">
     <table class="atbl" id="assessTable">
       <thead>
         <tr>
           <th>Candidate</th>
-          <th class="fb-col" title="From Session Feedback: faculty ratings of Group Practice: BLS/AED (Sat)">Sat<br>BLS/AED</th>
-          <th class="fb-col" title="From Session Feedback: Group Practice: First Aid and Catastrophic Haemorrhage (Sat)">Sat<br>First Aid</th>
-          <th class="fb-col" title="From Session Feedback: Group Practice: The Learning Conversation (Sat)">Sat<br>Learning<br>conv.</th>
-          <th class="fb-col" title="From Session Feedback: Group Practice: Teaching (Sun)">Sun<br>Teaching</th>
-          <th>Sat<br>Teach</th>
-          <th>Sat<br>Debrief</th>
-          <th>Sun<br>Teach</th>
-          <th>Sun<br>ITC obs</th>
-          <th>Sun<br>Final</th>
+          <th class="fb-col" title="From Session Feedback: faculty ratings of Group Practice: BLS/AED (Sat)">Sat<br>BLS/AED<span class="sub">faculty feedback</span></th>
+          <th class="fb-col" title="From Session Feedback: Group Practice: First Aid and Catastrophic Haemorrhage (Sat)">Sat<br>First Aid<span class="sub">faculty feedback</span></th>
+          <th class="cp-col" title="Your own rating: Effective Teaching 5-minute presentation (Sat)">Sat<br>Teach<span class="sub">your rating</span></th>
+          <th class="cp-col" title="Your own rating: Debrief of the 5-minute presentation (Sat)">Sat<br>Debrief<span class="sub">your rating</span></th>
+          <th class="fb-col" title="From Session Feedback: Group Practice: The Learning Conversation (Sat)">Sat<br>Learning<br>conv.<span class="sub">faculty feedback</span></th>
+          <th class="fb-col day-start" title="From Session Feedback: Group Practice: Teaching (Sun)">Sun<br>Teaching<span class="sub">faculty feedback</span></th>
+          <th class="cp-col cp-sun-teach" title="Your own rating (Sun)">Sun<br>Teach<span class="sub">your rating</span></th>
+          <th class="cp-col" title="Your own rating (Sun)">Sun<br>ITC obs<span class="sub">your rating</span></th>
+          <th class="cp-col" title="Your own rating (Sun)">Sun<br>Final<span class="sub">your rating</span></th>
           <th>Overall</th>
           <th>Flag</th>
           <th>Notes</th>
@@ -603,6 +614,13 @@ function visibleCandidates(room) {
   return candidates.filter(c => c.room === room);
 }
 
+// Instructor Candidate (IC) vs Instructor Trainer Candidate (ITC). Taken from the
+// person's effective role for this weekend, NOT people.stream, which is blank for
+// almost everyone and made every row read "IC" (2026-10-11).
+function isITCand(c) {
+  return c.effectiveRole ? c.effectiveRole === ROLES.ITC : c.stream === "Instructor Trainer Candidate";
+}
+
 // ── Assessment table ─────────────────────────────────────────────────────────
 function renderAssessTable() {
   const tbody = document.getElementById("assessBody");
@@ -616,22 +634,27 @@ function renderAssessTable() {
   document.querySelectorAll(".notes-row").forEach(row => {
     if (row.style.display !== "none") openNotes.add(row.id.replace("notes-row-",""));
   });
-  tbody.innerHTML = cands.map(c => buildCandidateRows(c, openNotes.has(c.id))).join("");
+  const ics = cands.filter(c => !isITCand(c)), itcs = cands.filter(isITCand);
+  const grp = (label, n, cls) => `<tr class="grp-row ${cls}"><td colspan="14">${label} (${n})</td></tr>`;
+  tbody.innerHTML =
+    (ics.length ? grp("Instructor Candidates", ics.length, "ic") + ics.map(c => buildCandidateRows(c, openNotes.has(c.id))).join("") : "") +
+    (itcs.length ? grp("Instructor Trainer Candidates", itcs.length, "itc") + itcs.map(c => buildCandidateRows(c, openNotes.has(c.id))).join("") : "");
 }
 
 function buildCandidateRows(c, notesOpen) {
   const s  = getA(c.id);
-  const streamCls = (c.stream === "Instructor Trainer Candidate") ? "stream-itc" : "stream-ic";
-  const streamLbl = (c.stream === "Instructor Trainer Candidate") ? "ITC" : "IC";
+  const streamCls = isITCand(c) ? "stream-itc" : "stream-ic";
+  const streamLbl = isITCand(c) ? "ITC" : "IC";
 
-  const cpCells = CHECKPOINTS.map(cp => {
+  const cpCellMap = {};
+  CHECKPOINTS.forEach(cp => {
     const v = s.ratings[cp.id] || null;
-    return `<td><div class="tl-cell">
+    cpCellMap[cp.id] = `<td class="cp-col${cp.id==='sun-teach'?' cp-sun-teach':''}${cp.id==='sun-itc' && !isITCand(c) ? ' cp-na' : ''}"${cp.id==='sun-itc' && !isITCand(c) ? ' title="ITC observation applies to Instructor Trainer Candidates"' : ''}><div class="tl-cell">
       <button class="tl g ${v==='green'?'on':''}" onclick="setRating('${c.id}','${cp.id}','green')" title="Green: no concerns">G</button>
       <button class="tl a ${v==='amber'?'on':''}" onclick="setRating('${c.id}','${cp.id}','amber')" title="Amber: some concerns">A</button>
       <button class="tl r ${v==='red'?'on':''}"   onclick="setRating('${c.id}','${cp.id}','red')"   title="Red: serious concerns">R</button>
     </div></td>`;
-  }).join("");
+  });
 
   const ov     = computeOverall(c.id);
   const ovCls  = {green:"overall-green",amber:"overall-amber",red:"overall-red"}[ov] || "overall-none";
@@ -640,14 +663,15 @@ function buildCandidateRows(c, notesOpen) {
   const nbCls    = "notes-btn" + (notesOpen ? " open" : hasNotes ? " has-notes" : "");
 
   return `
-    <tr id="row-${c.id}">
+    <tr id="row-${c.id}" class="${isITCand(c) ? 'row-itc' : 'row-ic'}">
       <td>
         ${c.name}
-        <br><span class="stream-badge ${streamCls}">${streamLbl}</span>
+        <br><span class="stream-badge ${streamCls}" title="${isITCand(c) ? 'Instructor Trainer Candidate' : 'Instructor Candidate'}">${streamLbl}</span>
         <span style="font-size:10px;color:var(--rmd-muted);"> ${c.room}</span>
       </td>
-      ${FB_COLS.map(f => `<td class="fb-col" data-fb="${c.id}|${f.sid}">${fbCell(c.id, f.sid)}</td>`).join("")}
-      ${cpCells}
+      ${GRID_ORDER.map(k => k.indexOf("fb:") === 0
+        ? `<td class="fb-col${k === "fb:sun-4" ? " day-start" : ""}" data-fb="${c.id}|${k.slice(3)}">${fbCell(c.id, k.slice(3))}</td>`
+        : cpCellMap[k.slice(3)]).join("")}
       <td><span class="overall-badge ${ovCls}" onclick="cycleOverall('${c.id}')">${ovLbl}</span></td>
       <td>
         <div class="flag-cell">
@@ -870,8 +894,8 @@ function renderOverview() {
     const ov = computeOverall(c.id);
     const ovCls = {green:"overall-green",amber:"overall-amber",red:"overall-red"}[ov] || "overall-none";
     const ovLbl = {green:"🟢 No concerns",amber:"🟡 Some concerns",red:"🔴 Serious concerns"}[ov] || "No data";
-    const streamCls = (c.stream === "Instructor Trainer Candidate") ? "stream-itc" : "stream-ic";
-    const streamLbl = (c.stream === "Instructor Trainer Candidate") ? "ITC" : "IC";
+    const streamCls = isITCand(c) ? "stream-itc" : "stream-ic";
+    const streamLbl = isITCand(c) ? "ITC" : "IC";
 
     const flagHtml = [
       s.flags.concern  ? `<span style="font-size:12px;padding:2px 8px;border-radius:10px;background:#fde8e4;color:#b7410e;font-weight:700;">⚠️ Concern</span>`  : "",
@@ -956,6 +980,10 @@ const FB_COLS = [
   { sid: "sat-20", name: "Sat Learning Conversation group practice" },
   { sid: "sun-4",  name: "Sun Teaching group practice" }
 ];
+// Column order in the grid = the order the sessions run: Saturday (BLS/AED,
+// First Aid, 5-min teach, debrief, Learning Conversation) then Sunday.
+// fb: = read from Session Feedback, cp: = this page's own G/A/R taps.
+const GRID_ORDER = ["fb:sat-8", "fb:sat-11", "cp:sat-teach", "cp:sat-debrief", "fb:sat-20", "fb:sun-4", "cp:sun-teach", "cp:sun-itc", "cp:sun-final"];
 function fbCell(cid, sid) {
   const docs = (feedbackMap[cid] || []).filter(f => f.sessionId === sid && f.rating);
   if (!docs.length) return '<span class="fbdot none" title="No rating entered yet">-</span>';

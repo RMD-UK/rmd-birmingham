@@ -54,16 +54,18 @@
   .urgent .fill{background:var(--red)} .urgent .remain{color:var(--red)}
   .brk .title{color:#ffe3b0}
   /* message indicator: shows THAT a message exists, never its text */
-  #msgInd{display:none;align-items:center;gap:.7vw;padding:.35em 1.1em;border-radius:99px;font-weight:900;font-size:clamp(13px,1.6vw,30px);letter-spacing:.04em;white-space:nowrap}
+  #msgInd{display:none;align-items:center;gap:.6vw;font-weight:800;font-size:clamp(11px,1vw,18px);letter-spacing:.04em;white-space:nowrap}
   #msgInd.show{display:inline-flex}
-  #msgInd.normal{background:#ffc24d26;border:2px solid var(--amber);color:var(--amber)}
-  #msgInd.high{background:var(--red);border:2px solid #fff;color:#fff;animation:pulse 1.2s ease-in-out infinite}
-  #msgInd .dot{width:.9em;height:.9em;border-radius:50%;background:currentColor;flex:none}
-  #msgInd button{font:inherit;font-size:.7em;font-weight:800;border-radius:8px;border:1px solid currentColor;background:#ffffff22;color:inherit;padding:.2em .7em;cursor:pointer}
-  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 #ff5a6a99}50%{box-shadow:0 0 0 1.2vw #ff5a6a00}}
+  #msgInd .dot{width:clamp(12px,1.3vw,24px);height:clamp(12px,1.3vw,24px);border-radius:50%;flex:none}
+  #msgInd.normal .dot{background:var(--amber);box-shadow:0 0 0 2px #ffc24d44}
+  #msgInd.high .dot{background:var(--red);box-shadow:0 0 0 2px #ff5a6a66;animation:pulse 1.2s ease-in-out infinite}
+  #msgInd .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  #msgInd button{font:inherit;font-size:.9em;font-weight:700;border-radius:99px;border:1px solid #ffffff44;background:#ffffff14;color:#fff;padding:.1em .8em;cursor:pointer;opacity:.75}
+  #msgInd button:hover{opacity:1}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 #ff5a6acc}50%{box-shadow:0 0 0 .6vw #ff5a6a00}}
   #fsPrompt{position:fixed;left:50%;bottom:6vh;transform:translateX(-50%);z-index:8;background:var(--accent);color:#1b0f3d;font-weight:900;font-size:clamp(14px,1.6vw,28px);padding:.6em 1.4em;border-radius:99px;box-shadow:0 6px 24px #0008;cursor:pointer;display:none}
   body.fs #fsPrompt{display:none!important}
-  @media (prefers-reduced-motion:reduce){#msgInd.high{animation:none}}
+  @media (prefers-reduced-motion:reduce){#msgInd.high .dot{animation:none}}
   .ribbon{position:fixed;left:50%;transform:translateX(-50%);top:9vh;background:#ffffff22;border:1px solid #ffffff44;border-radius:99px;padding:.4em 1.2em;font-weight:700;font-size:clamp(12px,1.1vw,20px);color:#fff;display:none}
 
   /* controls: appear on movement, hide when idle */
@@ -84,7 +86,7 @@
 
 <header>
   <div class="event"><b>RMD Instructor Weekend 2026</b> &nbsp;|&nbsp; <span id="dayLabel"></span></div>
-  <div id="msgInd" role="status" aria-live="polite"><span class="dot"></span><span id="msgIndTxt"></span></div>
+  <div id="msgInd" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span class="lbl" id="msgIndTxt"></span></div>
   <div id="clock">--:--</div>
 </header>
 <div id="fsPrompt" role="button" tabindex="0">Click anywhere for full screen</div>
@@ -257,9 +259,11 @@
     var act = activeMsgs(), hi = act.filter(function (m) { return m.priority === "high"; });
     if (!act.length) { ind.className = ""; return; }
     ind.className = "show " + (hi.length ? "high" : "normal");
-    txt.textContent = hi.length
-      ? (hi.length > 1 ? hi.length + " PRIORITY MESSAGES" : "PRIORITY MESSAGE") + " - see timetable"
+    // A discreet dot: yellow = new message, red (pulsing) = priority. Text is for hover and screen readers only.
+    var label = hi.length
+      ? (hi.length > 1 ? hi.length + " priority messages" : "Priority message") + " - see timetable"
       : (act.length > 1 ? act.length + " new messages" : "New message") + " - see timetable";
+    txt.textContent = label; ind.title = label;
     var old = ind.querySelector("button");
     if (act.length && isDirectorUser) {
       if (!old) {   // keep one button between ticks so a tap is never lost to a re-render
