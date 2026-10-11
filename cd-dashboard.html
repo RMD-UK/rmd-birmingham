@@ -1725,6 +1725,16 @@ async function generateItcSummary(itcEmail, docId) {
 // expectation can be suggested as a default, never enforced — the director
 // always has the final call per person.
 // ─────────────────────────────────────────────────────────────────────────────
+// A people record can have an empty `name` while its passport / preferred names are
+// filled in (found 2026-10-11: an ITC row with no name). Fall back so the row is never blank.
+function itcName(c) {
+  const n = (c.name || "").trim();
+  if (n) return n;
+  const first = (c.preferredName || c.passportFirstName || "").trim();
+  const last  = (c.passportLastName || "").trim();
+  const full  = [first, last].filter(Boolean).join(" ");
+  return full || c.email || c.id || "(no name)";
+}
 function setItcOutcome(id, val) { itcOutcomeChoices[id] = val; }
 
 function itcAlreadyRecorded(c) {
@@ -1743,7 +1753,7 @@ function renderItcCompletion() {
   if (reviewEl) { reviewEl.style.display = "none"; reviewEl.innerHTML = ""; }
 
   const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC)
-    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    .sort((a, b) => itcName(a).localeCompare(itcName(b)));
 
   if (!itcs.length) {
     body.innerHTML = `<div class="empty-msg">No ITCs assigned for Instructor Weekend ${CURRENT_IW_YEAR} yet.</div>`;
@@ -1759,7 +1769,7 @@ function renderItcCompletion() {
         : "Completed this round as ITC";
       return `
       <div class="itc-row">
-        <div class="itc-name" style="flex:1;min-width:0;">${esc(c.name)}</div>
+        <div class="itc-name" style="flex:1;min-width:0;">${esc(itcName(c))}</div>
         <div class="itc-already-badge">Recorded ${CURRENT_IW_YEAR}: ${label}</div>
       </div>`;
     }
@@ -1772,7 +1782,7 @@ function renderItcCompletion() {
     return `
     <div class="itc-row">
       <div style="flex:1;min-width:0;">
-        <div class="itc-name">${esc(c.name)}</div>
+        <div class="itc-name">${esc(itcName(c))}</div>
         <div class="itc-rounds-note">${roundsDone} round${roundsDone === 1 ? "" : "s"} completed so far${roundsDone >= 2 ? " — meets the usual 2-round expectation" : ""}</div>
       </div>
       <select class="itc-outcome-select" onchange="setItcOutcome('${c.id}', this.value)">
@@ -1806,15 +1816,15 @@ function reviewItcCompletion() {
   }
 
   const lines = [];
-  if (upgrades.length)  lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${upgrades.length}</strong> upgraded to Instructor Trainer: ${upgrades.map(c => esc(c.name)).join(", ")}</div>`);
-  if (completes.length) lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${completes.length}</strong> completing another course as ITC: ${completes.map(c => esc(c.name)).join(", ")}</div>`);
+  if (upgrades.length)  lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${upgrades.length}</strong> upgraded to Instructor Trainer: ${upgrades.map(c => esc(itcName(c))).join(", ")}</div>`);
+  if (completes.length) lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${completes.length}</strong> completing another course as ITC: ${completes.map(c => esc(itcName(c))).join(", ")}</div>`);
 
   let failBlock = "";
   if (fails.length) {
     failBlock = `
       <div style="background:#fde8e4;border:1px solid #f4bfb6;border-radius:8px;padding:12px 14px;margin-top:10px;">
         <div style="font-weight:700;color:#8f3309;margin-bottom:6px;">⚠️ ${fails.length} marked Fail</div>
-        <div style="font-size:13px;color:#8f3309;">${fails.map(c => esc(c.name)).join(", ")}</div>
+        <div style="font-size:13px;color:#8f3309;">${fails.map(c => esc(itcName(c))).join(", ")}</div>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#8f3309;margin-top:10px;cursor:pointer;">
           <input type="checkbox" id="itcFailCheck" onchange="document.getElementById('itcConfirmBtn').disabled = !this.checked">
           I've checked this list and confirm these ${fails.length} ITC(s) genuinely did not pass this round.
