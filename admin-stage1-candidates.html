@@ -179,6 +179,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/candidate-lookup.js"></script>
 <script src="js/fuzzy-search.js"></script>
@@ -1134,6 +1135,19 @@ async function removePlacementBlock(id, index) {
 // (the default), or no preference. The choice is stored on the candidate
 // (preferredCourse / avoidCourse) and read by Allocate now, which places people
 // with a preference first, and clears it once they have a course.
+// Push every candidate's course and room to the master Google Sheet in one
+// batched call (director-only callable backfillStage1CourseToSheet). Used after
+// any bulk change so the sheet never lags behind the website (2026-10-11, Jon).
+async function syncStage1Sheet() {
+  try {
+    const res = await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: false });
+    return { ok: true, updated: res.data.updated };
+  } catch (err) {
+    console.error("Google Sheet sync failed:", err.code, err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
 // Why a course would NOT normally be offered to this candidate (programme
 // deadline, placement clash). Empty array = it is a normal option. Mirrors
 // eligibleCoursesIgnoringCapacity() on admin-stage1-course-allocation.html;
@@ -1225,7 +1239,10 @@ async function confirmReallocate(id, override) {
     const where = preferredCourse
       ? (overridePreferred ? `on ${preferredCourse} by your override (deadline / placement rules skipped, room capacity still applies)` : `to ${preferredCourse} if they are eligible and it has room`)
       : (avoidCourse ? `anywhere except ${avoidCourse}` : "with no preference");
-    alert(`${c.name} is now unallocated and checked, set to be placed ${where}. Run "Allocate now" in Course allocation to place them.`);
+    // The server trigger clears their old course and room in the Google Sheet;
+    // this makes sure it is done even if the trigger is slow or fails.
+    syncStage1Sheet();
+    alert(`${c.name} is now unallocated and checked, set to be placed ${where}. Run "Allocate now" in Course allocation to place them. The Google Sheet has been cleared for them and fills in again when they are placed.`);
   } catch (err) {
     alert("Re-allocate failed: " + err.message);
   }
@@ -1544,7 +1561,19 @@ async function markAllNoPlacementDates() {
 // subpages), so a flagged-candidate link from either of those has to cross
 // pages instead of just filling the search box in place.
 function applyFindQueryParam() {
-  const find = new URLSearchParams(window.location.search).get("find");
+  const qs = new URLSearchParams(window.location.search);
+  // ?realloc=1 (link in Global Admin Tools): open All candidates and put the cursor in
+  // the search box, ready to find the person to re-allocate.
+  if (qs.get("realloc") && !qs.get("find")) {
+    const det = document.getElementById("allCandidatesDetails");
+    if (det) det.open = true;
+    const sb = document.getElementById("searchBox");
+    if (sb) sb.focus();
+    const w = document.getElementById("candidatesWrap");
+    if (w) w.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  const find = qs.get("find");
   if (!find) return;
   // All candidates is collapsed by default (2026-10-03, Jon) — a flagged-
   // candidate link from Course/Assessment allocation has to open it first,
@@ -1681,7 +1710,8 @@ async function unallocateAllCandidates() {
     renderCandidates();
     const summaryEl = document.getElementById("allocationSummary");
     if (summaryEl) summaryEl.innerHTML = `<div style="background:#e8f0fe;border:1px solid #b8d4f5;border-radius:8px;padding:12px 14px;margin-bottom:12px;color:var(--rmd-navy);font-size:13px;font-weight:700;">Cleared course and room from ${targets.length} candidate(s) — they're back in the unallocated pool, ready for Step 3.</div>`;
-    alert(`Done — ${targets.length} candidate(s) un-allocated.`);
+    const sh = await syncStage1Sheet();
+    alert(`Done — ${targets.length} candidate(s) un-allocated.` + (sh.ok ? " Google Sheet cleared to match." : " ⚠ The Google Sheet could not be updated; use Push to sheet on Course allocation."));
   } catch (err) {
     alert("Un-allocate failed: " + err.message);
   }

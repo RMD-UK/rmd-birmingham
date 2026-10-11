@@ -2574,6 +2574,7 @@ exports.syncIwRegistrationToPeople = onDocumentWritten(
 const STAGE1_SHEET_ID = "1vLFVFM3inl3iE-_8NnMzLjEiGrxlJo5wq-DXXyxLBLQ";
 const STAGE1_SHEET_TAB = "Candidates"; // update here if the tab is ever renamed
 const STAGE1_SHEET_COURSE_COL = "G"; // "Allocated course" — 7th column, after Year of study
+const STAGE1_SHEET_ROOM_COL = "H";   // "Allocated room" — 8th column, added 2026-10-11 (column I is RAP, never touched here)
 
 let stage1SheetsAuth = null;
 async function stage1SheetsAccessToken() {
@@ -2630,13 +2631,16 @@ exports.backfillStage1CourseToSheet = onCall({ region: "us-central1" }, async (r
   const dryRun = !!request.data?.dryRun;
 
   const snap = await db.collection("stage1_candidates").get();
+  // Everyone with an email, allocated or not: someone moved back to the
+  // waiting list (course cleared) must have the old course and room cleared
+  // from the sheet too, not left showing a stale allocation.
   const candidates = snap.docs
     .map(d => d.data())
-    .filter(c => c.email && c.course);
+    .filter(c => c.email);
 
   const [colData, gData] = await Promise.all([
     stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!C2:C`),
-    stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}2:${STAGE1_SHEET_COURSE_COL}`),
+    stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}2:${STAGE1_SHEET_ROOM_COL}`),
   ]);
 
   const rowByEmail = new Map();
@@ -2644,27 +2648,30 @@ exports.backfillStage1CourseToSheet = onCall({ region: "us-central1" }, async (r
     const email = (r[0] || "").trim().toLowerCase();
     if (email) rowByEmail.set(email, i + 2); // +1 header row, +1 to move from 0- to 1-indexed
   });
-  const currentG = gData.values || [];
+  const currentGH = gData.values || [];
 
   const updates = []; // {range, values}
   const notFoundEmails = [];
   for (const c of candidates) {
     const email = String(c.email).trim().toLowerCase();
     const row = rowByEmail.get(email);
-    if (!row) { notFoundEmails.push(c.email); continue; }
-    const existing = (currentG[row - 2] && currentG[row - 2][0]) || "";
-    if (existing === c.course) continue; // already correct — don't touch it
-    updates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_COURSE_COL}${row}`, values: [[c.course]] });
+    if (!row) { if (c.course) notFoundEmails.push(c.email); continue; }
+    const cur = currentGH[row - 2] || [];
+    const wantCourse = c.course || "";
+    const wantRoom = c.course ? (c.room || "") : "";
+    if ((cur[0] || "") === wantCourse && (cur[1] || "") === wantRoom) continue; // already correct — don't touch it
+    updates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_COURSE_COL}${row}:${STAGE1_SHEET_ROOM_COL}${row}`, values: [[wantCourse, wantRoom]] });
   }
 
   if (dryRun) {
     return { dryRun: true, wouldUpdate: updates.length, notFound: notFoundEmails.length, notFoundEmails, checked: candidates.length };
   }
 
-  if (updates.length) {
+  const CHUNK = 500;
+  for (let i = 0; i < updates.length; i += CHUNK) {
     await stage1SheetsApiFetch(`/values:batchUpdate`, {
       method: "POST",
-      body: JSON.stringify({ valueInputOption: "RAW", data: updates }),
+      body: JSON.stringify({ valueInputOption: "RAW", data: updates.slice(i, i + CHUNK) }),
     });
   }
 
@@ -2675,10 +2682,18 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
   { document: "stage1_candidates/{candidateId}", region: "us-central1" },
   async (event) => {
     const after = event.data?.after?.exists ? event.data.after.data() : null;
-    if (!after || !after.email || !after.course) return; // nothing to mirror yet
+    if (!after || !after.email) return; // deleted, or nothing to match a row on
 
     const before = event.data?.before?.exists ? event.data.before.data() : null;
-    if (before && before.course === after.course && before.email === after.email) return; // unchanged
+    // 2026-10-11 (Jon): mirror the allocated ROOM as well as the course, and
+    // mirror a CLEARED allocation too (re-allocated people go back to the
+    // waiting list and their old course/room must leave the sheet).
+    const courseNow = after.course || "";
+    const roomNow = courseNow ? (after.room || "") : "";
+    const courseWas = before ? (before.course || "") : "";
+    const roomWas = before ? (before.course ? (before.room || "") : "") : "";
+    if (before && courseWas === courseNow && roomWas === roomNow && before.email === after.email) return; // unchanged
+    if (!before && !courseNow) return; // brand-new, unallocated candidate: nothing to write
 
     const email = String(after.email).trim().toLowerCase();
     if (!email) return;
@@ -2693,10 +2708,10 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
       }
       const sheetRow = rowIndex + 2; // +1 for the header row, +1 to move from 0-index to 1-index
       await stage1SheetsApiFetch(
-        `/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}${sheetRow}?valueInputOption=RAW`,
-        { method: "PUT", body: JSON.stringify({ values: [[after.course]] }) }
+        `/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}${sheetRow}:${STAGE1_SHEET_ROOM_COL}${sheetRow}?valueInputOption=RAW`,
+        { method: "PUT", body: JSON.stringify({ values: [[courseNow, roomNow]] }) }
       );
-      console.log(`syncStage1CourseToSheet: wrote "${after.course}" for ${email} at row ${sheetRow}.`);
+      console.log(`syncStage1CourseToSheet: wrote "${courseNow}" / "${roomNow}" for ${email} at row ${sheetRow}.`);
     } catch (err) {
       console.error(`syncStage1CourseToSheet: failed to sync ${email}`, err.message);
     }

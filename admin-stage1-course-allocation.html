@@ -46,6 +46,15 @@
   </div>
 
   <div class="card">
+    <div class="card-header">Google Sheet</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">The master list sheet gets each candidate's allocated course and room (columns G and H) automatically whenever someone is placed, re-allocated or moved. Use this if you want to check it is fully up to date: it writes any differences and clears anyone who is no longer on a course.</p>
+      <button class="btn-primary" id="pushSheetBtn" onclick="pushSheetNow()">Push course and room to the sheet now</button>
+      <div id="pushSheetMsg" class="hint" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-header">Deadline feasibility check</div>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">Before you allocate: for each course date below, this adds up every unallocated, checked candidate whose programme deadline falls on or before that date (so they'd need to have started Stage 1 by then), and compares that against the total room capacity available across all courses up to that point. A shortfall means there are more deadline-bound candidates than Stage 1 can physically seat in time — worth knowing before you hit "Allocate now" in Step 3, not after. Pharmacy candidates with a placement-date clash on file aren't included (their eligible courses vary clash by clash, so they don't fit this simple running total) — check those individually.</p>
@@ -447,6 +456,15 @@ async function syncCourseSheetAfterAllocation() {
     console.error("Course sheet sync failed:", err.code, err.message);
     return { ok: false, error: err.message };
   }
+}
+
+async function pushSheetNow() {
+  const btn = document.getElementById("pushSheetBtn"), msg = document.getElementById("pushSheetMsg");
+  btn.disabled = true; msg.textContent = "Updating the sheet…";
+  const r = await syncCourseSheetAfterAllocation();
+  btn.disabled = false;
+  msg.style.color = r.ok ? "#1a6e31" : "#b00020";
+  msg.textContent = r.ok ? `Done. ${r.updated} row${r.updated === 1 ? "" : "s"} changed in the sheet.` : "The sheet could not be updated: " + (r.error || "unknown error");
 }
 
 async function allocateAllNow() {
