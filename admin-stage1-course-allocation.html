@@ -213,6 +213,19 @@ function eligibleCoursesIgnoringCapacity(degreeExact, placementBlocks) {
 }
 
 function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCapacities, pref) {
+  // Voluntary override (2026-10-11, Jon): the director chose a course that the
+  // programme deadline or placement dates would normally rule out. Honour it
+  // if that course has room; room capacity is still respected.
+  if (pref && pref.preferred && pref.override) {
+    const os = courseSessions.find(s => s.name === pref.preferred);
+    if (os) {
+      const ocaps = effectiveCapacities || {};
+      const ocounts = runningCounts || {};
+      const ocap = ocaps[os.name] ? ocaps[os.name] * ROOMS.length : null;
+      const ocount = ocounts[os.name] != null ? ocounts[os.name] : allCandidates.filter(c => c.course === os.name).length;
+      if (ocap == null || ocount < ocap) return { course: os.name, reason: null, atCapacity: false, prefMet: true, overridden: true };
+    }
+  }
   const elig = eligibleCoursesIgnoringCapacity(degreeExact, placementBlocks);
   if (!elig.eligible.length) return { course: null, reason: elig.reason, atCapacity: false };
   let eligible = elig.eligible;
@@ -470,10 +483,10 @@ async function allocateAllNow() {
   const effectiveCapacities = buildEffectiveCapacities();
   ready.forEach(c => {
     const resolved = resolveStage1Degree(c.degree);
-    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, { preferred: c.preferredCourse || null, avoid: c.avoidCourse || null });
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], runningCourseCounts, effectiveCapacities, { preferred: c.preferredCourse || null, avoid: c.avoidCourse || null, override: c.overridePreferred === true });
     if (fit.course) {
-      toWrite.push({ c, course: fit.course });
-      if (c.preferredCourse) prefResults.push({ c, course: fit.course, met: !!fit.prefMet, why: fit.prefNote });
+      toWrite.push({ c, course: fit.course, overridden: !!fit.overridden });
+      if (c.preferredCourse) prefResults.push({ c, course: fit.course, met: !!fit.prefMet, why: fit.prefNote, overridden: !!fit.overridden });
       runningCourseCounts[fit.course] = (runningCourseCounts[fit.course] || 0) + 1;
     } else {
       flagged.push({ c, reason: fit.reason });
@@ -488,12 +501,12 @@ async function allocateAllNow() {
     const CHUNK = 400;
     for (let start = 0; start < toWrite.length; start += CHUNK) {
       const batch = db.batch();
-      toWrite.slice(start, start + CHUNK).forEach(({ c, course }) => {
-        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null, preferredCourse: null, avoidCourse: null, allocatedAt: stampNow });
+      toWrite.slice(start, start + CHUNK).forEach(({ c, course, overridden }) => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: overridden ? course : null, allocatedAt: stampNow });
       });
       await batch.commit();
     }
-    toWrite.forEach(({ c, course }) => { c.course = course; c.room = roomFor.get(c.id) || null; c.preferredCourse = null; c.avoidCourse = null; c.allocatedAt = stampNow; });
+    toWrite.forEach(({ c, course, overridden }) => { c.course = course; c.room = roomFor.get(c.id) || null; c.preferredCourse = null; c.avoidCourse = null; c.overridePreferred = null; c.eligibilityOverrideCourse = overridden ? course : null; c.allocatedAt = stampNow; });
 
     const sheetSync = await syncCourseSheetAfterAllocation();
 
@@ -508,7 +521,7 @@ async function allocateAllNow() {
       : `<p class="hint" style="margin:0 0 12px;color:#b00020;">⚠ Google Sheet sync failed — course allocations are saved, but the sheet may be out of date. Run the backfill from the console, or ask Claude.</p>`;
     if (prefResults.length) {
       summaryHtml += `<div style="background:#eef3fb;border:1px solid #b8d4f5;border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--rmd-navy);"><div style="font-weight:700;margin-bottom:6px;">Course preferences</div>` +
-        prefResults.map(r => `<div>${esc(r.c.name)}: ${r.met ? "got their preferred course, " + esc(r.course) : "placed on " + esc(r.course) + " instead (" + esc(r.why || "preferred course not available") + ")"}</div>`).join("") + `</div>`;
+        prefResults.map(r => `<div>${esc(r.c.name)}: ${r.overridden ? "placed on " + esc(r.course) + " by your voluntary override" : r.met ? "got their preferred course, " + esc(r.course) : "placed on " + esc(r.course) + " instead (" + esc(r.why || "preferred course not available") + ")"}</div>`).join("") + `</div>`;
     }
     if (flagged.length) {
       summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">

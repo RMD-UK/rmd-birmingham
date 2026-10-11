@@ -216,12 +216,17 @@ async function loadCandidates() {
 // placement-clash badge on a candidate's row below — it has no need for
 // programmeDeadlines or any of the allocation maths that went with it.
 let courseSessions = [];
+let programmeDeadlines = {};   // config/stage1_programme_deadlines.deadlines - only used to explain / override eligibility (2026-10-11)
 
 async function loadCourseSessions() {
   try {
     const cSnap = await db.collection("config").doc("stage1_course_dates").get();
     courseSessions = cSnap.exists ? (cSnap.data().courses || []) : [];
   } catch (err) { courseSessions = []; }
+  try {
+    const dSnap = await db.collection("config").doc("stage1_programme_deadlines").get();
+    programmeDeadlines = dSnap.exists ? (dSnap.data().deadlines || {}) : {};
+  } catch (err) { programmeDeadlines = {}; }
   // Candidates may already have rendered before this resolved (loadCandidates()
   // runs independently) — re-render so placement-clash badges, which need
   // courseSessions, show up without the director having to touch anything.
@@ -1058,7 +1063,7 @@ function renderCandidates() {
         <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
         <tbody>${filtered.map(c => c.id === editCandidateId ? editRowHtml(c) : `
           <tr>
-            <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}${possibleRepeatBadgeHtml(c)}</td>
+            <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${eligibilityOverrideBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}${possibleRepeatBadgeHtml(c)}</td>
             <td>${esc(c.email) || "–"}</td>
             <td>${esc(c.degree) || "–"}</td>
             <td>${esc(RMD_CAND_LOOKUP.courseText(c, cdates).replace("Not on a course yet", "–"))}${!c.course && (c.preferredCourse || c.avoidCourse) ? `<br><span class="hint" style="margin:0;color:#b25e00;font-weight:700;">${c.preferredCourse ? "Prefers " + esc(c.preferredCourse) : "Not " + esc(c.avoidCourse)}</span>` : ""}</td>
@@ -1067,7 +1072,7 @@ function renderCandidates() {
             <td>${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
               : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}
-              ${c.course ? `<button class="btn-link-sm" title="Clear this one person's course and room so the next Allocate now run places them again" onclick="reallocateCandidate('${c.id}')">↻ Re-allocate</button>` : ""}
+              ${c.course ? `<button class="btn-link-sm" title="Clear this one person's course and room so the next Allocate now run places them again" onclick="reallocateCandidate('${c.id}')">↻ Re-allocate</button>` : `<button class="btn-link-sm" title="Choose a course for this person, including one that auto-fit would rule out (voluntary override)" onclick="reallocateCandidate('${c.id}')">➜ Place on course</button>`}
               <button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
           </tr>`).join("")}</tbody>
       </table>`
@@ -1129,45 +1134,97 @@ async function removePlacementBlock(id, index) {
 // (the default), or no preference. The choice is stored on the candidate
 // (preferredCourse / avoidCourse) and read by Allocate now, which places people
 // with a preference first, and clears it once they have a course.
+// Why a course would NOT normally be offered to this candidate (programme
+// deadline, placement clash). Empty array = it is a normal option. Mirrors
+// eligibleCoursesIgnoringCapacity() on admin-stage1-course-allocation.html;
+// used here only to warn and to offer the voluntary override (2026-10-11, Jon).
+function courseIneligibleReasons(c, session) {
+  const reasons = [];
+  if (!session || !session.date) return reasons;
+  const exact = (resolveStage1Degree(c.degree) || {}).exact;
+  const deadline = exact ? programmeDeadlines[exact] : null;
+  if (!exact) reasons.push("no recognised programme, so no deadline to check");
+  else if (!deadline) reasons.push(`no assessment deadline is set for ${exact}`);
+  else if (session.date > deadline) reasons.push(`${session.name} (${session.date}) is after the ${exact} deadline of ${deadline}`);
+  const clash = (c.placementBlocks || []).find(b => placementClashesWithCourse([b], session.date));
+  if (clash) reasons.push(`${session.name} clashes with a placement block (${clash.start} to ${clash.end})`);
+  return reasons;
+}
+
 function reallocateCandidate(id) {
   const c = allCandidates.find(x => x.id === id);
-  if (!c || !c.course) return;
+  if (!c) return;
+  const has = !!c.course;
   const sorted = courseSessions.filter(s => s.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
-  const opts = [
-    `<option value="__avoid__" selected>Anywhere except ${esc(c.course)} (auto-fit)</option>`,
-    `<option value="__any__">No preference (auto-fit, may be ${esc(c.course)} again)</option>`
-  ].concat(sorted.filter(s => s.name !== c.course).map(s => `<option value="${esc(s.name)}">Prefer ${esc(s.name)} (${esc(s.date)})</option>`)).join("");
+  const opts = (has
+    ? [`<option value="__avoid__" selected>Anywhere except ${esc(c.course)} (auto-fit)</option>`,
+       `<option value="__any__">No preference (auto-fit, may be ${esc(c.course)} again)</option>`]
+    : [`<option value="" selected>Choose a course…</option>`]
+  ).concat(sorted.filter(s => s.name !== c.course).map(s => {
+    const bad = courseIneligibleReasons(c, s).length > 0;
+    return `<option value="${esc(s.name)}">${bad ? "Not normally an option: " : "Prefer "}${esc(s.name)} (${esc(s.date)})</option>`;
+  })).join("");
   const old = document.getElementById("reallocOverlay"); if (old) old.remove();
   const ov = document.createElement("div");
   ov.id = "reallocOverlay";
   ov.style.cssText = "position:fixed;inset:0;background:rgba(10,10,40,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;";
-  ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:460px;width:100%;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,.4);font-family:inherit;">
-    <div style="font-size:16px;font-weight:800;color:var(--rmd-navy);margin-bottom:8px;">Re-allocate ${esc(c.name)}</div>
-    <p class="hint" style="margin:0 0 12px;">Clears their current course (${esc(c.course)}) and room (${esc(c.room || "none")}). Nobody else changes and their placement dates are kept. Then run "Allocate now" in Course allocation: people with a preference are placed first.</p>
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;padding:20px 22px;box-shadow:0 10px 40px rgba(0,0,0,.4);font-family:inherit;max-height:92vh;overflow:auto;">
+    <div style="font-size:16px;font-weight:800;color:var(--rmd-navy);margin-bottom:8px;">${has ? "Re-allocate" : "Place"} ${esc(c.name)}</div>
+    <p class="hint" style="margin:0 0 12px;">${has ? `Clears their current course (${esc(c.course)}) and room (${esc(c.room || "none")}). Nobody else changes and their placement dates are kept.` : "They have no course yet."} Then run "Allocate now" in Course allocation: people with a preference are placed first.</p>
     <label style="font-size:12px;font-weight:700;color:var(--rmd-navy);display:block;margin-bottom:4px;">Where should they go?</label>
-    <select id="reallocChoice" style="width:100%;padding:8px;border:1.5px solid #c9d3df;border-radius:6px;font-size:14px;margin-bottom:10px;">${opts}</select>
-    <p class="hint" style="margin:0 0 14px;">A preferred course is only used if they are eligible for it (programme deadline, placement dates) and it has room; otherwise they are auto-fitted and the result tells you. If they have already been told their course, they will need telling again.</p>
+    <select id="reallocChoice" onchange="updateReallocWarn('${esc(id)}')" style="width:100%;padding:8px;border:1.5px solid #c9d3df;border-radius:6px;font-size:14px;margin-bottom:10px;">${opts}</select>
+    <div id="reallocWarn"></div>
+    <p class="hint" style="margin:0 0 14px;">A preferred course is only used if they are eligible for it (programme deadline, placement dates) and it has room; otherwise they are auto-fitted and the result tells you. Choosing a course marked "Not normally an option" gives you a voluntary override button. ${has ? "If they have already been told their course, they will need telling again." : ""}</p>
     <div style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn-link-sm" onclick="document.getElementById('reallocOverlay').remove()">Cancel</button>
-      <button class="btn-primary" onclick="confirmReallocate('${esc(id)}')">Re-allocate</button>
+      <button class="btn-primary" id="reallocGo" onclick="confirmReallocate('${esc(id)}', false)">${has ? "Re-allocate" : "Save"}</button>
     </div></div>`;
   document.body.appendChild(ov);
 }
 
-async function confirmReallocate(id) {
+// Shows why the chosen course is not normally allowed, and turns the main
+// button into an explicit, amber "override" button.
+function updateReallocWarn(id) {
+  const c = allCandidates.find(x => x.id === id);
+  const choice = document.getElementById("reallocChoice").value;
+  const warn = document.getElementById("reallocWarn");
+  const go = document.getElementById("reallocGo");
+  const normal = c && c.course ? "Re-allocate" : "Save";
+  const session = courseSessions.find(s => s.name === choice);
+  const reasons = (c && session) ? courseIneligibleReasons(c, session) : [];
+  if (!reasons.length) {
+    warn.innerHTML = "";
+    go.textContent = normal; go.style.background = ""; go.style.color = "";
+    go.onclick = () => confirmReallocate(id, false);
+    return;
+  }
+  warn.innerHTML = `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#856404;"><strong>Not normally an option for ${esc(c.name)}:</strong><ul style="margin:6px 0 0 18px;padding:0;">${reasons.map(r => `<li>${esc(r)}</li>`).join("")}</ul><div style="margin-top:6px;">You can still place them on ${esc(choice)} as a voluntary override. It is recorded on their row.</div></div>`;
+  go.textContent = `Override and place on ${choice} anyway`;
+  go.style.background = "#b25e00"; go.style.color = "#fff";
+  go.onclick = () => confirmReallocate(id, true);
+}
+
+async function confirmReallocate(id, override) {
   const c = allCandidates.find(x => x.id === id);
   const choice = document.getElementById("reallocChoice").value;
   if (!c) return;
+  if (!choice) { alert("Choose a course first."); return; }
   const prevCourse = c.course;
   const preferredCourse = (choice === "__avoid__" || choice === "__any__") ? null : choice;
   const avoidCourse = choice === "__avoid__" ? prevCourse : null;
+  const overridePreferred = !!(override && preferredCourse);
+  // Only mark placement dates as checked when they already were, they have a
+  // course (so were already allocated), or this is a deliberate override.
+  const placementChecked = !!(c.placementChecked || prevCourse || overridePreferred);
   try {
-    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ course: null, room: null, placementChecked: true, preferredCourse, avoidCourse });
-    c.course = null; c.room = null; c.placementChecked = true; c.preferredCourse = preferredCourse; c.avoidCourse = avoidCourse;
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ course: null, room: null, placementChecked: placementChecked, preferredCourse, avoidCourse, overridePreferred, eligibilityOverrideCourse: null });
+    c.course = null; c.room = null; c.placementChecked = placementChecked; c.preferredCourse = preferredCourse; c.avoidCourse = avoidCourse; c.overridePreferred = overridePreferred; c.eligibilityOverrideCourse = null;
     document.getElementById("reallocOverlay").remove();
     populateCourseFilter();
     renderCandidates();
-    const where = preferredCourse ? `to ${preferredCourse} if they are eligible and it has room` : (avoidCourse ? `anywhere except ${avoidCourse}` : "with no preference");
+    const where = preferredCourse
+      ? (overridePreferred ? `on ${preferredCourse} by your override (deadline / placement rules skipped, room capacity still applies)` : `to ${preferredCourse} if they are eligible and it has room`)
+      : (avoidCourse ? `anywhere except ${avoidCourse}` : "with no preference");
     alert(`${c.name} is now unallocated and checked, set to be placed ${where}. Run "Allocate now" in Course allocation to place them.`);
   } catch (err) {
     alert("Re-allocate failed: " + err.message);
@@ -1219,6 +1276,11 @@ function linkedBadgeHtml(c) {
   if (!c.linkedCandidateId) return "";
   const other = allCandidates.find(x => x.id === c.linkedCandidateId);
   return ` <span class="link-badge" title="Linked as the same person's repeat attempt">🔗 ${other ? esc(other.name) + " — " + esc(other.course || "no course") : "linked record"}</span>`;
+}
+
+function eligibilityOverrideBadgeHtml(c) {
+  if (!c.course || c.eligibilityOverrideCourse !== c.course) return "";
+  return ` <span class="dup-warning" style="display:inline;background:#fff3cd;border-color:#ffd700;color:#856404;" title="Placed here by a voluntary override of their programme deadline or placement dates">Override: ${esc(c.course)}</span>`;
 }
 
 function placementClashBadgeHtml(c) {
