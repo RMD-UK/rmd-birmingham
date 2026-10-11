@@ -85,7 +85,7 @@
   </div>
 
   <div class="card">
-    <div class="card-header">Step 5 — Confirm allocation by email</div>
+    <div class="card-header">Step 5 — Email people their course (new placements and re-allocations)</div>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">Emails each person the course dates and how to check their room, using the same wording as the "Allocation" template on Bulk Comms. It only covers people placed with Allocate now (Step 3) or Place extras (Step 4) who haven't been emailed for their current course. If someone is moved to a different course later, they show up here again. Nothing is sent until you press a Send button. This card is for small mid-year additions only: if 50 or more are placed in one go (the annual import), it stays empty and you use Bulk Comms instead.</p>
       <div id="confirmEmailCard"></div>
@@ -749,19 +749,50 @@ function buildAllocationEmail(courseName, dates, accessCode) {
   };
 }
 
+// Email for someone who was already told a course and has since been moved to a
+// different one (2026-10-11, Jon: "send email to candidates with updated course
+// details, informing of reallocation"). prevCourse is the course they were last
+// emailed about; it is mentioned so they know which earlier dates to ignore.
+function buildReallocationEmail(courseName, prevCourse, dates, accessCode) {
+  return {
+    subject: `Your BLS Course has changed — now ${courseName}: Updated Dates`,
+    body: [
+      emailOpening(),
+      `We have moved you to a different BLS course${prevCourse ? ` (you were previously on ${prevCourse})` : ""}. Please disregard the dates we sent you before. Your new course is ${courseName}, commencing on ${dates.session1}.`,
+      `Your New Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night`,
+      `All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive ready to start at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.`,
+      `Instructions for your examination night (session 3) will be sent in the week before.`,
+      `Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check your course and room any time at ${CANDIDATE_RESOURCES_URL} — the access code is ${accessCode}, then "Find your course, room and assessment" with your degree, full name and email address. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.`,
+      `If the new dates are a problem for you, please email us (${BLS_ADMIN_EMAIL}) as soon as possible and we will see what we can do. If you are unable to attend a session, please let us know with as much notice as possible.`,
+      emailSignoff(),
+    ].join("\n\n"),
+  };
+}
+
 // Pure helper: people still to email, grouped by course (course order follows
 // the configured sessions, then any unknown course names alphabetically).
 function pendingConfirmationsByCourse(candidates, sessions) {
   const pending = candidates.filter(c => c.course && c.email && c.allocatedAt && c.allocationEmailedCourse !== c.course);
-  const byCourse = new Map();
-  pending.forEach(c => { if (!byCourse.has(c.course)) byCourse.set(c.course, []); byCourse.get(c.course).push(c); });
+  // "moved" = they were already emailed a different course, so this is a change
+  // of course, not a first allocation. Grouped per new course and per old course.
+  const byKey = new Map();
+  pending.forEach(c => {
+    const prev = c.allocationEmailedCourse || null;
+    const kind = prev ? "moved" : "new";
+    const key = `${c.course}|${kind}|${prev || ""}`;
+    if (!byKey.has(key)) byKey.set(key, { course: c.course, kind, prev, people: [] });
+    byKey.get(key).people.push(c);
+  });
   const order = sessions.map(s => s.name);
-  return Array.from(byCourse.entries())
+  return Array.from(byKey.values())
     .sort((a, b) => {
-      const ia = order.indexOf(a[0]), ib = order.indexOf(b[0]);
-      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a[0].localeCompare(b[0]);
+      const ia = order.indexOf(a.course), ib = order.indexOf(b.course);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.course.localeCompare(b.course) || a.kind.localeCompare(b.kind) || String(a.prev).localeCompare(String(b.prev));
     })
-    .map(([course, people]) => ({ course, people: people.slice().sort((x, y) => (x.name || "").localeCompare(y.name || "")) }));
+    .map(g => ({ ...g, people: g.people.slice().sort((x, y) => (x.name || "").localeCompare(y.name || "")) }));
 }
 
 async function loadConfirmAccessCode() {
@@ -778,22 +809,23 @@ function renderConfirmEmailCard() {
   const groups = pendingConfirmationsByCourse(allCandidates, courseSessions);
   const total = groups.reduce((n, g) => n + g.people.length, 0);
   if (!total) {
-    wrap.innerHTML = `<p class="hint" style="margin:0;">Nobody is waiting for an allocation email. People placed in Step 3 or Step 4 appear here until they've been emailed.</p>`;
+    wrap.innerHTML = `<p class="hint" style="margin:0;">Nobody is waiting for an allocation email. People placed in Step 3 or Step 4, and anyone re-allocated to a different course, appear here until they've been emailed.</p>`;
     return;
   }
   if (total >= EMAIL_CARD_MAX) {
     wrap.innerHTML = `<p class="hint" style="margin:0;">${total} people are waiting for an allocation email. This card is only for small additions (fewer than ${EMAIL_CARD_MAX}), so send these from <a href="admin-comms.html">Bulk Comms</a> using the "Allocation" template button on each course.</p>`;
     return;
   }
-  let html = `<p style="margin:0 0 12px;font-size:13px;font-weight:700;color:var(--rmd-navy);">${total} ${total === 1 ? "person" : "people"} not yet emailed</p>`;
+  const movedTotal = groups.filter(g => g.kind === "moved").reduce((n, g) => n + g.people.length, 0);
+  let html = `<p style="margin:0 0 12px;font-size:13px;font-weight:700;color:var(--rmd-navy);">${total} ${total === 1 ? "person" : "people"} not yet emailed${movedTotal ? ` (${movedTotal} moved to a different course: they get an email saying their course has changed)` : ""}</p>`;
   if (!confirmAccessCode) html += `<p class="hint" style="margin:0 0 12px;color:#b00020;">No candidate access code is set, so emails can't be sent yet. Add one on the "Candidate resource access code" card on Stage 1 Candidates.</p>`;
   groups.forEach((g, i) => {
     const dates = computeCourseSessionDates(g.course);
     const canSend = !!(dates && confirmAccessCode);
     html += `<div style="border:1.5px solid #e0e4ee;border-radius:10px;padding:12px 14px;margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-        <div style="font-weight:700;color:var(--rmd-navy);font-size:14px;">${esc(g.course)} <span style="font-weight:600;color:#5a6478;font-size:12px;">(${g.people.length})</span></div>
-        <button class="btn-primary" ${canSend ? "" : "disabled"} onclick="sendConfirmationEmails(${i})">Email ${g.people.length} ${g.people.length === 1 ? "person" : "people"}</button>
+        <div style="font-weight:700;color:var(--rmd-navy);font-size:14px;">${g.kind === "moved" ? `<span style="background:#fff3cd;color:#856404;border-radius:6px;padding:1px 8px;font-size:11px;margin-right:6px;">Re-allocated</span>${esc(g.prev)} → ${esc(g.course)}` : esc(g.course)} <span style="font-weight:600;color:#5a6478;font-size:12px;">(${g.people.length})</span></div>
+        <button class="btn-primary" ${canSend ? "" : "disabled"} onclick="sendConfirmationEmails(${i})">${g.kind === "moved" ? `Email ${g.people.length} about the change` : `Email ${g.people.length} ${g.people.length === 1 ? "person" : "people"}`}</button>
       </div>
       ${dates ? "" : `<div class="hint" style="margin-top:6px;color:#b00020;">No date saved for this course in Stage 1 Settings, so the email can't be built.</div>`}
       <div style="margin-top:8px;font-size:12px;color:#5a6478;line-height:1.6;">${g.people.map(p => esc(p.name) + " &lt;" + esc(p.email) + "&gt;").join("<br>")}</div>
@@ -809,9 +841,11 @@ async function sendConfirmationEmails(groupIndex) {
   if (!g) return;
   const dates = computeCourseSessionDates(g.course);
   if (!dates || !confirmAccessCode) { alert("Can't build the email: missing course date or access code."); return; }
-  const built = buildAllocationEmail(g.course, dates, confirmAccessCode);
+  const built = g.kind === "moved"
+    ? buildReallocationEmail(g.course, g.prev, dates, confirmAccessCode)
+    : buildAllocationEmail(g.course, dates, confirmAccessCode);
   const n = g.people.length;
-  if (!confirm(`Email ${n} ${n === 1 ? "person" : "people"} on ${g.course}?\n\nSubject: ${built.subject}\n\nThis sends real email now and can't be undone. Each person is marked as emailed afterwards, so they won't be offered again.`)) return;
+  if (!confirm(`Email ${n} ${n === 1 ? "person" : "people"} ${g.kind === "moved" ? "moved from " + g.prev + " to " + g.course : "on " + g.course}?\n\nSubject: ${built.subject}\n\nThis sends real email now and can't be undone. Each person is marked as emailed afterwards, so they won't be offered again.`)) return;
 
   confirmSending = true;
   const wrap = document.getElementById("confirmEmailCard");
@@ -822,7 +856,7 @@ async function sendConfirmationEmails(groupIndex) {
       recipients: g.people.map(p => ({ name: p.name, email: p.email })),
       subject: built.subject,
       message: built.body,
-      groupLabel: `Stage 1 allocation confirmation — ${g.course}`,
+      groupLabel: g.kind === "moved" ? `Stage 1 re-allocation notice — ${g.prev} to ${g.course}` : `Stage 1 allocation confirmation — ${g.course}`,
       dryRun: false
     });
     const { sent, failed, failedEmails, queued } = res.data;
