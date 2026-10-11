@@ -235,7 +235,7 @@
 </head>
 <body>
 
-<div class="top-bar">
+<div class="top-bar" id="adTop">
   <a href="member-menu.html" style="display:flex;align-items:center;text-decoration:none;" id="logoLink">
     <img src="assets/rmd-logo.png" alt="RMD" height="32"
          onerror="document.getElementById('logoLink').innerHTML='<span style=\'color:white;font-size:13px;font-weight:900;border:2px solid rgba(255,255,255,0.7);padding:3px 8px;border-radius:4px;letter-spacing:1px;\'>RMD</span>'">
@@ -253,9 +253,9 @@
 <div class="view active" id="view-assess">
   <div class="room-strip" id="roomStrip"></div>
   <div class="legend">
-    <span><span style="width:12px;height:12px;border-radius:50%;background:#1a6e31;display:inline-block;"></span> On track</span>
-    <span><span style="width:12px;height:12px;border-radius:50%;background:#c17a00;display:inline-block;"></span> Developing</span>
-    <span><span style="width:12px;height:12px;border-radius:50%;background:#b7410e;display:inline-block;"></span> Concern</span>
+    <span><span style="width:12px;height:12px;border-radius:50%;background:#1a6e31;display:inline-block;"></span> Green: no concerns</span>
+    <span><span style="width:12px;height:12px;border-radius:50%;background:#c17a00;display:inline-block;"></span> Amber: some concerns</span>
+    <span><span style="width:12px;height:12px;border-radius:50%;background:#b7410e;display:inline-block;"></span> Red: serious concerns</span>
     <span>· Tap 📝 for notes · Notes required for ⚠️</span>
   </div>
   <div class="table-wrap">
@@ -295,6 +295,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/draft-guard.js?v=20261010"></script>
 <script src="js/course-result.js"></script>
 <script>
 
@@ -518,8 +519,17 @@ function buildRoomStrips() {
   document.getElementById("ovRoomStrip").innerHTML = ovBtns[0] + makeSel("ovroom", currentOvRoom, ovRooms) + ovBtns.slice(1).join("");
 }
 
+// Re-drawing the table must not take the cursor out of a notes box someone is typing in
+function renderKeepingFocus() {
+  var ae = document.activeElement, id = ae && ae.id && ae.id.indexOf("notes-ta-") === 0 ? ae.id : null;
+  var a = id ? ae.selectionStart : 0, b = id ? ae.selectionEnd : 0;
+  renderAssessTable();
+  if (id) { var ta = document.getElementById(id); if (ta) { ta.focus(); try { ta.setSelectionRange(a, b); } catch (e) {} } }
+}
+
 // ── Firestore listener ───────────────────────────────────────────────────────
 function startListener() {
+  restorePending();
   if (unsubscribe) unsubscribe();
   unsubscribe = db.collection("development_assessments")
     .onSnapshot(snap => {
@@ -528,15 +538,16 @@ function startListener() {
           delete assessments[change.doc.id];
         } else {
           const data = change.doc.data();
-          assessments[change.doc.id] = {
-            ratings:         data.ratings         || {},
-            flags:           data.flags           || {},
-            notes:           data.notes           || "",
-            overallOverride: data.overallOverride || null
+          const id = change.doc.id, keep = pendingW[id] || {};
+          assessments[id] = {
+            ratings:         keep.ratings         || data.ratings         || {},
+            flags:           keep.flags           || data.flags           || {},
+            notes:           (keep.notes != null ? keep.notes : (dirtyNotes[id] && assessments[id] ? assessments[id].notes : (data.notes || ""))),
+            overallOverride: (keep.overallOverride !== undefined ? keep.overallOverride : (data.overallOverride || null))
           };
         }
       });
-      renderAssessTable();
+      renderKeepingFocus();
       if (document.getElementById("view-overview").classList.contains("active")) {
         renderOverview();
       }
@@ -601,15 +612,15 @@ function buildCandidateRows(c, notesOpen) {
   const cpCells = CHECKPOINTS.map(cp => {
     const v = s.ratings[cp.id] || null;
     return `<td><div class="tl-cell">
-      <button class="tl g ${v==='green'?'on':''}" onclick="setRating('${c.id}','${cp.id}','green')" title="On track">G</button>
-      <button class="tl a ${v==='amber'?'on':''}" onclick="setRating('${c.id}','${cp.id}','amber')" title="Developing">A</button>
-      <button class="tl r ${v==='red'?'on':''}"   onclick="setRating('${c.id}','${cp.id}','red')"   title="Concern">R</button>
+      <button class="tl g ${v==='green'?'on':''}" onclick="setRating('${c.id}','${cp.id}','green')" title="Green: no concerns">G</button>
+      <button class="tl a ${v==='amber'?'on':''}" onclick="setRating('${c.id}','${cp.id}','amber')" title="Amber: some concerns">A</button>
+      <button class="tl r ${v==='red'?'on':''}"   onclick="setRating('${c.id}','${cp.id}','red')"   title="Red: serious concerns">R</button>
     </div></td>`;
   }).join("");
 
   const ov     = computeOverall(c.id);
   const ovCls  = {green:"overall-green",amber:"overall-amber",red:"overall-red"}[ov] || "overall-none";
-  const ovLbl  = {green:"🟢 On track",amber:"🟡 Developing",red:"🔴 Concern"}[ov] || "–";
+  const ovLbl  = {green:"🟢 No concerns",amber:"🟡 Some concerns",red:"🔴 Serious concerns"}[ov] || "–";
   const hasNotes = s.notes && s.notes.trim().length > 0;
   const nbCls    = "notes-btn" + (notesOpen ? " open" : hasNotes ? " has-notes" : "");
 
@@ -637,7 +648,7 @@ function buildCandidateRows(c, notesOpen) {
           <div class="notes-req ${s.flags.concern?'show':''}" id="notes-req-${c.id}">⚠️ Notes required when concern is flagged</div>
           <textarea class="notes-ta ${s.flags.concern&&!s.notes.trim()?'required':''}" id="notes-ta-${c.id}"
             placeholder="Observations, teaching moments, development areas…"
-            oninput="scheduleNoteSave('${c.id}')"
+            oninput="noteInput('${c.id}', this)"
             onblur="flushNoteSave('${c.id}')">${s.notes||""}</textarea>
           <div style="font-size:11px;color:#34a853;margin-top:4px;min-height:14px;" id="save-ind-${c.id}"></div>
         </div>
@@ -652,17 +663,72 @@ function getA(id) {
 }
 
 // ── Firestore write helpers ──────────────────────────────────────────────────
-async function saveField(candidateId, data) {
+// ── Saving, with protection against lost entries (2026-10-11, per Jon) ───────
+// Every tap and note is first kept in pendingW (and on this device), then sent.
+// If the send fails (weak signal) it stays queued and is retried every 5 seconds,
+// a banner says so, and the browser warns before the page is closed or reloaded.
+// A reload puts queued changes back and sends them.
+var pendingW   = {};        // candidateId -> fields not yet confirmed by the server
+var dirtyNotes = {};        // candidateId -> true while the notes box holds text not yet saved
+var retryTimer = null, lastSavedAt = 0;
+var PEND_KEY   = "ad_pending_v1";
+
+function persistPending() { DraftGuard.write(PEND_KEY, pendingW); }
+function adUpdateBanner() {
+  var n = Object.keys(pendingW).length;
+  if (n) DraftGuard.banner("adBanner", "adTop", "Not saved yet: " + n + " change" + (n > 1 ? "s" : "") + " waiting to send. <small>Keeping them on this device and retrying. Do not close this page.</small>", "warn");
+  else if (lastSavedAt) DraftGuard.banner("adBanner", "adTop", "All changes saved at " + DraftGuard.hhmm(lastSavedAt) + ". <small>Ratings and notes save as you go.</small>", "");
+  else DraftGuard.banner("adBanner", "adTop", "", "");
+}
+async function flushOne(cid) {
+  var data = pendingW[cid];
+  if (!data) return true;
+  var sig = JSON.stringify(data);
   try {
-    await db.collection("development_assessments").doc(candidateId).set(
-      { ...data, updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedBy: auth.currentUser ? auth.currentUser.uid : null },
+    await db.collection("development_assessments").doc(cid).set(
+      Object.assign({}, data, { updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: auth.currentUser ? auth.currentUser.uid : null }),
       { merge: true }
     );
+    if (pendingW[cid] && JSON.stringify(pendingW[cid]) === sig) { delete pendingW[cid]; DraftGuard.markDirty("w" + cid, false); }
+    lastSavedAt = Date.now(); persistPending();
+    return true;
   } catch (err) {
-    showToast("Save failed — check connection", "red");
     console.error(err);
+    return false;
   }
+}
+function startRetry() {
+  if (retryTimer) return;
+  retryTimer = setInterval(async function () {
+    var ids = Object.keys(pendingW);
+    for (var i = 0; i < ids.length; i++) await flushOne(ids[i]);
+    adUpdateBanner();
+    if (!Object.keys(pendingW).length) { clearInterval(retryTimer); retryTimer = null; }
+  }, 5000);
+}
+async function saveField(candidateId, data) {
+  pendingW[candidateId] = Object.assign({}, pendingW[candidateId] || {}, JSON.parse(JSON.stringify(data)));
+  DraftGuard.markDirty("w" + candidateId); persistPending();
+  var ok = await flushOne(candidateId);
+  if (!ok) { showToast("Not saved yet - will keep retrying", "red"); startRetry(); }
+  adUpdateBanner();
+  return ok;
+}
+function restorePending() {
+  var saved = DraftGuard.read(PEND_KEY);
+  if (!saved || !Object.keys(saved).length) return;
+  pendingW = saved;
+  Object.keys(pendingW).forEach(function (cid) {
+    DraftGuard.markDirty("w" + cid);
+    var a = getA(cid), d = pendingW[cid];
+    if (d.ratings) a.ratings = d.ratings;
+    if (d.flags) a.flags = d.flags;
+    if (d.notes != null) a.notes = d.notes;
+    if (d.overallOverride !== undefined) a.overallOverride = d.overallOverride;
+  });
+  showToast("Restored changes that had not been saved. Sending now.", "");
+  adUpdateBanner(); startRetry();
 }
 
 // ── Traffic lights ───────────────────────────────────────────────────────────
@@ -732,6 +798,11 @@ function openNotes(cid) {
   if (ta) setTimeout(() => ta.focus(), 50);
 }
 
+function noteInput(cid, ta) {
+  var s = getA(cid);
+  s.notes = ta.value; dirtyNotes[cid] = true; DraftGuard.markDirty("n" + cid);
+  scheduleNoteSave(cid);
+}
 function scheduleNoteSave(cid) {
   if (saveTimers[cid]) clearTimeout(saveTimers[cid]);
   saveTimers[cid] = setTimeout(() => flushNoteSave(cid), 1500);
@@ -746,9 +817,12 @@ async function flushNoteSave(cid) {
   const btn = document.getElementById("nbtn-" + cid);
   if (btn) btn.classList.toggle("has-notes", s.notes.trim().length > 0);
   if (s.flags.concern) ta.classList.toggle("required", s.notes.trim().length === 0);
-  await saveField(cid, { notes: s.notes });
+  const ok = await saveField(cid, { notes: s.notes });
   const ind = document.getElementById("save-ind-" + cid);
-  if (ind) { ind.textContent = "✓ Saved"; setTimeout(() => { ind.textContent = ""; }, 2000); }
+  if (ok) {
+    if (document.getElementById("notes-ta-" + cid) && document.getElementById("notes-ta-" + cid).value === s.notes) { delete dirtyNotes[cid]; DraftGuard.markDirty("n" + cid, false); }
+    if (ind) { ind.textContent = "✓ Saved"; setTimeout(() => { ind.textContent = ""; }, 2000); }
+  } else if (ind) { ind.textContent = "Not saved yet, retrying"; }
 }
 
 // ── Row refresh ───────────────────────────────────────────────────────────────
@@ -779,7 +853,7 @@ function renderOverview() {
     const s  = getA(c.id);
     const ov = computeOverall(c.id);
     const ovCls = {green:"overall-green",amber:"overall-amber",red:"overall-red"}[ov] || "overall-none";
-    const ovLbl = {green:"🟢 On track",amber:"🟡 Developing",red:"🔴 Concern"}[ov] || "No data";
+    const ovLbl = {green:"🟢 No concerns",amber:"🟡 Some concerns",red:"🔴 Serious concerns"}[ov] || "No data";
     const streamCls = (c.stream === "Instructor Trainer Candidate") ? "stream-itc" : "stream-ic";
     const streamLbl = (c.stream === "Instructor Trainer Candidate") ? "ITC" : "IC";
 

@@ -64,6 +64,7 @@
     .auto-save-indicator { font-size: 11px; color: var(--rmd-muted); }
     .auto-save-indicator.saving { color: var(--rmd-blue); }
     .auto-save-indicator.saved  { color: #1a6e31; }
+    .auto-save-indicator.error  { color: #b7410e; font-weight: 700; }
 
     /* ── Content wrap ── */
     .wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 0; }
@@ -279,11 +280,13 @@
 </div>
 
 <!-- ── Status bar ── -->
-<div class="status-bar">
+<div class="status-bar" id="statusBar">
   <span class="status-count" id="ratedCount">0</span>
   <span class="status-label" id="ratedLabel">of 0 candidates rated</span>
   <span class="auto-save-indicator" id="saveIndicator">Changes save automatically</span>
 </div>
+
+<div data-rag-key="flags"></div>
 
 <!-- ── Candidate list ── -->
 <div class="wrap" id="candidateWrap">
@@ -310,6 +313,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/rag-key.js?v=20261010"></script>
+<script src="js/draft-guard.js?v=20261010"></script>
 <script src="js/programme-data.js?v=202610071300"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
@@ -566,8 +571,28 @@ async function loadSessionRatings() {
       const data = d.data();
       ratings[data.candidateId] = { ...data, firestoreId: d.id };
     });
+    // Put back anything typed on this device that the server never confirmed (reload,
+    // pull-to-refresh, dropped connection). Server copy wins only if it is newer.
+    const draft = DraftGuard.read(sfDraftKey());
+    let restored = 0;
+    if (draft) Object.keys(draft).forEach(id => {
+      const dr = draft[id], cur = ratings[id] || {};
+      const serverMs = cur.savedAt && cur.savedAt.toMillis ? cur.savedAt.toMillis() : 0;
+      if (dr.ts > serverMs && (dr.rating !== (cur.rating || "") || dr.comment !== (cur.comment || "") || dr.strong !== !!cur.strong || dr.weak !== !!cur.weak)) {
+        ratings[id] = { ...cur, rating: dr.rating, comment: dr.comment, strong: dr.strong, weak: dr.weak };
+        restored++;
+        scheduleAutoSave(id);
+      }
+    });
     renderCandidates();
-  } catch (e) { /* no saved ratings yet */ }
+    myCandidates.forEach(c => sfRefreshTick(c.id));
+    sfUpdateBanner();
+    if (restored) showToast("Restored " + restored + " unsaved rating" + (restored === 1 ? "" : "s") + " from this device", "green");
+  } catch (e) {
+    console.error("Could not load saved ratings:", e.code, e.message);
+    DraftGuard.banner("sfBanner", "statusBar", "Could not load your saved ratings (" + (e.code || "error") + "). Do not reload: anything you enter is still kept on this device.", "err");
+    renderCandidates();
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -603,11 +628,11 @@ function buildCard(c) {
           <div class="candidate-sub">${esc(c.stream || c.group || "")}</div>
         </div>
         <div class="traffic-lights">
-          <button class="tl-btn ${rating === 'green' ? 'active-green' : ''}" title="On track"
+          <button class="tl-btn ${rating === 'green' ? 'active-green' : ''}" title="Green: no concerns"
                   onclick="setRating('${c.id}','green')">🟢</button>
-          <button class="tl-btn ${rating === 'amber' ? 'active-amber' : ''}" title="Some concerns"
+          <button class="tl-btn ${rating === 'amber' ? 'active-amber' : ''}" title="Amber: some concerns"
                   onclick="setRating('${c.id}','amber')">🟡</button>
-          <button class="tl-btn ${rating === 'red'   ? 'active-red'   : ''}" title="Significant concern"
+          <button class="tl-btn ${rating === 'red'   ? 'active-red'   : ''}" title="Red: serious concerns"
                   onclick="setRating('${c.id}','red')">🔴</button>
         </div>
       </div>
@@ -786,7 +811,7 @@ function setRating(candidateId, rating) {
   if (header) {
     header.innerHTML = ["green","amber","red"].map((col, i) => {
       const icons = ["🟢","🟡","🔴"];
-      const titles = ["On track","Some concerns","Significant concern"];
+      const titles = ["Green: no concerns","Amber: some concerns","Red: serious concerns"];
       return `<button class="tl-btn ${newRating === col ? `active-${col}` : ''}" title="${titles[i]}"
                 onclick="setRating('${candidateId}','${col}')">${icons[i]}</button>`;
     }).join("");
@@ -849,7 +874,43 @@ function onCommentInput(candidateId) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Auto-save (debounced)
 // ─────────────────────────────────────────────────────────────────────────────
+// Local draft (2026-10-10): every change is also copied to this device straight away and kept
+// until the server confirms it, so a reload or pull-to-refresh puts it back.
+function sfDraftKey() { return "rmd_draft_sf_" + (currentUser ? currentUser.uid : "x") + "_" + currentSession; }
+function writeSfDraft() {
+  const d = {};
+  Object.keys(ratings).forEach(id => {
+    const r = ratings[id];
+    if (r && (r.rating || r.comment || r.strong || r.weak)) d[id] = { rating: r.rating || "", comment: r.comment || "", strong: !!r.strong, weak: !!r.weak, ts: Date.now() };
+  });
+  const pending = {};
+  Object.keys(sfPending).forEach(id => { if (d[id]) pending[id] = d[id]; });
+  if (Object.keys(pending).length) DraftGuard.write(sfDraftKey(), pending); else DraftGuard.clear(sfDraftKey());
+}
+const sfPending = {};
+function sfRefreshTick(id) {
+  const card = document.getElementById("card-" + id);
+  const name = card && card.querySelector(".candidate-name");
+  if (!name) return;
+  const r = ratings[id] || {};
+  let tick = name.querySelector(".dg-tick");
+  const show = !!(r.rating && r.firestoreId && !sfPending[id]);
+  if (show && !tick) { tick = document.createElement("span"); tick.className = "dg-tick"; tick.textContent = "\u2713 Saved"; name.insertBefore(tick, name.querySelector(".candidate-sub")); }
+  else if (!show && tick) tick.remove();
+}
+function sfUpdateBanner() {
+  const total = myCandidates.length;
+  const done = myCandidates.filter(c => ratings[c.id] && ratings[c.id].rating && ratings[c.id].firestoreId).length;
+  const sub = DraftGuard.read("rmd_sf_submitted_" + (currentUser ? currentUser.uid : "x") + "_" + currentSession);
+  if (sub && sub.ts) DraftGuard.banner("sfBanner", "statusBar", "\u2713 You submitted this session's feedback at " + DraftGuard.hhmm(sub.ts) + " <small>(" + done + " of " + total + " candidates rated). Changes still save automatically.</small>");
+  else if (done) DraftGuard.banner("sfBanner", "statusBar", "\u2713 Saved: " + done + " of " + total + " candidates rated for this session <small>(press Submit when your group is finished)</small>");
+  else DraftGuard.banner("sfBanner", "statusBar", "");
+}
 function scheduleAutoSave(candidateId) {
+  sfPending[candidateId] = true;
+  DraftGuard.markDirty(candidateId, true);
+  writeSfDraft();
+  sfRefreshTick(candidateId);
   clearTimeout(saveDebounce[candidateId]);
   saveDebounce[candidateId] = setTimeout(() => saveSingle(candidateId), 1200);
   setSaveIndicator("saving");
@@ -866,15 +927,16 @@ function saveSingle(candidateId) {
 }
 
 async function saveSingleNow(candidateId) {
-  if (!currentUser || !currentSession) return;
+  if (!currentUser || !currentSession) return false;
   const r = ratings[candidateId];
-  if (!r) return;
+  if (!r) return false;
   // Nothing chosen and nothing saved before: nothing to do. If a rating WAS
   // saved before and has now been reset, fall through and clear it so it
   // disappears from the Course Director's Feedback tab (faculty cannot delete
   // documents, so the stored rating is blanked instead).
-  if (!r.rating && !r.firestoreId) return;
+  if (!r.rating && !r.firestoreId) { delete sfPending[candidateId]; DraftGuard.markDirty(candidateId, false); writeSfDraft(); return true; }
 
+  const sig = JSON.stringify([r.rating || "", r.comment || "", !!r.strong, !!r.weak]);
   const candidate = myCandidates.find(c => c.id === candidateId);
   const cleared = !r.rating;
   const payload = {
@@ -900,14 +962,25 @@ async function saveSingleNow(candidateId) {
 
     await docRef.set(payload, { merge: true });
     ratings[candidateId] = { ...ratings[candidateId], firestoreId: docRef.id };
+    // Only treat as confirmed if nothing newer was typed while this write was in flight.
+    const nowR = ratings[candidateId] || {};
+    if (sig === JSON.stringify([nowR.rating || "", nowR.comment || "", !!nowR.strong, !!nowR.weak])) {
+      delete sfPending[candidateId]; DraftGuard.markDirty(candidateId, false);
+    }
+    writeSfDraft(); sfRefreshTick(candidateId); sfUpdateBanner();
 
     setSaveIndicator("saved");
     setTimeout(() => setSaveIndicator(""), 3000);
+    return true;
   } catch (err) {
-    console.error("Auto-save failed:", err.message);
-    setSaveIndicator("");
+    console.error("Auto-save failed:", err.code, err.message);
+    setSaveIndicator("error");
+    clearTimeout(saveDebounce[candidateId]);
+    saveDebounce[candidateId] = setTimeout(() => saveSingle(candidateId), 5000);   // keep trying
+    return false;
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Submit all (validate + confirm)
@@ -941,8 +1014,16 @@ async function submitAll() {
     const saves = myCandidates
       .filter(c => ratings[c.id]?.rating)
       .map(c => saveSingle(c.id));
-    await Promise.all(saves);
+    const results = await Promise.all(saves);
+    if (results.some(ok => !ok)) {
+      showToast("Some ratings did not save - check your connection and press Submit again", "red");
+      btn.disabled = false;
+      btn.textContent = "Submit session feedback";
+      return;
+    }
 
+    DraftGuard.write("rmd_sf_submitted_" + currentUser.uid + "_" + currentSession, { ts: Date.now(), n: rated });
+    sfUpdateBanner();
     showToast(`Feedback submitted for ${rated} candidate${rated !== 1 ? "s" : ""}`, "green");
     btn.textContent = "✓ Submitted";
   } catch (err) {
@@ -964,7 +1045,7 @@ function updateStatusBar() {
 function setSaveIndicator(state) {
   const el = document.getElementById("saveIndicator");
   el.className = "auto-save-indicator" + (state ? " " + state : "");
-  el.textContent = state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : "Changes save automatically";
+  el.textContent = state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : state === "error" ? "Not saved yet - retrying" : "Changes save automatically";
 }
 
 let toastTimer;

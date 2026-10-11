@@ -173,6 +173,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/draft-guard.js?v=20261010"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // OPIS Candidate Rating — Stage 1 evening-course instructors score candidates
@@ -495,7 +496,20 @@ function renderRoster() {
     : `<div class="no-course">No candidates assigned to this room yet.</div>`;
 }
 
+// Draft of the rating being filled in (2026-10-10, per Jon: reloading wiped entries). Copied to this
+// device on every tap and kept until the rating is submitted, so a reload puts it back.
+function opDraftKey(id) { return "rmd_draft_opis_" + (currentUser ? currentUser.uid : "x") + "_" + id; }
+function opWriteDraft() {
+  if (!selectedCandidateId) return;
+  const any = Object.keys(currentScores).length || credibilityChecked || teachingPotential;
+  if (any && !justSubmitted) {
+    DraftGuard.write(opDraftKey(selectedCandidateId), { scores: currentScores, cred: credibilityChecked, tp: teachingPotential, course: selectedCourse, room: selectedRoom, ts: Date.now() });
+    DraftGuard.markDirty("opis", true);
+  } else { DraftGuard.clear(opDraftKey(selectedCandidateId)); DraftGuard.markDirty("opis", false); }
+  try { sessionStorage.setItem("rmd_opis_last", JSON.stringify({ uid: currentUser && currentUser.uid, course: selectedCourse, room: selectedRoom, cand: selectedCandidateId })); } catch (e) {}
+}
 function selectCandidate(candidateId) {
+  DraftGuard.markDirty("opis", false);
   selectedCandidateId = candidateId;
   currentScores = {};
   credibilityChecked = false;
@@ -503,8 +517,16 @@ function selectCandidate(candidateId) {
   justSubmitted = false;
   mistakeChecked = false;
   mistakeOpen = false;
+  const d = isDone(candidateId) ? null : DraftGuard.read(opDraftKey(candidateId));
+  if (d) {
+    currentScores = d.scores || {}; credibilityChecked = !!d.cred; teachingPotential = !!d.tp;
+    DraftGuard.markDirty("opis", true);
+  }
   renderRoster();
   renderDetail();
+  if (d) DraftGuard.banner("opDraftBanner", "submitErr", "Restored your unsubmitted scores for this candidate from this device.", "warn");
+  else DraftGuard.banner("opDraftBanner", "submitErr", "");
+  try { sessionStorage.setItem("rmd_opis_last", JSON.stringify({ uid: currentUser && currentUser.uid, course: selectedCourse, room: selectedRoom, cand: candidateId })); } catch (e) {}
 }
 
 // Next candidate in the same room who has not been submitted yet. Looks after
@@ -621,6 +643,7 @@ function resetRating() {
   credibilityChecked = false;
   teachingPotential = false;
   mistakeChecked = false;
+  opWriteDraft();
   renderDetail();
 }
 
@@ -629,13 +652,15 @@ function openMistake() { mistakeOpen = true; renderDetail(); }
 
 function setScore(key, level) {
   currentScores[key] = level;
+  opWriteDraft();
   renderDetail();
 }
 
-function setTeachingPotential(v) { teachingPotential = !!v; }
+function setTeachingPotential(v) { teachingPotential = !!v; opWriteDraft(); }
 
 function setCredibility(checked) {
   credibilityChecked = checked;
+  opWriteDraft();
   renderDetail();
 }
 
@@ -673,10 +698,13 @@ async function submitRating() {
     doneSet.add(candidate.id);
     saveDone();
     justSubmitted = true;
+    DraftGuard.clear(opDraftKey(candidate.id));
+    DraftGuard.markDirty("opis", false);
     renderRoster();
     renderDetail();   // shows "Rating submitted" and the Next candidate button
   } catch (err) {
-    errEl.textContent = "Couldn't submit. Check your connection and try again.";
+    console.error("OPIS submit failed:", err.code, err.message);
+    errEl.textContent = "Couldn't submit (" + (err.code || "error") + "). Your scores are kept on this device: check your connection and try again.";
     errEl.style.display = "";
     btn.disabled = false;
     btn.textContent = "Submit rating";

@@ -124,6 +124,8 @@ const DIMENSIONS = [
   { key: "response",   label: "Response to difficulty or questions" }
 ];
 const SCALE_LABELS = ["Needs development", "Developing", "Meeting expectations", "Exceeding expectations"];
+// 2026-10-10: the observation form moved to red/amber/green (stored 1 red, 2 amber, 3 green, scale:"rag").
+const RAG_LABELS = ["Red: serious concerns", "Amber: some concerns", "Green: no concerns"];
 
 // No hardcoded email list (removed 2026-07-29 — personal emails should not
 // live in a public repo). Mirrors isDirector() in firestore.rules.
@@ -181,7 +183,8 @@ exports.generateItcSummary = onCall({ secrets: [anthropicApiKey], region: "us-ce
   const lines = observations.map((o, i) => {
     const dimStr = DIMENSIONS.map(d => {
       const v = (o.dims || {})[d.key];
-      return `${d.label}: ${v ? SCALE_LABELS[v - 1] : "not rated"}`;
+      const lbls = o.scale === "rag" ? RAG_LABELS : SCALE_LABELS;
+      return `${d.label}: ${v ? lbls[v - 1] : "not rated"}`;
     }).join("; ");
     return `Observer ${i + 1} (session ${o.sessionId || "unknown"}, room ${o.roomId || "unknown"}):\n  ${dimStr}\n  Comment: ${o.comment || "(none)"}`;
   }).join("\n\n");
@@ -3692,4 +3695,95 @@ exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) 
   if (close) return { found: false, closeMatch: true, suggestedName: close.name || "" };
 
   return { found: false };
+});
+
+
+/**
+ * iwKioskSearch / iwKioskCheckIn: on-demand (callable), public, no sign-in.
+ * Added 2026-10-11 to fix the Instructor Weekend QR kiosk (iw-checkin.html).
+ * Candidates have no login, and firestore.rules (correctly) lets only
+ * faculty-level signed-in roles list the people collection, so the kiosk's
+ * old direct read of /people failed for candidates. These two functions do
+ * the read and the write with the Admin SDK instead, exposing as little as
+ * possible:
+ *   - only on the two Instructor Weekend days (Europe/London date);
+ *   - search needs at least 3 characters and returns at most 6 matches,
+ *     each only {id, name, role, roleLabel} (never email or passport name);
+ *   - searches only people with a 2026 iw_assignments record or a candidate
+ *     role (instructor / assessor), so it can't be used to browse the wider
+ *     membership; other faculty use Faculty lookup mode instead;
+ *   - check-in writes only arrived_<day> and checkedInBy_<day> on the
+ *     attendance doc, clears any "not expected" flags the same way faculty
+ *     check-in does, and never overwrites an earlier arrival time.
+ * Faculty lookup mode (iw-checkin.html?mode=faculty) does not use these.
+ */
+const IW_KIOSK_DAYS = { "2026-10-10": "saturday", "2026-10-11": "sunday" };
+const IW_KIOSK_YEAR = 2026;
+
+function iwKioskToday() {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const get = t => (parts.find(p => p.type === t) || {}).value;
+  return IW_KIOSK_DAYS[`${get("year")}-${get("month")}-${get("day")}`] || null;
+}
+
+let iwKioskCache = null; // { at, people: [{id,name,role,roleLabel,norm}] }
+async function iwKioskPeople() {
+  if (iwKioskCache && Date.now() - iwKioskCache.at < 3 * 60 * 1000) return iwKioskCache.people;
+  const [peopleSnap, assignSnap] = await Promise.all([
+    db.collection("people").select("name", "role", "roleLabel").get(),
+    db.collection("iw_assignments").where("year", "==", IW_KIOSK_YEAR).get()
+  ]);
+  const assign = {};
+  assignSnap.forEach(d => { const a = d.data(); if (a.uid && a.function) assign[a.uid] = a.function; });
+  const people = [];
+  peopleSnap.forEach(d => {
+    const x = d.data();
+    // Anyone with a 2026 Instructor Weekend assignment, plus anyone whose role
+    // is a candidate role even if their assignment record is missing.
+    if (!assign[d.id] && !["instructor", "assessor"].includes(x.role)) return;
+    if (!x.name) return;
+    people.push({ id: d.id, name: String(x.name), role: assign[d.id] || x.role || "", roleLabel: x.roleLabel || "", norm: normalizeNameForMatch(x.name) });
+  });
+  iwKioskCache = { at: Date.now(), people };
+  return people;
+}
+
+exports.iwKioskSearch = onCall({ region: "us-central1" }, async (request) => {
+  const day = iwKioskToday();
+  if (!day) throw new HttpsError("failed-precondition", "Check-in is not open today.");
+  const q = normalizeNameForMatch(request.data?.q || "");
+  if (q.length < 3) return { day, results: [] };
+  const words = q.split(" ").filter(Boolean);
+  const people = await iwKioskPeople();
+  const results = people
+    .filter(p => words.every(w => p.norm.includes(w)))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 6)
+    .map(p => ({ id: p.id, name: p.name, role: p.role, roleLabel: p.roleLabel }));
+  return { day, results };
+});
+
+exports.iwKioskCheckIn = onCall({ region: "us-central1" }, async (request) => {
+  const day = iwKioskToday();
+  if (!day) throw new HttpsError("failed-precondition", "Check-in is not open today.");
+  const personId = String(request.data?.personId || "").trim();
+  if (!personId) throw new HttpsError("invalid-argument", "Person required.");
+  const people = await iwKioskPeople();
+  const person = people.find(p => p.id === personId);
+  if (!person) throw new HttpsError("not-found", "Not found. Please see a member of staff.");
+
+  const ref = db.collection("attendance").doc(personId);
+  const snap = await ref.get();
+  const first = person.name.split(" ")[0];
+  if (snap.exists && snap.data()["arrived_" + day]) {
+    return { ok: true, alreadyCheckedIn: true, day, firstName: first };
+  }
+  const del = admin.firestore.FieldValue.delete();
+  await ref.set({
+    ["arrived_" + day]: admin.firestore.FieldValue.serverTimestamp(),
+    ["checkedInBy_" + day]: "self-service-qr",
+    ["notExpected_" + day]: del, ["markedNotExpectedBy_" + day]: del, ["markedNotExpectedAt_" + day]: del,
+    ["absentType_" + day]: del, ["absentReason_" + day]: del, ["absentNote_" + day]: del
+  }, { merge: true });
+  return { ok: true, alreadyCheckedIn: false, day, firstName: first };
 });

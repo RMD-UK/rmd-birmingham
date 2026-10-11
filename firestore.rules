@@ -879,5 +879,19 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+
+    // ── Organiser Board (organiser-board.html) ──────────────────────────────
+    // Private planning board for the 2-3 people organising the Instructor
+    // Weekend. The board's code is part of the document path, so only people
+    // who know the code can find it. Any signed-in user can read/write a board
+    // whose code they know; nobody can LIST boards (so codes can't be
+    // discovered). get/create/update only on the settings doc, never list.
+    match /organiser_boards/{code} {
+      allow get, create, update: if isSignedIn();
+    }
+    match /organiser_boards/{code}/tasks/{taskId} {
+      allow read, write: if isSignedIn();
+    }
+
   }
 }
