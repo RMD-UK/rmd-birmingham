@@ -50,6 +50,16 @@
 
     /* ── Recommended overall course result (Course Director only) ── */
     table.atbl.no-result .col-result { display: none; }
+    table.atbl.no-fb .fb-col { display: none; }
+    table.atbl th.fb-col { background: #6a3fb0; }
+    td.fb-col { text-align: center; }
+    .fbdot { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; font-weight: 800; font-size: 12px; border: 2px solid; cursor: default; position: relative; }
+    .fbdot.green { background: #e1efe3; color: #1a6e31; border-color: #1a6e31; }
+    .fbdot.amber { background: #fdf1d8; color: #8a5200; border-color: #d99a1b; }
+    .fbdot.red   { background: #fce8e6; color: #b3261e; border-color: #b3261e; }
+    .fbdot.none  { color: #c0c7d2; border-color: transparent; background: none; font-weight: 600; }
+    .fbdot sup { position: absolute; right: -6px; top: -6px; font-size: 10px; background: #1a2233; color: #fff; border-radius: 99px; padding: 0 4px; line-height: 14px; }
+    .fbnote { font-size: 12px; color: var(--rmd-muted); margin: 6px 20px 0; }
     .cr-btn {
       border: none; border-radius: 14px; padding: 5px 12px; min-width: 62px; font-size: 12px;
       font-weight: 800; font-family: var(--font); cursor: pointer;
@@ -258,11 +268,16 @@
     <span><span style="width:12px;height:12px;border-radius:50%;background:#b7410e;display:inline-block;"></span> Red: serious concerns</span>
     <span>· Tap 📝 for notes · Notes required for ⚠️</span>
   </div>
+  <div class="fbnote" id="fbNote">Purple columns show the ratings faculty gave in <b>Session Feedback</b> (worst rating if more than one; hover for comments). The G / A / R buttons are your own checkpoint ratings.</div>
   <div class="table-wrap">
     <table class="atbl" id="assessTable">
       <thead>
         <tr>
           <th>Candidate</th>
+          <th class="fb-col" title="From Session Feedback: faculty ratings of Group Practice: BLS/AED (Sat)">Sat<br>BLS/AED</th>
+          <th class="fb-col" title="From Session Feedback: Group Practice: First Aid and Catastrophic Haemorrhage (Sat)">Sat<br>First Aid</th>
+          <th class="fb-col" title="From Session Feedback: Group Practice: The Learning Conversation (Sat)">Sat<br>Learning<br>conv.</th>
+          <th class="fb-col" title="From Session Feedback: Group Practice: Teaching (Sun)">Sun<br>Teaching</th>
           <th>Sat<br>Teach</th>
           <th>Sat<br>Debrief</th>
           <th>Sun<br>Teach</th>
@@ -275,7 +290,7 @@
         </tr>
       </thead>
       <tbody id="assessBody">
-        <tr><td colspan="10"><div class="loading">Loading…</div></td></tr>
+        <tr><td colspan="14"><div class="loading">Loading…</div></td></tr>
       </tbody>
     </table>
   </div>
@@ -593,7 +608,7 @@ function renderAssessTable() {
   const tbody = document.getElementById("assessBody");
   const cands = visibleCandidates(currentRoom);
   if (cands.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--rmd-muted);">No candidates in this room.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--rmd-muted);">No candidates in this room.</td></tr>`;
     return;
   }
   // Preserve which notes panels are open
@@ -631,6 +646,7 @@ function buildCandidateRows(c, notesOpen) {
         <br><span class="stream-badge ${streamCls}">${streamLbl}</span>
         <span style="font-size:10px;color:var(--rmd-muted);"> ${c.room}</span>
       </td>
+      ${FB_COLS.map(f => `<td class="fb-col" data-fb="${c.id}|${f.sid}">${fbCell(c.id, f.sid)}</td>`).join("")}
       ${cpCells}
       <td><span class="overall-badge ${ovCls}" onclick="cycleOverall('${c.id}')">${ovLbl}</span></td>
       <td>
@@ -643,7 +659,7 @@ function buildCandidateRows(c, notesOpen) {
       <td class="col-result" data-cr="${c.id}">${courseResultCell(c)}</td>
     </tr>
     <tr class="notes-row" id="notes-row-${c.id}" style="${notesOpen?'':'display:none;'}">
-      <td colspan="10">
+      <td colspan="14">
         <div class="notes-panel">
           <div class="notes-req ${s.flags.concern?'show':''}" id="notes-req-${c.id}">⚠️ Notes required when concern is flagged</div>
           <textarea class="notes-ta ${s.flags.concern&&!s.notes.trim()?'required':''}" id="notes-ta-${c.id}"
@@ -906,7 +922,7 @@ function isInstructorCandidate(c) { return c.effectiveRole === ROLES.INSTRUCTOR;
 
 function setupCourseResult() {
   const tbl = document.getElementById("assessTable");
-  if (!isDirector) { if (tbl) tbl.classList.add("no-result"); return; }
+  if (!isDirector) { if (tbl) tbl.classList.add("no-result", "no-fb"); var fn = document.getElementById("fbNote"); if (fn) fn.style.display = "none"; return; }
   if (!tbl || typeof db === "undefined" || !db) return;
   crUnsubs.forEach(u => { try { u(); } catch (e) {} });
   crUnsubs = [];
@@ -928,6 +944,26 @@ function setupCourseResult() {
     Object.values(fbDocs).forEach(f => { if (f && f.candidateId) (feedbackMap[f.candidateId] = feedbackMap[f.candidateId] || []).push(f); });
     refresh();
   }, err => console.warn("session_feedback listener:", err.message)));
+}
+
+// ── Session Feedback ratings shown in the grid (2026-10-11, per Jon) ─────────
+// The five G/A/R checkpoint columns are this page's own taps. The ratings
+// faculty enter in Session Feedback live in session_feedback and were only
+// feeding the Course Result column, so they never appeared here.
+const FB_COLS = [
+  { sid: "sat-8",  name: "Sat BLS/AED group practice" },
+  { sid: "sat-11", name: "Sat First Aid group practice" },
+  { sid: "sat-20", name: "Sat Learning Conversation group practice" },
+  { sid: "sun-4",  name: "Sun Teaching group practice" }
+];
+function fbCell(cid, sid) {
+  const docs = (feedbackMap[cid] || []).filter(f => f.sessionId === sid && f.rating);
+  if (!docs.length) return '<span class="fbdot none" title="No rating entered yet">-</span>';
+  const rank = { red: 3, amber: 2, green: 1 };
+  const worst = docs.slice().sort((a, b) => (rank[b.rating] || 0) - (rank[a.rating] || 0))[0].rating;
+  const letter = { red: "R", amber: "A", green: "G" }[worst] || "?";
+  const tip = docs.map(f => (f.rating || "").toUpperCase() + (f.comment ? ": " + f.comment : "")).join("\n");
+  return '<span class="fbdot ' + worst + '" title="' + esc(tip) + '">' + letter + (docs.length > 1 ? "<sup>" + docs.length + "</sup>" : "") + '</span>';
 }
 
 function courseResultFor(cid) {
@@ -963,6 +999,7 @@ function refreshCourseResultCells() {
     const td = document.querySelector(`td[data-cr="${c.id}"]`);
     if (td) td.innerHTML = courseResultCell(c);
   });
+  document.querySelectorAll("td[data-fb]").forEach(td => { const p = td.getAttribute("data-fb").split("|"); td.innerHTML = fbCell(p[0], p[1]); });
   if (document.getElementById("view-overview").classList.contains("active")) renderOverview();
 }
 

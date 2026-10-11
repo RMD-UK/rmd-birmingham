@@ -644,6 +644,10 @@
             <button class="btn-sm btn-primary" onclick="sendBroadcast()">Send</button>
           </div>
           <div id="msgFeedback" style="font-size:12px;color:var(--rmd-muted);margin-top:5px;"></div>
+          <div style="margin-top:12px;border-top:1px solid #e6ebf1;padding-top:10px;">
+            <div style="font-size:11px;font-weight:800;color:var(--rmd-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Recently sent (live from the database)</div>
+            <div id="msgSent" style="font-size:13px;color:var(--rmd-muted);">Loading...</div>
+          </div>
         </div>
       </div>
 
@@ -1090,6 +1094,7 @@ window.addEventListener("load", () => {
     step("meeting notes", () => loadMeetingNotes());
     step("report", () => loadReport());
     step("alerts", () => watchAlerts());
+    step("sentMessages", () => watchSentMessages());
     step("live feedback", () => watchFeedbackLive());
     step("session quality", () => watchSessionQuality());
     step("itc observations", () => watchItcObservations());
@@ -2568,6 +2573,47 @@ function watchAlerts() {
       renderAlertStrip();
     }, err => console.warn("Alert listener (assessor_feedback):", err.message));
 }
+
+// ── Recently sent messages: proof a broadcast landed (2026-10-11, per Jon) ───
+var sentUnsub = null;
+var MSG_TARGET_LABEL = { "all": "Everyone", "faculty": "Faculty", "instructor-stream": "Instructor programme", "assessor-stream": "Assessor programme", "room-wf15": "WF15 screen", "room-wf19": "WF19 screen", "room-ath": "ATH screen" };
+function msgTargetLabel(t) { return MSG_TARGET_LABEL[t] || t || "Everyone"; }
+function watchSentMessages() {
+  if (sentUnsub) { try { sentUnsub(); } catch (e) {} }
+  var box = document.getElementById("msgSent");
+  if (!box) return;
+  sentUnsub = db.collection(COLLECTIONS.messages).orderBy("sentAt", "desc").limit(6).onSnapshot(function (snap) { lastSentSnap = snap; renderSentMessages(); }, function (err) { box.textContent = "Could not load sent messages (" + (err.code || "error") + ")."; });
+}
+var lastSentSnap = null;
+function renderSentMessages() {
+  var box = document.getElementById("msgSent"), snap = lastSentSnap;
+  if (!box || !snap) return;
+  (function () {
+    if (snap.empty) { box.textContent = "Nothing sent yet."; return; }
+    var NORMAL_MS = 15 * 60 * 1000;
+    box.innerHTML = snap.docs.map(function (d) {
+      var m = d.data(), ts = m.sentAt && m.sentAt.toDate ? m.sentAt.toDate() : null;
+      var pending = d.metadata.hasPendingWrites && !ts;
+      var time = ts ? String(ts.getHours()).padStart(2, "0") + ":" + String(ts.getMinutes()).padStart(2, "0") : "now";
+      var hi = m.priority === "high";
+      var age = ts ? Date.now() - ts.getTime() : 0;
+      var showing = !m.clearedAt && (hi || age < NORMAL_MS);
+      var state = pending ? '<span style="color:#8a5200;font-weight:700;">sending...</span>'
+        : showing ? '<span style="color:#1a6e31;font-weight:700;">Landed. Showing on screens</span>'
+        : m.clearedAt ? '<span style="color:var(--rmd-muted);">Landed. Cleared</span>'
+        : '<span style="color:var(--rmd-muted);">Landed. Banner timed out</span>';
+      var clr = (showing && !pending) ? ' <button class="btn-sm" style="padding:2px 8px;font-size:11px;" onclick="clearSentMessage(\'' + d.id + '\')">Clear</button>' : '';
+      return '<div style="padding:6px 0;border-bottom:1px solid #f0f3f8;">' +
+        (hi ? '<b style="color:#b7410e;">HIGH PRIORITY </b>' : '') + esc(m.text || '') +
+        '<div style="font-size:11px;margin-top:2px;">' + time + ' · to ' + esc(msgTargetLabel(m.target)) + ' · ' + state + clr + '</div></div>';
+    }).join("");
+  })();
+}
+async function clearSentMessage(id) {
+  try { await db.collection(COLLECTIONS.messages).doc(id).update({ clearedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+  catch (e) { console.warn("Clear failed:", e.code, e.message); }
+}
+setInterval(renderSentMessages, 30000);   // so "Showing on screens" drops to "timed out" after 15 minutes
 
 function dismissAlerts() {
   alertsDismissed = true;
