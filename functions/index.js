@@ -2689,6 +2689,20 @@ function stage1FormatRequest(sheetId, row, kind) {
     cell: { userEnteredFormat: { textFormat: { strikethrough: struck, foregroundColor: struck ? { red: 0.6, green: 0.6, blue: 0.6 } : { red: 0, green: 0, blue: 0 } } } },
     fields: "userEnteredFormat.textFormat.strikethrough,userEnteredFormat.textFormat.foregroundColor" } };
 }
+// values:batchUpdate does NOT grow the sheet: writing below the last row of the
+// grid fails with "Range exceeds grid limits" (the 2026-10-11 INTERNAL error —
+// the sheet had exactly as many rows as the original list). Add rows first.
+async function stage1EnsureRows(lastRowNeeded) {
+  const meta = await stage1SheetsApiFetch(`?fields=sheets.properties(sheetId,title,gridProperties.rowCount)`);
+  const tab = (meta.sheets || []).map(s => s.properties).find(p => p.title === STAGE1_SHEET_TAB);
+  if (!tab) throw new Error(`Tab "${STAGE1_SHEET_TAB}" not found in the master sheet.`);
+  const have = (tab.gridProperties && tab.gridProperties.rowCount) || 0;
+  if (have >= lastRowNeeded) return;
+  await stage1SheetsApiFetch(`:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({ requests: [{ appendDimension: { sheetId: tab.sheetId, dimension: "ROWS", length: lastRowNeeded - have + 20 } }] }),
+  });
+}
 async function stage1WriteValues(updates) {
   const CHUNK = 500;
   for (let i = 0; i < updates.length; i += CHUNK) {
@@ -2821,6 +2835,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
 
   if (dryRun) return { dryRun: true, wouldUpdate: courseRoomUpdates, ...summary };
 
+  if (added.length) await stage1EnsureRows(next - 1);
   await stage1WriteValues(valueUpdates);
   let formatError = null;
   try { await stage1WriteFormats(fmt); } catch (err) { formatError = err.message; console.error("reconcileStage1Sheet: values written but formatting failed:", err.message); }
@@ -2839,7 +2854,12 @@ exports.backfillStage1CourseToSheet = onCall({ region: "us-central1" }, async (r
   if (!(await callerIsDirector(auth))) {
     throw new HttpsError("permission-denied", "Course Directors only.");
   }
-  return reconcileStage1Sheet({ dryRun: !!request.data?.dryRun, strikeMissing: !!request.data?.strikeMissing });
+  try {
+    return await reconcileStage1Sheet({ dryRun: !!request.data?.dryRun, strikeMissing: !!request.data?.strikeMissing });
+  } catch (err) {
+    console.error("backfillStage1CourseToSheet failed:", err);
+    throw new HttpsError("internal", "Sheet sync failed: " + String(err.message || err).slice(0, 300));
+  }
 });
 
 exports.reconcileStage1SheetScheduled = onSchedule(
