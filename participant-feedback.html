@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="css/rmd.css">
   <style>
     * { box-sizing: border-box; }
+    html { scroll-padding-bottom: 130px; }   /* keep tapped/scrolled-to buttons clear of the fixed Submit bar */
+    button { touch-action: manipulation; }
     body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 100px; }
 
     /* ── Hero header ── */
@@ -491,7 +493,8 @@ initFirebase();
 window.addEventListener("load", () => {
   if (preStream) {
     // Auto-select stream from QR
-    setChoice("stream", preStream === "assessor" ? "Assessor / Senior Instructor" : "Instructor Candidate");
+    const PRE = { assessor: "Assessor / Senior Instructor", itc: "Instructor Trainer Candidate", faculty: "Faculty", instructor: "Instructor Candidate" };
+    setChoice("stream", PRE[String(preStream).toLowerCase()] || "Instructor Candidate");
   }
   updateProgress();
 });
@@ -506,6 +509,13 @@ function setLikert(key, val) {
     btn.className = "likert-btn" + (i + 1 === val ? " sel-" + val : "");
   });
   updateProgress();
+}
+
+function btnValue(btn) {
+  if (btn.dataset.val) return btn.dataset.val;
+  const m = /setChoice\(\s*'[^']*'\s*,\s*'([^']*)'\s*\)/.exec(btn.getAttribute("onclick") || "");
+  btn.dataset.val = m ? m[1] : btn.textContent.trim();
+  return btn.dataset.val;
 }
 
 function setChoice(key, val) {
@@ -525,7 +535,10 @@ function setChoice(key, val) {
   if (!wrap) return;
 
   wrap.querySelectorAll("button").forEach(btn => {
-    const isThis = btn.textContent.trim() === val;
+    // Match on the value the button sends (data-val), not its label: the ITC and
+    // Faculty / Observer buttons have labels that differ from their values, so they
+    // never lit up and looked as if they could not be selected (2026-10-11).
+    const isThis = btnValue(btn) === val;
     // Pick colour class based on key
     if (isThis) {
       btn.className = btn.className.replace(/\bsel-\S+/g, "").trim();
