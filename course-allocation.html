@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Course Allocation Screen - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ink:#1A2233; --mut:#6B7C93; --line:#E3E8EF; --bg:#F5F7FA; --card:#fff;
+  --pur:#44247C; --pur2:#2E1856; --purtint:#EFEAF8; --blu:#0067A4; --org:#F49001;
+  --ok:#1E8449; --okbg:#E3F3E8; --bad:#B3261E; --badbg:#FCE8E6; --warn:#8A5200; --warnbg:#FFF1D6;
+  --font:'Inter','Segoe UI',Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;overflow:hidden}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:16px;color:var(--ink)}
+.hidden{display:none!important}
+.gate{height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;font-weight:700;color:var(--pur)}
+.app{height:100vh;height:100dvh;display:flex;flex-direction:column}
+.top{background:var(--pur);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px;flex:0 0 auto;flex-wrap:wrap}
+.top h1{font-size:18px;font-weight:800;letter-spacing:-.2px}
+.top .grow{flex:1}
+.seg{display:inline-flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:#fff;padding:7px 14px;border-radius:8px;font-weight:700;font-size:14px;opacity:.85}
+.seg button.on{background:#fff;color:var(--pur);opacity:1}
+.seg button .nowdot{display:inline-block;background:var(--ok);color:#fff;font-size:10px;font-weight:800;border-radius:6px;padding:1px 5px;margin-left:5px;vertical-align:1px}
+.tbtn{border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:8px 13px;font-weight:700;font-size:13px;text-decoration:none;display:inline-block}
+.tbtn:hover{background:rgba(255,255,255,.26)}
+.sheetstat{font-size:12px;font-weight:700;opacity:.9}
+.main{flex:1;min-height:0;display:grid;grid-template-columns:450px 1fr}
+.side{background:#fff;border-right:1px solid var(--line);overflow-y:auto;padding:18px 18px 24px;display:flex;flex-direction:column;gap:16px}
+.pane{overflow-y:auto;padding:16px 20px 120px}
+.step{background:var(--bg);border-radius:14px;padding:14px}
+.step .q{font-weight:800;font-size:16px;margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.stepno{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:var(--pur);color:#fff;font-size:14px;font-weight:800}
+.fieldlab{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:0 0 6px}
+.selname{background:#fff;border:2px solid var(--pur);border-radius:12px;padding:10px 12px}
+.selname.empty{border-color:var(--line);color:var(--mut)}
+.selname b{display:block;font-size:16px}
+.selname small{color:var(--mut)}
+.hint{font-size:13px;color:var(--mut);margin-top:8px}
+.hint a{color:var(--pur);font-weight:700}
+.modes{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.modes button{text-align:left;padding:12px 14px 12px 44px;border-radius:12px;border:2px solid var(--line);background:#fff;color:var(--ink);line-height:1.25;position:relative}
+.modes button::before{content:"";position:absolute;left:14px;top:50%;margin-top:-9px;width:18px;height:18px;border-radius:50%;border:2px solid #B9C3D3;background:#fff}
+.modes button b{display:block;font-size:15px;font-weight:800}
+.modes button small{display:block;font-size:12.5px;color:var(--mut);margin-top:2px;font-weight:500}
+.modes button.on{border-color:var(--pur);background:var(--purtint)}
+.modes button.on::before{border-color:var(--pur);background:radial-gradient(circle,var(--pur) 0 45%,#fff 50%)}
+.modes button.on b{color:var(--pur)}
+.modes button:disabled{opacity:.45;cursor:default}
+.radio{display:block;position:relative;background:#fff;border:2px solid var(--line);border-radius:12px;padding:10px 14px 10px 44px;margin-bottom:8px;cursor:pointer}
+.radio::before{content:"";position:absolute;left:14px;top:14px;width:18px;height:18px;border-radius:50%;border:2px solid #B9C3D3;background:#fff}
+.radio.on::before{border-color:var(--pur);background:radial-gradient(circle,var(--pur) 0 45%,#fff 50%)}
+.radio.on{border-color:var(--pur);background:var(--purtint)}
+.radio.on b{color:var(--pur)}
+.radio.bad{border-color:#F0D49A}
+.radio.bad.on{border-color:var(--org);background:var(--warnbg)}
+.radio.bad.on::before{border-color:var(--org);background:radial-gradient(circle,var(--org) 0 45%,#fff 50%)}
+.radio.full{opacity:.55;cursor:default}
+.radio b{display:flex;justify-content:space-between;gap:8px;font-size:15px;font-weight:800}
+.radio small{color:var(--mut);font-size:12.5px;line-height:1.35;display:block;margin-top:2px}
+.tag{font-size:11px;font-weight:800;border-radius:6px;padding:1px 7px;white-space:nowrap}
+.tag.ok{background:var(--okbg);color:var(--ok)}
+.tag.no{background:var(--warnbg);color:var(--warn)}
+.tag.full{background:#EEF1F6;color:var(--mut)}
+.over-box{background:var(--warnbg);border:2px solid var(--org);border-radius:12px;padding:10px 12px;font-size:13.5px;color:var(--warn);margin:4px 0 8px}
+.over-box ul{margin:4px 0 6px 18px}
+.over-box label{display:flex;gap:8px;align-items:center;font-weight:800;color:var(--ink);font-size:14px;cursor:pointer}
+.over-box input{width:18px;height:18px;accent-color:var(--org)}
+.search{width:100%;padding:10px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;margin-bottom:8px}
+.picklist{background:#fff;border:2px solid var(--line);border-radius:10px;max-height:170px;overflow:auto;margin-bottom:8px}
+.picklist div{padding:7px 10px;border-top:1px solid #F0F3F8;cursor:pointer;font-size:14px}
+.picklist div:first-child{border-top:0}
+.picklist div:hover{background:#FAFAFE}
+.picklist small{color:var(--mut)}
+.bigbtn{width:100%;border:0;background:var(--pur);color:#fff;border-radius:12px;padding:13px 16px;font-weight:800;font-size:16px}
+.bigbtn:disabled{opacity:.4;cursor:default}
+.bigbtn.alt{background:#fff;color:var(--pur);border:2px solid var(--pur)}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;font-weight:600;margin:10px 0}
+.chk input{width:18px;height:18px;margin-top:1px;accent-color:var(--pur)}
+.plain{background:#fff;border:1px solid var(--line);border-left:6px solid var(--pur);border-radius:14px;padding:14px 18px;margin-bottom:14px;font-size:17px;line-height:1.55}
+.plain .lbl{display:block;font-size:11px;font-weight:800;color:var(--pur);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.plain .mut{color:var(--mut)}
+.plain.warn{border-left-color:var(--org)}
+.sumstrip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:140px}
+.tile .n{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .l{font-size:12px;color:var(--mut);font-weight:600;margin-top:2px}
+.tile.warn .n{color:var(--bad)}
+.msg{border-radius:12px;padding:10px 14px;margin-bottom:12px;font-weight:600;font-size:14px}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.msg.warn{background:var(--warnbg);color:var(--warn)}
+.msg.err{background:var(--badbg);color:var(--bad)}
+.msg a{color:inherit;text-decoration:underline;cursor:pointer;font-weight:800}
+.msg ul{margin:6px 0 0 18px;font-weight:600}
+.tools{display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.tools .seg{background:#E8ECF4}
+.tools .seg button{color:var(--pur)}
+.tools .seg button.on{background:var(--pur);color:#fff}
+.tools .search{margin:0;flex:1;min-width:200px}
+.bigsearch{font-size:18px;padding:14px 16px;border:2px solid var(--pur);border-radius:12px;margin-bottom:10px}
+.bigsearch:focus{outline:3px solid var(--purtint)}
+.tools .btn{padding:8px 14px;font-size:14px}
+.sched{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.rowhead,.row{display:grid;grid-template-columns:64px minmax(0,1.3fr) minmax(0,1fr) 190px;gap:10px;align-items:center;padding:10px 14px}
+.rowhead{background:#F8F9FC;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.row{border-top:1px solid #F0F3F8;cursor:pointer;position:relative}
+.row:hover{background:#FAFAFE}
+.row.sel{background:var(--purtint);box-shadow:inset 5px 0 0 var(--pur)}
+.row.moved{box-shadow:inset 5px 0 0 var(--ok)}
+.row .rm{font-weight:800;font-size:15px;font-variant-numeric:tabular-nums}
+.row .rm.none{color:var(--mut);font-weight:600}
+.row .nm b{display:block;font-size:15px}
+.row .nm small{color:var(--mut);font-size:12.5px}
+.row .st{display:flex;gap:6px;flex-wrap:wrap}
+.pill{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:2px 8px;white-space:nowrap}
+.pill.ovr{background:var(--warnbg);color:var(--warn)}
+.pill.clash{background:var(--badbg);color:var(--bad)}
+.pill.mail{background:var(--purtint);color:var(--pur)}
+.pill.wait{background:#EEF1F6;color:var(--mut)}
+.pill.tag{background:var(--warnbg);color:var(--warn)}
+.pill.new{background:var(--okbg);color:var(--ok)}
+.pill.cap{background:var(--badbg);color:var(--bad)}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:8px;margin-bottom:14px}
+.rooms .r{background:#fff;border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.rooms .r b{font-size:14px}
+.rooms .r small{display:block;color:var(--mut);font-size:11.5px;font-weight:600}
+.rooms .bar2{height:5px;background:#EEF1F6;border-radius:3px;margin-top:5px;overflow:hidden}
+.rooms .bar2 i{display:block;height:100%;background:var(--pur)}
+.rooms .r.over .bar2 i{background:var(--bad)}
+.rooms .r.full{border-color:var(--org);background:var(--warnbg)}
+.rooms .r.full .bar2 i{background:var(--org)}
+.rooms .r.over{border-color:var(--bad);background:var(--badbg)}
+.seg button .nowdot.over{background:var(--bad)}
+.grp{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff}
+.grp .gh{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-weight:800;font-size:14px;color:var(--pur)}
+.grp .gn{font-size:12px;color:var(--mut);margin-top:6px;line-height:1.5}
+.grp .gbtn{border:0;background:var(--pur);color:#fff;border-radius:10px;padding:8px 12px;font-weight:800;font-size:13px}
+.grp .gbtn:disabled{opacity:.4;cursor:default}
+.badge-re{background:var(--warnbg);color:var(--warn);border-radius:6px;padding:1px 8px;font-size:11px;margin-right:6px}
+.log{font-size:13px;color:var(--mut);margin-top:18px}
+.log h3{font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.log div{padding:5px 0;border-bottom:1px solid var(--line)}
+.bar{position:fixed;left:450px;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(0,0,0,.08);padding:12px 20px;display:flex;gap:12px;align-items:center;z-index:10}
+.bar .txt{flex:1;font-weight:600;font-size:14px;min-width:0}
+.btn{border:2px solid var(--line);background:#fff;border-radius:12px;padding:12px 18px;font-weight:800;font-size:15px;color:var(--ink)}
+.btn.pri{background:var(--pur);border-color:var(--pur);color:#fff;padding:14px 26px;font-size:16px}
+.btn.pri.ovr{background:#B25E00;border-color:#B25E00}
+.btn.pri:disabled{opacity:.4;cursor:default}
+@media (max-width:900px){
+  body{overflow:auto}.app{height:auto;min-height:100vh}.main{display:block}
+  .side{border-right:0;border-bottom:1px solid var(--line)}
+  .pane{padding:12px 12px 130px;overflow:visible}
+  .bar{left:0;padding:10px 12px;flex-wrap:wrap}
+  .rowhead,.row{grid-template-columns:52px minmax(0,1fr)}
+  .rowhead div:nth-child(n+3),.row .rest{display:none}
+}
+</style>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+
+<div class="app hidden" id="app">
+  <div class="top">
+    <h1>Course Allocation</h1>
+    <div class="seg" id="courseTabs" role="tablist" aria-label="Course"></div>
+    <div class="grow"></div>
+    <span class="sheetstat" id="sheetStat"></span>
+    <a class="tbtn" href="admin-stage1-candidates.html">Stage 1 Candidates</a>
+    <a class="tbtn" href="admin-stage1-assessment-allocation.html">Assessment allocation</a>
+    <a class="tbtn" href="admin-stage1-course-allocation.html" title="The previous allocation page, kept for the over-capacity step">Older page</a>
+  </div>
+
+  <div class="main">
+    <aside class="side">
+      <div class="step">
+        <div class="q"><span class="stepno">1</span>Place everyone who is waiting</div>
+        <div id="waitBox"></div>
+      </div>
+
+      <div class="step">
+        <div class="q"><span class="stepno">2</span>Move one person</div>
+        <div class="fieldlab">Who?</div>
+        <input class="search" id="pickSearch" type="search" placeholder="Type a name or email to find them..." autocomplete="off">
+        <div class="picklist hidden" id="pickList"></div>
+        <div class="selname empty" id="selName">Tap a person in the list on the right, or search above.</div>
+        <div id="modeArea" class="hidden" style="margin-top:12px">
+          <div class="fieldlab">What do you want to do?</div>
+          <div class="modes" id="modes">
+            <button type="button" data-mode="course"><b>Put them on a different course</b><small>Checks their programme deadline and placement dates for you.</small></button>
+            <button type="button" data-mode="room"><b>Move them to another room</b><small>Same course, different room.</small></button>
+            <button type="button" data-mode="off"><b>Take them off their course</b><small>They go back to the waiting list.</small></button>
+            <button type="button" data-mode="tags"><b>Set tags: RAP, two-plus assessments</b><small>Saved on the person and copied to the Google Sheet.</small></button>
+          </div>
+          <div id="modeBody"></div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="q"><span class="stepno">3</span>Tell them</div>
+        <div id="mailBox"></div>
+      </div>
+    </aside>
+
+    <section class="pane" id="pane">
+      <input class="search bigsearch" id="listSearch" type="search" placeholder="Search anyone on any course by name or email..." autocomplete="off">
+      <div class="hint" id="searchHint" style="margin:-2px 0 12px"></div>
+      <div class="plain" id="plain"></div>
+      <div class="sumstrip" id="sum"></div>
+      <div id="msgs"></div>
+      <div class="rooms" id="rooms"></div>
+      <div class="tools">
+        <div class="seg" id="filterTabs"></div>
+        <button class="btn" id="toggleList" type="button"></button>
+      </div>
+      <div class="hint hidden" id="legend" style="margin:0 0 8px"><b>Status tags:</b> <b>Waiting</b> = no course yet · <b>Dates not checked</b> = placement dates not checked yet · <b>Not emailed</b> = placed or moved, and their email has not been sent (Step 3) · <b>Placement clash</b> = one of the course Mondays falls inside their placement dates · <b>Changed now</b> = changed during this visit. <b>RAP</b> and <b>2+ assessments</b> are tags you set (Step 2) that also go to the sheet. Blank = nothing to do.</div>
+      <div class="sched hidden" id="schedWrap">
+        <div class="rowhead"><div>Room</div><div>Name</div><div>Programme</div><div>Status</div></div>
+        <div id="rows"></div>
+      </div>
+      <div class="log"><h3>Recent changes (this visit)</h3><div id="log">Nothing yet.</div></div>
+    </section>
+  </div>
+
+  <div class="bar" id="bar">
+    <div class="txt" id="barTxt">Pick a person and say what you want to do. Nothing changes until you press the button.</div>
+    <button class="btn" id="discard" type="button">Start again</button>
+    <button class="btn pri" id="apply" type="button" disabled>Apply</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ───────────────────────────────────────────────────────────────────────────
+// Course Allocation screen (2026-10-11, Jon): one place to place waiting
+// candidates, move one person (course / room / off), and email them, in the
+// layout of the Instructor Weekend Time Shift page. Every change writes the
+// same stage1_candidates fields the older admin-stage1-course-allocation.html
+// does and then updates the Google Sheet (course + room columns).
+// The allocation maths below (deadline eligibility, placement clashes,
+// capacity, room balancing, email wording) is copied unchanged from that page.
+// ───────────────────────────────────────────────────────────────────────────
+initFirebase();
+
+let allCandidates = [];
+let programmeDeadlines = {};
+let courseSessions = [];
+let confirmAccessCode = "";
+const ROOMS = STAGE1_TEACHING_ROOMS;
+const EMAIL_CARD_MAX = 50;
+let confirmSending = false;
+const CANDIDATE_RESOURCES_URL = "https://rmd.uk.com/candidate-resources.html";
+const BLS_ADMIN_EMAIL = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
+const INSTAGRAM_URL = "https://www.instagram.com/rmdbirmingham/";
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function courseMondays(assessmentDate) {
+  const d = new Date(assessmentDate + "T00:00:00");
+  const mondays = [];
+  for (let weeksBack = 2; weeksBack >= 0; weeksBack--) {
+    const m = new Date(d);
+    m.setDate(m.getDate() - weeksBack * 7);
+    mondays.push(m.toISOString().slice(0, 10));
+  }
+  return mondays; // [first session, second session, assessment evening]
+}
+
+function placementClashesWithCourse(placementBlocks, assessmentDate) {
+  if (!placementBlocks || !placementBlocks.length || !assessmentDate) return false;
+  const mondays = courseMondays(assessmentDate);
+  return placementBlocks.some(b =>
+    b.start && b.end && mondays.some(m => m >= b.start && m <= b.end));
+}
+
+function buildEffectiveCapacities() {
+  const sorted = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const effective = {};
+  sorted.forEach((c, i) => {
+    effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : (i === 0 ? 12 : 10);
+  });
+  courseSessions.forEach(c => { if (!(c.name in effective)) effective[c.name] = (c.capacity || c.capacity === 0) ? c.capacity : 10; });
+  return effective;
+}
+
+function eligibleCoursesIgnoringCapacity(degreeExact, placementBlocks) {
+  if (!degreeExact) return { eligible: [], reason: "no recognised programme to look up a deadline for" };
+  const deadline = programmeDeadlines[degreeExact];
+  if (!deadline) return { eligible: [], reason: `no assessment deadline set for "${degreeExact}" — set one on Stage 1 Settings` };
+  if (!courseSessions.length) return { eligible: [], reason: "no course sessions configured — add this year's dates on Stage 1 Settings" };
+  let eligible = courseSessions.filter(c => c.date && c.date <= deadline).sort((a, b) => a.date < b.date ? -1 : 1);
+  if (!eligible.length) return { eligible: [], reason: `no course session falls on or before the ${deadline} deadline` };
+  if (placementBlocks && placementBlocks.length) {
+    const clashFree = eligible.filter(c => !placementClashesWithCourse(placementBlocks, c.date));
+    if (!clashFree.length) return { eligible: [], reason: `every course session on or before the ${deadline} deadline clashes with a placement date on file — pick one manually or check with their placement lead` };
+    eligible = clashFree;
+  }
+  return { eligible, reason: null };
+}
+
+function autoFitCourse(degreeExact, placementBlocks, runningCounts, effectiveCapacities, pref) {
+  // Voluntary override (2026-10-11, Jon): the director chose a course that the
+  // programme deadline or placement dates would normally rule out. Honour it
+  // if that course has room; room capacity is still respected.
+  if (pref && pref.preferred && pref.override) {
+    const os = courseSessions.find(s => s.name === pref.preferred);
+    if (os) {
+      const ocaps = effectiveCapacities || {};
+      const ocounts = runningCounts || {};
+      const ocap = ocaps[os.name] ? ocaps[os.name] * ROOMS.length : null;
+      const ocount = ocounts[os.name] != null ? ocounts[os.name] : allCandidates.filter(c => c.course === os.name).length;
+      if (ocap == null || ocount < ocap) return { course: os.name, reason: null, atCapacity: false, prefMet: true, overridden: true };
+    }
+  }
+  const elig = eligibleCoursesIgnoringCapacity(degreeExact, placementBlocks);
+  if (!elig.eligible.length) return { course: null, reason: elig.reason, atCapacity: false };
+  let eligible = elig.eligible;
+  const deadline = programmeDeadlines[degreeExact];
+  // pref (2026-10-09, Jon): { preferred, avoid } set when someone is re-allocated.
+  const prefName = pref && pref.preferred, avoidName = pref && pref.avoid;
+
+  const caps = effectiveCapacities || {};
+  const counts = runningCounts || {};
+  const capOf = s => caps[s.name] ? caps[s.name] * ROOMS.length : null;
+  const countOf = s => counts[s.name] != null ? counts[s.name] : allCandidates.filter(c => c.course === s.name).length;
+
+  const hasRoom = s => { const cap = capOf(s); return cap == null || countOf(s) < cap; };
+
+  // 1. A preferred course wins if they are eligible for it and it has room.
+  let prefNote = null;
+  if (prefName) {
+    const ps = eligible.find(s => s.name === prefName);
+    if (ps && hasRoom(ps)) return { course: ps.name, reason: null, atCapacity: false, prefMet: true };
+    prefNote = !ps ? `${prefName} is not an option for them (programme deadline or placement dates)` : `${prefName} is full`;
+  }
+  // 2. Otherwise keep them off the course they were just moved from, if anything else fits.
+  if (avoidName) {
+    const others = eligible.filter(s => s.name !== avoidName);
+    if (others.some(hasRoom)) eligible = others;
+    else return { course: null, reason: `the only course with room is ${avoidName}, which they were moved from`, atCapacity: false };
+  }
+  const earliestOverall = courseSessions.filter(c => c.date).slice().sort((a, b) => a.date < b.date ? -1 : 1)[0];
+  const courseOne = earliestOverall && eligible.find(s => s.name === earliestOverall.name);
+
+  if (courseOne && hasRoom(courseOne)) {
+    return { course: courseOne.name, reason: null, atCapacity: false, prefNote };
+  }
+
+  const rest = eligible.filter(s => !courseOne || s.name !== courseOne.name).filter(hasRoom);
+  if (!rest.length) {
+    const ref = courseOne || eligible[0];
+    const cap = caps[ref.name];
+    const capNote = cap ? ` (capacity ${cap}/room × ${ROOMS.length} rooms = ${cap * ROOMS.length})` : "";
+    return { course: null, reason: `every course session on or before the ${deadline} deadline is already at capacity${capNote}`, atCapacity: true };
+  }
+  let best = rest[0], bestCount = countOf(best);
+  rest.forEach(s => { const n = countOf(s); if (n < bestCount) { best = s; bestCount = n; } });
+  return { course: best.name, reason: null, atCapacity: false, prefNote };
+}
+
+function eligibleCourseCountFor(c) {
+  const resolved = resolveStage1Degree(c.degree);
+  return eligibleCoursesIgnoringCapacity(resolved ? resolved.exact : null, c.placementBlocks || []).eligible.length;
+}
+
+function degreeKey(c) {
+  const match = resolveStage1Degree(c.degree);
+  return match ? ("group:" + match.group) : ("raw:" + (c.degree || "").trim().toLowerCase());
+}
+
+function assignRoomsForWrites(toWrite) {
+  const byCourse = {};
+  toWrite.forEach(({ c, course }) => { (byCourse[course] = byCourse[course] || []).push(c); });
+  const roomFor = new Map();
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  Object.keys(byCourse).forEach(course => {
+    const existingOnCourse = allCandidates.filter(x => x.course === course);
+    const totalCount = {};
+    const sameCount = {};
+    ROOMS.forEach(r => { totalCount[r] = 0; });
+    existingOnCourse.forEach(x => {
+      if (!ROOMS.includes(x.room)) return;
+      totalCount[x.room]++;
+      const k = `${x.room}|${degreeKey(x)}`;
+      sameCount[k] = (sameCount[k] || 0) + 1;
+    });
+
+    shuffle(byCourse[course]).forEach(c => {
+      const dk = degreeKey(c);
+      let bestRooms = [];
+      let bestSame = Infinity, bestTotal = Infinity;
+      ROOMS.forEach(r => {
+        const same = sameCount[`${r}|${dk}`] || 0;
+        const total = totalCount[r];
+        if (same < bestSame || (same === bestSame && total < bestTotal)) {
+          bestSame = same; bestTotal = total; bestRooms = [r];
+        } else if (same === bestSame && total === bestTotal) {
+          bestRooms.push(r);
+        }
+      });
+      const best = bestRooms[Math.floor(Math.random() * bestRooms.length)];
+      totalCount[best]++;
+      sameCount[`${best}|${dk}`] = (sameCount[`${best}|${dk}`] || 0) + 1;
+      roomFor.set(c.id, best);
+    });
+  });
+  return roomFor;
+}
+
+function emailOpening() { return "Dear {{first_name}},"; }
+
+function emailSignoff() {
+  return `Kind regards,
+BLS Administrative Team
+RMD Birmingham
+
+RMD Birmingham - Basic Life Support Faculty
+${BLS_ADMIN_EMAIL}
+Instagram: @RMDBirmingham (${INSTAGRAM_URL})`;
+}
+
+function formatLongDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso + "T12:00:00Z");
+  if (isNaN(d)) return null;
+  return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+}
+
+function computeCourseSessionDates(courseName) {
+  const s = courseSessions.find(x => x.name === courseName);
+  const examIso = s && s.date;
+  if (!examIso) return null;
+  const exam = new Date(examIso + "T12:00:00Z");
+  if (isNaN(exam)) return null;
+  const s1 = new Date(exam); s1.setUTCDate(exam.getUTCDate() - 14);
+  const s2 = new Date(exam); s2.setUTCDate(exam.getUTCDate() - 7);
+  return { session1: formatLongDate(s1.toISOString().slice(0, 10)), session2: formatLongDate(s2.toISOString().slice(0, 10)), exam: formatLongDate(examIso) };
+}
+
+function buildAllocationEmail(courseName, dates, accessCode) {
+  return {
+    subject: `Your BLS Course — ${courseName}: Dates & Room Allocation`,
+    body: [
+      emailOpening(),
+      `We look forward to welcoming you for your BLS course commencing on ${dates.session1}.`,
+      `Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night`,
+      `All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.`,
+      `Instructions for your examination night (session 3) will be sent in the week before.`,
+      `Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at ${CANDIDATE_RESOURCES_URL} — the access code is ${accessCode}, then "Find your course and room" with your degree, full name and email address. It tells you which course you are on and which room you are in. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.`,
+      `The same page also has the BLS reference material (the algorithm and AED guidance) — please take a look before your course starts.`,
+      `If you are unable to attend your BLS session, please email us (${BLS_ADMIN_EMAIL}) with as much notice as possible. This is really helpful for our admin team, and to ensure that you get the best BLS experience.`,
+      emailSignoff(),
+    ].join("\n\n"),
+  };
+}
+
+function buildReallocationEmail(courseName, prevCourse, dates, accessCode) {
+  return {
+    subject: `Your BLS Course has changed — now ${courseName}: Updated Dates`,
+    body: [
+      emailOpening(),
+      `We have moved you to a different BLS course${prevCourse ? ` (you were previously on ${prevCourse})` : ""}. Please disregard the dates we sent you before. Your new course is ${courseName}, commencing on ${dates.session1}.`,
+      `Your New Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night`,
+      `All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive ready to start at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.`,
+      `Instructions for your examination night (session 3) will be sent in the week before.`,
+      `Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check your course and room any time at ${CANDIDATE_RESOURCES_URL} — the access code is ${accessCode}, then "Find your course, room and assessment" with your degree, full name and email address. If nothing shows yet, it just hasn't been confirmed — check back closer to the start date.`,
+      `If the new dates are a problem for you, please email us (${BLS_ADMIN_EMAIL}) as soon as possible and we will see what we can do. If you are unable to attend a session, please let us know with as much notice as possible.`,
+      emailSignoff(),
+    ].join("\n\n"),
+  };
+}
+
+function pendingConfirmationsByCourse(candidates, sessions) {
+  const pending = candidates.filter(c => c.course && c.email && c.allocatedAt && c.allocationEmailedCourse !== c.course);
+  // "moved" = they were already emailed a different course, so this is a change
+  // of course, not a first allocation. Grouped per new course and per old course.
+  const byKey = new Map();
+  pending.forEach(c => {
+    const prev = c.allocationEmailedCourse || null;
+    const kind = prev ? "moved" : "new";
+    const key = `${c.course}|${kind}|${prev || ""}`;
+    if (!byKey.has(key)) byKey.set(key, { course: c.course, kind, prev, people: [] });
+    byKey.get(key).people.push(c);
+  });
+  const order = sessions.map(s => s.name);
+  return Array.from(byKey.values())
+    .sort((a, b) => {
+      const ia = order.indexOf(a.course), ib = order.indexOf(b.course);
+      return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.course.localeCompare(b.course) || a.kind.localeCompare(b.kind) || String(a.prev).localeCompare(String(b.prev));
+    })
+    .map(g => ({ ...g, people: g.people.slice().sort((x, y) => (x.name || "").localeCompare(y.name || "")) }));
+}
+
+// ═══ Page logic (everything above this line is copied from the older allocation page) ═══
+let expanded = false, view = null, filter = "course", sel = null, log = [], touched = new Set(), sheetTimer = null, placing = false, attnList = [];
+const $ = id => document.getElementById(id);
+const ROW_CAP = 400;
+// On this screen a room is full at 12 people, and a course is over capacity above 12 x the number of rooms (Jon, 2026-10-11).
+const ROOM_LIMIT = 12;
+
+// ─── Instructor team copies ───
+// OPIS and the Firestore rules read a flat copy of each candidate's room team
+// (instructorTeamUids / instructorTeamNames) saved on the candidate. Whenever
+// this page places or moves someone it refreshes that copy from the same team
+// the roster pages show: the course's own saved team if it has instructors in
+// it, otherwise the shared default (course_allocations/_default).
+let allocDocs = [], defaultDoc = null, instrNames = new Map();
+function slugify(x) { return (x || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "course"; }
+function teamsHaveMembers(t) { return !!t && Object.values(t).some(a => (a || []).length); }
+function teamsForCourse(course) {
+  const own = allocDocs.find(d => d.id === slugify(course) || d.course === course);
+  if (own && teamsHaveMembers(own.instructorTeams)) return own.instructorTeams;
+  return defaultDoc && defaultDoc.instructorTeams ? defaultDoc.instructorTeams : {};
+}
+function teamFields(course, room) {
+  const uids = (course && room) ? ((teamsForCourse(course)[room] || []).slice()) : [];
+  return { instructorTeamUids: uids, instructorTeamNames: uids.map(u => instrNames.get(u) || u) };
+}
+function londonToday() { return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" }); }
+function addDays(iso, n) { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function fmt(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }); }
+function fmtShort(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }); }
+function firstName(c) { return String(c.name || "").trim().split(/\s+/)[0] || "them"; }
+function sortedSessions() { return courseSessions.filter(s => s.date).slice().sort((a, b) => a.date < b.date ? -1 : 1); }
+function sess(name) { return courseSessions.find(s => s.name === name); }
+function isOn(s) { const t = londonToday(); return t >= addDays(s.date, -14) && t <= s.date; }
+function byId(id) { return allCandidates.find(c => c.id === id); }
+function inCourse(name) { return allCandidates.filter(c => c.course === name); }
+function waiting() { return allCandidates.filter(c => !c.course); }
+function capsNow() { return buildEffectiveCapacities(); } // used only by the automatic placing (unchanged)
+function perRoomCap() { return ROOM_LIMIT; }
+function courseCapacity() { return ROOM_LIMIT * ROOMS.length; }
+function seatsLeft(name) { return courseCapacity() - inCourse(name).length; } // negative = over capacity
+function isOverCapacity(name) { return seatsLeft(name) < 0; }
+function now() { return new Date().toISOString(); }
+function addLog(t) { log.unshift(`${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ${esc(t)}`); }
+
+// Why a course is NOT normally open to this person. Empty = it is a normal option.
+// Same rules as autoFitCourse(): programme deadline, then placement dates.
+function reasonsFor(c, courseName) {
+  const s = sess(courseName);
+  const r = [];
+  if (!s || !s.date) return r;
+  const exact = (resolveStage1Degree(c.degree) || {}).exact;
+  const deadline = exact ? programmeDeadlines[exact] : null;
+  if (!exact) r.push("no recognised programme, so no deadline to check");
+  else if (!deadline) r.push(`no assessment deadline is set for ${exact}`);
+  else if (s.date > deadline) r.push(`${courseName} (${fmt(s.date)}) is after the ${exact} deadline of ${fmt(deadline)}`);
+  const clash = (c.placementBlocks || []).find(b => b.start && b.end && placementClashesWithCourse([b], s.date));
+  if (clash) r.push(`${courseName} clashes with a placement block (${fmtShort(clash.start)} to ${fmtShort(clash.end)})`);
+  if (!c.course && !c.placementChecked) r.push("their placement dates have not been checked yet (Stage 1 Candidates, Step 2)");
+  return r;
+}
+
+// Room for one person: fewest of the same programme first, then fewest overall,
+// never a room that is already at its per-room limit.
+function pickRoom(courseName, c) {
+  const cap = perRoomCap(courseName);
+  const on = allCandidates.filter(x => x.course === courseName && x.id !== c.id);
+  const dk = degreeKey(c);
+  let best = null;
+  ROOMS.forEach(r => {
+    const inRoom = on.filter(x => x.room === r);
+    if (cap != null && inRoom.length >= cap) return;
+    const same = inRoom.filter(x => degreeKey(x) === dk).length;
+    if (!best || same < best.same || (same === best.same && inRoom.length < best.total)) best = { r, same, total: inRoom.length };
+  });
+  return best ? best.r : null;
+}
+
+// The placement block (if any) that overlaps one of this person's three course Mondays.
+function placementClashFor(c) {
+  const s = c.course && sess(c.course);
+  if (!s || !s.date) return null;
+  return (c.placementBlocks || []).find(b => b.start && b.end && placementClashesWithCourse([b], s.date)) || null;
+}
+function isPending(c) { return !!(c.course && c.email && c.allocatedAt && c.allocationEmailedCourse !== c.course); }
+function isOverridden(c) { return !!c.course && c.eligibilityOverrideCourse === c.course; }
+function computeAttention() {
+  return allCandidates.filter(c => placementClashFor(c));
+}
+
+// ─── Sheet ───
+async function syncSheet() {
+  $("sheetStat").textContent = "Google Sheet: updating...";
+  try {
+    const r = await firebase.functions().httpsCallable("backfillStage1CourseToSheet")({ dryRun: false });
+    $("sheetStat").textContent = "Google Sheet: up to date";
+    return { ok: true, data: r.data };
+  } catch (err) {
+    console.error("Sheet sync failed:", err.code, err.message);
+    $("sheetStat").textContent = "Google Sheet: will catch up within 30 min";
+    return { ok: false, error: err.message };
+  }
+}
+function syncSheetSoon() { clearTimeout(sheetTimer); sheetTimer = setTimeout(syncSheet, 3000); }
+
+// ─── Step 1: place everyone waiting ───
+function simulatePlaceAll() {
+  const unallocated = waiting();
+  const notChecked = unallocated.filter(c => !c.placementChecked);
+  const hasPref = c => (c.preferredCourse || c.avoidCourse) ? 0 : 1;
+  const ready = unallocated.filter(c => c.placementChecked)
+    .sort((a, b) => (hasPref(a) - hasPref(b)) || (eligibleCourseCountFor(a) - eligibleCourseCountFor(b)));
+  const running = {};
+  allCandidates.forEach(c => { if (c.course) running[c.course] = (running[c.course] || 0) + 1; });
+  const caps = capsNow();
+  const toWrite = [], flagged = [];
+  ready.forEach(c => {
+    const resolved = resolveStage1Degree(c.degree);
+    const fit = autoFitCourse(resolved ? resolved.exact : null, c.placementBlocks || [], running, caps,
+      { preferred: c.preferredCourse || null, avoid: c.avoidCourse || null, override: c.overridePreferred === true });
+    if (fit.course) { toWrite.push({ c, course: fit.course, overridden: !!fit.overridden }); running[fit.course] = (running[fit.course] || 0) + 1; }
+    else flagged.push({ c, reason: fit.reason });
+  });
+  return { toWrite, flagged, notChecked };
+}
+
+function renderWait() {
+  const w = waiting();
+  if (!w.length) { $("waitBox").innerHTML = `<div class="msg ok" style="margin:0">Nobody is waiting. Everyone has a course and a room.</div>`; return; }
+  const sim = simulatePlaceAll();
+  const stuck = sim.flagged.length, unchecked = sim.notChecked.length;
+  $("waitBox").innerHTML = `<div style="font-size:15px;margin-bottom:8px"><b>${w.length} waiting</b> for a course: ${sim.toWrite.length} can be placed automatically${stuck ? `, <b style="color:var(--bad)">${stuck} need you</b> (deadline, placement dates or no seats)` : ""}${unchecked ? `, ${unchecked} skipped because their placement dates are not checked yet` : ""}.</div>
+    <label class="chk"><input type="checkbox" id="allAdded"> I confirm everyone for this round has been added.</label>
+    <button class="bigbtn" id="placeAll" disabled>Place ${sim.toWrite.length} now (course and room together)</button>
+    <div class="hint">People with the tightest deadlines get first pick. Rooms are balanced by programme as people are placed. Anyone you re-allocated earlier is placed first.</div>`;
+  $("allAdded").onchange = e => { $("placeAll").disabled = !e.target.checked || !sim.toWrite.length || placing; };
+  $("placeAll").onclick = placeAllNow;
+}
+
+async function placeAllNow() {
+  if (placing) return;
+  const sim = simulatePlaceAll();
+  if (!sim.toWrite.length) return;
+  if (!confirm(`Place ${sim.toWrite.length} waiting ${sim.toWrite.length === 1 ? "person" : "people"} on courses and rooms now?\n\nThis is one step: anyone who gets a course also gets a room, balanced by programme. The Google Sheet is updated straight afterwards.`)) return;
+  placing = true; $("placeAll").disabled = true;
+  const toWrite = sim.toWrite;
+  const roomFor = assignRoomsForWrites(toWrite);
+  // 50 or more in one go is the annual bulk run: left unstamped so they are emailed from Bulk Comms, not from Step 3 here.
+  const stampNow = toWrite.length < EMAIL_CARD_MAX ? now() : null;
+  try {
+    const CHUNK = 400;
+    for (let start = 0; start < toWrite.length; start += CHUNK) {
+      const batch = db.batch();
+      toWrite.slice(start, start + CHUNK).forEach(({ c, course, overridden }) => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { course, room: roomFor.get(c.id) || null, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: overridden ? course : null, allocatedAt: stampNow, ...teamFields(course, roomFor.get(c.id) || null) });
+      });
+      await batch.commit();
+    }
+    toWrite.forEach(({ c, course, overridden }) => { c.course = course; c.room = roomFor.get(c.id) || null; c.preferredCourse = null; c.avoidCourse = null; c.overridePreferred = null; c.eligibilityOverrideCourse = overridden ? course : null; c.allocatedAt = stampNow; Object.assign(c, teamFields(course, c.room)); touched.add(c.id); });
+    addLog(`Placed ${toWrite.length} waiting ${toWrite.length === 1 ? "person" : "people"} on courses and rooms in one go.`);
+    let extra = "";
+    if (toWrite.length >= EMAIL_CARD_MAX) extra = ` Because ${toWrite.length} were placed at once, email them from Bulk Comms using the Allocation template on each course.`;
+    $("msgs").innerHTML = `<div class="msg ok">Placed ${toWrite.length} ${toWrite.length === 1 ? "person" : "people"}.${esc(extra)}${sim.flagged.length ? ` ${sim.flagged.length} still need you: ${sim.flagged.slice(0, 6).map(f => esc(f.c.name) + " (" + esc(f.reason) + ")").join("; ")}${sim.flagged.length > 6 ? " and more" : ""}.` : ""}</div>`;
+    placing = false;
+    renderAll(true);
+    const sh = await syncSheet();
+    if (!sh.ok) $("msgs").insertAdjacentHTML("beforeend", `<div class="msg warn">Saved, but the Google Sheet did not update just now. It catches up on its own within 30 minutes.</div>`);
+  } catch (err) {
+    placing = false;
+    $("msgs").innerHTML = `<div class="msg err">Placing failed: ${esc(err.message)}. Nothing further was changed.</div>`;
+    renderAll(true);
+  }
+}
+
+// ─── Step 3: tell them ───
+function renderMail() {
+  const box = $("mailBox");
+  if (confirmSending) return;
+  const groups = pendingConfirmationsByCourse(allCandidates, courseSessions);
+  const total = groups.reduce((n, g) => n + g.people.length, 0);
+  if (!total) { box.innerHTML = `<div class="msg ok" style="margin:0">Nobody is waiting for an email. People placed or moved here show up below until they have been emailed.</div>`; return; }
+  if (total >= EMAIL_CARD_MAX) { box.innerHTML = `<div style="font-size:14px">${total} people are waiting for an email. Send these from <a href="admin-comms.html" style="color:var(--pur);font-weight:700">Bulk Comms</a> using the Allocation template on each course.</div>`; return; }
+  let html = confirmAccessCode ? "" : `<div class="msg err">No candidate access code is set, so emails cannot be sent yet. Add one on Stage 1 Candidates.</div>`;
+  groups.forEach((g, i) => {
+    const dates = computeCourseSessionDates(g.course);
+    const ok = !!(dates && confirmAccessCode);
+    html += `<div class="grp"><div class="gh"><span>${g.kind === "moved" ? `<span class="badge-re">Moved</span>${esc(g.prev)} → ${esc(g.course)}` : esc(g.course)} (${g.people.length})</span>
+      <button class="gbtn" ${ok ? "" : "disabled"} data-g="${i}">${g.kind === "moved" ? "Email about the change" : "Email " + g.people.length}</button></div>
+      <div class="gn">${g.people.map(p => esc(p.name)).join(", ")}</div>${dates ? "" : `<div class="gn" style="color:var(--bad)">No date saved for this course in Stage 1 Settings.</div>`}</div>`;
+  });
+  box.innerHTML = html + `<div class="hint">Each person is marked as emailed afterwards. Anyone you move later comes back here.</div>`;
+  box.querySelectorAll("button[data-g]").forEach(b => b.onclick = () => sendGroup(+b.dataset.g));
+}
+
+async function sendGroup(i) {
+  if (confirmSending) return;
+  const g = pendingConfirmationsByCourse(allCandidates, courseSessions)[i];
+  if (!g) return;
+  const dates = computeCourseSessionDates(g.course);
+  if (!dates || !confirmAccessCode) { alert("Cannot build the email: missing course date or access code."); return; }
+  const built = g.kind === "moved" ? buildReallocationEmail(g.course, g.prev, dates, confirmAccessCode) : buildAllocationEmail(g.course, dates, confirmAccessCode);
+  const n = g.people.length;
+  if (!confirm(`Email ${n} ${n === 1 ? "person" : "people"} ${g.kind === "moved" ? "moved from " + g.prev + " to " + g.course : "on " + g.course}?\n\nSubject: ${built.subject}\n\nThis sends real email now and cannot be undone. Each person is marked as emailed afterwards.`)) return;
+  confirmSending = true;
+  $("mailBox").innerHTML = `<div class="hint" style="margin:0">Sending ${n} email${n === 1 ? "" : "s"} for ${esc(g.course)}...</div>`;
+  let result = "";
+  try {
+    const res = await firebase.functions().httpsCallable("sendBulkComms")({
+      recipients: g.people.map(p => ({ name: p.name, email: p.email })),
+      subject: built.subject, message: built.body,
+      groupLabel: g.kind === "moved" ? `Stage 1 re-allocation notice — ${g.prev} to ${g.course}` : `Stage 1 allocation confirmation — ${g.course}`,
+      dryRun: false
+    });
+    const { sent, failed, failedEmails, queued } = res.data;
+    const failedSet = new Set((failedEmails || []).map(e => String(e).toLowerCase()));
+    const done = g.people.filter(p => !failedSet.has(String(p.email).toLowerCase()));
+    const CHUNK = 400;
+    for (let start = 0; start < done.length; start += CHUNK) {
+      const batch = db.batch();
+      done.slice(start, start + CHUNK).forEach(p => batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(p.id), { allocationEmailedCourse: g.course, allocationEmailedAt: now() }));
+      await batch.commit();
+    }
+    done.forEach(p => { p.allocationEmailedCourse = g.course; });
+    addLog(`Emailed ${sent} of ${n} for ${g.course}${g.kind === "moved" ? " (change of course)" : ""}.`);
+    result = `<div class="msg ok">Sent ${sent} of ${n} for ${esc(g.course)}.${queued ? ` ${queued} more are queued and go out over the next few days (daily sending limit). They are marked as emailed.` : ""}</div>` +
+      (failed ? `<div class="msg warn">${failed} failed: ${esc((failedEmails || []).join(", "))}. They stay in the list so you can try again.</div>` : "");
+  } catch (err) {
+    result = `<div class="msg err">Send failed: ${esc(err.message)}. Check the Bulk Comms log before retrying, in case some went out.</div>`;
+  }
+  confirmSending = false;
+  renderAll(true);
+  $("msgs").innerHTML = result;
+}
+
+// ─── Step 2: move one person ───
+function renderPick() {
+  const q = $("pickSearch").value.trim().toLowerCase();
+  const list = $("pickList");
+  if (q.length < 2) { list.classList.add("hidden"); return; }
+  const hits = allCandidates.filter(c => (c.name || "").toLowerCase().includes(q) || (c.email || "").toLowerCase().includes(q)).slice(0, 8);
+  list.classList.remove("hidden");
+  list.innerHTML = hits.length ? hits.map(c => `<div data-id="${esc(c.id)}"><b>${esc(c.name)}</b> <small>${c.course ? esc(c.course) + " · " + esc(c.room || "no room") : "waiting"} · ${esc(c.degree)}</small></div>`).join("") : `<div><small>No match</small></div>`;
+  list.querySelectorAll("div[data-id]").forEach(d => d.onclick = () => { choose(d.dataset.id); $("pickSearch").value = ""; list.classList.add("hidden"); });
+}
+function choose(id) {
+  const c = byId(id); if (!c) return;
+  sel = { id, mode: c.course ? null : "course", target: null, override: false };
+  if (c.course) view = c.course;
+  renderAll();
+}
+
+function renderSide() {
+  const c = sel && byId(sel.id);
+  const box = $("selName");
+  if (!c) { box.className = "selname empty"; box.textContent = "Tap a person in the list on the right, or search above."; $("modeArea").classList.add("hidden"); return; }
+  box.className = "selname";
+  const exact = (resolveStage1Degree(c.degree) || {}).exact, dl = exact ? programmeDeadlines[exact] : null;
+  box.innerHTML = `<b>${esc(c.name)}</b><small>${esc(c.degree)}${dl ? " · deadline " + fmt(dl) : ""}<br>${c.course ? `Now on ${esc(c.course)}, room ${esc(c.room || "none")}` : "Waiting for a course"}${c.avoidCourse ? `<br>Not to go back on ${esc(c.avoidCourse)}` : ""}${c.rap ? "<br>Tag: RAP" : ""}${c.twoPlusAssessments ? "<br>Tag: two-plus assessments" : ""}</small>`;
+  $("modeArea").classList.remove("hidden");
+  $("modes").querySelectorAll("button").forEach(b => {
+    b.classList.toggle("on", sel.mode === b.dataset.mode);
+    b.disabled = !c.course && b.dataset.mode !== "course" && b.dataset.mode !== "tags";
+    b.onclick = () => { sel.mode = b.dataset.mode; sel.target = null; sel.override = false; if (sel.mode === "tags") { sel.rap = !!c.rap; sel.two = !!c.twoPlusAssessments; } renderAll(); };
+  });
+  const body = $("modeBody"); body.innerHTML = "";
+  if (sel.mode === "course") {
+    body.innerHTML = `<div class="fieldlab" style="margin-top:4px">Which course?</div>` + sortedSessions().filter(s => s.name !== c.course).map(s => {
+      const r = reasonsFor(c, s.name), left = seatsLeft(s.name), full = left <= 0;
+      const tag = full ? `<span class="tag full">Full</span>` : r.length ? `<span class="tag no">Not normally allowed</span>` : `<span class="tag ok">OK</span>`;
+      const sub = full ? "No seats left on this course" : r.length ? esc(r.join(". ")) : `${left} seats left`;
+      return `<div class="radio ${sel.target === s.name ? "on" : ""} ${r.length ? "bad" : ""} ${full ? "full" : ""}" data-c="${esc(s.name)}"><b>${esc(s.name)} · ${fmt(s.date)} ${tag}</b><small>${sub}</small></div>`;
+    }).join("");
+    body.querySelectorAll(".radio").forEach(el => el.onclick = () => { if (seatsLeft(el.dataset.c) <= 0) return; sel.target = el.dataset.c; sel.override = false; renderAll(); });
+    if (sel.target) {
+      const r = reasonsFor(c, sel.target);
+      if (r.length) body.insertAdjacentHTML("beforeend", `<div class="over-box"><b>Not normally an option for ${esc(firstName(c))}:</b><ul>${r.map(x => `<li>${esc(x)}</li>`).join("")}</ul><label><input type="checkbox" id="ovr" ${sel.override ? "checked" : ""}> Voluntary override: place them on ${esc(sel.target)} anyway</label></div>`);
+      const o = $("ovr"); if (o) o.onchange = e => { sel.override = e.target.checked; renderAll(); };
+    }
+  }
+  if (sel.mode === "tags") {
+    body.innerHTML = `<div class="fieldlab" style="margin-top:4px">Tags for ${esc(firstName(c))}</div>
+      <label class="over-box" style="display:block;margin:6px 0;background:var(--card)"><input type="checkbox" id="tagRap" ${sel.rap ? "checked" : ""}> <b>RAP</b> <span class="mut">(RMD Reasonable Adjustments Pathway)</span></label>
+      <label class="over-box" style="display:block;margin:6px 0;background:var(--card)"><input type="checkbox" id="tagTwo" ${sel.two ? "checked" : ""}> <b>Two-plus assessments</b></label>`;
+    $("tagRap").onchange = e => { sel.rap = e.target.checked; renderAll(true); };
+    $("tagTwo").onchange = e => { sel.two = e.target.checked; renderAll(true); };
+  }
+  if (sel.mode === "room") {
+    const cap = perRoomCap(c.course);
+    body.innerHTML = `<div class="fieldlab" style="margin-top:4px">Which room on ${esc(c.course)}?</div>` + ROOMS.filter(r => r !== c.room).map(r => {
+      const n = allCandidates.filter(x => x.course === c.course && x.room === r).length, full = cap != null && n >= cap;
+      return `<div class="radio ${sel.target === r ? "on" : ""} ${full ? "full" : ""}" data-r="${esc(r)}"><b>${esc(r)} <span class="tag ${full ? "full" : "ok"}">${cap != null ? n + "/" + cap : n}</span></b><small>${full ? "Full" : (cap != null ? (cap - n) + " places left" : n + " there now")}</small></div>`;
+    }).join("");
+    body.querySelectorAll(".radio").forEach(el => el.onclick = () => { if (el.classList.contains("full")) return; sel.target = el.dataset.r; renderAll(); });
+  }
+}
+
+function plan() {
+  const c = sel && byId(sel.id);
+  if (!c) return null;
+  if (sel.mode === "course" && sel.target) {
+    const r = reasonsFor(c, sel.target);
+    const room = pickRoom(sel.target, c);
+    if (r.length && !sel.override) return { ok: false, warn: true, text: `<span class="lbl">Blocked</span>Putting <b>${esc(c.name)}</b> on <b>${esc(sel.target)}</b> is not normally allowed. Tick the voluntary override if you want to go ahead.` };
+    if (!room) return { ok: false, warn: true, text: `<span class="lbl">No room</span>Every room on <b>${esc(sel.target)}</b> is full.` };
+    return { ok: true, ovr: r.length > 0, warn: r.length > 0, btn: r.length ? `Override and move to ${sel.target}` : `Move to ${sel.target}`,
+      text: `<span class="lbl">Ready to apply</span>${c.course ? `Move <b>${esc(c.name)}</b> from <b>${esc(c.course)}</b> to` : `Place <b>${esc(c.name)}</b> on`} <b>${esc(sel.target)}</b> (${fmt(sess(sel.target).date)}). They get room <b>${esc(room)}</b> straight away and go on the email list.${r.length ? `<br><span class="mut">Override recorded: ${esc(r.join("; "))}.</span>` : ""}` };
+  }
+  if (sel.mode === "room" && sel.target) return { ok: true, btn: `Move to room ${sel.target}`, text: `<span class="lbl">Ready to apply</span>Move <b>${esc(c.name)}</b> from room <b>${esc(c.room || "none")}</b> to room <b>${esc(sel.target)}</b> on ${esc(c.course)}. Their course does not change, so no email is needed.` };
+  if (sel.mode === "tags") {
+    const was = [!!c.rap, !!c.twoPlusAssessments], now2 = [!!sel.rap, !!sel.two];
+    if (was[0] === now2[0] && was[1] === now2[1]) return { ok: false, text: `<span class="lbl">Next</span>Tick or untick a tag for <b>${esc(c.name)}</b>. Nothing is changed yet.` };
+    const bits = [];
+    if (was[0] !== now2[0]) bits.push(`RAP: <b>${now2[0] ? "on" : "off"}</b>`);
+    if (was[1] !== now2[1]) bits.push(`Two-plus assessments: <b>${now2[1] ? "on" : "off"}</b>`);
+    return { ok: true, btn: "Save tags", text: `<span class="lbl">Ready to apply</span>${bits.join(" · ")} for <b>${esc(c.name)}</b>. Their course and room do not change and no email is sent. The Google Sheet is updated straight afterwards.` };
+  }
+  if (sel.mode === "off") return { ok: true, btn: "Take off course", text: `<span class="lbl">Ready to apply</span>Take <b>${esc(c.name)}</b> off <b>${esc(c.course)}</b>. They go back to the waiting list, marked not to be placed on ${esc(c.course)} again by the automatic placing. Nobody else changes.` };
+  return { ok: false, text: `<span class="lbl">Next</span>Choose what you want to do with <b>${esc(c.name)}</b>.` };
+}
+
+async function applyNow() {
+  const c = sel && byId(sel.id), pl = plan();
+  if (!c || !pl || !pl.ok) return;
+  const ref = db.collection(COLLECTIONS.stage1Candidates).doc(c.id);
+  let upd, logText, goView = null;
+  if (sel.mode === "course") {
+    const r = reasonsFor(c, sel.target), room = pickRoom(sel.target, c);
+    upd = { course: sel.target, room, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: r.length ? sel.target : null, allocatedAt: now(), placementChecked: true, overCapacity: null, ...teamFields(sel.target, room) };
+    logText = `${c.name}: ${c.course || "waiting"} → ${sel.target}, room ${room}${r.length ? " (voluntary override: " + r.join("; ") + ")" : ""}.`;
+    goView = sel.target;
+  } else if (sel.mode === "tags") {
+    upd = { rap: !!sel.rap, twoPlusAssessments: !!sel.two };
+    logText = `${c.name}: RAP ${upd.rap ? "on" : "off"}, two-plus assessments ${upd.twoPlusAssessments ? "on" : "off"}.`;
+  } else if (sel.mode === "room") {
+    upd = { room: sel.target, ...teamFields(c.course, sel.target) };
+    logText = `${c.name}: room ${c.room || "none"} → ${sel.target} on ${c.course}.`;
+  } else {
+    upd = { course: null, room: null, preferredCourse: null, avoidCourse: c.course, overridePreferred: null, eligibilityOverrideCourse: null, allocatedAt: null, overCapacity: null, instructorTeamUids: [], instructorTeamNames: [] };
+    logText = `${c.name} taken off ${c.course}; now waiting.`;
+  }
+  $("apply").disabled = true;
+  try {
+    await ref.update(upd);
+    Object.assign(c, upd);
+    touched.add(c.id);
+    addLog(logText);
+    if (goView) { view = goView; filter = "course"; } else if (sel.mode === "off") filter = "wait";
+    const mode = sel.mode;
+    sel = null;
+    $("msgs").innerHTML = `<div class="msg ok">Done. ${esc(logText)}${mode === "course" ? " They are now on the email list (Step 3)." : ""}</div>`;
+    renderAll(true);
+    syncSheetSoon();
+  } catch (err) {
+    $("msgs").innerHTML = `<div class="msg err">Could not save: ${esc(err.message)}. Nothing was changed.</div>`;
+    renderAll(true);
+  }
+}
+
+// ─── Right-hand pane ───
+function isOver(name) { return isOverCapacity(name); }
+function renderTabs() {
+  $("courseTabs").innerHTML = sortedSessions().map(s => `<button type="button" class="${s.name === view ? "on" : ""}" data-c="${esc(s.name)}">${esc(s.name)}${isOn(s) ? '<span class="nowdot">NOW</span>' : ""}${isOver(s.name) ? '<span class="nowdot over">OVER</span>' : ""}</button>`).join("");
+  $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => { view = b.dataset.c; filter = "course"; expanded = false; $("listSearch").value = ""; renderAll(); });
+}
+function renderPane(keepMsgs) {
+  const pl = plan();
+  const s = sess(view);
+  const ins = view ? inCourse(view) : [];
+  const w = waiting().length;
+  $("plain").className = "plain" + (pl && pl.warn ? " warn" : "");
+  if (pl) $("plain").innerHTML = pl.text;
+  else if (!s) $("plain").innerHTML = `<span class="lbl">No courses</span>No course dates are set yet. Add this year's dates on <a href="admin-stage1-settings.html">Stage 1 Settings</a>.`;
+  else {
+    const sl = seatsLeft(view);
+    const capTxt = sl < 0 ? `<b style="color:var(--bad)">over capacity by ${-sl}</b> (limit ${courseCapacity()}: ${ROOM_LIMIT} per room)` : `${sl} seats left`;
+    $("plain").innerHTML = `<span class="lbl">${esc(view)}${isOn(s) ? " · running now" : ""}${sl < 0 ? " · over capacity" : ""}</span><b>${esc(view)}</b> exam night is <b>${fmt(s.date)}</b>; teaching starts ${fmt(addDays(s.date, -14))}. <span class="mut">${ins.length} candidates, ${capTxt}${w ? `, ${w} people waiting for a course` : ""}.</span>`;
+  }
+  const attn = attnList;
+  $("sum").innerHTML = `<div class="tile"><div class="n">${ins.length}</div><div class="l">On ${esc(view || "this course")}</div></div>` +
+    (view && seatsLeft(view) < 0 ? `<div class="tile warn"><div class="n">+${-seatsLeft(view)}</div><div class="l">Over capacity</div></div>` : `<div class="tile"><div class="n">${view ? seatsLeft(view) : "–"}</div><div class="l">Seats left</div></div>`) +
+    `<div class="tile ${w ? "warn" : ""}"><div class="n">${w}</div><div class="l">Waiting for a course</div></div>` +
+    `<div class="tile ${attn.length ? "warn" : ""}"><div class="n">${attn.length}</div><div class="l">Placement clashes</div></div>`;
+  if (!keepMsgs) {
+    const at = attn.filter(p => p.course === view);
+    const over = view && seatsLeft(view) < 0 ? `<div class="msg err">${esc(view)} is over capacity: ${ins.length} candidates for ${courseCapacity()} places (${ROOM_LIMIT} in each of ${ROOMS.length} rooms).</div>` : "";
+    $("msgs").innerHTML = over + (at.length ? `<div class="msg warn">${at.length} on ${esc(view)} ${at.length === 1 ? "has" : "have"} a placement clash: ${at.slice(0, 8).map(p => esc(p.name)).join(", ")}${at.length > 8 ? " and more" : ""}.</div>` : "");
+  }
+  const cap = ROOM_LIMIT;
+  $("rooms").innerHTML = ROOMS.map(r => {
+    const n = ins.filter(p => p.room === r).length, pct = Math.min(100, n / cap * 100);
+    const cls = n > cap ? "over" : n === cap ? "full" : "";
+    return `<div class="r ${cls}"><b>${esc(r)}</b><small>${n} of ${cap}${n > cap ? " · over" : n === cap ? " · full" : ""}</small><div class="bar2"><i style="width:${pct}%"></i></div></div>`;
+  }).join("") + ((view && ins.some(p => !ROOMS.includes(p.room))) ? `<div class="r"><b>No room</b><small>${ins.filter(p => !ROOMS.includes(p.room)).length}</small></div>` : "");
+  $("filterTabs").innerHTML = [["course", view || "Course"], ["wait", "Waiting (" + w + ")"], ["attn", "Placement clashes (" + attn.length + ")"]].map(([k, l]) => `<button type="button" class="${filter === k ? "on" : ""}" data-f="${k}">${esc(l)}</button>`).join("");
+  $("filterTabs").querySelectorAll("button").forEach(b => b.onclick = () => { filter = b.dataset.f; expanded = true; $("listSearch").value = ""; renderAll(); });
+  const q = $("listSearch").value.trim().toLowerCase();
+  let list, truncated = false;
+  if (q.length >= 2) list = allCandidates.filter(p => (p.name || "").toLowerCase().includes(q) || (p.email || "").toLowerCase().includes(q));
+  else list = filter === "wait" ? waiting() : filter === "attn" ? attn : ins.slice().sort((a, b) => (a.room || "").localeCompare(b.room || "") || (a.name || "").localeCompare(b.name || ""));
+  const listTotal = list.length;
+  const searching = q.length >= 2;
+  const showList = expanded || searching;
+  $("schedWrap").classList.toggle("hidden", !showList);
+  $("legend").classList.toggle("hidden", !showList);
+  $("toggleList").classList.toggle("hidden", searching);
+  $("toggleList").textContent = expanded ? "Hide the list" : `Show the list (${listTotal})`;
+  $("toggleList").onclick = () => { expanded = !expanded; renderPane(true); };
+  $("searchHint").textContent = searching ? (listTotal ? `${listTotal} match${listTotal === 1 ? "" : "es"}. Tap a name to select them.` : "No one matches that.") : "";
+  if (list.length > ROW_CAP) { list = list.slice(0, ROW_CAP); truncated = true; }
+  $("rows").innerHTML = list.length ? list.map(p => {
+    const st = [];
+    const clash = placementClashFor(p);
+    if (!p.course) st.push(`<span class="pill wait">Waiting</span>`);
+    if (!p.course && !p.placementChecked) st.push(`<span class="pill clash">Dates not checked</span>`);
+    if (clash) st.push(`<span class="pill clash">Placement clash ${esc(fmtShort(clash.start))} to ${esc(fmtShort(clash.end))}</span>`);
+    if (isPending(p)) st.push(`<span class="pill mail">Not emailed</span>`);
+    if (p.rap) st.push(`<span class="pill tag">RAP</span>`);
+    if (p.twoPlusAssessments) st.push(`<span class="pill tag">2+ assessments</span>`);
+    if (touched.has(p.id)) st.push(`<span class="pill new">Changed now</span>`);
+    return `<div class="row ${sel && sel.id === p.id ? "sel" : ""} ${touched.has(p.id) ? "moved" : ""}" data-id="${esc(p.id)}"><div class="rm ${p.room ? "" : "none"}">${esc(p.room || "–")}</div><div class="nm"><b>${esc(p.name)}</b><small>${esc(p.course || "no course yet")}</small></div><div class="rest" style="font-size:13px;color:var(--mut)">${esc(p.degree)}</div><div class="rest st">${st.join("")}</div></div>`;
+  }).join("") + (truncated ? `<div class="row" style="cursor:default;color:var(--mut)">Showing the first ${ROW_CAP}. Use the search box to narrow it down.</div>` : "") : `<div class="row" style="cursor:default;color:var(--mut)">Nobody here.</div>`;
+  $("rows").querySelectorAll(".row[data-id]").forEach(r => r.onclick = () => choose(r.dataset.id));
+  $("log").innerHTML = log.length ? log.map(l => `<div>${l}</div>`).join("") : "Nothing yet this visit.";
+  const a = $("apply");
+  if (pl && pl.ok) { a.disabled = false; a.textContent = pl.btn; a.className = "btn pri" + (pl.ovr ? " ovr" : ""); $("barTxt").textContent = "Applies straight away: course and room together, no separate allocate step."; }
+  else { a.disabled = true; a.textContent = "Apply"; a.className = "btn pri"; $("barTxt").textContent = pl ? "Finish the choices on the left. Nothing changes until you press the button." : "Pick a person and say what you want to do. Nothing changes until you press the button."; }
+}
+function renderAll(keepMsgs) {
+  attnList = computeAttention();
+  renderTabs(); renderWait(); renderMail(); renderSide(); renderPane(keepMsgs);
+}
+
+function defaultView() {
+  const ss = sortedSessions();
+  if (!ss.length) return null;
+  const on = ss.find(isOn); if (on) return on.name;
+  const t = londonToday();
+  const next = ss.find(s => s.date >= t); return (next || ss[ss.length - 1]).name;
+}
+
+async function boot() {
+  try {
+    await requireDirector("timetable.html");
+    const [snap, dl, cs, ca, al, pe] = await Promise.all([
+      db.collection(COLLECTIONS.stage1Candidates).get(),
+      db.collection("config").doc("stage1_programme_deadlines").get().catch(() => null),
+      db.collection("config").doc("stage1_course_dates").get().catch(() => null),
+      db.collection("config").doc("candidate_access").get().catch(() => null),
+      db.collection("course_allocations").get().catch(() => null),
+      db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get().catch(() => null),
+    ]);
+    if (al) { const docs = al.docs.map(d => ({ id: d.id, ...d.data() })); defaultDoc = docs.find(d => d.id === "_default") || null; allocDocs = docs.filter(d => d.id !== "_default"); }
+    if (pe) pe.docs.forEach(d => { const x = d.data(); const surname = x.passportLastName || (x.name ? x.name.trim().split(/\s+/).pop() : ""); const first = x.preferredName ? x.preferredName.trim().split(/\s+/)[0] : null; instrNames.set(d.id, first ? [first, surname].filter(Boolean).join(" ") : (x.name || d.id)); });
+    allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    programmeDeadlines = dl && dl.exists ? (dl.data().deadlines || {}) : {};
+    courseSessions = cs && cs.exists ? (cs.data().courses || []) : [];
+    confirmAccessCode = ca && ca.exists ? (ca.data().code || "") : "";
+    view = defaultView();
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    $("apply").onclick = applyNow;
+    $("discard").onclick = () => { sel = null; $("pickSearch").value = ""; $("pickList").classList.add("hidden"); $("msgs").innerHTML = ""; renderAll(); };
+    $("pickSearch").oninput = renderPick;
+    $("listSearch").oninput = () => renderPane(true);
+    $("listSearch").focus();
+    renderAll();
+    const q = new URLSearchParams(location.search).get("find");
+    if (q) { $("pickSearch").value = q; renderPick(); }
+  } catch (err) {
+    console.error(err);
+    $("authMsg").textContent = "Could not load: " + err.message;
+  }
+}
+boot();
+
+</script>
+</body>
+</html>

@@ -15,6 +15,7 @@
       border-radius: 8px;
       overflow: hidden;
     }
+    .video-embed video { position: absolute; inset: 0; width: 100%; height: 100%; background: #000; }
     .video-embed iframe {
       position: absolute;
       inset: 0;
@@ -255,12 +256,16 @@
         <option value="assessor-stream">→ Assessor programme running early/late (assessor faculty only, not candidates, not instructor faculty)</option>
       </select>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:13px;font-weight:700;color:#b7410e;cursor:pointer;">
+      <input type="checkbox" id="msgHigh" style="width:18px;height:18px;"> High priority (red alert on room screens until a Course Director clears it)
+    </label>
     <div class="msg-compose">
       <input class="msg-input" id="msgText" type="text" placeholder="Type message…" maxlength="160"
              onkeydown="if(event.key==='Enter') sendMessage()">
       <button class="btn" onclick="sendMessage()">Send</button>
     </div>
-    <p class="text-sm text-muted mt-8">Messages appear on room screens and candidate noticeboards immediately.</p>
+    <div id="msgStatus" role="status" aria-live="polite" style="min-height:20px;margin-top:8px;font-size:13px;font-weight:700;"></div>
+    <p class="text-sm text-muted mt-8">Messages appear on room screens and candidate noticeboards immediately. You will not see them on your own screen: the noticeboard is hidden for the Course Director.</p>
   </div>
 </div>
 
@@ -276,6 +281,7 @@
              onkeydown="if(event.key==='Enter') sendAssessorStreamMessage()">
       <button class="btn" onclick="sendAssessorStreamMessage()">Send</button>
     </div>
+    <div id="msgStatusAssessor" role="status" aria-live="polite" style="min-height:20px;margin-top:8px;font-size:13px;font-weight:700;"></div>
     <p class="text-sm text-muted mt-8">Goes to assessor-programme faculty only — not candidates, not the instructor programme.</p>
   </div>
 </div>
@@ -284,7 +290,8 @@
 <div class="director-panel hidden" id="shiftProgrammePanel" style="margin-top:12px;">
   <div class="panel-header">
     ⏩ Shift Programme Times
-    <button class="btn btn-sm" onclick="togglePanel('shiftProgrammePanel')">Close</button>
+    <span style="display:flex;gap:8px;align-items:center;"><a class="btn btn-sm" href="time-shift.html" style="text-decoration:none;">Open full-screen Time Shift</a>
+    <button class="btn btn-sm" onclick="togglePanel('shiftProgrammePanel')">Close</button></span>
   </div>
   <div class="panel-body">
     <p class="text-sm text-muted" style="margin:0 0 10px;">
@@ -299,6 +306,7 @@
       <label class="sh-tog"><input type="checkbox" id="shCascade" checked> Move everything later in this programme too</label>
     </div>
     <div class="sh-summary" id="shSummary"></div>
+    <div id="shOrderWarn" style="display:none;margin:8px 0;padding:8px 12px;border-radius:8px;background:#fdecea;color:#b3261e;font-weight:700;font-size:13px;"></div>
     <div class="sh-tablewrap">
       <table class="sh-table">
         <thead><tr>
@@ -530,8 +538,26 @@
       ? `<a class="feedback-btn" href="assessor-feedback.html" style="display:inline-flex;margin:0 4px 12px;">🚦 Rate assessors / Senior Instructors</a>`
       : "";
 
-    container.innerHTML = assessorFeedbackBar + sessions.map(s => renderSession(s)).join("");
+    const html = assessorFeedbackBar + sessions.map(s => renderSession(s)).join("");
+
+    // 2026-10-10 (Jon: "Life support in real life" video cut out several times on its own).
+    // Cause: this function rebuilt every session card, including the video's iframe, on
+    // every refresh (every 5 minutes, and every time the live programme changed), and a
+    // rebuilt iframe restarts the video. Two guards:
+    //  1. nothing to redraw if the markup is identical to last time;
+    //  2. while someone has clicked into a video in this day (it holds focus), hold the
+    //     redraw until they click away or leave the tab. Everything else catches up then.
+    const ae = document.activeElement;
+    if (ae && ae.tagName === "IFRAME" && container.contains(ae)) { renderHeldForVideo = true; return; }
+    if (renderedDayHtml[day] === html && container.firstChild) return;
+    renderedDayHtml[day] = html;
+    container.innerHTML = html;
   }
+  const renderedDayHtml = {};
+  let renderHeldForVideo = false;
+  window.addEventListener("focus", () => {
+    if (renderHeldForVideo) { renderHeldForVideo = false; renderAll(); }
+  });
 
   function renderSession(s) {
     const end     = sessionEndTime(s);
@@ -589,12 +615,18 @@
       const isSlideDeck = r => r.icon === "📊" || /slides?\b/i.test(r.title || "");
       const isCandidateRole = currentRole === "instructor" || currentRole === "assessor";
       let visibleResources = isInstructorCandidate
-        ? s.resources.filter(r => !r.embedUrl && r.title !== "Session guide")
+        ? s.resources.filter(r => !r.embedUrl && !r.videoPath && r.title !== "Session guide")
         : s.resources;
       if (HIDE_SLIDES_FROM_CANDIDATES && isCandidateRole) visibleResources = visibleResources.filter(r => !isSlideDeck(r));
       resources = visibleResources.map(r => {
+        if (r.videoPath) {
+          // A video file hosted on this site (resources/media/...): plays straight through, no
+          // YouTube buffering. Use { title, videoPath: "resources/media/name.mp4", icon: "🎬" } in programme-data.js.
+          return `<div class="video-embed"><video src="${r.videoPath}" controls preload="auto" playsinline></video></div>`;
+        }
         if (r.embedUrl) {
-          return `<div class="video-embed"><iframe src="${r.embedUrl}" allow="autoplay" allowfullscreen></iframe></div>`;
+          const u = r.embedUrl + (r.embedUrl.indexOf("?") < 0 ? "?rel=0&playsinline=1" : "");
+          return `<div class="video-embed"><iframe src="${u}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>`;
         }
         const href = r.url || r.path || "#";
         // Open in a new tab so it doesn't navigate away from the live
@@ -689,7 +721,7 @@
 
     if (live) {
       liveLabel.textContent = `▶ ${live.title}`;
-      const end = timeToMinutes(live.start) + live.duration;
+      const end = sessionEndMins(live);
       const remaining = end - (now.getHours()*60 + now.getMinutes());
       nextInfo.textContent = `${remaining} min remaining`;
       // 2026-09-11 (Jon): flag the last 5 minutes of a live session in red
@@ -784,13 +816,29 @@
   // duplication/inconsistency is why messages never actually showed up
   // anywhere: fixed by using one field shape (matching cd-dashboard's) and a
   // real Firestore listener below instead of a local DOM hack.
-  async function writeMessage(text, target) {
+  async function writeMessage(text, target, priority) {
     if (!text || !db) return;
     await db.collection(COLLECTIONS.messages).add({
       text, target,
+      priority: priority === "high" ? "high" : "normal",
       sentAt: firebase.firestore.FieldValue.serverTimestamp(),
       sentByUid: currentUser ? currentUser.uid : null
     });
+  }
+
+  // Visible result line under the compose box. 2026-10-10: a send used to
+  // clear the box and say nothing (and the director's own noticeboard is
+  // hidden), so a successful send and a silent failure looked identical.
+  function showMsgStatus(id, ok, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.color = ok ? "#1a6e31" : "#b7410e";
+    el.textContent = text;
+    if (ok) setTimeout(() => { if (el.textContent === text) el.textContent = ""; }, 8000);
+  }
+  function msgTimeNow() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
   }
 
   async function sendMessage() {
@@ -798,12 +846,18 @@
     const text   = textEl.value.trim();
     const target = document.getElementById("msgTarget").value;
     if (!text) return;
+    if (!db || !currentUser) { showMsgStatus("msgStatus", false, "Not sent: you are not signed in on this page. Reload and sign in again."); return; }
+    showMsgStatus("msgStatus", true, "Sending...");
     try {
-      await writeMessage(text, target);
+      const hi = document.getElementById("msgHigh");
+      const prio = hi && hi.checked ? "high" : "normal";
+      await writeMessage(text, target, prio);
       textEl.value = "";
+      if (hi) hi.checked = false;
+      showMsgStatus("msgStatus", true, "Sent " + msgTimeNow() + " to: " + target + (prio === "high" ? " (HIGH PRIORITY)" : ""));
     } catch (e) {
-      console.warn("Message send failed:", e.message);
-      alert("Send failed: " + e.message);
+      console.warn("Message send failed:", e.code, e.message);
+      showMsgStatus("msgStatus", false, "NOT sent (" + (e.code || "error") + "): " + (e.message || "unknown error"));
     }
   }
 
@@ -811,13 +865,15 @@
     const textEl = document.getElementById("msgTextAssessor");
     const text   = textEl.value.trim();
     if (!text) return;
+    if (!db || !currentUser) { showMsgStatus("msgStatusAssessor", false, "Not sent: you are not signed in on this page. Reload and sign in again."); return; }
+    showMsgStatus("msgStatusAssessor", true, "Sending...");
     try {
       await writeMessage(text, "assessor-stream");
       textEl.value = "";
-      togglePanel("assessorMessagePanel");
+      showMsgStatus("msgStatusAssessor", true, "Sent " + msgTimeNow() + " to the assessor programme.");
     } catch (e) {
-      console.warn("Message send failed:", e.message);
-      alert("Send failed: " + e.message);
+      console.warn("Message send failed:", e.code, e.message);
+      showMsgStatus("msgStatusAssessor", false, "NOT sent (" + (e.code || "error") + "): " + (e.message || "unknown error"));
     }
   }
 
@@ -881,29 +937,88 @@
     return { state: next };
   }
 
+  // ── Keep sessions in order (2026-10-10, Jon) ───────────────────────────────
+  // A shift must never leave a session starting before one that comes ahead of
+  // it in the original programme (Saturday: the Plenary was pulled 15 min
+  // earlier and ended up before the Welcome that precedes it). "Order" means
+  // original start time, then the programme's own order, within each stream.
+  function shOrig(id, state) { return SH_ORIGINAL_START[id] != null ? SH_ORIGINAL_START[id] : state[id]; }
+  function shOrigList(day, stream, state) {
+    return PROGRAMME[day].sessions.filter(s => shStreamOf(s) === stream)
+      .sort((a, b) => shOrig(a.id, state) - shOrig(b.id, state) || ((a.order ?? 0) - (b.order ?? 0)));
+  }
+  // Adjacent pairs (a should start before b) that are currently the wrong way round.
+  function shInversions(day, state) {
+    const out = {};
+    ["instructor", "assessor"].forEach(stream => {
+      const list = shOrigList(day, stream, state);
+      for (let i = 0; i < list.length - 1; i++) {
+        const a = list[i], b = list[i + 1];
+        if (state[b.id] < state[a.id] || (state[b.id] === state[a.id] && shOrig(a.id, state) < shOrig(b.id, state))) out[a.id + ">" + b.id] = { a, b };
+      }
+    });
+    return out;
+  }
+
   // Turn the staged intents into the exact ordered list of function calls,
-  // simulating as we go. Returns { calls, state, error }.
+  // simulating as we go. Returns { calls, state, notes, error }.
+  // A cascade move EARLIER that would jump ahead of a session which comes before it
+  // is widened to carry those sessions too, so they all move together and stay in
+  // order. Any other move that would put sessions out of order is refused.
   function shBuildCalls(day) {
     let state = shBase(day);
-    const calls = [];
+    const calls = [], notes = [];
     for (const it of shIntents) {
-      const r = shApplyCall(day, state, it.id, it.delta);
-      if (r.error) return { error: r.error, calls, state };
+      const prevInv = shInversions(day, state);
+      let anchorId = it.id;
+      if (it.cascade && it.delta < 0) {
+        const anchor = PROGRAMME[day].sessions.find(s => s.id === it.id);
+        if (anchor) {
+          const list = shSorted(day, state, shStreamOf(anchor));
+          let k = list.findIndex(s => s.id === it.id);
+          while (k > 0) {
+            const P = list[k - 1], Q = list[k];
+            if (shOrig(P.id, state) < shOrig(Q.id, state) && state[P.id] >= state[Q.id] + it.delta) k--; else break;
+          }
+          if (list[k].id !== it.id) {
+            anchorId = list[k].id;
+            notes.push("Also moved " + list.slice(k, list.findIndex(s => s.id === it.id)).map(s => '"' + s.title + '"').join(", ") + " so they stay in order.");
+          }
+        }
+      }
+      let nxtBefore = null;
+      if (!it.cascade) {
+        const a0 = PROGRAMME[day].sessions.find(s => s.id === it.id);
+        const l0 = shSorted(day, state, shStreamOf(a0));
+        nxtBefore = l0[l0.findIndex(s => s.id === it.id) + 1] || null;
+      }
+      const r = shApplyCall(day, state, anchorId, it.delta);
+      if (r.error) return { error: r.error, calls, state, notes };
       state = r.state;
-      calls.push({ sessionId: it.id, deltaMinutes: it.delta });
+      calls.push({ sessionId: anchorId, deltaMinutes: it.delta });
       if (!it.cascade) {
         const anchor = PROGRAMME[day].sessions.find(s => s.id === it.id);
         const list = shSorted(day, state, shStreamOf(anchor));
         const nxt = list[list.findIndex(s => s.id === it.id) + 1];
+        if (nxtBefore && (!nxt || nxt.id !== nxtBefore.id)) {
+          return { error: 'Moving "' + anchor.title + '" on its own that far would jump it over another session. Tick "Move everything later" and move sessions one at a time, or move the other session too.', calls, state, notes };
+        }
         if (nxt) {
           const r2 = shApplyCall(day, state, nxt.id, -it.delta);
-          if (r2.error) return { error: r2.error, calls, state };
+          if (r2.error) return { error: r2.error, calls, state, notes };
           state = r2.state;
           calls.push({ sessionId: nxt.id, deltaMinutes: -it.delta });
         }
       }
+      const newInv = shInversions(day, state);
+      for (const key in newInv) {
+        if (!prevInv[key]) {
+          const { a, b } = newInv[key];
+          return { error: '"' + b.title + '" would start before "' + a.title + '", which comes first in the programme. Move "' + a.title + '" too, or tick "Move everything later" so they move together.', calls, state, notes };
+        }
+      }
     }
-    return { calls, state };
+    return { calls, state, notes };
   }
 
   function shSetStart(id, newMins) {
@@ -1009,6 +1124,18 @@
         " The programme will finish at " + shFmt(endSim) + ". Sent as " + built.calls.length + " update" + (built.calls.length === 1 ? "" : "s") + ".";
     }
 
+    const warnEl = document.getElementById("shOrderWarn");
+    const invNow = shInversions(shDay, sim), invKeys = Object.keys(invNow);
+    if (invKeys.length) {
+      warnEl.style.display = "";
+      warnEl.textContent = "Out of order: " + invKeys.map(k => '"' + invNow[k].b.title + '" starts before "' + invNow[k].a.title + '"').join("; ") +
+        ". Move them so each session starts after the one before it.";
+    } else { warnEl.style.display = "none"; warnEl.textContent = ""; }
+    if (built.notes && built.notes.length) {
+      const pm = document.getElementById("shPendingMsg");
+      if (pm) pm.textContent += " " + built.notes.join(" ");
+    }
+
     document.getElementById("shDayTabs").innerHTML = ["friday", "saturday", "sunday"].map(d =>
       '<button data-day="' + d + '" class="' + (d === shDay ? "on" : "") + '">' + escapeHtml(PROGRAMME[d].label) + '</button>').join("");
     const streamBtns = [["instructor", "Instructor candidate programme"], ["assessor", "Assessor programme"]]
@@ -1047,6 +1174,10 @@
   }
 
   function openShiftPanel() {
+    // 2026-10-11, per Jon: the Shift Times buttons now open the new full-screen Time Shift page.
+    // The older in-page panel below is kept but no longer reached.
+    window.location.href = "time-shift.html";
+    return;
     shDay = shTodayDay() || currentDay || "saturday";
     shStream = currentRole === "assessor-faculty" ? "assessor" : (currentStream === "assessor" ? "assessor" : "instructor");
     shIntents = [];
@@ -1131,6 +1262,7 @@
   // lists as the rest of the app (js/firebase-config.js), so this stays in
   // sync with the write-side rule in firestore.rules automatically.
   function isMessageForRole(target, role) {
+    if (role === "director") return true;   // Directors see every message, so they can confirm it landed
     if (target === "all") return true;
     if (target === "faculty") return role !== "instructor" && role !== "assessor";
     if (target === "instructor-stream") return INSTRUCTOR_STREAM_RECIPIENTS.includes(role);
@@ -1186,7 +1318,7 @@
         : "";
       return `<div class="message-item">
         <div class="message-item-body">
-          <div>${escapeHtml(m.text)}</div>
+          <div>${m.priority === "high" ? '<strong style="color:#b7410e;">HIGH PRIORITY </strong>' : ""}${escapeHtml(m.text)}</div>
           <div class="message-time">${time} · to: ${escapeHtml(m.target)}</div>
         </div>
         <div class="message-item-actions">

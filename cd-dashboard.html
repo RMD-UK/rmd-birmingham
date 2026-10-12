@@ -328,6 +328,37 @@
     .itc-check { display: flex; gap: 4px; }
     .itc-cb { width: 24px; height: 24px; border-radius: 4px; border: 2px solid #dce3ea; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: all 0.12s; }
     .itc-cb.done { background: #1a6e31; border-color: #145727; color: white; }
+    .itc-cb.wait { background: #fff; border-color: #002B5C; color: #002B5C; font-weight: 700; }
+    .itc-cb.nobs { background: #f0f3f6; border-color: #dce3ea; color: #7a8a97; }
+    .itc-cb.o-green { background: #1a6e31; border-color: #145727; color: #fff; font-weight: 700; }
+    .itc-cb.o-amber { background: #c17a00; border-color: #9a6200; color: #fff; font-weight: 700; }
+    .itc-cb.o-red   { background: #b7410e; border-color: #8f330b; color: #fff; font-weight: 700; }
+    .itc-blk { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .itc-sum { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; font-weight: 700; color: var(--rmd-navy); }
+    .itc-sum .room-pill { font-size: 11px; padding: 2px 9px; }
+    .itc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; align-items: start; }
+    .itc-card { background: #fff; border: 1.5px solid #cfd8e3; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,43,92,.08); }
+    .itc-card-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: #eef2f7; border-bottom: 1.5px solid #cfd8e3; }
+    .itc-card-name { font-size: 14px; font-weight: 800; color: var(--rmd-navy); flex: 1; min-width: 0; }
+    .itc-card-prog { font-size: 11px; color: var(--rmd-muted); white-space: nowrap; }
+    .itc-block { padding: 8px 12px 10px; border-top: 1px solid #e3e9f0; }
+    .itc-block:first-of-type { border-top: none; }
+    .itc-block-head { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--rmd-muted); margin-bottom: 4px; }
+    .itc-obs { background: #f7f9fb; border-radius: 6px; padding: 6px 8px; margin-top: 5px; }
+    .itc-obs-top { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--rmd-muted); }
+    .itc-obs-dims { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 5px; }
+    .itc-obs-dims .tl-badge { font-size: 10.5px; }
+    .itc-obs-cmt { margin-top: 5px; font-size: 13px; line-height: 1.4; color: var(--rmd-text); }
+    .itc-pending { font-size: 12px; color: #7a8a97; font-style: italic; }
+    .itc-grid { overflow-x: auto; }
+    .itc-grid-row { display: grid; grid-template-columns: minmax(170px, 1fr) repeat(4, 92px); gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #f0f3f6; min-width: 560px; }
+    .itc-grid-row:last-child { border-bottom: none; }
+    .itc-grid-head { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--rmd-muted); border-bottom: 2px solid #dce3ea; padding-bottom: 4px; }
+    .itc-grid-head span { text-align: center; }
+    .itc-grid-row .itc-cb { width: 100%; height: 28px; font-size: 12px; }
+    .itc-blk-lbl { font-size: 9.5px; color: var(--rmd-muted); white-space: nowrap; }
+    .itc-legend { font-size: 11px; color: var(--rmd-muted); margin: 0 0 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .itc-legend .itc-cb { width: 16px; height: 16px; border-width: 2px; cursor: default; display: inline-flex; vertical-align: middle; margin-right: 4px; }
 
     /* ── ITC completion (2026-10-01, per Jon) ── */
     .itc-outcome-select {
@@ -603,6 +634,9 @@
               <option value="room-ath">ATH screen only</option>
             </select>
           </div>
+          <label style="display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:12px;font-weight:700;color:#b7410e;cursor:pointer;">
+            <input type="checkbox" id="msgHigh" style="width:16px;height:16px;"> High priority (red alert on room screens until cleared)
+          </label>
           <div style="display:flex;gap:8px;">
             <input id="msgText" type="text" placeholder="Type message…" maxlength="160"
               style="flex:1;padding:8px 10px;border:2px solid #dce3ea;border-radius:6px;font-family:var(--font);font-size:13px;"
@@ -610,6 +644,10 @@
             <button class="btn-sm btn-primary" onclick="sendBroadcast()">Send</button>
           </div>
           <div id="msgFeedback" style="font-size:12px;color:var(--rmd-muted);margin-top:5px;"></div>
+          <div style="margin-top:12px;border-top:1px solid #e6ebf1;padding-top:10px;">
+            <div style="font-size:11px;font-weight:800;color:var(--rmd-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Recently sent (live from the database)</div>
+            <div id="msgSent" style="font-size:13px;color:var(--rmd-muted);">Loading...</div>
+          </div>
         </div>
       </div>
 
@@ -802,9 +840,14 @@
         <button class="day-tab-btn active" onclick="showFeedbackDay('saturday',this)">Saturday 10 Oct</button>
         <button class="day-tab-btn" onclick="showFeedbackDay('sunday',this)">Sunday 11 Oct</button>
       </div>
+      <div data-rag-key="flags" style="border-radius:8px;margin-bottom:10px;border:1px solid #dce3ea;"></div>
       <div class="card">
         <div class="card-header">Candidate Summary</div>
         <div class="card-body" id="feedbackBody"><div class="loading">Loading feedback…</div></div>
+      </div>
+      <div class="card" id="itcOverviewCard">
+        <div class="card-header">Instructor Trainer Candidates — Overview</div>
+        <div class="card-body" id="itcOverviewBody"><div class="loading">Loading ITC observations…</div></div>
       </div>
       <div class="card" id="redDetailsCard" style="display:none;">
         <div class="card-header" style="background:#b7410e;">🔴 Red Rating Details</div>
@@ -958,6 +1001,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/rag-key.js?v=20261010"></script>
 <script src="js/course-result.js"></script>
 <script src="js/course-report.js"></script>
 <script src="js/mini-docx.js"></script>
@@ -1034,21 +1078,26 @@ window.addEventListener("load", () => {
     currentUser = user;
 
     await Promise.all([loadPeople(), loadIwAssignments(), loadFeedback(), loadItcSchedule(), loadItcSummaries(), loadGroups()]);
-    renderOverview();
-    startGatewayWatch();
-    renderAssessors();
-    renderProgramme("saturday");
-    renderFeedback("saturday");
-    renderMeetingSlides("saturday");
-    renderITCs();
-    renderItcSummaries();
-    renderItcCompletion();
-    renderRooms();
-    loadMeetingNotes();
-    loadReport();
-    watchAlerts();
-    watchFeedbackLive();
-    watchSessionQuality();
+    // Each step is isolated (2026-10-10): one bad record used to throw here and leave
+    // every later part of the dashboard (alerts, live feedback, session quality) blank.
+    const step = (label, fn) => { try { const r = fn(); if (r && typeof r.catch === "function") r.catch(e => console.warn("Dashboard step failed (" + label + "):", e.message)); } catch (e) { console.warn("Dashboard step failed (" + label + "):", e.message); } };
+    step("overview", () => renderOverview());
+    step("gateway", () => startGatewayWatch());
+    step("assessors", () => renderAssessors());
+    step("programme", () => renderProgramme("saturday"));
+    step("feedback", () => renderFeedback("saturday"));
+    step("meeting slides", () => renderMeetingSlides("saturday"));
+    step("itcs", () => renderITCs());
+    step("itc summaries", () => renderItcSummaries());
+    step("itc completion", () => renderItcCompletion());
+    step("rooms", () => renderRooms());
+    step("meeting notes", () => loadMeetingNotes());
+    step("report", () => loadReport());
+    step("alerts", () => watchAlerts());
+    step("sentMessages", () => watchSentMessages());
+    step("live feedback", () => watchFeedbackLive());
+    step("session quality", () => watchSessionQuality());
+    step("itc observations", () => watchItcObservations());
 
     // Reset-practice-data button: only before the real event starts (9 Oct
     // 2026), so rehearsals can clean up after themselves but nobody can
@@ -1185,8 +1234,9 @@ function iwEntryScore(f) {
   if (base === undefined) return null;
   return base + (f.strong ? 1 : 0) - (f.weak ? 1 : 0);
 }
-function iwTierFromAverage(average) {
-  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+function iwTierFromAverage(average, hasRed) {
+  const t = average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+  return (t === "strong" && hasRed) ? "standard" : t;   // one RED = never "strong" (2026-10-11, Jon)
 }
 function iwTierDotClass(tier) {
   return tier === "strong" ? "green" : tier === "weak" ? "red" : tier === "standard" ? "amber" : "grey";
@@ -1198,19 +1248,22 @@ function candidateIwScore(candidateId) {
     .sort((a, b) => (a.savedAt?.seconds || 0) - (b.savedAt?.seconds || 0))
     .map(f => ({ ...f, score: iwEntryScore(f) }))
     .filter(f => f.score !== null);
-  if (!entries.length) return { entries: [], average: null, tier: "unrated" };
+  if (!entries.length) return { entries: [], average: null, tier: "unrated", strongTags: 0, weakTags: 0 };
   const average = entries.reduce((sum, f) => sum + f.score, 0) / entries.length;
-  return { entries, average, tier: iwTierFromAverage(average) };
+  const strongTags = entries.filter(f => f.strong).length, weakTags = entries.filter(f => f.weak).length;
+  return { entries, average, strongTags, weakTags, tier: iwTierFromAverage(average, entries.some(f => f.rating === "red")) };
 }
 function statusDotsHtml(candidateId) {
-  const { entries, average, tier } = candidateIwScore(candidateId);
+  const { entries, average, tier, strongTags, weakTags } = candidateIwScore(candidateId);
   if (!entries.length) return `<span class="tl-badge none">Not yet rated</span>`;
   const small = entries.map(f => {
     const flagNote = f.strong ? " — notably strong" : f.weak ? " — notably weak" : "";
     const sessionNote = f.isAssessorFeedback ? "Assessor/SI feedback" : esc(f.sessionId || "Session");
     return `<span class="tl-dot-sm ${f.rating}" title="${sessionNote}${flagNote}"></span>`;
   }).join("");
-  return `<span class="status-dots">${small}<span class="tl-dot ${iwTierDotClass(tier)}" title="Average ${average.toFixed(2)} — ${tier}" style="width:14px;height:14px;margin-left:4px;"></span></span>`;
+  const tags = (strongTags ? `<span class="tag strong" style="margin-left:6px;" title="${strongTags} 'notably strong' tag${strongTags > 1 ? "s" : ""} from faculty; each adds a point to the average">⭐ ${strongTags}</span>` : "")
+             + (weakTags ? `<span class="tag weak" style="margin-left:4px;" title="${weakTags} 'notably weak' tag${weakTags > 1 ? "s" : ""} from faculty; each takes a point off the average">⚠ ${weakTags}</span>` : "");
+  return `<span class="status-dots">${small}<span class="tl-dot ${iwTierDotClass(tier)}" title="Average ${average.toFixed(2)} — ${tier}" style="width:14px;height:14px;margin-left:4px;"></span>${tags}</span>`;
 }
 
 async function loadItcSchedule() {
@@ -1370,7 +1423,7 @@ function renderCandidates(filter) {
       if (!groupB) return -1;
       return groupA.localeCompare(groupB, undefined, { numeric: true });
     }
-    return a.name.localeCompare(b.name);
+    return (a.name || "").localeCompare(b.name || "");
   });
 
   const tbody = document.getElementById("candTableBody");
@@ -1571,21 +1624,45 @@ function renderITCs() {
     return;
   }
 
-  body.innerHTML = itcs.map(itc => {
-    const sched = assignments[itc.email] || {};
+  // Progress markers (2026-10-10, per Jon): each block shows the assigned room, and once
+  // an observer has rated that ITC in that block the box fills with the worst rating
+  // given (1 = red, 2 = amber, 3-4 = green). Equipment/BLS/First Aid is not an observed block.
+  const OBSERVED = { sat_conv: true, sun_teaching: true, sun_assess: true };
+  const SHORT = { sat_group: "Sat equip", sat_conv: "Sat conv", sun_teaching: "Sun teach", sun_assess: "Sun assess" };
+  let done = 0, due = 0;
+  const rows = itcs.map(itc => {
+    const em = String(itc.email || "").trim().toLowerCase();
+    const sched = assignments[itc.email] || assignments[em] || {};
+    const cells = ITC_SESSIONS.map(s => {
+      const room = sched[s.key];
+      if (!room) return `<div class="itc-cb" style="cursor:default;" title="${esc(s.label)} — not assigned">—</div>`;
+      if (!OBSERVED[s.key]) return `<div class="itc-cb nobs" style="cursor:default;" title="${esc(s.label)}: ${esc(room)} (not an observed block)">${esc(room)}</div>`;
+      due++;
+      const obs = em ? itcObsDocs.filter(o => String(o.itcEmail || "").trim().toLowerCase() === em && o.itcSessionKey === s.key) : [];
+      if (!obs.length) return `<div class="itc-cb wait" style="cursor:default;" title="${esc(s.label)}: ${esc(room)} - not observed yet">${esc(room)}</div>`;
+      done++;
+      const mins = obs.map(itcObsMin).filter(Boolean);
+      const lv = itcLevel(mins.length ? Math.min(...mins) : 0);
+      return `<div class="itc-cb o-${lv === "none" ? "green" : lv}" style="cursor:default;" title="${esc(s.label)}: ${esc(room)} - ${obs.length} observation${obs.length === 1 ? "" : "s"}, worst rating ${lv}">${esc(room)}</div>`;
+    }).join("");
     return `
-    <div class="itc-row">
-      <div>
-        <div class="itc-name">${esc(itc.name)}</div>
-      </div>
-      <div class="itc-check">
-        ${ITC_SESSIONS.map(s => {
-          const room = sched[s.key];
-          return `<div class="itc-cb ${room ? "done" : ""}" style="width:auto;min-width:24px;padding:0 6px;" title="${esc(s.label)}${room ? ": " + esc(room) : " — not assigned"}">${room || "—"}</div>`;
-        }).join("")}
-      </div>
+    <div class="itc-grid-row">
+      <div class="itc-name">${esc(itc.name)}</div>
+      ${cells}
     </div>`;
   }).join("");
+
+  const legend = `<div class="itc-legend">
+      <span><span class="itc-cb wait"></span>room assigned, not observed yet</span>
+      <span><span class="itc-cb o-green"></span>observed, green</span>
+      <span><span class="itc-cb o-amber"></span>amber</span>
+      <span><span class="itc-cb o-red"></span>red</span>
+      <span><span class="itc-cb nobs"></span>not an observed block</span>
+      <span><strong>${done} of ${due}</strong> observed blocks have a rating${itcObsError ? " (ratings unreadable: " + esc(itcObsError) + ")" : ""}</span>
+      <span>Full detail: <a href="#" onclick="event.preventDefault();switchSection('feedback')">Feedback page</a></span>
+    </div>`;
+  const head = `<div class="itc-grid-row itc-grid-head"><span style="text-align:left;">Instructor Trainer Candidate</span>${ITC_SESSIONS.map(s => `<span>${SHORT[s.key] || ""}</span>`).join("")}</div>`;
+  body.innerHTML = legend + `<div class="itc-grid">${head}${rows}</div>`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1652,6 +1729,16 @@ async function generateItcSummary(itcEmail, docId) {
 // expectation can be suggested as a default, never enforced — the director
 // always has the final call per person.
 // ─────────────────────────────────────────────────────────────────────────────
+// A people record can have an empty `name` while its passport / preferred names are
+// filled in (found 2026-10-11: an ITC row with no name). Fall back so the row is never blank.
+function itcName(c) {
+  const n = (c.name || "").trim();
+  if (n) return n;
+  const first = (c.preferredName || c.passportFirstName || "").trim();
+  const last  = (c.passportLastName || "").trim();
+  const full  = [first, last].filter(Boolean).join(" ");
+  return full || c.email || c.id || "(no name)";
+}
 function setItcOutcome(id, val) { itcOutcomeChoices[id] = val; }
 
 function itcAlreadyRecorded(c) {
@@ -1670,7 +1757,7 @@ function renderItcCompletion() {
   if (reviewEl) { reviewEl.style.display = "none"; reviewEl.innerHTML = ""; }
 
   const itcs = allPeople.filter(p => effectiveRole(p) === ROLES.ITC)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => itcName(a).localeCompare(itcName(b)));
 
   if (!itcs.length) {
     body.innerHTML = `<div class="empty-msg">No ITCs assigned for Instructor Weekend ${CURRENT_IW_YEAR} yet.</div>`;
@@ -1686,7 +1773,7 @@ function renderItcCompletion() {
         : "Completed this round as ITC";
       return `
       <div class="itc-row">
-        <div class="itc-name" style="flex:1;min-width:0;">${esc(c.name)}</div>
+        <div class="itc-name" style="flex:1;min-width:0;">${esc(itcName(c))}</div>
         <div class="itc-already-badge">Recorded ${CURRENT_IW_YEAR}: ${label}</div>
       </div>`;
     }
@@ -1699,7 +1786,7 @@ function renderItcCompletion() {
     return `
     <div class="itc-row">
       <div style="flex:1;min-width:0;">
-        <div class="itc-name">${esc(c.name)}</div>
+        <div class="itc-name">${esc(itcName(c))}</div>
         <div class="itc-rounds-note">${roundsDone} round${roundsDone === 1 ? "" : "s"} completed so far${roundsDone >= 2 ? " — meets the usual 2-round expectation" : ""}</div>
       </div>
       <select class="itc-outcome-select" onchange="setItcOutcome('${c.id}', this.value)">
@@ -1733,15 +1820,15 @@ function reviewItcCompletion() {
   }
 
   const lines = [];
-  if (upgrades.length)  lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${upgrades.length}</strong> upgraded to Instructor Trainer: ${upgrades.map(c => esc(c.name)).join(", ")}</div>`);
-  if (completes.length) lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${completes.length}</strong> completing another course as ITC: ${completes.map(c => esc(c.name)).join(", ")}</div>`);
+  if (upgrades.length)  lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${upgrades.length}</strong> upgraded to Instructor Trainer: ${upgrades.map(c => esc(itcName(c))).join(", ")}</div>`);
+  if (completes.length) lines.push(`<div style="font-size:13px;margin-bottom:4px;"><strong>${completes.length}</strong> completing another course as ITC: ${completes.map(c => esc(itcName(c))).join(", ")}</div>`);
 
   let failBlock = "";
   if (fails.length) {
     failBlock = `
       <div style="background:#fde8e4;border:1px solid #f4bfb6;border-radius:8px;padding:12px 14px;margin-top:10px;">
         <div style="font-weight:700;color:#8f3309;margin-bottom:6px;">⚠️ ${fails.length} marked Fail</div>
-        <div style="font-size:13px;color:#8f3309;">${fails.map(c => esc(c.name)).join(", ")}</div>
+        <div style="font-size:13px;color:#8f3309;">${fails.map(c => esc(itcName(c))).join(", ")}</div>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:#8f3309;margin-top:10px;cursor:pointer;">
           <input type="checkbox" id="itcFailCheck" onchange="document.getElementById('itcConfirmBtn').disabled = !this.checked">
           I've checked this list and confirm these ${fails.length} ITC(s) genuinely did not pass this round.
@@ -2001,7 +2088,22 @@ function toggleFeedbackRow(candidateId) {
   renderFeedback(currentFeedbackDay);
 }
 
+// Assessor / Senior Instructor ratings (assessor_feedback) are not tied to a
+// programme session, so they have no sessionId and used to be dropped by the
+// per-session filter in renderFeedback (2026-10-10: the Feedback page showed
+// every assessor as "not yet rated" while the Assessors tab showed dots).
+// They are shown on the day they were saved (Fri/Sat/Sun).
+function assessorFbOnDay(f, day) {
+  if (!f.isAssessorFeedback) return false;
+  const ms = (f.savedAt && typeof f.savedAt.toMillis === "function") ? f.savedAt.toMillis() : ((f.savedAt?.seconds || 0) * 1000);
+  if (!ms) return day === currentFeedbackDay;   // timestamp not back from the server yet
+  const dow = new Date(ms).getDay();            // 5 = Fri, 6 = Sat, 0 = Sun
+  const name = dow === 5 ? "friday" : dow === 6 ? "saturday" : dow === 0 ? "sunday" : "";
+  return name ? name === day : day === "saturday";
+}
+
 function feedbackSessionTitle(id) {
+  if (!id) return "Assessor / SI feedback";
   for (const d of ["friday", "saturday", "sunday"]) {
     const s = (PROGRAMME[d]?.sessions || []).find(x => x.id === id);
     if (s) return s.title;
@@ -2022,8 +2124,11 @@ function feedbackRater(f) {
 
 function renderFeedback(day) {
   currentFeedbackDay = day;
+  try { renderItcOverview(day); } catch (e) { console.warn("ITC overview:", e.message); }
   const body = document.getElementById("feedbackBody");
-  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)));
+  // People whose gateway FAIL was confirmed (people.iwOutcome = "not-passed") are out of
+  // the rooms from sign-off, so they are not listed here. Their ratings are kept.
+  const candidates = allPeople.filter(p => [ROLES.INSTRUCTOR, ROLES.ASSESSOR].includes(effectiveRole(p)) && p.iwOutcome !== "not-passed");
 
   // Get sessions for this day that have feedback
   const daySessions = (PROGRAMME[day]?.sessions || [])
@@ -2033,7 +2138,7 @@ function renderFeedback(day) {
   // Group feedback by candidate
   const byCand = {};
   feedbackData
-    .filter(f => f.rating && daySessions.includes(f.sessionId))
+    .filter(f => f.rating && (daySessions.includes(f.sessionId) || assessorFbOnDay(f, day)))
     .forEach(f => {
       if (!byCand[f.candidateId]) byCand[f.candidateId] = [];
       byCand[f.candidateId].push(f);
@@ -2071,6 +2176,7 @@ function renderFeedback(day) {
               <div class="fb-detail-meta">${[feedbackRater(f) ? "by " + esc(feedbackRater(f)) : "", feedbackWhen(f) ? esc(feedbackWhen(f)) : ""].filter(Boolean).join(" · ") || "&nbsp;"}</div>
               ${f.comment ? `<div class="${f.rating === 'red' ? 'comment-detail' : 'fb-comment'}">${esc(f.comment)}</div>` : ""}
             </div>
+            <button class="btn-sm" style="padding:2px 8px;font-size:11px;color:#b3261e;border-color:#b3261e;flex:none;" onclick="event.stopPropagation();deleteFeedbackDoc('${f.isAssessorFeedback ? 'assessor_feedback' : 'session_feedback'}', '${esc(f.id)}')" title="Permanently delete this rating (Course Director only)">Delete</button>
           </div>`).join("")}
       </div>` : "";
 
@@ -2108,7 +2214,7 @@ function renderFeedback(day) {
   });
 
   body.innerHTML = `<div class="fb-rooms">` + roomKeys.map(key => {
-    const list = rooms[key].slice().sort((a, b) => a.name.localeCompare(b.name));
+    const list = rooms[key].slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     const html = list.map(rowHtml).join("");
     // Room summary: how many of its candidates have a red / amber / green
     // as their worst rating today.
@@ -2147,10 +2253,188 @@ function renderFeedback(day) {
           <div class="text-sm text-muted">${feedback.sessionId ? `<a class="fb-session-link" href="session-feedback.html?session=${encodeURIComponent(feedback.sessionId)}" target="_blank" rel="noopener">${esc(feedbackSessionTitle(feedback.sessionId))} &#8599;</a>` : esc(feedbackSessionTitle(feedback.sessionId))} · ${esc(candidate.group || "No room assigned")}${feedbackRater(feedback) ? " · by " + esc(feedbackRater(feedback)) : ""}</div>
           ${feedback.comment ? `<div class="comment-detail">${esc(feedback.comment)}</div>` : `<div class="text-sm text-muted mt-8">No comment provided.</div>`}
         </div>
+        <button class="btn-sm" style="padding:2px 8px;font-size:11px;color:#b3261e;border-color:#b3261e;flex:none;" onclick="event.stopPropagation();deleteFeedbackDoc('${feedback.isAssessorFeedback ? 'assessor_feedback' : 'session_feedback'}', '${esc(feedback.id)}')" title="Permanently delete this rating (Course Director only)">Delete</button>
       </div>`).join("");
   } else {
     redCard.style.display = "none";
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ITC OVERVIEW on the Feedback page (2026-10-10, per Jon)
+// Instructor Trainer Candidates rotate through rooms and are rated by the room
+// observers on itc-observations.html (blind, 1-4 on five dimensions, saved to
+// itc_observations). Only the Course Director can read those records, which is
+// why this card lives here. Same day tabs as the candidate summary: Saturday =
+// Learning Conversation block, Sunday = Teaching + Continuous Assessment.
+// Scale: 1 serious concerns (red), 2 some concerns (amber), 3 no concerns (green);
+// older 1-4 records count 4 as green. The dot shows the WORST rating given that day, like the
+// candidate rows above.
+// ─────────────────────────────────────────────────────────────────────────────
+let itcObsDocs = [];
+let itcObsLoaded = false;
+let itcObsError = "";
+const openItcRows = new Set();
+const ITC_DIMS = [
+  { key: "clarity",    short: "Clarity",    label: "Clarity of instruction" },
+  { key: "engagement", short: "Engagement", label: "Candidate engagement" },
+  { key: "accuracy",   short: "Accuracy",   label: "Technical accuracy" },
+  { key: "space",      short: "Space",      label: "Management of teaching space" },
+  { key: "response",   short: "Difficulty", label: "Response to difficulty or questions" }
+];
+const ITC_SCALE_WORD = { 1: "Red: serious concerns", 2: "Amber: some concerns", 3: "Green: no concerns", 4: "Green: no concerns" };
+const ITC_DAY_KEYS = { saturday: ["sat_conv"], sunday: ["sun_teaching", "sun_assess"] };
+let itcObsTimer;
+
+function watchItcObservations() {
+  db.collection(COLLECTIONS.itcObs).onSnapshot(snap => {
+    itcObsDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    itcObsLoaded = true; itcObsError = "";
+    clearTimeout(itcObsTimer);
+    itcObsTimer = setTimeout(() => {
+      try { renderItcOverview(currentFeedbackDay); } catch (e) { console.warn("ITC overview:", e.message); }
+      try { renderITCs(); } catch (e) { console.warn("ITC tracker:", e.message); }
+    }, 200);
+  }, err => {
+    itcObsLoaded = true; itcObsError = err.message || "permission denied";
+    console.warn("ITC observations:", itcObsError);
+    try { renderItcOverview(currentFeedbackDay); } catch (e) {}
+    try { renderITCs(); } catch (e) {}
+  });
+}
+
+function itcLevel(v) { v = Number(v); return v === 1 ? "red" : v === 2 ? "amber" : v >= 3 ? "green" : "none"; }
+function itcAvgLevel(a) { return a == null ? "none" : a < 1.5 ? "red" : a < 2.5 ? "amber" : "green"; }
+function itcObsMin(o) {
+  const v = Object.values(o.dims || {}).map(Number).filter(n => n > 0);
+  return v.length ? Math.min(...v) : 0;
+}
+function itcObsDay(o) {
+  const k = String(o.itcSessionKey || ""), id = String(o.sessionId || "");
+  if (k.startsWith("sat") || id.startsWith("sat")) return "saturday";
+  if (k.startsWith("sun") || id.startsWith("sun")) return "sunday";
+  return "";
+}
+// Course Director: permanently delete any entered rating (2026-10-11, per Jon).
+// firestore.rules allow delete for the Director on session_feedback,
+// assessor_feedback, session_quality and itc_observations. The live listeners
+// redraw the screens once the document is gone.
+async function deleteFeedbackDoc(col, id) {
+  if (!col || !id) return;
+  if (!confirm("Permanently delete this rating?\n\nThis cannot be undone.")) return;
+  try {
+    await db.collection(col).doc(id).delete();
+  } catch (err) {
+    alert("Could not delete: " + (err.message || err.code || "unknown error"));
+  }
+}
+
+// Course Director only (firestore.rules: itc_observations delete = isDirector()).
+// Permanent: the live listener then redraws the card without it.
+async function deleteItcObservation(id) {
+  const o = itcObsDocs.find(x => x.id === id);
+  if (!o) return;
+  const who = (o.itcName || o.itcEmail || "this ITC");
+  const by  = o.raterName || "the observer";
+  if (!confirm("Permanently delete " + by + "'s observation of " + who + "?\n\nThis cannot be undone.")) return;
+  try {
+    await db.collection(COLLECTIONS.itcObs).doc(id).delete();
+  } catch (err) {
+    alert("Could not delete: " + (err.message || err.code || "unknown error"));
+  }
+}
+
+function toggleItcRow(key) {
+  if (openItcRows.has(key)) openItcRows.delete(key); else openItcRows.add(key);
+  renderItcOverview(currentFeedbackDay);
+}
+
+function renderItcOverview(day) {
+  const body = document.getElementById("itcOverviewBody");
+  if (!body) return;
+  if (!itcObsLoaded) { body.innerHTML = `<div class="loading">Loading ITC observations…</div>`; return; }
+  if (itcObsError) {
+    body.innerHTML = `<div class="empty-msg">Could not read ITC observations (${esc(itcObsError)}). Only the Course Director can see them.</div>`;
+    return;
+  }
+
+  // Who the ITCs are: the rotation schedule first, then anyone with the ITC role.
+  const itcMap = {};
+  const addItc = (name, email, uid) => {
+    const em = String(email || "").trim().toLowerCase();
+    const key = em || (uid ? "uid:" + uid : "name:" + String(name || "").toLowerCase());
+    if (!itcMap[key]) itcMap[key] = { key, email: em, name: name || em || "Unnamed" };
+  };
+  (itcSchedule.itcs || []).forEach(i => addItc(i.name, i.email));
+  allPeople.filter(p => effectiveRole(p) === ROLES.ITC && p.iwOutcome !== "not-passed")
+    .forEach(p => addItc(p.name, p.email, p.id));
+  const itcs = Object.values(itcMap).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+  if (!itcs.length) {
+    body.innerHTML = `<div class="empty-msg">No Instructor Trainer Candidates set up yet. Add them in Room Allocation, ITC Schedule.</div>`;
+    return;
+  }
+
+  const BLOCK = { sat_conv: "Learning Conversation", sun_teaching: "Teaching", sun_assess: "Continuous Assessment" };
+  const WORDLV = { red: "Red", amber: "Amber", green: "Green", none: "Not yet observed" };
+  const dayKeys = ITC_DAY_KEYS[day] || [];
+  const assignments = itcSchedule.assignments || {};
+  const dayObs = itcObsDocs.filter(o => itcObsDay(o) === day);
+  const tally = { red: 0, amber: 0, green: 0, none: 0 };
+  let seenTotal = 0, dueTotal = 0;
+
+  const cards = itcs.map(itc => {
+    const mine = itc.email ? dayObs.filter(o => String(o.itcEmail || "").trim().toLowerCase() === itc.email) : [];
+    const worstMin = mine.reduce((m, o) => { const v = itcObsMin(o); return v && (!m || v < m) ? v : m; }, 0);
+    const worst = itcLevel(worstMin);
+    tally[worst]++;
+
+    const sched = assignments[itc.email] || assignments[itc.key] || {};
+    const keys = dayKeys.filter(k => sched[k] || mine.some(o => o.itcSessionKey === k));
+    let seen = 0;
+    const blocks = keys.map(k => {
+      const obs = mine.filter(o => o.itcSessionKey === k)
+        .sort((a, b) => (a.savedAt?.seconds || 0) - (b.savedAt?.seconds || 0));
+      dueTotal++; if (obs.length) { seenTotal++; seen++; }
+      const room = sched[k] || (obs[0] && obs[0].roomId) || "";
+      const inner = obs.length ? obs.map(o => {
+        const lv = itcLevel(itcObsMin(o));
+        const dims = ITC_DIMS.map(d => {
+          const v = Number((o.dims || {})[d.key]);
+          return v > 0 ? `<span class="tl-badge ${itcLevel(v)}" title="${esc(d.label)}: ${esc(ITC_SCALE_WORD[v] || "")}">${esc(d.short)} ${v}</span>` : "";
+        }).join("");
+        return `<div class="itc-obs">
+            <div class="itc-obs-top"><span class="tl-badge ${lv}" style="cursor:default;">${WORDLV[lv]}</span><span>${[o.raterName ? esc(o.raterName) : "Observer", feedbackWhen(o) ? esc(feedbackWhen(o)) : ""].filter(Boolean).join(" · ")}</span><button class="btn-sm" style="margin-left:auto;padding:2px 8px;font-size:11px;color:#b3261e;border-color:#b3261e;" onclick="deleteItcObservation('${esc(o.id)}')" title="Permanently delete this observation (Course Director only)">Delete</button></div>
+            <div class="itc-obs-dims">${dims}</div>
+            ${o.comment && String(o.comment).trim() ? `<div class="itc-obs-cmt">${esc(o.comment)}</div>` : ""}
+          </div>`;
+      }).join("") : `<div class="itc-pending">Not observed yet</div>`;
+      return `<div class="itc-block"><div class="itc-block-head">${esc(BLOCK[k] || k)}${room ? " · " + esc(room) : ""}</div>${inner}</div>`;
+    }).join("");
+
+    const vals = mine.flatMap(o => Object.values(o.dims || {}).map(Number).filter(n => n > 0).map(n => Math.min(n, 3)));
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    return `<div class="itc-card">
+        <div class="itc-card-head">
+          <span class="tl-dot ${worst}" title="Worst rating today"></span>
+          <span class="itc-card-name">${esc(itc.name)}</span>
+          ${avg == null ? "" : `<span class="tl-badge ${itcAvgLevel(avg)}" title="Average of all ratings today: 1 = red, 2 = amber, 3 = green">${avg.toFixed(1)} / 3</span>`}
+          <span class="itc-card-prog">${keys.length ? seen + " of " + keys.length + " observed" : "no block today"}</span>
+        </div>
+        ${blocks || `<div class="itc-block"><div class="itc-pending">No observed block scheduled for this day</div></div>`}
+      </div>`;
+  }).join("");
+
+  const pills = [
+    tally.red   ? `<span class="room-pill red">${tally.red} red</span>` : "",
+    tally.amber ? `<span class="room-pill amber">${tally.amber} amber</span>` : "",
+    tally.green ? `<span class="room-pill green">${tally.green} green</span>` : "",
+    tally.none  ? `<span class="room-pill none">${tally.none} not yet observed</span>` : ""
+  ].join("");
+  body.innerHTML = `
+    <div class="itc-sum"><span>${dueTotal ? `${seenTotal} of ${dueTotal} scheduled blocks have been observed` : "No observed blocks scheduled for this day"}</span>${pills}</div>
+    <div class="itc-cards">${cards}</div>
+    <div class="text-sm text-muted mt-8">Colour = worst rating given. Average is out of 3 (1 red, 2 amber, 3 green).</div>`;
 }
 
 function showFeedbackDay(day, btn) {
@@ -2264,7 +2548,7 @@ function renderSessionQuality() {
       x.resourceIssue === "yes" ? `<span class="sq-issue">Resource issue</span>${x.resourceNotes ? ": " + esc(x.resourceNotes) : ""}` : ""
     ].filter(Boolean).join(" · ");
     return `<div class="sq-resp">${bits || "No ratings given"}${x.otherComments ? `<div>${esc(x.otherComments)}</div>` : ""}
-      <div class="text-sm text-muted">${esc(x.submittedByName || "Faculty")}${qualityWhen(x) ? " · " + esc(qualityWhen(x)) : ""}${x.cdFlag ? " · <span class=\"sq-issue\">Flagged</span>" : ""}</div></div>`;
+      <div class="text-sm text-muted">${esc(x.submittedByName || "Faculty")}${qualityWhen(x) ? " · " + esc(qualityWhen(x)) : ""}${x.cdFlag ? " · <span class=\"sq-issue\">Flagged</span>" : ""} · <button class="btn-sm" style="padding:2px 8px;font-size:11px;color:#b3261e;border-color:#b3261e;flex:none;" onclick="event.stopPropagation();deleteFeedbackDoc('session_quality', '${esc(x.id)}')" title="Permanently delete this rating (Course Director only)">Delete</button></div></div>`;
   };
 
   // Overall rating spread: a five-part bar, Poor to Excellent.
@@ -2335,6 +2619,47 @@ function watchAlerts() {
     }, err => console.warn("Alert listener (assessor_feedback):", err.message));
 }
 
+// ── Recently sent messages: proof a broadcast landed (2026-10-11, per Jon) ───
+var sentUnsub = null;
+var MSG_TARGET_LABEL = { "all": "Everyone", "faculty": "Faculty", "instructor-stream": "Instructor programme", "assessor-stream": "Assessor programme", "room-wf15": "WF15 screen", "room-wf19": "WF19 screen", "room-ath": "ATH screen" };
+function msgTargetLabel(t) { return MSG_TARGET_LABEL[t] || t || "Everyone"; }
+function watchSentMessages() {
+  if (sentUnsub) { try { sentUnsub(); } catch (e) {} }
+  var box = document.getElementById("msgSent");
+  if (!box) return;
+  sentUnsub = db.collection(COLLECTIONS.messages).orderBy("sentAt", "desc").limit(6).onSnapshot(function (snap) { lastSentSnap = snap; renderSentMessages(); }, function (err) { box.textContent = "Could not load sent messages (" + (err.code || "error") + ")."; });
+}
+var lastSentSnap = null;
+function renderSentMessages() {
+  var box = document.getElementById("msgSent"), snap = lastSentSnap;
+  if (!box || !snap) return;
+  (function () {
+    if (snap.empty) { box.textContent = "Nothing sent yet."; return; }
+    var NORMAL_MS = 15 * 60 * 1000;
+    box.innerHTML = snap.docs.map(function (d) {
+      var m = d.data(), ts = m.sentAt && m.sentAt.toDate ? m.sentAt.toDate() : null;
+      var pending = d.metadata.hasPendingWrites && !ts;
+      var time = ts ? String(ts.getHours()).padStart(2, "0") + ":" + String(ts.getMinutes()).padStart(2, "0") : "now";
+      var hi = m.priority === "high";
+      var age = ts ? Date.now() - ts.getTime() : 0;
+      var showing = !m.clearedAt && (hi || age < NORMAL_MS);
+      var state = pending ? '<span style="color:#8a5200;font-weight:700;">sending...</span>'
+        : showing ? '<span style="color:#1a6e31;font-weight:700;">Landed. Showing on screens</span>'
+        : m.clearedAt ? '<span style="color:var(--rmd-muted);">Landed. Cleared</span>'
+        : '<span style="color:var(--rmd-muted);">Landed. Banner timed out</span>';
+      var clr = (showing && !pending) ? ' <button class="btn-sm" style="padding:2px 8px;font-size:11px;" onclick="clearSentMessage(\'' + d.id + '\')">Clear</button>' : '';
+      return '<div style="padding:6px 0;border-bottom:1px solid #f0f3f8;">' +
+        (hi ? '<b style="color:#b7410e;">HIGH PRIORITY </b>' : '') + esc(m.text || '') +
+        '<div style="font-size:11px;margin-top:2px;">' + time + ' · to ' + esc(msgTargetLabel(m.target)) + ' · ' + state + clr + '</div></div>';
+    }).join("");
+  })();
+}
+async function clearSentMessage(id) {
+  try { await db.collection(COLLECTIONS.messages).doc(id).update({ clearedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+  catch (e) { console.warn("Clear failed:", e.code, e.message); }
+}
+setInterval(renderSentMessages, 30000);   // so "Showing on screens" drops to "timed out" after 15 minutes
+
 function dismissAlerts() {
   alertsDismissed = true;
   document.getElementById("alertStrip").classList.remove("visible");
@@ -2349,15 +2674,23 @@ async function sendBroadcast() {
   const fb     = document.getElementById("msgFeedback");
   if (!text) return;
   try {
+    const hi = document.getElementById("msgHigh");
+    const priority = hi && hi.checked ? "high" : "normal";
     await db.collection(COLLECTIONS.messages).add({
-      text, target,
+      text, target, priority,
       sentAt: firebase.firestore.FieldValue.serverTimestamp(),
       sentByUid: currentUser?.uid
     });
     document.getElementById("msgText").value = "";
-    fb.textContent = "Message sent ✓";
-    setTimeout(() => { fb.textContent = ""; }, 3000);
-  } catch (e) { fb.textContent = "Send failed — check connection"; }
+    if (hi) hi.checked = false;
+    fb.style.color = "#1a6e31";
+    fb.textContent = "Message sent" + (priority === "high" ? " (HIGH PRIORITY)" : "") + " ✓";
+    setTimeout(() => { fb.textContent = ""; }, 5000);
+  } catch (e) {
+    console.warn("Broadcast failed:", e.code, e.message);
+    fb.style.color = "#b7410e";
+    fb.textContent = "NOT sent (" + (e.code || "error") + "): " + (e.message || "unknown error");
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2461,7 +2794,7 @@ async function gatherReportData() {
       if (c.length) summary += ". Comments: " + c.join(" | ");
     }
     return { name: p.name || "", summary };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+  }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const itcRows = (itcSchedule.itcs || []).map(itc => {
     const s = itcSummaries[itc.email.replace(/[^a-z0-9]/g, "_")];

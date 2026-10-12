@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Session Feedback — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 80px; }
+
+    /* ── Top bar ── */
+    .top-bar {
+      background: var(--rmd-navy);
+      color: white;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .top-bar img { height: 28px; border-radius: 50%; background: white; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub   { font-size: 11px; font-weight: 400; opacity: 0.7; display: block; }
+    .top-bar-time  { font-size: 13px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+    /* ── Session selector ── */
+    .session-picker {
+      background: white;
+      padding: 12px 14px;
+      border-bottom: 2px solid #dce3ea;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .session-picker select {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: var(--font);
+      border: 2px solid #ccd6dd;
+      border-radius: 8px;
+      color: var(--rmd-navy);
+      appearance: none;
+      background: #f5f7fa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%230b5394' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat right 12px center;
+    }
+    .session-picker select:focus { outline: none; border-color: var(--rmd-blue); }
+
+    /* ── Status bar ── */
+    .status-bar {
+      background: white;
+      border-bottom: 1px solid #e8edf2;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .status-count { font-weight: 700; color: var(--rmd-navy); }
+    .status-label { color: var(--rmd-muted); flex: 1; }
+    .auto-save-indicator { font-size: 11px; color: var(--rmd-muted); }
+    .auto-save-indicator.saving { color: var(--rmd-blue); }
+    .auto-save-indicator.saved  { color: #1a6e31; }
+
+    /* ── Content wrap ── */
+    .wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 0; }
+
+    /* ── Candidate row ── */
+    .candidate-card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+      margin-bottom: 10px;
+      overflow: hidden;
+      border-left: 4px solid #dce3ea;
+      transition: border-color 0.2s;
+    }
+    .candidate-card.rating-green  { border-left-color: #1a6e31; }
+    .candidate-card.rating-amber  { border-left-color: #c17a00; }
+    .candidate-card.rating-red    { border-left-color: #b7410e; }
+    /* ── Gateway PASS/FAIL row (BLS/AED group practice only) ── */
+    .gateway-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 14px; border-top:1px dashed #d5dce3; background:#f7f9fb; }
+    .gateway-label { font-size:12px; font-weight:700; color:var(--rmd-navy); flex:1; min-width:140px; }
+    .gateway-label small { display:block; font-weight:400; color:var(--rmd-muted); }
+    .gw-btn { border:2px solid #cfd8e0; background:#fff; border-radius:8px; padding:7px 16px; font-family:var(--font); font-size:13px; font-weight:800; cursor:pointer; min-width:74px; }
+    .gw-btn.pass.on { background:#e6f4ea; border-color:#1a6e31; color:#1a6e31; }
+    .gw-btn.fail.on { background:#fce8e6; border-color:#b7410e; color:#b7410e; }
+    .gw-btn:disabled { opacity:.55; cursor:default; }
+    .gw-status { font-size:11px; color:var(--rmd-muted); width:100%; }
+
+    .candidate-header {
+      padding: 12px 14px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .candidate-name {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--rmd-navy);
+    }
+    .candidate-sub {
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--rmd-muted);
+      margin-top: 2px;
+    }
+
+    /* ── Traffic lights ── */
+    .traffic-lights {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .tl-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 3px solid #dce3ea;
+      background: #f5f7fa;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .tl-btn:active { transform: scale(0.88); }
+    .tl-btn.active-green { background: #1a6e31; border-color: #145727; }
+    .tl-btn.active-amber { background: #c17a00; border-color: #9a6200; }
+    .tl-btn.active-red   { background: #b7410e; border-color: #8e3209; }
+
+    /* ── Flags ── */
+    .candidate-flags {
+      display: flex;
+      gap: 6px;
+      padding: 0 14px 0;
+    }
+    .flag-btn {
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 2px solid #dce3ea;
+      background: white;
+      font-size: 12px;
+      font-weight: 600;
+      font-family: var(--font);
+      cursor: pointer;
+      color: var(--rmd-muted);
+      transition: all 0.12s;
+    }
+    .flag-btn:active { transform: scale(0.94); }
+    .flag-btn.active-strong { background: #e6f4ea; color: #1a6e31; border-color: #b5d9bc; }
+    .flag-btn.active-weak   { background: #fde8e4; color: #b7410e; border-color: #f4bfb6; }
+
+    /* ── Comment box ── */
+    .comment-wrap {
+      padding: 10px 14px 12px;
+      display: none;
+    }
+    .comment-wrap.visible { display: block; }
+    .comment-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #b7410e;
+      margin-bottom: 5px;
+    }
+    .comment-textarea {
+      width: 100%;
+      min-height: 72px;
+      padding: 9px 11px;
+      border: 2px solid #f4bfb6;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: var(--font);
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .comment-textarea:focus { outline: none; border-color: #b7410e; }
+    .comment-prompt {
+      font-size: 11px;
+      color: var(--rmd-muted);
+      margin-top: 4px;
+    }
+
+    /* ── Separator ── */
+    .candidate-sep { height: 1px; background: #f0f3f6; margin: 0 14px; }
+
+    /* ── Submit bar ── */
+    .submit-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: white;
+      padding: 12px 14px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.12);
+      z-index: 50;
+    }
+    .submit-bar-inner { max-width: 680px; margin: 0 auto; }
+    .btn-submit {
+      width: 100%;
+      padding: 15px;
+      background: var(--rmd-blue);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-submit:hover  { background: var(--rmd-navy); }
+    .btn-submit:active { opacity: 0.85; }
+    .btn-submit:disabled { background: #aab8c2; cursor: default; }
+    .submit-note { font-size: 11px; color: var(--rmd-muted); text-align: center; margin-top: 6px; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      top: 70px; left: 50%; transform: translateX(-50%);
+      background: #1a333f;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.25s;
+      pointer-events: none;
+      white-space: nowrap;
+      max-width: 90vw;
+    }
+    .toast.show   { opacity: 1; }
+    .toast.green  { background: #1a6e31; }
+    .toast.red    { background: #b7410e; }
+
+    /* ── Empty / loading ── */
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--rmd-muted);
+      font-size: 14px;
+    }
+    .empty-state h3 { color: var(--rmd-navy); margin-bottom: 6px; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<div class="top-bar">
+  <a href="member-menu.html" style="color:white;text-decoration:none;font-size:12px;opacity:0.85;white-space:nowrap;">‹ Menu</a>
+  <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">
+    Session Feedback
+    <span class="top-bar-sub" id="topBarSub">Traffic light rating for your group</span>
+  </div>
+  <div class="top-bar-time" id="topBarTime">--:--</div>
+</div>
+
+<!-- ── Session header (pre-selected from timetable) ── -->
+<div id="sessionHeader" style="
+  background:white; padding:12px 14px;
+  border-bottom:2px solid var(--rmd-blue);
+  display:flex; align-items:center; gap:10px;
+">
+  <div style="flex:1;">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--rmd-muted);margin-bottom:2px;">Current session</div>
+    <div id="sessionHeaderTitle" style="font-size:15px;font-weight:700;color:var(--rmd-navy);"></div>
+  </div>
+  <span id="roomToggleWrap" style="display:none;"><button type="button" onclick="toggleRooms()" style="font:inherit;font-size:12px;font-weight:700;color:var(--rmd-blue);background:#fff;border:1.5px solid var(--rmd-blue);border-radius:6px;padding:5px 9px;cursor:pointer;white-space:nowrap;">Show all rooms</button></span>
+  <a href="timetable.html" style="font-size:12px;color:var(--rmd-blue);text-decoration:none;white-space:nowrap;">← Timetable</a>
+</div>
+
+<!-- ── Status bar ── -->
+<div class="status-bar">
+  <span class="status-count" id="ratedCount">0</span>
+  <span class="status-label" id="ratedLabel">of 0 candidates rated</span>
+  <span class="auto-save-indicator" id="saveIndicator">Changes save automatically</span>
+</div>
+
+<!-- ── Candidate list ── -->
+<div class="wrap" id="candidateWrap">
+  <div class="empty-state" id="emptyState">
+    <h3>Choose a session to begin</h3>
+    <p>Select the session you are currently observing from the list above.</p>
+  </div>
+</div>
+
+<!-- ── Submit bar ── -->
+<div class="submit-bar">
+  <div class="submit-bar-inner">
+    <button class="btn-submit" id="submitBtn" onclick="submitAll()" disabled>Select a session first</button>
+    <div class="submit-note">Ratings save as you go. Submit when your group's session is complete.</div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/programme-data.js?v=202610071300"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+const params    = new URLSearchParams(window.location.search);
+const userRole  = params.get("role") || "faculty";
+const preSession = params.get("session") || "";
+
+let currentUser     = null;
+let currentUserDoc  = null;    // people doc for the signed-in faculty member
+let seeAllGroups    = false;   // Director/Super-user/Student Faculty/Senior Faculty — set in the auth handler
+let myCandidates    = [];      // candidates in this instructor's room (or every room, when showAllRooms)
+let myRoomId        = null;    // the room this person is allocated to: groups collection first (what Room Allocation saves), then people.group
+let showAllRooms    = false;   // view toggle: every room, or only myRoomId
+let currentSession  = preSession;
+let ratings         = {};      // { candidateId: { rating, comment, strong, weak, savedAt } }
+let saveDebounce    = {};
+
+// ── Gateway PASS/FAIL (added 2026-10) ─────────────────────────────────────
+// The BLS/AED competency gateway is recorded in gateway_assessments/{candidateId}
+// (the SAME record assessment-gateway.html and the Course Director read), so
+// entering it here is not a second copy of the result. Only on the Saturday
+// "Group Practice: BLS/AED" session, only for Instructor Candidates.
+const GATEWAY_SESSION_ID = "sat-8";
+let gateway          = {};     // { candidateId: gateway_assessments data }
+let canRecordGateway = false;  // faculty / director, or an Instructor Trainer for their own room (see firestore.rules gateway_assessments)
+let gatewayUnsub     = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sessionable sessions — only sessions where faculty submit candidate feedback
+// ─────────────────────────────────────────────────────────────────────────────
+const FEEDBACK_SESSION_TAGS = ["faculty-only"];  // excluded tags
+function getFeedbackSessions() {
+  const sessions = [];
+  ["friday","saturday","sunday"].forEach(day => {
+    (PROGRAMME[day]?.sessions || []).forEach(s => {
+      const isFacultyOnly = s.tags.includes("faculty-only");
+      const isBreak       = s.tags.includes("break");
+      const isAllRoles    = s.roles.includes("all") || s.roles.includes("instructor");
+      if (!isFacultyOnly && !isBreak && isAllRoles && !s.noCandidateRating) {
+        sessions.push({ ...s, day });
+      }
+    });
+  });
+  return sessions;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────────────────────────────────────
+initFirebase();
+
+window.addEventListener("load", () => {
+  updateClock();
+  setInterval(updateClock, 15000);
+
+  // If no session param, redirect back to timetable
+  if (!preSession) { window.location.href = "timetable.html"; return; }
+
+  // Populate locked session header
+  const allSessions = getFeedbackSessions();
+  const sessionObj  = allSessions.find(s => s.id === preSession);
+  if (!sessionObj) { window.location.href = "timetable.html"; return; }
+  document.getElementById("sessionHeaderTitle").textContent =
+    `${sessionObj.start} — ${sessionObj.title}`;
+
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "index.html"; return; }
+    currentUser = user;
+
+    // Restricted 2026-09-07 per Jon: session feedback is for the teaching
+    // faculty who actually run groups (faculty/full-instructor, same
+    // audience session-quality.html already restricted to), plus the usual
+    // Director/Super-user override, plus (new) RMD Student Faculty and
+    // Senior Faculty — who see feedback across every group, not just one.
+    // Previously any signed-in user could open this page — no role check
+    // existed at all.
+    const email = user.email || "";
+    const [role, studentFac, seniorFac] = await Promise.all([
+      resolveRole(user.uid, email),
+      isStudentFaculty(email),
+      isSeniorFaculty(email)
+    ]);
+    seeAllGroups = (role === "director") || studentFac || seniorFac;
+    // Faculty and the Director can record any room. An Instructor Trainer
+    // (full-instructor) can record for their OWN room only (firestore.rules
+    // checks people.group matches), so not if they are also viewing all groups.
+    canRecordGateway = (role === "faculty" || role === "director" || (role === "full-instructor" && !seeAllGroups));
+    const allowed = ["faculty", "full-instructor", "director"];
+    if (!seeAllGroups && !(role && allowed.includes(role))) {
+      window.location.href = "timetable.html";
+      return;
+    }
+    // Load the faculty member's people doc to find their group (used only
+    // when seeAllGroups is false — an ordinary group-lead instructor).
+    try {
+      const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (snap.exists) currentUserDoc = { id: snap.id, ...snap.data() };
+    } catch (e) { console.warn("Could not load user doc:", e.message); }
+
+    // Work out which room this person is actually teaching. 2026-10-10: RMD
+    // Student/Senior Faculty used to be sent to EVERY room (83 candidates)
+    // because seeAllGroups skipped the room filter outright, even though they
+    // teach a room like any other faculty. Now everyone with an allocated
+    // room starts on their own room only. The Director still starts on all
+    // rooms, and Student/Senior Faculty (and the Director) can switch with
+    // the "Show all rooms" button. Someone with no room anywhere still sees
+    // everyone, with a note saying so, rather than a blank screen.
+    myRoomId = (await findMyRoom(email)) || currentUserDoc?.group || currentUserDoc?.room || null;
+    showAllRooms = (role === "director") ? true : (seeAllGroups ? !myRoomId : false);
+    updateRoomHeader();
+
+    await loadCandidates();
+    startGatewayListener();
+    onSessionChange();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Session select
+// ─────────────────────────────────────────────────────────────────────────────
+function populateSessionSelect() {
+  const sel = document.getElementById("sessionSelect");
+  const sessions = getFeedbackSessions();
+  sessions.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = `${s.day.charAt(0).toUpperCase() + s.day.slice(1)} ${s.start} — ${s.title}`;
+    sel.appendChild(opt);
+  });
+}
+
+function onSessionChange() {
+  // currentSession is set from URL param — no dropdown to read
+  if (!currentSession) {
+    window.location.href = "timetable.html";
+    return;
+  }
+  document.getElementById("submitBtn").disabled  = false;
+  document.getElementById("submitBtn").textContent = "Submit session feedback";
+  loadSessionRatings();
+  renderCandidates();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load candidates in this instructor's group
+// ─────────────────────────────────────────────────────────────────────────────
+// Which room is this person teaching? Same source the timetable's room banner
+// uses: the groups collection (written by Room Allocation), matched by email.
+async function findMyRoom(email) {
+  const em = String(email || "").toLowerCase();
+  if (!em) return null;
+  try {
+    const snap = await db.collection(COLLECTIONS.groups).get();
+    let rid = null;
+    snap.forEach(doc => {
+      if (rid) return;
+      const d = doc.data() || {};
+      const all = [...(d.instructors || []), ...(d.candidates || [])];
+      if (all.some(p => String(p.email || "").toLowerCase() === em)) rid = doc.id;
+    });
+    return rid;
+  } catch (e) { console.warn("Could not look up room:", e.message); return null; }
+}
+
+function updateRoomHeader() {
+  const sub = document.getElementById("topBarSub");
+  const wrap = document.getElementById("roomToggleWrap");
+  if (sub) {
+    if (showAllRooms) sub.textContent = "Traffic light rating - all rooms";
+    else if (myRoomId) sub.textContent = "Traffic light rating - Room " + myRoomId;
+    else sub.textContent = "Traffic light rating - all rooms (no room allocated to you yet)";
+  }
+  if (wrap) {
+    const canSwitch = (seeAllGroups || showAllRooms) && !!myRoomId;
+    wrap.style.display = canSwitch ? "" : "none";
+    const b = wrap.querySelector("button");
+    if (b) b.textContent = showAllRooms ? "Show only Room " + myRoomId : "Show all rooms";
+  }
+}
+
+async function toggleRooms() {
+  showAllRooms = !showAllRooms;
+  updateRoomHeader();
+  await loadCandidates();
+  renderCandidates();
+}
+
+async function loadCandidates() {
+  try {
+    // showAllRooms skips the room filter (Director by default; Student/Senior
+    // Faculty and the Director when they press "Show all rooms"). Everyone
+    // else is limited to the room they are allocated to (myRoomId).
+    const myGroup = showAllRooms ? null : myRoomId;
+
+    let query = db.collection(COLLECTIONS.people)
+      .where("role", "in", [ROLES.INSTRUCTOR, ROLES.ASSESSOR]);
+
+    if (myGroup) query = query.where("group", "==", myGroup);
+
+    const snap = await query.get();
+    myCandidates = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+
+    if (!myCandidates.length && !myGroup) {
+      // Demo fallback when no group assignment exists
+      myCandidates = [
+        { id: "demo1", name: "Demo Candidate A", stream: "Instructor Candidate", group: "Group 1" },
+        { id: "demo2", name: "Demo Candidate B", stream: "Instructor Candidate", group: "Group 1" },
+        { id: "demo3", name: "Demo Candidate C", stream: "Instructor Candidate", group: "Group 1" },
+        { id: "demo4", name: "Demo Candidate D", stream: "Assessor / Senior Instructor", group: "Group 1" }
+      ];
+    }
+  } catch (err) {
+    console.warn("Using demo candidates:", err.message);
+    myCandidates = [
+      { id: "demo1", name: "Demo Candidate A", stream: "Instructor Candidate", group: "Group 1" },
+      { id: "demo2", name: "Demo Candidate B", stream: "Instructor Candidate", group: "Group 1" },
+      { id: "demo3", name: "Demo Candidate C", stream: "Instructor Candidate", group: "Group 1" }
+    ];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Load any existing ratings for this session from Firestore
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadSessionRatings() {
+  if (!currentSession || !currentUser) return;
+  try {
+    const snap = await db.collection("session_feedback")
+      .where("sessionId",    "==", currentSession)
+      .where("submittedByUid", "==", currentUser.uid)
+      .get();
+
+    snap.docs.forEach(d => {
+      const data = d.data();
+      ratings[data.candidateId] = { ...data, firestoreId: d.id };
+    });
+    renderCandidates();
+  } catch (e) { /* no saved ratings yet */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Render candidate cards
+// ─────────────────────────────────────────────────────────────────────────────
+function renderCandidates() {
+  const wrap = document.getElementById("candidateWrap");
+
+  if (!myCandidates.length) {
+    wrap.innerHTML = `<div class="empty-state"><h3>No candidates found</h3><p>Your group assignment may not be set up yet. Contact the Course Director.</p></div>`;
+    return;
+  }
+
+  wrap.innerHTML = myCandidates.map(c => buildCard(c)).join("");
+  updateStatusBar();
+}
+
+function buildCard(c) {
+  const r        = ratings[c.id] || {};
+  const rating   = r.rating || "";
+  const comment  = r.comment || "";
+  const isStrong = !!r.strong;
+  const isWeak   = !!r.weak;
+
+  const cardClass = rating ? `candidate-card rating-${rating}` : "candidate-card";
+  const redVisible = rating === "red" ? "visible" : "";
+
+  return `
+    <div class="${cardClass}" id="card-${c.id}">
+      <div class="candidate-header">
+        <div class="candidate-name">
+          ${esc(c.name)}
+          <div class="candidate-sub">${esc(c.stream || c.group || "")}</div>
+        </div>
+        <div class="traffic-lights">
+          <button class="tl-btn ${rating === 'green' ? 'active-green' : ''}" title="On track"
+                  onclick="setRating('${c.id}','green')">🟢</button>
+          <button class="tl-btn ${rating === 'amber' ? 'active-amber' : ''}" title="Some concerns"
+                  onclick="setRating('${c.id}','amber')">🟡</button>
+          <button class="tl-btn ${rating === 'red'   ? 'active-red'   : ''}" title="Significant concern"
+                  onclick="setRating('${c.id}','red')">🔴</button>
+        </div>
+      </div>
+
+      <div class="candidate-sep"></div>
+
+      <div class="candidate-flags" style="padding:8px 14px;">
+        <button class="flag-btn ${isStrong ? 'active-strong' : ''}"
+                onclick="toggleFlag('${c.id}','strong')">⭐ Notably strong</button>
+        <button class="flag-btn ${isWeak ? 'active-weak' : ''}"
+                onclick="toggleFlag('${c.id}','weak')">⚠ Notably weak</button>
+      </div>
+
+      ${buildGatewayRow(c)}
+
+      <div class="comment-wrap ${redVisible}" id="comment-${c.id}">
+        <div class="comment-label">Comment required for a red rating or a Gateway FAIL *</div>
+        <textarea class="comment-textarea" id="text-${c.id}"
+          placeholder="Describe what you observed and what support was given"
+          oninput="onCommentInput('${c.id}')">${esc(comment)}</textarea>
+        <div class="comment-prompt">Be specific — this forms part of the faculty meeting record if concerns are escalated.</div>
+      </div>
+    </div>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gateway PASS/FAIL (Saturday BLS/AED group practice)
+// ─────────────────────────────────────────────────────────────────────────────
+function isGatewayCandidate(c) {
+  return currentSession === GATEWAY_SESSION_ID && c.role === ROLES.INSTRUCTOR;
+}
+
+function buildGatewayRow(c) {
+  if (!isGatewayCandidate(c)) return "";
+  const g       = gateway[c.id] || {};
+  const outcome = g.outcome || "";
+  const locked  = !!g.lockedAt;
+  const off     = (!canRecordGateway || locked) ? "disabled" : "";
+  let status;
+  if (!outcome)         status = "Not yet recorded. Deadline 12:00.";
+  else if (g.cdConfirmedBy && g.cdConfirmedOutcome === outcome) status = "Confirmed by Course Director.";
+  else if (locked)      status = "Locked. Ask the Course Director to unlock to change it.";
+  else                  status = "Recorded. Not yet confirmed by the Course Director. Press the same button again to clear it.";
+  if (!canRecordGateway) status = (outcome ? status + " " : "") + "View only for your role. Ask room faculty or the Course Director to record it.";
+  return `<div class="gateway-row" id="gw-${c.id}">
+      <div class="gateway-label">BLS/AED gateway<small>Competency check, pass by 12:00</small></div>
+      <button class="gw-btn pass ${outcome === "pass" ? "on" : ""}" ${off} title="${outcome === 'pass' ? 'Press again to clear' : ''}" onclick="setGateway('${c.id}','pass')">PASS</button>
+      <button class="gw-btn fail ${outcome === "fail" ? "on" : ""}" ${off} title="${outcome === 'fail' ? 'Press again to clear' : ''}" onclick="setGateway('${c.id}','fail')">FAIL</button>
+      <div class="gw-status">${esc(status)}</div>
+    </div>`;
+}
+
+function refreshGatewayRow(candidateId) {
+  const c  = myCandidates.find(x => x.id === candidateId);
+  const el = document.getElementById("gw-" + candidateId);
+  if (!c || !el) return;
+  el.outerHTML = buildGatewayRow(c);
+}
+
+function startGatewayListener() {
+  if (currentSession !== GATEWAY_SESSION_ID || !db) return;
+  if (gatewayUnsub) gatewayUnsub();
+  gatewayUnsub = db.collection("gateway_assessments").onSnapshot(snap => {
+    snap.docChanges().forEach(ch => {
+      if (ch.type === "removed") delete gateway[ch.doc.id];
+      else gateway[ch.doc.id] = ch.doc.data();
+    });
+    myCandidates.forEach(c => { if (isGatewayCandidate(c)) refreshGatewayRow(c.id); });
+  }, err => console.warn("Gateway listener:", err.message));
+}
+
+async function setGateway(candidateId, outcome) {
+  if (!canRecordGateway) { showToast("Your role can view but not record the gateway result", "red"); return; }
+  const c = myCandidates.find(x => x.id === candidateId);
+  if (!c || c.id.startsWith("demo")) { showToast("Demo candidate, nothing saved"); return; }
+  // Pressing the button that is already selected takes the result back to
+  // blank ("Not yet recorded"), so a mis-tap can be undone.
+  const clearing = (gateway[candidateId]?.outcome || "") === outcome;
+  // A gateway FAIL needs the reason written here, in the room, by the person
+  // recording it. It is stored as the red-rating comment on this page, and the
+  // Course Director's sign-off page reads it from there. Pressing FAIL with no
+  // comment opens the comment box instead of saving.
+  if (outcome === "fail" && !clearing) {
+    const rr = ratings[candidateId] || {};
+    if (!(rr.comment || "").trim()) {
+      if (rr.rating !== "red") setRating(candidateId, "red");
+      const box = document.getElementById("text-" + candidateId);
+      if (box) { box.focus(); box.scrollIntoView({ behavior: "smooth", block: "center" }); }
+      showToast("Write the reason for the FAIL in the comment box, then press FAIL again.", "red");
+      return;
+    }
+    if (rr.rating !== "red") setRating(candidateId, "red");
+  }
+  const ref = db.collection("gateway_assessments").doc(candidateId);
+  try {
+    // Re-read inside a transaction so a result the Course Director has just
+    // locked can never be overwritten from here.
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const cur  = snap.exists ? snap.data() : {};
+      if (cur.lockedAt) throw new Error("locked");
+      const newOutcome = clearing ? "" : outcome;
+      const payload = {
+        outcome:     newOutcome,
+        updatedAt:   firebase.firestore.FieldValue.serverTimestamp(),
+        assessorUid: currentUser.uid,
+        source:      "session-feedback"
+      };
+      // A changed result invalidates any earlier Course Director confirmation.
+      if (cur.outcome && cur.outcome !== newOutcome) {
+        payload.cdConfirmedAt = null; payload.cdConfirmedBy = null; payload.cdConfirmedOutcome = null;
+      }
+      tx.set(ref, payload, { merge: true });
+    });
+    if (clearing) { showToast(`${c.name}: gateway result cleared`); return; }
+    showToast(`${c.name}: gateway ${outcome === "pass" ? "PASS" : "FAIL"}`, outcome === "pass" ? "green" : "red");
+    if (outcome === "fail" && !(ratings[candidateId]?.rating)) {
+      showToast("Gateway FAIL recorded. Please also add a traffic light and comment for this candidate.", "red");
+    }
+  } catch (err) {
+    if (err.message === "locked") showToast("Locked by the Course Director. Ask them to unlock it.", "red");
+    else { console.error(err); showToast("Save failed. Check connection or permissions.", "red"); }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Set rating
+// ─────────────────────────────────────────────────────────────────────────────
+function setRating(candidateId, rating) {
+  const r = ratings[candidateId] || {};
+  // Toggle off if tapping the same button
+  const newRating = r.rating === rating ? "" : rating;
+
+  ratings[candidateId] = { ...r, rating: newRating };
+
+  // A flag is only valid alongside the colour it forces — manually picking a
+  // different colour drops the now-inconsistent flag (strong implies green,
+  // weak implies red).
+  if (newRating !== "green") ratings[candidateId].strong = false;
+  if (newRating !== "red")   ratings[candidateId].weak   = false;
+
+  // Show/hide comment box for red
+  const commentWrap = document.getElementById("comment-" + candidateId);
+  if (commentWrap) {
+    if (newRating === "red") {
+      commentWrap.classList.add("visible");
+    } else {
+      commentWrap.classList.remove("visible");
+    }
+  }
+
+  // Update card left border
+  const card = document.getElementById("card-" + candidateId);
+  if (card) {
+    card.className = newRating ? `candidate-card rating-${newRating}` : "candidate-card";
+  }
+
+  // Update traffic light buttons
+  ["green","amber","red"].forEach(col => {
+    const btn = card?.querySelector(`.tl-btn.active-${col}`) || null;
+    // Re-render buttons via partial update
+  });
+
+  // Re-render just this card's buttons (simpler than tracking DOM refs)
+  const header = card?.querySelector(".traffic-lights");
+  if (header) {
+    header.innerHTML = ["green","amber","red"].map((col, i) => {
+      const icons = ["🟢","🟡","🔴"];
+      const titles = ["On track","Some concerns","Significant concern"];
+      return `<button class="tl-btn ${newRating === col ? `active-${col}` : ''}" title="${titles[i]}"
+                onclick="setRating('${candidateId}','${col}')">${icons[i]}</button>`;
+    }).join("");
+  }
+
+  // Re-render flags too — a manual colour change may have just cleared one
+  const flagsEl = card?.querySelector(".candidate-flags");
+  if (flagsEl) {
+    const isStrong = !!ratings[candidateId].strong;
+    const isWeak   = !!ratings[candidateId].weak;
+    flagsEl.innerHTML = `
+      <button class="flag-btn ${isStrong ? 'active-strong' : ''}"
+              onclick="toggleFlag('${candidateId}','strong')">⭐ Notably strong</button>
+      <button class="flag-btn ${isWeak ? 'active-weak' : ''}"
+              onclick="toggleFlag('${candidateId}','weak')">⚠ Notably weak</button>`;
+  }
+
+  updateStatusBar();
+  scheduleAutoSave(candidateId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Toggle flag
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleFlag(candidateId, flag) {
+  const r = ratings[candidateId] || {};
+  const turningOn = !r[flag];
+  const other = flag === "strong" ? "weak" : "strong";
+
+  const next = { ...r, [flag]: turningOn };
+
+  // Strong and weak are mutually exclusive — they force opposite colours.
+  if (turningOn) next[other] = false;
+
+  // Notably strong forces green; notably weak forces red. Overrides
+  // whatever colour was already selected.
+  if (turningOn) next.rating = flag === "strong" ? "green" : "red";
+
+  ratings[candidateId] = next;
+
+  // Re-render the whole card — rating buttons, flags, border colour, and
+  // the comment box (which must appear/hide based on the forced red rating).
+  const candidate = myCandidates.find(c => c.id === candidateId);
+  const card = document.getElementById("card-" + candidateId);
+  if (card && candidate) card.outerHTML = buildCard(candidate);
+
+  updateStatusBar();
+  scheduleAutoSave(candidateId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Comment input
+// ─────────────────────────────────────────────────────────────────────────────
+function onCommentInput(candidateId) {
+  const text = document.getElementById("text-" + candidateId)?.value || "";
+  ratings[candidateId] = { ...(ratings[candidateId] || {}), comment: text };
+  scheduleAutoSave(candidateId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-save (debounced)
+// ─────────────────────────────────────────────────────────────────────────────
+function scheduleAutoSave(candidateId) {
+  clearTimeout(saveDebounce[candidateId]);
+  saveDebounce[candidateId] = setTimeout(() => saveSingle(candidateId), 1200);
+  setSaveIndicator("saving");
+}
+
+// Saves are queued per candidate so a quick colour-then-reset can never race
+// the first write (which is what gives the doc its id).
+const saveChain = {};
+function saveSingle(candidateId) {
+  saveChain[candidateId] = (saveChain[candidateId] || Promise.resolve())
+    .catch(() => {})
+    .then(() => saveSingleNow(candidateId));
+  return saveChain[candidateId];
+}
+
+async function saveSingleNow(candidateId) {
+  if (!currentUser || !currentSession) return;
+  const r = ratings[candidateId];
+  if (!r) return;
+  // Nothing chosen and nothing saved before: nothing to do. If a rating WAS
+  // saved before and has now been reset, fall through and clear it so it
+  // disappears from the Course Director's Feedback tab (faculty cannot delete
+  // documents, so the stored rating is blanked instead).
+  if (!r.rating && !r.firestoreId) return;
+
+  const candidate = myCandidates.find(c => c.id === candidateId);
+  const cleared = !r.rating;
+  const payload = {
+    sessionId:       currentSession,
+    candidateId,
+    candidateName:   candidate?.name || "",
+    candidateGroup:  candidate?.group || candidate?.room || "",
+    rating:          cleared ? "" : r.rating,
+    comment:         cleared ? "" : (r.comment || ""),
+    strong:          cleared ? false : !!r.strong,
+    weak:            cleared ? false : !!r.weak,
+    submittedByUid:  currentUser.uid,
+    savedAt:         firebase.firestore.FieldValue.serverTimestamp(),
+    // Red raises the Course Director alert; any other state (including a
+    // reset) takes it down again.
+    cdAlert:         r.rating === "red"
+  };
+
+  try {
+    const docRef = r.firestoreId
+      ? db.collection("session_feedback").doc(r.firestoreId)
+      : db.collection("session_feedback").doc();
+
+    await docRef.set(payload, { merge: true });
+    ratings[candidateId] = { ...ratings[candidateId], firestoreId: docRef.id };
+
+    setSaveIndicator("saved");
+    setTimeout(() => setSaveIndicator(""), 3000);
+  } catch (err) {
+    console.error("Auto-save failed:", err.message);
+    setSaveIndicator("");
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Submit all (validate + confirm)
+// ─────────────────────────────────────────────────────────────────────────────
+async function submitAll() {
+  // Validate: red ratings must have a comment
+  const missing = myCandidates.filter(c => {
+    const r = ratings[c.id];
+    return r?.rating === "red" && !(r.comment || "").trim();
+  });
+
+  if (missing.length) {
+    showToast(`Add a comment for ${missing.map(c => c.name.split(" ")[0]).join(", ")} (red rating)`, "red");
+    // Scroll to first missing
+    document.getElementById("comment-" + missing[0].id)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+
+  const rated = myCandidates.filter(c => ratings[c.id]?.rating).length;
+  if (rated === 0) {
+    showToast("Rate at least one candidate before submitting");
+    return;
+  }
+
+  // Save all then confirm
+  const btn = document.getElementById("submitBtn");
+  btn.disabled    = true;
+  btn.textContent = "Submitting…";
+
+  try {
+    const saves = myCandidates
+      .filter(c => ratings[c.id]?.rating)
+      .map(c => saveSingle(c.id));
+    await Promise.all(saves);
+
+    showToast(`Feedback submitted for ${rated} candidate${rated !== 1 ? "s" : ""}`, "green");
+    btn.textContent = "✓ Submitted";
+  } catch (err) {
+    showToast("Submit failed — check connection", "red");
+    btn.disabled    = false;
+    btn.textContent = "Submit session feedback";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function updateStatusBar() {
+  const rated = myCandidates.filter(c => ratings[c.id]?.rating).length;
+  document.getElementById("ratedCount").textContent = rated;
+  document.getElementById("ratedLabel").textContent  = `of ${myCandidates.length} candidate${myCandidates.length !== 1 ? "s" : ""} rated`;
+}
+
+function setSaveIndicator(state) {
+  const el = document.getElementById("saveIndicator");
+  el.className = "auto-save-indicator" + (state ? " " + state : "");
+  el.textContent = state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : "Changes save automatically";
+}
+
+let toastTimer;
+function showToast(msg, type) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast show" + (type ? " " + type : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3000);
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById("topBarTime").textContent =
+    String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0");
+}
+
+function esc(s) {
+  return (s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+</script>
+</body>
+</html>

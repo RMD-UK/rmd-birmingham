@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Current Course — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 30px; }
+
+    /* ── Top bar ── */
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:100; box-shadow:0 2px 6px rgba(0,0,0,.3); flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar-sub { font-size:11px; font-weight:400; opacity:.65; display:block; }
+    .top-bar-back { color:rgba(255,255,255,.6); text-decoration:none; font-size:12px; }
+    .top-bar-back:hover { color:#fff; }
+
+    /* ── Course picker ── */
+    .course-bar { background:#fff; border-bottom:2px solid #e0e4ee; padding:12px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .course-chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip { appearance:none; background:#f4f6fb; border:1.5px solid #d0d5e0; border-radius:10px; padding:7px 14px; font-family:var(--font); font-size:14px; font-weight:800; color:var(--rmd-navy); cursor:pointer; text-align:left; line-height:1.2; }
+    .chip:hover { border-color:var(--rmd-blue); }
+    .chip.active { background:var(--rmd-navy); border-color:var(--rmd-navy); color:#fff; }
+    .chip-sub { display:block; font-size:10px; font-weight:600; opacity:.7; margin-top:2px; text-transform:none; }
+    .chip-now { display:inline-block; background:#1a8a3c; color:#fff; border-radius:8px; padding:0 6px; font-size:9px; font-weight:800; letter-spacing:.5px; margin-left:6px; vertical-align:1px; }
+    .room-col.highlight { outline:3px solid #f5a623; outline-offset:2px; }
+    .view-only-pill { margin-left:auto; background:#eef1f8; color:#5a6b8c; font-size:11px; font-weight:700; padding:4px 10px; border-radius:20px; }
+
+    /* ── Stats ── */
+    .stats-strip { display:grid; grid-template-columns:repeat(3,1fr); background:#fff; border-bottom:1px solid #e8edf2; }
+    .stat-cell { text-align:center; padding:10px 6px; border-right:1px solid #e8edf2; }
+    .stat-cell:last-child { border-right:none; }
+    .stat-cell .num { font-size:22px; font-weight:700; color:var(--rmd-navy); line-height:1; }
+    .stat-cell .lbl { font-size:10px; color:var(--rmd-muted); margin-top:2px; text-transform:uppercase; letter-spacing:.5px; }
+    .stat-cell.unassigned .num { color:#c17a00; }
+
+    .no-course { padding:60px 20px; text-align:center; color:#8893b0; font-size:15px; }
+
+    /* ── Rooms ── */
+    .rooms-grid { padding:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
+    .room-col { background:#fff; border:1.5px solid #dde2ed; border-radius:10px; overflow:hidden; }
+    .room-head { background:var(--rmd-navy); color:#fff; padding:8px 10px; }
+    .room-head-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
+    .room-id { font-size:15px; font-weight:800; letter-spacing:.5px; }
+    .room-count { font-size:11px; opacity:.55; }
+    .room-body { padding:5px; }
+    .pcard { border:1.5px solid #dde2ed; border-radius:6px; padding:6px 8px; margin-bottom:3px; font-size:13px; font-family:var(--font); display:flex; align-items:center; gap:8px; background:#f7f9fc; }
+    .pcard.highlight { outline:3px solid #f5a623; outline-offset:1px; }
+    .pcard-main { flex:1; min-width:0; display:flex; flex-direction:column; }
+    .pcard-name { overflow:hidden; text-overflow:ellipsis; color:#1f2540; }
+    .pcard-sub { font-size:11px; color:#8893b0; margin-top:1px; }
+    .role-pip { font-size:10px; font-weight:700; padding:2px 5px; border-radius:4px; flex-shrink:0; }
+    .pip-cand { background:#e8f0fe; color:#1a56a8; }
+    .pip-inst { background:#fef3c7; color:#92400e; }
+    .room-sec-label { font-size:10px; font-weight:700; color:#aab0c8; text-transform:uppercase; padding:3px 3px 1px; letter-spacing:.5px; }
+    .room-empty { text-align:center; color:#c8cede; font-size:12px; padding:14px 8px; }
+
+    /* ── Unassigned ── */
+    .unassigned-wrap { margin:0 12px 12px; }
+    .unassigned-head { font-size:13px; font-weight:800; color:var(--rmd-navy); margin:14px 0 6px; }
+    .unassigned-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:6px; }
+
+    /* ── Lecture presenters (Provider programme) ── */
+
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+    #authMsg { font-size:15px; opacity:.7; }
+
+    /* ── Candidate search (2026-10-03, Jon: a quick lookup for faculty/
+       directors who already have an account, so they don't have to pick a
+       course first just to find one candidate's room) ── */
+    .search-bar { background:#fff; border-bottom:2px solid #e0e4ee; padding:12px 14px; position:relative; }
+    .search-bar input { width:100%; padding:10px 12px; border:1.5px solid #d0d5e0; border-radius:7px; font-size:14px; font-family:var(--font); }
+    .search-results { position:absolute; left:14px; right:14px; top:100%; background:#fff; border:1.5px solid #d0d5e0; border-top:none; border-radius:0 0 8px 8px; box-shadow:0 4px 10px rgba(0,0,0,.12); max-height:280px; overflow-y:auto; z-index:150; }
+    .search-result { padding:10px 12px; border-top:1px solid #eef1f8; cursor:pointer; font-size:13px; }
+    .search-result:first-child { border-top:none; }
+    .search-result:hover { background:#f4f6fb; }
+    .search-result .sr-name { font-weight:700; color:var(--rmd-navy); }
+    .search-result .sr-meta { font-size:11px; color:#8893b0; margin-top:1px; }
+  </style>
+</head>
+<body>
+
+<div id="authOverlay" class="auth-overlay">
+  <div style="font-size:36px">🏫</div>
+  <div id="authMsg">Checking access…</div>
+</div>
+
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">
+    Manage Current Course
+    <span class="top-bar-sub">RMD Birmingham — Stage 1 Provider Courses</span>
+  </div>
+  <a class="top-bar-back" href="member-menu.html">← Menu</a>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="candSearch" placeholder="Find a candidate or instructor by name…" autocomplete="off" oninput="onSearchInput()">
+  <div id="searchResults" class="search-results" style="display:none"></div>
+</div>
+
+<div class="course-bar">
+  <div id="courseChips" class="course-chips"></div>
+  <span class="view-only-pill">Edit view (in progress)</span>
+</div>
+
+<div id="filterBar" class="filter-bar" style="display:none"></div>
+
+<div id="statsStrip" class="stats-strip" style="display:none">
+  <div class="stat-cell"><div class="num" id="statCand">0</div><div class="lbl">Candidates</div></div>
+  <div class="stat-cell"><div class="num" id="statAssigned">0</div><div class="lbl">In a room</div></div>
+  <div class="stat-cell unassigned"><div class="num" id="statUnassigned">0</div><div class="lbl">Unassigned</div></div>
+</div>
+
+<div id="noCourse" class="no-course">Loading courses…</div>
+
+<div id="rosterUI" style="display:none">
+  <div id="roomsGrid" class="rooms-grid"></div>
+  <div id="unassignedWrap" class="unassigned-wrap" style="display:none">
+    <div class="unassigned-head">Not yet assigned to a room</div>
+    <div id="unassignedGrid" class="unassigned-grid"></div>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/candidate-lookup.js"></script>
+<script src="js/fuzzy-search.js"></script>
+<script src="js/roster-tags.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Evening Course Rosters — read-only view for RMD Student/Senior Faculty
+// (and Director). Built 2026-09-08 per Jon: Student/Senior Faculty now have
+// firestore.rules read access to stage1_candidates and course_allocations,
+// but admin-course-room-allocation.html — the only page that previously read
+// either collection — is entirely wrapped in requireDirector(), so that
+// access had no page behind it. This page is deliberately a SEPARATE,
+// stripped-down view rather than a "read-only mode" bolted onto the full
+// editor: the editor has drag-and-drop, imports, resets and a save action,
+// and disabling every one of those correctly (and keeping them disabled)
+// is a bigger risk of accidentally leaving a write path open than building
+// a small page with no write code in it at all. No candidate data is
+// editable here — no drag/drop, no buttons beyond the course picker.
+// ─────────────────────────────────────────────────────────────────────────────
+const ROOMS = STAGE1_TEACHING_ROOMS;
+
+let allCandidates  = [];
+let courseDates    = {};   // course name -> date, from config/stage1_course_dates
+let allInstructors = [];
+let allAllocDocs   = [];
+let defaultAllocDoc = null;
+let currentCourse = "";
+
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+}
+
+// Assessment room/slot summary for a candidate card or search result
+// (2026-10-03, Jon: "useful to have it as look up function within evening
+// course rosters page", for the new assessment-allocation feature).
+// Mirrors lookupCandidateRoom's own firstTimeAssessment !== false check so
+// staff see the same "managed separately" framing candidates do.
+function assessmentMetaStr(c) {
+  if (c.assessmentAbsent === true) return "Assessment: marked unable to attend";
+  if (c.firstTimeAssessment === false) return "Assessment: repeat — managed separately by faculty";
+  if (c.assessmentRoom && c.assessmentSlot) return `Assessment: ${c.assessmentRoom} @ ${c.assessmentSlot}`;
+  return "Assessment: not yet allocated";
+}
+
+initFirebase();
+
+window.addEventListener("load", () => {
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "signin.html"; return; }
+
+    const email = user.email || "";
+    const [role, studentFac, seniorFac] = await Promise.all([
+      resolveRole(user.uid, email),
+      isStudentFaculty(email),
+      isSeniorFaculty(email)
+    ]);
+    if (role !== "director" && !studentFac && !seniorFac) {
+      const msg = document.getElementById("authMsg");
+      if (msg) msg.textContent = "RMD Senior/Student Faculty and Directors only.";
+      setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+      return;
+    }
+
+    document.getElementById("authOverlay").style.display = "none";
+    await loadData();
+    populateCourseChips();
+  });
+});
+
+async function loadData() {
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) { console.warn("stage1_candidates load failed:", e.message); }
+
+  try {
+    const cd = await db.collection("config").doc("stage1_course_dates").get();
+    courseDates = RMD_CAND_LOOKUP.dateMap(cd.exists ? cd.data().courses : []);
+  } catch (e) { console.warn("course dates load failed:", e.message); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("role", "==", ROLES.INSTRUCTOR).get();
+    allInstructors = snap.docs.map(d => {
+      const data = d.data();
+      const surname = data.passportLastName || (data.name ? data.name.trim().split(/\s+/).pop() : "");
+    const first = data.preferredName ? data.preferredName.trim().split(/\s+/)[0] : null;
+    const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || d.id);
+    return { uid: d.id, name };
+  });
+  } catch (e) { console.warn("instructor load failed:", e.message); }
+
+  try {
+    const snap = await db.collection(COLLECTIONS.courseAllocations).get();
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    defaultAllocDoc = docs.find(d => d.id === "_default") || null;
+    allAllocDocs = docs.filter(d => d.id !== "_default");
+  } catch (e) { console.warn("course_allocations load failed:", e.message); }
+}
+
+// Every course that has a date set or at least one candidate, in natural
+// order (Course 1, Course 2 ... Course 10).
+function courseList() {
+  const set = new Set(Object.keys(courseDates));
+  allCandidates.forEach(c => { if (c.course) set.add(c.course); });
+  return Array.from(set).sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+}
+
+function slugify(s) {
+  return (s || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "course";
+}
+
+// Today in UK time as YYYY-MM-DD.
+function todayIso() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+function addDaysIso(iso, n) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
+  if (!m) return null;
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n)).toISOString().slice(0, 10);
+}
+
+// A course "is on" from its first session (exam night minus 14 days) to exam
+// night itself. The stored course date is the exam night.
+function isCourseOn(course, today) {
+  const exam = courseDates[course];
+  if (!exam) return false;
+  return today >= addDaysIso(exam, -14) && today <= exam;
+}
+
+// Default = the course running today; between courses, the next one to start;
+// after the last one, the last one.
+function defaultCourse(courses) {
+  const today = todayIso();
+  const on = courses.find(c => isCourseOn(c, today));
+  if (on) return on;
+  const dated = courses.filter(c => courseDates[c]).sort((a, b) => courseDates[a] < courseDates[b] ? -1 : 1);
+  const next = dated.find(c => courseDates[c] >= today);
+  if (next) return next;
+  if (dated.length) return dated[dated.length - 1];
+  return courses[0] || "";
+}
+
+function populateCourseChips() {
+  const courses = courseList();
+  const wrap = document.getElementById("courseChips");
+  if (!courses.length) {
+    wrap.innerHTML = "";
+    document.getElementById("noCourse").textContent = "No Stage 1 courses have candidates imported yet.";
+    return;
+  }
+  const today = todayIso();
+  wrap.innerHTML = courses.map(c => {
+    const d = RMD_CAND_LOOKUP.formatDate(courseDates[c]);
+    const now = isCourseOn(c, today) ? `<span class="chip-now">NOW</span>` : "";
+    return `<button type="button" class="chip" data-course="${esc(c)}" onclick="selectCourse(this.dataset.course)">${esc(c)}${now}${d ? `<span class="chip-sub">Exam ${esc(d)}</span>` : ""}</button>`;
+  }).join("");
+  selectCourse(defaultCourse(courses));
+}
+
+function instructorName(uid) {
+  const i = allInstructors.find(x => x.uid === uid);
+  return i ? i.name : uid;
+}
+
+// Instructor team per room for one course: its own allocation if it has one,
+// otherwise the default allocation.
+function teamsFor(course) {
+  const own = allAllocDocs.find(d => d.id === slugify(course) || d.course === course);
+  const teams = {};
+  ROOMS.forEach(r => { teams[r] = []; });
+  // A course whose saved team is completely empty (saving candidate rooms writes
+  // one) falls back to the shared default team, same as a course with no doc.
+  const hasMembers = t => !!t && Object.values(t).some(a => (a || []).length);
+  const src = own && hasMembers(own.instructorTeams) ? own.instructorTeams
+    : (defaultAllocDoc && defaultAllocDoc.instructorTeams ? defaultAllocDoc.instructorTeams : null);
+  if (src) ROOMS.forEach(r => { teams[r] = (src[r] || []).slice(); });
+  return teams;
+}
+
+// Same look as the Instructor Weekend room allocation: a role tag, the name,
+// and nothing else but the assessment slot. Email and degree are
+// deliberately not shown on this view-only page.
+function personCard(name, kind, id, sub, cand) {
+  const pip = kind === "instr"
+    ? `<span class="role-pip pip-inst">Instr</span>`
+    : `<span class="role-pip pip-cand">Cand</span>`;
+  const tagHtml = cand ? (RMD_TAGS.toggles(cand)) : "";
+  return `<div class="pcard"${id ? ` data-cid="${esc(id)}"` : ""}>${pip}<div class="pcard-main"><span class="pcard-name">${esc(name)}</span>${sub ? `<span class="pcard-sub">${esc(sub)}</span>` : ""}</div>${tagHtml ? `<span class="pcard-tags">${tagHtml}</span>` : ""}</div>`;
+}
+
+function selectCourse(course) {
+  document.querySelectorAll("#courseChips .chip").forEach(b => b.classList.toggle("active", b.dataset.course === course));
+  document.getElementById("statsStrip").style.display = course ? "" : "none";
+  document.getElementById("noCourse").style.display = course ? "none" : "";
+  document.getElementById("rosterUI").style.display = course ? "" : "none";
+  if (!course) return;
+
+  const candidates = allCandidates.filter(c => c.course === course).map(c => ({
+    id: c.id,
+    name: c.name || "(no name)",
+    email: c.email || "",
+    degree: c.degree || "",
+    room: ROOMS.includes(c.room) ? c.room : null,
+    assessmentRoom: c.assessmentRoom || null,
+    assessmentSlot: c.assessmentSlot || null,
+    firstTimeAssessment: c.firstTimeAssessment,
+    assessmentAbsent: c.assessmentAbsent === true,
+    rap: c.rap === true,
+    twoPlusAssessments: c.twoPlusAssessments === true
+  }));
+
+  const teams = teamsFor(course);
+
+  // Filters (degree course and tags): shared bar from js/roster-tags.js.
+  currentCourse = course;
+  const filt = RMD_TAGS.renderFilterBar(document.getElementById("filterBar"), candidates, () => selectCourse(currentCourse));
+  const shownCands = candidates.filter(filt.passes);
+
+  const assignedCount = candidates.filter(c => c.room).length;
+  document.getElementById("statCand").textContent = candidates.length;
+  document.getElementById("statAssigned").textContent = assignedCount;
+  document.getElementById("statUnassigned").textContent = candidates.length - assignedCount;
+
+
+  // Only show rooms that actually have a candidate or an instructor team —
+  // no point showing all 19 rooms empty for a small course.
+  const roomsWithContent = ROOMS.filter(rid => filt.active
+    ? shownCands.some(c => c.room === rid)
+    : (candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length)));
+
+  // Courses whose instructor teams have not been saved yet (Course Room &
+  // Instructor Allocation) show candidates only; say so rather than looking broken.
+  const teamTotal = ROOMS.reduce((n, r) => n + ((teams[r] || []).length), 0);
+  const noTeamNote = (!teamTotal && candidates.length)
+    ? `<div class="no-course" style="grid-column:1/-1;background:#FFF1D6;color:#8A5200;border-radius:12px;padding:12px 14px;text-align:left;font-weight:600;">No instructor teams have been allocated to ${esc(course)} yet, so only candidates are shown. Instructors appear here once teams are saved for this course on Course Room &amp; Instructor Allocation.</div>`
+    : "";
+  document.getElementById("roomsGrid").innerHTML = noTeamNote + (roomsWithContent.length
+    ? roomsWithContent.map(rid => {
+        const inRoom = shownCands.filter(c => c.room === rid);
+        const instrs = (teams[rid] || []);
+        const total = inRoom.length + instrs.length;
+        return `<div class="room-col" data-room="${esc(rid)}">
+                  <div class="room-head">
+                    <div class="room-head-row"><span class="room-id">${esc(rid)}</span><span class="room-count">${total} assigned</span></div>
+                  </div>
+                  <div class="room-body">
+                    ${instrs.length ? `<div class="room-sec-label">Instructors</div>${instrs.map(uid => personCard(instructorName(uid), "instr", "", "")).join("")}` : ""}
+                    ${inRoom.length ? `<div class="room-sec-label">Candidates</div>${inRoom.map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c), c)).join("")}` : ""}
+                  </div>
+                </div>`;
+      }).join("")
+    : `<div class="no-course" style="grid-column:1/-1">${filt.active ? "No candidates on this course match the filters." : "No rooms have been set up for this course yet."}</div>`);
+
+  const unassigned = shownCands.filter(c => !c.room);
+  document.getElementById("unassignedWrap").style.display = unassigned.length ? "" : "none";
+  document.getElementById("unassignedGrid").innerHTML = unassigned
+    .map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c), c))
+    .join("");
+}
+
+// Candidate search — looks across every course at once (allCandidates
+// already holds everyone, loaded once at startup), so faculty can find
+// someone without first knowing which course they're on. Picking a result
+// selects that course, renders it, then scrolls to and briefly highlights
+// the matching card — same card whether the candidate has a room yet or is
+// still in the "not yet assigned" list below the grid.
+function onSearchInput() {
+  const q = document.getElementById("candSearch").value.trim().toLowerCase();
+  const resultsEl = document.getElementById("searchResults");
+  if (q.length < 2) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; return; }
+
+  const L = RMD_CAND_LOOKUP;
+  const candMatches = allCandidates.filter(c => L.matches(c, q)).slice(0, 15);
+
+  // Instructors: one result per course they are placed in.
+  // Only courses with their own saved allocation count here; the shared
+  // default team would otherwise list every instructor on every course.
+  const hasOwn = c => allAllocDocs.some(d => d.id === slugify(c) || d.course === c);
+  let courses = courseList().filter(hasOwn);
+  if (!courses.length) courses = courseList();
+  const teamsByCourse = {};
+  courses.forEach(c => { teamsByCourse[c] = teamsFor(c); });
+  const instrRows = [];
+  allInstructors.filter(i => L.matches({ name: i.name }, q)).slice(0, 10).forEach(i => {
+    const placed = [];
+    courses.forEach(c => {
+      ROOMS.forEach(r => { if ((teamsByCourse[c][r] || []).includes(i.uid)) placed.push({ course: c, room: r }); });
+    });
+    if (!placed.length) instrRows.push({ i, course: null, room: null });
+    placed.forEach(pl => instrRows.push({ i, course: pl.course, room: pl.room }));
+  });
+
+  if (!candMatches.length && !instrRows.length) {
+    resultsEl.innerHTML = `<div class="search-result" style="color:#8893b0;cursor:default">No match</div>`;
+    resultsEl.style.display = "block";
+    return;
+  }
+
+  const instrHtml = instrRows.slice(0, 15).map(r => {
+    const where = r.course
+      ? `${esc(L.courseText({ course: r.course }, courseDates))} - Room ${esc(r.room)}`
+      : "Not placed in a room on any course yet";
+    const click = r.course ? ` onclick="jumpToInstructor('${esc(r.course)}','${esc(r.room)}')"` : ` style="cursor:default"`;
+    return `<div class="search-result"${click}>
+              <div class="sr-name">${esc(r.i.name)} <span style="font-weight:600;color:#8893b0;font-size:11px;">Instructor</span></div>
+              <div class="sr-meta">${where}</div>
+            </div>`;
+  }).join("");
+
+  const candHtml = candMatches.map(c => {
+    const where = c.course ? `${esc(L.courseText(c, courseDates))} - ${esc(L.roomText(c))}` : "Not on a course yet";
+    return `<div class="search-result" onclick="jumpToCandidate('${esc(c.id)}')">
+              <div class="sr-name">${esc(c.name || "(no name)")} <span style="font-weight:600;color:#8893b0;font-size:11px;">Candidate</span> ${RMD_TAGS.badges(c)}</div>
+              <div class="sr-meta">${where}</div>
+              <div class="sr-meta">${esc(c.course ? L.assessmentText(c) : "")}</div>
+            </div>`;
+  }).join("");
+
+  resultsEl.innerHTML = instrHtml + candHtml;
+  resultsEl.style.display = "block";
+}
+
+function jumpToInstructor(course, room) {
+  document.getElementById("searchResults").style.display = "none";
+  document.getElementById("candSearch").value = "";
+  selectCourse(course);
+  setTimeout(() => {
+    const col = document.querySelector(`.room-col[data-room="${CSS.escape(room)}"]`);
+    if (col) {
+      col.scrollIntoView({ behavior: "smooth", block: "center" });
+      col.classList.add("highlight");
+      setTimeout(() => col.classList.remove("highlight"), 3000);
+    }
+  }, 50);
+}
+
+function jumpToCandidate(id) {
+  const c = allCandidates.find(x => x.id === id);
+  document.getElementById("searchResults").style.display = "none";
+  document.getElementById("candSearch").value = c ? (c.name || "") : "";
+  if (!c || !c.course) return;
+
+  selectCourse(c.course);
+
+  setTimeout(() => {
+    const card = document.querySelector(`[data-cid="${CSS.escape(id)}"]`);
+    if (card) {
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      card.classList.add("highlight");
+      setTimeout(() => card.classList.remove("highlight"), 3000);
+    }
+  }, 50);
+}
+
+// Tag buttons on candidate cards: tap to switch RAP / two-plus attempt on or off.
+// Saves straight to the candidate (same fields as Course Allocation "Set tags").
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest && e.target.closest("[data-rtag]");
+  if (!btn) return;
+  const id = btn.dataset.cid, key = btn.dataset.rtag;
+  const c = allCandidates.find(x => x.id === id);
+  if (!c || btn.dataset.busy) return;
+  btn.dataset.busy = "1";
+  const next = c[key] !== true;
+  const def = RMD_TAGS.DEFS.find(d => d.key === key);
+  c[key] = next;
+  selectCourse(currentCourse);
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ [key]: next });
+    RMD_TAGS.toast(`${def.short} ${next ? "added to" : "removed from"} ${c.name || "candidate"}`);
+  } catch (err) {
+    c[key] = !next;
+    selectCourse(currentCourse);
+    RMD_TAGS.toast("Could not save the tag: " + (err.message || err), true);
+  }
+});
+
+document.addEventListener("click", (e) => {
+  const bar = document.querySelector(".search-bar");
+  if (bar && !bar.contains(e.target)) {
+    document.getElementById("searchResults").style.display = "none";
+  }
+});
+
+</script>
+</body>
+</html>

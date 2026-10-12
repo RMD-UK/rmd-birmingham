@@ -276,6 +276,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/draft-guard.js?v=20261010"></script>
 <script src="js/programme-data.js?v=202610081330"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
@@ -392,6 +393,35 @@ function onSessionChange() {
   refreshSession();
 }
 
+// Local draft (2026-10-10, per Jon: reloading wiped what faculty had entered). Every change is
+// copied to this device and kept until the form is submitted.
+function sqDraftKey() { return "rmd_draft_sq_" + (currentUser ? currentUser.uid : "x") + "_" + currentSession; }
+function sqWriteDraft() {
+  if (!currentSession) return;
+  const d = { scale1: answers.scale1, scale2: answers.scale2, yn3: answers.yn3,
+    resourceIssues: document.getElementById("resourceIssues").value,
+    otherComments: document.getElementById("otherComments").value, ts: Date.now() };
+  const empty = !d.scale1 && !d.scale2 && !d.yn3 && !d.resourceIssues && !d.otherComments;
+  if (empty) { DraftGuard.clear(sqDraftKey()); DraftGuard.markDirty("form", false); }
+  else { DraftGuard.write(sqDraftKey(), d); DraftGuard.markDirty("form", true); }
+}
+let sqRestoring = false;
+function sqRestoreDraft() {
+  const d = DraftGuard.read(sqDraftKey());
+  if (!d) return false;
+  sqRestoring = true;
+  if (d.scale1) setScale(1, d.scale1);
+  if (d.scale2) setScale(2, d.scale2);
+  if (d.yn3) setYN(3, d.yn3);
+  if (d.resourceIssues) document.getElementById("resourceIssues").value = d.resourceIssues;
+  if (d.otherComments) document.getElementById("otherComments").value = d.otherComments;
+  sqRestoring = false;
+  DraftGuard.markDirty("form", true);
+  DraftGuard.banner("sqDraftBanner", "submittedNotice", "Restored what you had entered on this device. It has not been submitted yet: press Submit when you are ready.", "warn");
+  return true;
+}
+document.addEventListener("input", e => { if (e.target && (e.target.id === "resourceIssues" || e.target.id === "otherComments")) sqWriteDraft(); });
+
 function clearAnswers() {
   answers.scale1 = 0; answers.scale2 = 0; answers.yn3 = "";
   document.querySelectorAll(".scale-btn").forEach(b => b.className = "scale-btn");
@@ -424,15 +454,23 @@ async function refreshSession() {
       document.getElementById("submittedNotice").classList.toggle("visible", !snap.empty);
       if (!snap.empty) {
         const prev = snap.docs[0].data();
+        const subMs = prev.submittedAt && prev.submittedAt.toMillis ? prev.submittedAt.toMillis() : 0;
+        document.getElementById("submittedNotice").textContent = "\u2713 You have submitted feedback for this session" + (subMs ? " (" + DraftGuard.hhmm(subMs) + ")" : "") + ". You can update it by submitting again.";
         const overall = prev.overall || prev.delivery;   // "delivery" = earlier field name
+        sqRestoring = true;   // prefilling from the earlier submission is not a new edit
         if (overall)            setScale(1, overall);
         if (prev.objectives)    setScale(2, prev.objectives);
         if (prev.resourceIssue) setYN(3, prev.resourceIssue);
         if (prev.resourceNotes) document.getElementById("resourceIssues").value = prev.resourceNotes;
         if (prev.otherComments) document.getElementById("otherComments").value  = prev.otherComments;
+        sqRestoring = false;
       }
-    } catch (e) { /* nothing saved yet */ }
+    } catch (e) {
+      console.error("Could not load earlier feedback:", e.code, e.message);
+      DraftGuard.banner("sqLoadErr", "submittedNotice", "Could not check whether you have already submitted (" + (e.code || "error") + "). You can still submit.", "err");
+    }
   }
+  sqRestoreDraft();   // anything entered but not yet submitted wins over the earlier submission
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -440,6 +478,7 @@ async function refreshSession() {
 // ─────────────────────────────────────────────────────────────────────────────
 function setScale(qNum, val) {
   answers["scale" + qNum] = val;
+  if (!sqRestoring) setTimeout(sqWriteDraft, 0);
   const wrap = document.getElementById("scale-" + qNum);
   wrap.querySelectorAll(".scale-btn").forEach((btn, i) => {
     btn.className = "scale-btn" + (i + 1 === val ? " sel-" + val : "");
@@ -449,6 +488,7 @@ function setScale(qNum, val) {
 
 function setYN(qNum, val) {
   answers["yn" + qNum] = val;
+  if (!sqRestoring) setTimeout(sqWriteDraft, 0);
   const wrap = document.getElementById("yn-" + qNum);
   if (wrap) {
     wrap.querySelectorAll(".yn-btn").forEach(btn => {
@@ -511,6 +551,9 @@ async function submitFeedback() {
       await db.collection("session_quality").add(payload);
     }
 
+    DraftGuard.clear(sqDraftKey());
+    DraftGuard.markDirty("form", false);
+    DraftGuard.banner("sqDraftBanner", "submittedNotice", "");
     document.querySelector(".wrap").querySelectorAll(".q-card").forEach(c => c.style.display = "none");
     document.getElementById("submittedNotice").style.display = "none";
     document.getElementById("formErr").classList.remove("visible");
@@ -519,7 +562,8 @@ async function submitFeedback() {
   } catch (err) {
     btn.disabled    = false;
     btn.textContent = "Submit feedback";
-    formError("Submit failed. Check your connection and try again. If it keeps failing, tell the Course Director.");
+    console.error("Submit failed:", err.code, err.message);
+    formError("Submit failed (" + (err.code || "error") + "). Your answers are kept on this device: check your connection and press Submit again. If it keeps failing, tell the Course Director.");
   }
 }
 </script>

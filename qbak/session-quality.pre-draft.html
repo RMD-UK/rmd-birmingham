@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Session Quality Feedback — RMD 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 90px; }
+
+    /* ── Top bar ── */
+    .top-bar {
+      background: var(--rmd-navy); color: white;
+      padding: 10px 14px; display: flex; align-items: center; gap: 10px;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .top-bar img { height: 28px; border-radius: 50%; background: white; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; }
+    .top-bar-sub { font-size: 11px; font-weight: 400; opacity: 0.65; display: block; }
+
+    /* ── Session picker ── */
+    .session-picker {
+      background: white; padding: 12px 14px;
+      border-bottom: 2px solid #dce3ea;
+    }
+    .session-picker select {
+      width: 100%; padding: 10px 12px; font-size: 14px;
+      font-family: var(--font); border: 2px solid #dce3ea;
+      border-radius: 8px; color: var(--rmd-navy);
+      appearance: none;
+      background: #f5f7fa url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%230b5394' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat right 12px center;
+    }
+    .session-picker select:focus { outline: none; border-color: var(--rmd-blue); }
+    .session-picker-note { font-size: 11px; color: var(--rmd-muted); margin-top: 6px; }
+
+    /* ── Wrap ── */
+    .wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px; }
+
+    /* ── Already submitted notice ── */
+    .submitted-notice {
+      background: #e6f4ea; border: 1px solid #b5d9bc; border-radius: 8px;
+      padding: 14px 16px; margin-bottom: 14px;
+      font-size: 14px; color: #1a6e31; font-weight: 600;
+      display: none;
+    }
+    .submitted-notice.visible { display: block; }
+
+    /* ── Question card ── */
+    .q-card {
+      background: white; border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+      margin-bottom: 12px; overflow: hidden;
+    }
+    .q-header {
+      background: var(--rmd-navy); color: white;
+      padding: 10px 16px;
+      font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .q-num {
+      background: rgba(255,255,255,0.2); border-radius: 50%;
+      width: 22px; height: 22px; display: flex; align-items: center;
+      justify-content: center; font-size: 11px; flex-shrink: 0;
+    }
+    .q-body { padding: 14px 16px; }
+    .q-label { font-size: 13px; color: var(--rmd-muted); margin-bottom: 10px; line-height: 1.5; }
+
+    /* ── Rating scale ── */
+    .scale-wrap { display: flex; gap: 6px; }
+    .scale-btn {
+      flex: 1; padding: 12px 4px; border-radius: 8px;
+      border: 2px solid #dce3ea; background: #f5f7fa;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      text-align: center; transition: all 0.12s;
+      color: var(--rmd-muted);
+    }
+    .scale-btn:active { transform: scale(0.93); }
+    .scale-btn .scale-emoji { font-size: 20px; display: block; margin-bottom: 3px; }
+    .scale-btn .scale-lbl   { font-size: 10px; display: block; }
+
+    .scale-btn.sel-1 { background: #fde8e4; border-color: #f4bfb6; color: #b7410e; }
+    .scale-btn.sel-2 { background: #fff3cd; border-color: #f5d87b; color: #c17a00; }
+    .scale-btn.sel-3 { background: #e8f4fd; border-color: #b5d3f0; color: var(--rmd-blue); }
+    .scale-btn.sel-4 { background: #e6f4ea; border-color: #b5d9bc; color: #1a6e31; }
+    .scale-btn.sel-5 { background: #1a6e31; border-color: #145727; color: white; }
+
+    /* ── Yes / No ── */
+    .yn-wrap { display: flex; gap: 8px; }
+    .yn-btn {
+      flex: 1; padding: 14px; border-radius: 8px;
+      border: 2px solid #dce3ea; background: #f5f7fa;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      text-align: center; transition: all 0.12s; color: var(--rmd-muted);
+    }
+    .yn-btn:active { transform: scale(0.96); }
+    .yn-btn.sel-yes { background: #e6f4ea; border-color: #1a6e31; color: #1a6e31; }
+    .yn-btn.sel-no  { background: #fde8e4; border-color: #b7410e; color: #b7410e; }
+
+    /* ── Text area ── */
+    .q-textarea {
+      width: 100%; min-height: 80px; padding: 10px 12px;
+      border: 2px solid #dce3ea; border-radius: 8px;
+      font-size: 14px; font-family: var(--font); resize: vertical; line-height: 1.5;
+    }
+    .q-textarea:focus { outline: none; border-color: var(--rmd-blue); }
+    .q-textarea-note { font-size: 11px; color: var(--rmd-muted); margin-top: 5px; }
+
+    /* ── Submit bar ── */
+    .submit-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: white; padding: 12px 14px;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.12); z-index: 50;
+    }
+    .submit-bar-inner { max-width: 680px; margin: 0 auto; }
+    .btn-submit {
+      width: 100%; padding: 15px; background: var(--rmd-blue); color: white;
+      border: none; border-radius: 8px; font-size: 16px; font-weight: 700;
+      font-family: var(--font); cursor: pointer;
+    }
+    .btn-submit:hover { background: var(--rmd-navy); }
+    .btn-submit:disabled { background: #aab8c2; cursor: default; }
+
+    /* ── Success screen ── */
+    .success-screen {
+      text-align: center; padding: 60px 20px;
+      display: none;
+    }
+    .success-screen.visible { display: block; }
+    .success-icon { font-size: 60px; margin-bottom: 16px; }
+    .success-title { font-size: 22px; font-weight: 700; color: var(--rmd-navy); margin-bottom: 8px; }
+    .success-sub { font-size: 14px; color: var(--rmd-muted); margin-bottom: 24px; }
+    .btn-another { padding: 12px 28px; border-radius: 8px; border: 2px solid var(--rmd-navy); background: white; color: var(--rmd-navy); font-family: var(--font); font-size: 14px; font-weight: 700; cursor: pointer; }
+
+    /* ── Fixed session header (when opened from the programme) ── */
+    .session-fixed-title { font-size: 16px; font-weight: 800; color: var(--rmd-navy); line-height: 1.3; }
+    .session-fixed-sub   { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
+    .session-change      { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--rmd-blue); }
+
+    /* ── Not-faculty message ── */
+    .access-msg { background: white; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.09); padding: 28px 20px; text-align: center; margin-top: 16px; }
+    .access-msg h2 { margin: 0 0 8px; font-size: 18px; color: var(--rmd-navy); }
+    .access-msg p  { margin: 0 0 16px; font-size: 14px; color: var(--rmd-muted); line-height: 1.5; }
+    .formerr { background: #fde8e4; border: 1px solid #f4bfb6; color: #b7410e; border-radius: 8px; padding: 10px 14px; font-size: 13px; font-weight: 600; margin-bottom: 12px; display: none; }
+    .formerr.visible { display: block; }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">
+    Session Quality Feedback
+    <span class="top-bar-sub" id="topBarSub">Post-session reflection for faculty</span>
+  </div>
+  <button onclick="auth && auth.signOut().then(() => window.location.href='index.html')"
+    title="Sign out" style="
+    background:rgba(255,255,255,0.15);color:white;border:none;
+    border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;
+    font-family:var(--font);">Sign out</button>
+</div>
+
+<!-- Session picker -->
+<div class="session-picker" id="pickerBar">
+  <!-- Opened from a programme session: the session is already known -->
+  <div id="sessionFixed" class="hidden">
+    <div class="session-fixed-title" id="sessionFixedTitle"></div>
+    <div class="session-fixed-sub" id="sessionFixedSub"></div>
+    <a class="session-change" href="#" onclick="showPicker(); return false;">Not this session? Choose another</a>
+  </div>
+  <!-- Opened without a session: choose one -->
+  <div id="sessionPickerWrap">
+    <select id="sessionSelect" onchange="onSessionChange()">
+      <option value="">— Select the session just completed —</option>
+    </select>
+    <div class="session-picker-note">Complete this after each session you delivered or observed. Faculty only.</div>
+  </div>
+</div>
+
+<!-- Main wrap -->
+<div class="wrap">
+
+  <!-- Not faculty -->
+  <div class="access-msg hidden" id="accessMsg">
+    <h2>Faculty only</h2>
+    <p>Session quality feedback is completed by faculty. If you should have access, ask the Course Director.</p>
+    <a class="btn-another" style="text-decoration:none;display:inline-block;" href="timetable.html">Back to programme</a>
+  </div>
+
+  <div class="formerr" id="formErr"></div>
+
+  <!-- Already submitted notice -->
+  <div class="submitted-notice" id="submittedNotice">
+    ✓ You already submitted feedback for this session. You can update it by submitting again.
+  </div>
+
+  <!-- Q1: Delivery quality -->
+  <div class="q-card">
+    <div class="q-header"><span class="q-num">1</span> Session overall</div>
+    <div class="q-body">
+      <div class="q-label">How would you rate this session overall?</div>
+      <div class="scale-wrap" id="scale-1">
+        <button class="scale-btn" onclick="setScale(1,1)"><span class="scale-emoji">😟</span><span class="scale-lbl">Poor</span></button>
+        <button class="scale-btn" onclick="setScale(1,2)"><span class="scale-emoji">😕</span><span class="scale-lbl">Weak</span></button>
+        <button class="scale-btn" onclick="setScale(1,3)"><span class="scale-emoji">😐</span><span class="scale-lbl">OK</span></button>
+        <button class="scale-btn" onclick="setScale(1,4)"><span class="scale-emoji">🙂</span><span class="scale-lbl">Good</span></button>
+        <button class="scale-btn" onclick="setScale(1,5)"><span class="scale-emoji">😄</span><span class="scale-lbl">Excellent</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Q2: Learning objectives -->
+  <div class="q-card">
+    <div class="q-header"><span class="q-num">2</span> Learning objectives</div>
+    <div class="q-body">
+      <div class="q-label">Were the session's learning objectives achieved?</div>
+      <div class="scale-wrap" id="scale-2">
+        <button class="scale-btn" onclick="setScale(2,1)"><span class="scale-emoji">❌</span><span class="scale-lbl">Not at all</span></button>
+        <button class="scale-btn" onclick="setScale(2,2)"><span class="scale-emoji">🔶</span><span class="scale-lbl">Partially</span></button>
+        <button class="scale-btn" onclick="setScale(2,3)"><span class="scale-emoji">➕</span><span class="scale-lbl">Mostly</span></button>
+        <button class="scale-btn" onclick="setScale(2,4)"><span class="scale-emoji">✅</span><span class="scale-lbl">Fully</span></button>
+        <button class="scale-btn" onclick="setScale(2,5)"><span class="scale-emoji">⭐</span><span class="scale-lbl">Exceeded</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Q3: Resource / equipment issues -->
+  <div class="q-card">
+    <div class="q-header"><span class="q-num">3</span> Resources &amp; equipment</div>
+    <div class="q-body">
+      <div class="q-label">Were there any issues with resources or equipment in this session?</div>
+      <div class="yn-wrap" id="yn-3">
+        <button class="yn-btn" onclick="setYN(3,'yes')">⚠ Yes — there were issues</button>
+        <button class="yn-btn" onclick="setYN(3,'no')">✓ No — all fine</button>
+      </div>
+      <div id="yn3-detail" style="margin-top:10px;display:none;">
+        <textarea class="q-textarea" id="resourceIssues" placeholder="Briefly describe the issue (e.g. manikin malfunction, AED not present, projector problem)…"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Q4: Free text -->
+  <div class="q-card">
+    <div class="q-header"><span class="q-num">4</span> Any other comments</div>
+    <div class="q-body">
+      <div class="q-label">Anything else to note about this session — for the CD's awareness or the faculty meeting?</div>
+      <textarea class="q-textarea" id="otherComments" placeholder="Optional — timing issues, content gaps, suggestions for next time…"></textarea>
+      <div class="q-textarea-note">This goes directly into the CD dashboard and may be discussed at the faculty meeting.</div>
+    </div>
+  </div>
+
+  <!-- Success screen -->
+  <div class="success-screen" id="successScreen">
+    <div class="success-icon">✅</div>
+    <div class="success-title">Feedback submitted</div>
+    <div class="success-sub">Thank you — this has been recorded for the CD's review.</div>
+    <a class="btn-another" style="text-decoration:none;display:inline-block;" href="timetable.html">Back to programme</a>
+  </div>
+
+</div>
+
+<!-- Submit bar -->
+<div class="submit-bar" id="submitBar">
+  <div class="submit-bar-inner">
+    <button class="btn-submit" id="submitBtn" disabled onclick="submitFeedback()">Select a session first</button>
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/programme-data.js?v=202610081330"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+const params = new URLSearchParams(window.location.search);
+let currentUser = null;
+let currentName = "";
+let currentSession = params.get("session") || "";
+
+// Faculty only (2026-10-08, per Jon). Candidates and assessor candidates never
+// see this form; firestore.rules enforces the same list on write.
+const ALLOWED_ROLES = ["faculty", "full-instructor", "assessor-faculty", "director"];
+
+const answers = {
+  scale1: 0,   // session overall
+  scale2: 0,   // learning objectives
+  yn3: "",     // resource issues (yes/no)
+};
+
+function findSession(id) {
+  for (const day of ["friday", "saturday", "sunday"]) {
+    const s = (PROGRAMME[day]?.sessions || []).find(x => x.id === id);
+    if (s) return { s, day };
+  }
+  return null;
+}
+function dayLabel(day) { return day.charAt(0).toUpperCase() + day.slice(1); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Boot
+// ─────────────────────────────────────────────────────────────────────────────
+initFirebase();
+
+window.addEventListener("load", () => {
+  populateSessionSelect();
+  // Opened from a session's "Rate this session" button: hide the dropdown
+  // straight away so it never flashes while sign-in and role are checked.
+  // It comes back below if the session id turns out not to be rateable.
+  if (currentSession) document.getElementById("sessionPickerWrap").classList.add("hidden");
+
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "index.html"; return; }
+    currentUser = user;
+
+    // Role: the shared helpers (resolveRole + this year's Instructor Weekend
+    // function) so a person assigned to the weekend as a candidate is treated
+    // as a candidate even if their base role is something else. Anyone not on
+    // the faculty list is shown the Faculty-only message and cannot submit.
+    let role = null;
+    try {
+      role = await resolveRole(user.uid, user.email || "");
+      if (typeof resolveIwFunction === "function") {
+        const fn = await resolveIwFunction(user.uid);
+        if (fn) role = fn;
+      }
+      const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (snap.exists && snap.data().name) {
+        currentName = snap.data().name;
+        document.getElementById("topBarSub").textContent = currentName;
+      }
+    } catch (e) { /* role stays null: treated as not faculty */ }
+
+    if (!ALLOWED_ROLES.includes(role)) { blockAccess(); return; }
+
+    // Opened from a programme session: show that session, no dropdown.
+    const hit = currentSession ? findSession(currentSession) : null;
+    if (hit && isSessionQualityEligible(hit.s)) {
+      showFixedSession(hit);
+      refreshSession();
+    } else {
+      currentSession = "";
+      document.getElementById("sessionPickerWrap").classList.remove("hidden");
+    }
+  });
+});
+
+function blockAccess() {
+  document.getElementById("pickerBar").classList.add("hidden");
+  document.querySelectorAll(".q-card").forEach(c => c.style.display = "none");
+  document.getElementById("submitBar").classList.add("hidden");
+  document.getElementById("accessMsg").classList.remove("hidden");
+}
+
+function showFixedSession(hit) {
+  document.getElementById("sessionFixedTitle").textContent = hit.s.title;
+  document.getElementById("sessionFixedSub").textContent =
+    `${dayLabel(hit.day)} ${hit.s.start} · ${hit.s.duration} min` + (hit.s.subtitle ? ` · ${hit.s.subtitle}` : "");
+  document.getElementById("sessionFixed").classList.remove("hidden");
+  document.getElementById("sessionPickerWrap").classList.add("hidden");
+}
+
+function showPicker() {
+  document.getElementById("sessionFixed").classList.add("hidden");
+  document.getElementById("sessionPickerWrap").classList.remove("hidden");
+  document.getElementById("sessionSelect").value = currentSession;
+}
+
+function populateSessionSelect() {
+  const sel = document.getElementById("sessionSelect");
+  ["friday","saturday","sunday"].forEach(day => {
+    (PROGRAMME[day]?.sessions || []).forEach(s => {
+      if (!isSessionQualityEligible(s)) return;
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = `${dayLabel(day)} ${s.start} — ${s.title}`;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function onSessionChange() {
+  currentSession = document.getElementById("sessionSelect").value;
+  refreshSession();
+}
+
+function clearAnswers() {
+  answers.scale1 = 0; answers.scale2 = 0; answers.yn3 = "";
+  document.querySelectorAll(".scale-btn").forEach(b => b.className = "scale-btn");
+  document.querySelectorAll(".yn-btn").forEach(b => b.className = "yn-btn");
+  document.getElementById("resourceIssues").value = "";
+  document.getElementById("otherComments").value  = "";
+  document.getElementById("yn3-detail").style.display = "none";
+  document.getElementById("formErr").classList.remove("visible");
+}
+
+async function refreshSession() {
+  clearAnswers();
+  const btn = document.getElementById("submitBtn");
+  if (!currentSession) {
+    btn.disabled = true;
+    btn.textContent = "Select a session first";
+    document.getElementById("submittedNotice").classList.remove("visible");
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = "Submit feedback";
+
+  // Already submitted? Pre-fill so it can be updated.
+  if (currentUser) {
+    try {
+      const snap = await db.collection("session_quality")
+        .where("sessionId", "==", currentSession)
+        .where("submittedByUid", "==", currentUser.uid)
+        .limit(1).get();
+      document.getElementById("submittedNotice").classList.toggle("visible", !snap.empty);
+      if (!snap.empty) {
+        const prev = snap.docs[0].data();
+        const overall = prev.overall || prev.delivery;   // "delivery" = earlier field name
+        if (overall)            setScale(1, overall);
+        if (prev.objectives)    setScale(2, prev.objectives);
+        if (prev.resourceIssue) setYN(3, prev.resourceIssue);
+        if (prev.resourceNotes) document.getElementById("resourceIssues").value = prev.resourceNotes;
+        if (prev.otherComments) document.getElementById("otherComments").value  = prev.otherComments;
+      }
+    } catch (e) { /* nothing saved yet */ }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Answer setters
+// ─────────────────────────────────────────────────────────────────────────────
+function setScale(qNum, val) {
+  answers["scale" + qNum] = val;
+  const wrap = document.getElementById("scale-" + qNum);
+  wrap.querySelectorAll(".scale-btn").forEach((btn, i) => {
+    btn.className = "scale-btn" + (i + 1 === val ? " sel-" + val : "");
+  });
+  document.getElementById("formErr").classList.remove("visible");
+}
+
+function setYN(qNum, val) {
+  answers["yn" + qNum] = val;
+  const wrap = document.getElementById("yn-" + qNum);
+  if (wrap) {
+    wrap.querySelectorAll(".yn-btn").forEach(btn => {
+      btn.className = "yn-btn" + (btn.textContent.includes("Yes") && val === "yes" ? " sel-yes" : btn.textContent.includes("No") && val === "no" ? " sel-no" : "");
+    });
+  }
+  if (qNum === 3) {
+    document.getElementById("yn3-detail").style.display = val === "yes" ? "block" : "none";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Submit
+// ─────────────────────────────────────────────────────────────────────────────
+function formError(msg) {
+  const el = document.getElementById("formErr");
+  el.textContent = msg;
+  el.classList.add("visible");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function submitFeedback() {
+  if (!currentSession) return;
+  if (!answers.scale1) { formError("Please rate the session overall (question 1) before submitting."); return; }
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled    = true;
+  btn.textContent = "Submitting…";
+
+  const hit = findSession(currentSession);
+  const payload = {
+    sessionId:       currentSession,
+    sessionTitle:    hit ? hit.s.title : "",
+    day:             hit ? hit.day : "",
+    overall:         answers.scale1,
+    objectives:      answers.scale2,
+    resourceIssue:   answers.yn3,
+    resourceNotes:   document.getElementById("resourceIssues").value.trim(),
+    otherComments:   document.getElementById("otherComments").value.trim(),
+    submittedByUid:  currentUser?.uid || null,
+    submittedByName: currentName || "",
+    submittedAt:     firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  // Flag a low overall / objectives score or a resource issue for the CD.
+  // Always written (true or false) so a corrected submission clears the flag.
+  const lowScore = [payload.overall, payload.objectives].some(v => v > 0 && v <= 2);
+  payload.cdFlag = lowScore || payload.resourceIssue === "yes";
+
+  try {
+    // Upsert: one doc per faculty member per session
+    const existingSnap = await db.collection("session_quality")
+      .where("sessionId", "==", currentSession)
+      .where("submittedByUid", "==", currentUser?.uid)
+      .limit(1).get();
+
+    if (!existingSnap.empty) {
+      await existingSnap.docs[0].ref.set(payload, { merge: true });
+    } else {
+      await db.collection("session_quality").add(payload);
+    }
+
+    document.querySelector(".wrap").querySelectorAll(".q-card").forEach(c => c.style.display = "none");
+    document.getElementById("submittedNotice").style.display = "none";
+    document.getElementById("formErr").classList.remove("visible");
+    document.getElementById("successScreen").classList.add("visible");
+    document.getElementById("submitBar").classList.add("hidden");
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = "Submit feedback";
+    formError("Submit failed. Check your connection and try again. If it keeps failing, tell the Course Director.");
+  }
+}
+</script>
+</body>
+</html>

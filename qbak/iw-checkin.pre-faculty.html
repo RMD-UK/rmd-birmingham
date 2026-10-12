@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Check-in — RMD Instructor Weekend 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--rmd-navy); font-family: var(--font); margin: 0;
+      display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden;
+    }
+
+    .kiosk-header {
+      padding: 22px 16px 10px; text-align: center; color: white; flex-shrink: 0;
+    }
+    .kiosk-header img { height: 44px; margin-bottom: 8px; }
+    .kiosk-header h1 { font-size: 18px; margin: 0 0 2px; }
+    .kiosk-header p  { font-size: 12px; opacity: 0.65; margin: 0; }
+
+    .kiosk-body {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      padding: 10px 16px 30px;
+    }
+
+    .search-wrap {
+      width: 100%; max-width: 420px; background: white; border-radius: 16px;
+      padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    }
+    .search-wrap input {
+      width: 100%; padding: 13px 14px; border: 2px solid #dce3ea; border-radius: 8px;
+      font-size: 16px; font-family: var(--font); color: var(--rmd-navy);
+    }
+    .search-result {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border-radius: 8px; background: #f0f3f6; margin-top: 8px;
+    }
+    .search-result .name { font-size: 14px; font-weight: 700; color: var(--rmd-navy); }
+    .search-result .role { font-size: 11px; color: var(--rmd-muted); }
+    .btn-checkin-small {
+      padding: 8px 16px; border-radius: 6px; border: none; background: var(--rmd-blue);
+      color: white; font-family: var(--font); font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .search-hint { font-size: 12px; color: var(--rmd-muted); padding: 8px 2px 0; }
+
+    .status-box {
+      width: 100%; max-width: 420px; margin-top: 16px; border-radius: 14px;
+      padding: 22px; text-align: center; transition: background 0.2s;
+      background: rgba(255,255,255,0.08); color: white; display: none;
+    }
+    .status-box.show    { display: block; }
+    .status-box.success { background: #1a6e31; }
+    .status-box.error   { background: #b7410e; }
+    .status-icon  { font-size: 40px; margin-bottom: 6px; }
+    .status-title { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+    .status-sub   { font-size: 13px; opacity: 0.85; }
+
+    .kiosk-footer { text-align: center; padding: 10px; }
+    .kiosk-footer a { color: rgba(255,255,255,0.4); font-size: 11px; text-decoration: none; }
+
+    .closed-wrap {
+      width: 100%; max-width: 420px; background: white; border-radius: 16px;
+      padding: 26px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); text-align: center;
+    }
+    .closed-wrap .closed-icon { font-size: 34px; margin-bottom: 8px; }
+    .closed-wrap h2 { font-size: 17px; color: var(--rmd-navy); margin: 0 0 6px; }
+    .closed-wrap p { font-size: 13px; color: var(--rmd-muted); margin: 0; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<div class="kiosk-header">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <h1>Instructor Weekend Check-in</h1>
+  <p>Search for your name below to check in</p>
+</div>
+
+<div class="kiosk-body">
+  <div class="search-wrap" id="searchWrap">
+    <input type="text" id="searchInput" placeholder="Type your name…" autocomplete="off" autofocus oninput="runSearch(this.value)">
+    <div id="searchResults"></div>
+    <div class="search-hint" id="searchHint">Start typing to find your name.</div>
+  </div>
+
+  <div class="closed-wrap hidden" id="closedWrap">
+    <div class="closed-icon">🕒</div>
+    <h2 id="closedTitle">Check-in isn't open yet</h2>
+    <p id="closedSub"></p>
+  </div>
+
+  <div class="status-box" id="statusBox">
+    <div class="status-icon" id="statusIcon"></div>
+    <div class="status-title" id="statusTitle"></div>
+    <div class="status-sub" id="statusSub"></div>
+  </div>
+</div>
+
+<div class="kiosk-footer">
+  <a href="timetable.html">RMD Instructor Weekend 2026</a>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+// Check-in only opens on the actual Instructor Weekend days (2026-10-02,
+// Jon: don't let anyone check in before the date). Saturday 10 Oct / Sunday
+// 11 Oct 2026, same dates timetable.html's getDefaultDay() uses. Outside
+// those two calendar days the search box is hidden entirely and replaced
+// with an explanatory message — nobody can self-check-in early (or late).
+function currentIwDay() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+  if (y === 2026 && m === 10 && d === 10) return "saturday";
+  if (y === 2026 && m === 10 && d === 11) return "sunday";
+  return null;
+}
+const IW_DAY = currentIwDay();
+const IW_DAY_LABEL = { saturday: "Saturday", sunday: "Sunday" };
+
+(function gateCheckIn() {
+  if (IW_DAY) return; // open as normal
+  document.getElementById("searchWrap").classList.add("hidden");
+  const closedWrap = document.getElementById("closedWrap");
+  closedWrap.classList.remove("hidden");
+  const before = new Date() < new Date(2026, 9, 10);
+  document.getElementById("closedTitle").textContent = before ? "Check-in isn't open yet" : "Check-in has closed";
+  document.getElementById("closedSub").textContent = before
+    ? "Check-in opens Saturday 10 October 2026, on the day. See a member of staff if you need help before then."
+    : "Instructor Weekend 2026 has finished. See a member of staff if you still need to be marked present.";
+})();
+
+let processing = false;
+let allPeopleCache = null;
+let iwAssignmentsCache = null;  // { uid: function } -- this year's IW job, from iw_assignments; falls back to people.role when absent
+
+const ROLE_LABELS = {
+  "instructor": "Instructor Candidate", "assessor": "Assessor / Senior Instructor",
+  "assessor-faculty": "Assessor Faculty", "faculty": "Faculty",
+  "full-instructor": "Instructor Trainer", "itc": "Instructor Trainer Candidate", "director": "Course Director"
+};
+
+async function ensureIwAssignmentsCache() {
+  if (iwAssignmentsCache) return iwAssignmentsCache;
+  iwAssignmentsCache = {};
+  try {
+    const snap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    snap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignmentsCache[a.uid] = a.function;
+    });
+  } catch (e) { /* leave cache empty, effectiveRole() falls back to p.role */ }
+  return iwAssignmentsCache;
+}
+function effectiveRole(p, iwAssignments) {
+  return (iwAssignments && iwAssignments[p.id]) || p.role;
+}
+async function ensurePeopleCache() {
+  if (allPeopleCache) return allPeopleCache;
+  const [snap] = await Promise.all([db.collection(COLLECTIONS.people).get(), ensureIwAssignmentsCache()]);
+  allPeopleCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return allPeopleCache;
+}
+
+async function runSearch(val) {
+  const q = val.trim().toLowerCase();
+  const resultsEl = document.getElementById("searchResults");
+  const hintEl = document.getElementById("searchHint");
+
+  if (q.length < 2) {
+    resultsEl.innerHTML = "";
+    hintEl.style.display = "block";
+    return;
+  }
+  hintEl.style.display = "none";
+
+  const people = await ensurePeopleCache();
+  const iwAssignments = await ensureIwAssignmentsCache();
+  const matches = people.filter(p => (p.name || "").toLowerCase().includes(q)).slice(0, 8);
+
+  if (!matches.length) {
+    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--rmd-muted);padding:8px 2px;">No matches — check the spelling, or see a member of staff.</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = matches.map(p => `
+    <div class="search-result">
+      <div>
+        <div class="name">${esc(p.name)}</div>
+        <div class="role">${esc(customRoleLabel(p.roleLabel) || ROLE_LABELS[effectiveRole(p, iwAssignments)] || effectiveRole(p, iwAssignments) || "")}</div>
+      </div>
+      <button class="btn-checkin-small" onclick="confirmCheckIn('${esc(p.id)}')">Confirm attendance</button>
+    </div>
+  `).join("");
+}
+
+async function confirmCheckIn(personId) {
+  if (processing) return;
+  if (!IW_DAY) { setStatus("error", "🕒", "Check-in isn't open", "See a member of staff."); resetAfter(3000); return; }
+  processing = true;
+
+  try {
+    const doc = await db.collection(COLLECTIONS.people).doc(personId).get();
+    if (!doc.exists) {
+      setStatus("error", "❓", "Not found", "Please see a member of staff.");
+      processing = false;
+      resetAfter(3000);
+      return;
+    }
+    const person = doc.data();
+    await db.collection(COLLECTIONS.attendance).doc(personId).set({
+      ["arrived_" + IW_DAY]: firebase.firestore.FieldValue.serverTimestamp(),
+      ["checkedInBy_" + IW_DAY]: "self-service-search"
+    }, { merge: true });
+
+    setStatus("success", "✅", `Welcome, ${(person.name || "there").split(" ")[0]}!`, `You're checked in for ${IW_DAY_LABEL[IW_DAY]} — have a great weekend.`);
+  } catch (err) {
+    setStatus("error", "⚠️", "Check-in failed", "Please try again or see a member of staff.");
+  }
+
+  document.getElementById("searchInput").value = "";
+  document.getElementById("searchResults").innerHTML = "";
+  document.getElementById("searchHint").style.display = "block";
+  processing = false;
+  resetAfter(3000);
+}
+
+function resetAfter(ms) {
+  setTimeout(() => {
+    const box = document.getElementById("statusBox");
+    box.classList.remove("show");
+  }, ms);
+}
+
+function setStatus(kind, icon, title, sub) {
+  const box = document.getElementById("statusBox");
+  box.className = "status-box show " + kind;
+  document.getElementById("statusIcon").textContent = icon;
+  document.getElementById("statusTitle").textContent = title;
+  document.getElementById("statusSub").textContent = sub;
+}
+
+function esc(s) {
+  return (s || "").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+</script>
+</body>
+</html>

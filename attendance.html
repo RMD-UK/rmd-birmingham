@@ -203,6 +203,30 @@
     .day-closed-note {
       font-size: 11px; color: var(--rmd-muted); text-align: center; padding: 4px 14px 0;
     }
+
+    /* ── Statuses, group filter, bottom sheet (2026-10-11, per Jon) ── */
+    .stat-line { font-size: 12px; color: var(--rmd-muted); text-align: center; padding: 6px 14px; background: white; border-bottom: 1px solid #e8edf2; }
+    .group-filter .gf-lbl { font-size: 11px; font-weight: 700; color: var(--rmd-muted); text-transform: uppercase; letter-spacing: .5px; align-self: center; padding-right: 2px; }
+    .group-filter .cf-btn.gv { margin-left: auto; border-style: dashed; }
+    .person-row.arrived.left { border-left-color: #c17a00; }
+    .left-label { font-size: 11px; color: #8a5200; font-weight: 700; margin: 2px 0; }
+    .status-note { font-size: 11px; color: var(--rmd-muted); max-width: 150px; margin-bottom: 3px; }
+    .declined-box { margin: 14px 14px 24px; background: white; border: 1px solid #e8edf2; border-radius: 8px; padding: 8px 12px; }
+    .declined-box summary { cursor: pointer; font-size: 12px; font-weight: 700; color: var(--rmd-muted); }
+    .declined-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid #f0f3f6; font-size: 13px; color: var(--rmd-muted); }
+    .declined-row small { font-size: 11px; margin-left: 4px; }
+    .declined-note { font-size: 11px; color: var(--rmd-muted); margin-top: 8px; }
+    .sh-scrim { position: fixed; inset: 0; background: rgba(16, 24, 40, .45); z-index: 80; }
+    .sh-card { position: fixed; left: 0; right: 0; bottom: 0; z-index: 81; background: white; border-radius: 16px 16px 0 0; padding: 18px 18px 22px; max-width: 560px; margin: 0 auto; box-shadow: 0 -8px 30px rgba(0,0,0,.25); }
+    .sh-title { font-size: 16px; font-weight: 800; color: var(--rmd-navy); margin-bottom: 10px; }
+    .sh-lbl { font-size: 11px; font-weight: 700; color: var(--rmd-muted); text-transform: uppercase; letter-spacing: .5px; margin: 12px 0 6px; }
+    .sh-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+    .sh-opt { padding: 10px 14px; border-radius: 10px; border: 2px solid #dce3ea; background: white; font-family: var(--font); font-size: 14px; font-weight: 600; color: var(--rmd-navy); cursor: pointer; }
+    .sh-opt.on { background: var(--rmd-navy); border-color: var(--rmd-navy); color: white; }
+    .sh-input { width: 100%; padding: 10px 12px; border: 2px solid #dce3ea; border-radius: 10px; font-family: var(--font); font-size: 15px; }
+    .sh-actions { display: flex; gap: 10px; margin-top: 16px; }
+    .sh-cancel, .sh-save { flex: 1; padding: 12px; border-radius: 10px; font-family: var(--font); font-size: 15px; font-weight: 700; cursor: pointer; border: 2px solid #dce3ea; background: white; color: var(--rmd-navy); }
+    .sh-save { background: var(--rmd-blue); border-color: var(--rmd-blue); color: white; }
   </style>
 </head>
 <body>
@@ -244,6 +268,8 @@
   </div>
 </div>
 
+<div class="stat-line hidden" id="statLine"></div>
+
 <!-- Search -->
 <div class="search-wrap">
   <input class="search-box" type="search" id="searchBox"
@@ -264,6 +290,9 @@
   <div class="cf-btn"        id="cf-instructor" onclick="switchCourseType('instructor')">Instructor Candidate</div>
   <div class="cf-btn"        id="cf-assessor"   onclick="switchCourseType('assessor')">Assessors &amp; Senior Instructor</div>
 </div>
+
+<!-- Group filter: one button per group, with how many people are in it -->
+<div class="course-filter group-filter" id="groupFilter"></div>
 
 <!-- List -->
 <div class="wrap" id="listWrap"></div>
@@ -392,6 +421,7 @@ window.addEventListener("load", () => {
     }
     renderList();
     subscribeAttendance();
+    if (role === "director") syncDeclines().then(loadAttendance).then(renderList);
   });
 });
 
@@ -472,7 +502,10 @@ async function checkIn(personId) {
       ["checkedInBy_" + currentDay]: currentUser?.uid || "manual",
       ["notExpected_" + currentDay]: firebase.firestore.FieldValue.delete(),
       ["markedNotExpectedBy_" + currentDay]: firebase.firestore.FieldValue.delete(),
-      ["markedNotExpectedAt_" + currentDay]: firebase.firestore.FieldValue.delete()
+      ["markedNotExpectedAt_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["absentType_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["absentReason_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["absentNote_" + currentDay]: firebase.firestore.FieldValue.delete()
     }, { merge: true });
     const person = allPeople.find(p => p.id === personId);
     showToast(`${person?.name || "Attendee"} checked in for ${IW_DAY_LABELS[currentDay]} ✓`, "green");
@@ -491,9 +524,13 @@ async function undoCheckIn(personId) {
     // (if any) must survive this.
     await db.collection(COLLECTIONS.attendance).doc(personId).set({
       ["arrived_" + currentDay]: firebase.firestore.FieldValue.delete(),
-      ["checkedInBy_" + currentDay]: firebase.firestore.FieldValue.delete()
+      ["checkedInBy_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["left_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["leftReason_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["leftNote_" + currentDay]: firebase.firestore.FieldValue.delete(),
+      ["leftBy_" + currentDay]: firebase.firestore.FieldValue.delete()
     }, { merge: true });
-    if (attendance[personId]) { delete attendance[personId]["arrived_" + currentDay]; delete attendance[personId]["checkedInBy_" + currentDay]; }
+    if (attendance[personId]) { delete attendance[personId]["arrived_" + currentDay]; delete attendance[personId]["checkedInBy_" + currentDay]; ["left_","leftReason_","leftNote_","leftBy_"].forEach(k => delete attendance[personId][k + currentDay]); }
     renderList();
   } catch (e) {
     if (attendance[personId]) delete attendance[personId]["arrived_" + currentDay];
@@ -508,38 +545,193 @@ async function undoCheckIn(personId) {
 // personRow()/renderList() check .arrived and .notExpected separately, never
 // just "does the doc exist", since a doc can now exist for either reason.
 // ─────────────────────────────────────────────────────────────────────────────
-async function markNotExpected(personId) {
+async function markNotExpected(personId) { return openAbsentSheet(personId); }
+
+// ── "Not here" sheet (2026-10-11, per Jon) ───────────────────────────────
+// One place to record why someone is not in the room today: not expected,
+// known ill, or did not attend (with a reason). Stored per day beside the
+// existing notExpected_<day> flag, which is still set for all three so the
+// Outstanding count and every other page keep working unchanged.
+const ABSENT_TYPES = { notexpected: "Not expected", ill: "Known ill", dna: "Did not attend" };
+const DNA_REASONS = {
+  contacted: "Contacted, not attending",
+  forgot:    "Forgot",
+  notatt:    "Not attending",
+  nocontact: "No contact yet",
+  other:     "Other"
+};
+let sheetState = null;
+
+function absentLabel(rec) {
+  const t = rec?.["absentType_" + currentDay] || "notexpected";
+  let s = ABSENT_TYPES[t] || "Not expected";
+  const r = rec?.["absentReason_" + currentDay];
+  if (t === "dna" && r && DNA_REASONS[r]) s += " · " + DNA_REASONS[r];
+  return s;
+}
+
+function openAbsentSheet(personId) {
   if (!canEdit) return;
-  try {
-    await db.collection(COLLECTIONS.attendance).doc(personId).set({
-      ["notExpected_" + currentDay]: true,
-      ["markedNotExpectedBy_" + currentDay]: currentUser?.uid || "manual",
-      ["markedNotExpectedAt_" + currentDay]: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
-    const person = allPeople.find(p => p.id === personId);
-    showToast(`${person?.name || "Attendee"} marked not expected ${IW_DAY_LABELS[currentDay]}`, "");
-  } catch (e) {
-    attendance[personId] = { ...(attendance[personId] || {}), ["notExpected_" + currentDay]: true };
-    renderList();
+  const person = allPeople.find(p => p.id === personId);
+  sheetState = { kind: "absent", personId, type: "notexpected", reason: "", note: "" };
+  drawSheet("Not here: " + (person?.name || "attendee"), absentSheetBody());
+}
+function absentSheetBody() {
+  const s = sheetState;
+  const typeBtns = Object.keys(ABSENT_TYPES).map(k =>
+    `<button class="sh-opt ${s.type === k ? "on" : ""}" onclick="sheetPick('type','${k}')">${ABSENT_TYPES[k]}</button>`).join("");
+  let reasons = "";
+  if (s.type === "dna") {
+    reasons = `<div class="sh-lbl">Reason</div><div class="sh-opts">` + Object.keys(DNA_REASONS).map(k =>
+      `<button class="sh-opt ${s.reason === k ? "on" : ""}" onclick="sheetPick('reason','${k}')">${DNA_REASONS[k]}</button>`).join("") + `</div>`;
   }
+  return `<div class="sh-lbl">Status for ${IW_DAY_LABELS[currentDay]}</div><div class="sh-opts">${typeBtns}</div>${reasons}
+    <div class="sh-lbl">Note (optional)</div>
+    <input class="sh-input" id="shNote" type="text" maxlength="200" placeholder="Anything useful, for example who you spoke to" value="${esc(s.note)}" oninput="sheetState.note=this.value">
+    <div class="sh-actions"><button class="sh-cancel" onclick="closeSheet()">Cancel</button><button class="sh-save" onclick="saveAbsent()">Save</button></div>`;
+}
+function sheetPick(field, val) {
+  sheetState[field] = val;
+  if (field === "type" && val !== "dna") sheetState.reason = "";
+  drawSheet(document.getElementById("shTitle").textContent, sheetState.kind === "absent" ? absentSheetBody() : leftSheetBody());
+}
+function drawSheet(title, body) {
+  let el = document.getElementById("sheetWrap");
+  if (!el) { el = document.createElement("div"); el.id = "sheetWrap"; document.body.appendChild(el); }
+  el.innerHTML = `<div class="sh-scrim" onclick="closeSheet()"></div><div class="sh-card" role="dialog" aria-modal="true"><div class="sh-title" id="shTitle">${esc(title)}</div>${body}</div>`;
+}
+function closeSheet() { const el = document.getElementById("sheetWrap"); if (el) el.remove(); sheetState = null; }
+
+async function saveAbsent() {
+  const s = sheetState; if (!s) return;
+  if (s.type === "dna" && !s.reason) { showToast("Choose a reason first", ""); return; }
+  const d = currentDay;
+  const data = {
+    ["notExpected_" + d]: true,
+    ["markedNotExpectedBy_" + d]: currentUser?.uid || "manual",
+    ["markedNotExpectedAt_" + d]: firebase.firestore.FieldValue.serverTimestamp(),
+    ["absentType_" + d]: s.type,
+    ["absentReason_" + d]: s.reason || firebase.firestore.FieldValue.delete(),
+    ["absentNote_" + d]: (s.note || "").trim() || firebase.firestore.FieldValue.delete()
+  };
+  const person = allPeople.find(p => p.id === s.personId);
+  try {
+    await db.collection(COLLECTIONS.attendance).doc(s.personId).set(data, { merge: true });
+    attendance[s.personId] = { ...(attendance[s.personId] || {}), ["notExpected_" + d]: true, ["absentType_" + d]: s.type, ["absentReason_" + d]: s.reason, ["absentNote_" + d]: s.note };
+    showToast(`${person?.name || "Attendee"}: ${ABSENT_TYPES[s.type].toLowerCase()}`, "");
+  } catch (e) {
+    showToast("Not saved: " + (e.code || e.message), "");
+    return;
+  }
+  closeSheet(); renderList();
 }
 
 async function undoNotExpected(personId) {
   if (!canEdit) return;
+  const d = currentDay, del = () => firebase.firestore.FieldValue.delete();
   try {
-    // Field-level delete only, same reasoning as undoCheckIn — the other
-    // day's data (arrival or its own notExpected flag) must stay intact.
+    // Field-level deletes only: the other day's data, and this day's
+    // arrival, must stay intact.
     await db.collection(COLLECTIONS.attendance).doc(personId).set({
-      ["notExpected_" + currentDay]: firebase.firestore.FieldValue.delete(),
-      ["markedNotExpectedBy_" + currentDay]: firebase.firestore.FieldValue.delete(),
-      ["markedNotExpectedAt_" + currentDay]: firebase.firestore.FieldValue.delete()
+      ["notExpected_" + d]: del(), ["markedNotExpectedBy_" + d]: del(), ["markedNotExpectedAt_" + d]: del(),
+      ["absentType_" + d]: del(), ["absentReason_" + d]: del(), ["absentNote_" + d]: del()
     }, { merge: true });
-    if (attendance[personId]) delete attendance[personId]["notExpected_" + currentDay];
-    renderList();
-  } catch (e) {
-    if (attendance[personId]) delete attendance[personId]["notExpected_" + currentDay];
-    renderList();
-  }
+  } catch (e) { showToast("Not saved: " + (e.code || e.message), ""); return; }
+  if (attendance[personId]) ["notExpected_", "absentType_", "absentReason_", "absentNote_"].forEach(k => delete attendance[personId][k + d]);
+  renderList();
+}
+
+// ── Left during the course (2026-10-11, per Jon) ─────────────────────────
+const LEFT_REASONS = { unwell: "Unwell", family: "Family or personal", clinical: "Called to work or clinical", transport: "Transport or travel", other: "Other" };
+function openLeftSheet(personId) {
+  if (!canEdit) return;
+  const person = allPeople.find(p => p.id === personId);
+  const now = new Date();
+  sheetState = { kind: "left", personId, time: String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0"), reason: "", note: "" };
+  drawSheet("Left early: " + (person?.name || "attendee"), leftSheetBody());
+}
+function leftSheetBody() {
+  const s = sheetState;
+  const reasons = Object.keys(LEFT_REASONS).map(k =>
+    `<button class="sh-opt ${s.reason === k ? "on" : ""}" onclick="sheetPick('reason','${k}')">${LEFT_REASONS[k]}</button>`).join("");
+  return `<div class="sh-lbl">Time they left</div>
+    <input class="sh-input" id="shTime" type="time" value="${esc(s.time)}" oninput="sheetState.time=this.value">
+    <div class="sh-lbl">Reason</div><div class="sh-opts">${reasons}</div>
+    <div class="sh-lbl">Note (optional)</div>
+    <input class="sh-input" id="shNote" type="text" maxlength="200" placeholder="For example: back on Sunday, will catch up" value="${esc(s.note)}" oninput="sheetState.note=this.value">
+    <div class="sh-actions"><button class="sh-cancel" onclick="closeSheet()">Cancel</button><button class="sh-save" onclick="saveLeft()">Save</button></div>`;
+}
+async function saveLeft() {
+  const s = sheetState; if (!s) return;
+  if (!s.reason) { showToast("Choose a reason first", ""); return; }
+  if (!/^\d{2}:\d{2}$/.test(s.time || "")) { showToast("Enter the time they left", ""); return; }
+  const d = currentDay, base = IW_DATES[d];
+  const when = new Date(base.getFullYear(), base.getMonth(), base.getDate(), Number(s.time.slice(0, 2)), Number(s.time.slice(3, 5)));
+  const person = allPeople.find(p => p.id === s.personId);
+  try {
+    await db.collection(COLLECTIONS.attendance).doc(s.personId).set({
+      ["left_" + d]: firebase.firestore.Timestamp.fromDate(when),
+      ["leftReason_" + d]: s.reason,
+      ["leftNote_" + d]: (s.note || "").trim() || firebase.firestore.FieldValue.delete(),
+      ["leftBy_" + d]: currentUser?.uid || "manual"
+    }, { merge: true });
+    attendance[s.personId] = { ...(attendance[s.personId] || {}), ["left_" + d]: when, ["leftReason_" + d]: s.reason, ["leftNote_" + d]: s.note };
+    showToast(`${person?.name || "Attendee"} left at ${s.time}`, "");
+  } catch (e) { showToast("Not saved: " + (e.code || e.message), ""); return; }
+  closeSheet(); renderList();
+}
+async function undoLeft(personId) {
+  if (!canEdit) return;
+  const d = currentDay, del = () => firebase.firestore.FieldValue.delete();
+  try {
+    await db.collection(COLLECTIONS.attendance).doc(personId).set({ ["left_" + d]: del(), ["leftReason_" + d]: del(), ["leftNote_" + d]: del(), ["leftBy_" + d]: del() }, { merge: true });
+  } catch (e) { showToast("Not saved: " + (e.code || e.message), ""); return; }
+  if (attendance[personId]) ["left_", "leftReason_", "leftNote_", "leftBy_"].forEach(k => delete attendance[personId][k + d]);
+  renderList();
+}
+
+// ── Declined people (2026-10-11, per Jon) ────────────────────────────────
+// People who told us they are not coming (declined on the IW registrations
+// page or on the faculty form) should not sit in the Outstanding count.
+// iw_registrations and faculty_responses can only be read by a Director, so
+// a Director opening this page copies the result onto each person's
+// attendance record as declinedIw, which everyone else can read. A person
+// who arrives anyway is shown as arrived regardless.
+function isDeclined(p) {
+  const r = attendance[p.id];
+  return !!r?.declinedIw && !r?.arrived_saturday && !r?.arrived_sunday;
+}
+async function syncDeclines() {
+  try {
+    const [regSnap, respSnap] = await Promise.all([
+      db.collection(COLLECTIONS.iwRegistrations).get(),
+      db.collection("faculty_responses").get()
+    ]);
+    const confirmed = new Set(), declinedE = new Set(), declinedN = new Set();
+    const nm = r => (r.name || [r.firstName, r.lastName].filter(Boolean).join(" ")).trim().toLowerCase();
+    regSnap.docs.forEach(d => {
+      const r = d.data(), e = (r.email || "").trim().toLowerCase();
+      if (r.status === "confirmed" && e) confirmed.add(e);
+      if (r.status === "declined") { if (e) declinedE.add(e); else if (nm(r)) declinedN.add(nm(r)); }
+    });
+    respSnap.docs.forEach(d => {
+      const r = d.data(), e = (r.email || d.id || "").trim().toLowerCase();
+      if (r.attendanceStatus === "declined" && !confirmed.has(e)) { if (e) declinedE.add(e); else if (nm(r)) declinedN.add(nm(r)); }
+    });
+    const writes = [];
+    allPeople.forEach(p => {
+      const e = (p.email || "").trim().toLowerCase();
+      const should = (e && declinedE.has(e) && !confirmed.has(e)) || (!e && declinedN.has((p.name || "").trim().toLowerCase()));
+      const has = !!attendance[p.id]?.declinedIw;
+      if (should && !has) writes.push([p.id, { declinedIw: true, declinedIwAt: firebase.firestore.FieldValue.serverTimestamp() }]);
+      if (!should && has) writes.push([p.id, { declinedIw: firebase.firestore.FieldValue.delete(), declinedIwAt: firebase.firestore.FieldValue.delete() }]);
+    });
+    for (let i = 0; i < writes.length; i += 400) {
+      const batch = db.batch();
+      writes.slice(i, i + 400).forEach(w => batch.set(db.collection(COLLECTIONS.attendance).doc(w[0]), w[1], { merge: true }));
+      await batch.commit();
+    }
+  } catch (e) { console.warn("Decline sync skipped:", e.message); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -587,94 +779,125 @@ async function addWalkIn() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Render
 // ─────────────────────────────────────────────────────────────────────────────
+let currentGroup = "all";      // "all" or a group name
+let groupView = false;         // false = Candidates / Faculty split, true = one section per group
+const NO_GROUP = "(No group)";
+const groupOf = p => (p.group || "").toString().trim() || NO_GROUP;
+
+function visiblePeople() { return allPeople.filter(p => !isDeclined(p)); }
+function dayRec(p) { return attendance[p.id] || {}; }
+function hasArrived(p) { return !!dayRec(p)["arrived_" + currentDay]; }
+function isAbsent(p) { return !hasArrived(p) && !!dayRec(p)["notExpected_" + currentDay]; }
+function hasLeft(p) { return hasArrived(p) && !!dayRec(p)["left_" + currentDay]; }
+
 function renderList() {
   updateStats();
-
   const wrap = document.getElementById("listWrap");
-
-  // Filter — search, then arrival status, then (2026-09-14) course type.
-  // Arrived/not-expected checks look at the specific field on the
-  // attendance doc, not just whether a doc exists — a doc can now exist
-  // purely to hold a "not expected today" flag with no arrival on it.
   const search = currentFilter.toLowerCase();
-  let people = allPeople.filter(p => !search || p.name.toLowerCase().includes(search));
+  const matchName = p => !search || (p.name || "").toLowerCase().includes(search);
 
-  if (currentTab === "arrived")     people = people.filter(p => !!attendance[p.id]?.["arrived_" + currentDay]);
-  if (currentTab === "outstanding") people = people.filter(p => !attendance[p.id]?.["arrived_" + currentDay] && !attendance[p.id]?.["notExpected_" + currentDay]);
+  // Course-type filter first, so the group chips below show counts for it.
+  let base = visiblePeople().filter(matchName);
+  if (currentCourseType === "instructor") base = base.filter(p => effectiveRole(p) === "instructor");
+  if (currentCourseType === "assessor")   base = base.filter(p => effectiveRole(p) === "assessor");
+  renderGroupFilter(base);
 
-  if (currentCourseType === "instructor") people = people.filter(p => effectiveRole(p) === "instructor");
-  if (currentCourseType === "assessor")   people = people.filter(p => effectiveRole(p) === "assessor");
+  let people = base;
+  if (currentGroup !== "all") people = people.filter(p => groupOf(p) === currentGroup);
+  if (currentTab === "arrived")     people = people.filter(hasArrived);
+  if (currentTab === "outstanding") people = people.filter(p => !hasArrived(p) && !isAbsent(p));
+
+  const declined = allPeople.filter(isDeclined).filter(matchName);
+  const declinedHtml = declined.length ? `<details class="declined-box"><summary>Not attending: declined on registration (${declined.length})</summary>` +
+    declined.map(p => `<div class="declined-row"><span>${esc(p.name)} <small>${esc(ROLE_LABELS[effectiveRole(p)] || effectiveRole(p) || "")}</small></span>` +
+      (canEdit && dayIsOpen(currentDay) ? `<button class="btn-undo" onclick="checkIn('${esc(p.id)}')">Arrived anyway</button>` : "") + `</div>`).join("") +
+    `<p class="declined-note">These people are left out of the counts above. Change their answer on the IW registrations page if this is wrong.</p></details>` : "";
 
   if (!people.length) {
-    wrap.innerHTML = `<div class="empty-state"><h3>${currentFilter ? "No results" : "Nobody listed yet"}</h3><p>${currentFilter ? "Try a different name." : "People added via admin tools will appear here."}</p></div>`;
+    wrap.innerHTML = `<div class="empty-state"><h3>${currentFilter ? "No results" : "Nobody here"}</h3><p>${currentFilter ? "Try a different name." : "Nobody matches these filters."}</p></div>` + declinedHtml;
     return;
   }
 
-  // Course-type filter selects a specific candidate stream directly — no
-  // Candidates/Faculty split needed since it's asking for one stream only.
-  if (currentCourseType !== "all") {
-    const heading = currentCourseType === "instructor" ? "Instructor Candidates" : "Assessors & Senior Instructors";
-    wrap.innerHTML = `<div class="list-heading">${heading} (${people.length})</div>` + people.map(p => personRow(p)).join("");
-    return;
-  }
-
-  // Group by role category
-  const candidates = people.filter(p => ["instructor","assessor"].includes(effectiveRole(p)));
-  const faculty    = people.filter(p => ["faculty","full-instructor","itc","director","assessor-faculty"].includes(effectiveRole(p)));
-
+  const summary = list => {
+    const a = list.filter(hasArrived).length;
+    return `${list.length} · ${a} arrived`;
+  };
+  const rank = p => (["instructor", "assessor"].includes(effectiveRole(p)) ? 0 : 1);
   let html = "";
-  if (candidates.length) {
-    html += `<div class="list-heading">Candidates (${candidates.length})</div>`;
-    html += candidates.map(p => personRow(p)).join("");
-  }
-  if (faculty.length) {
-    html += `<div class="list-heading">Faculty &amp; Team (${faculty.length})</div>`;
-    html += faculty.map(p => personRow(p)).join("");
-  }
 
-  wrap.innerHTML = html;
+  if (groupView) {
+    const byGroup = {};
+    people.forEach(p => { (byGroup[groupOf(p)] = byGroup[groupOf(p)] || []).push(p); });
+    Object.keys(byGroup).sort((a, b) => a === NO_GROUP ? 1 : b === NO_GROUP ? -1 : a.localeCompare(b, undefined, { numeric: true })).forEach(g => {
+      const list = byGroup[g].sort((a, b) => rank(a) - rank(b));
+      html += `<div class="list-heading">${esc(g)} (${summary(list)})</div>` + list.map(personRow).join("");
+    });
+  } else if (currentCourseType !== "all") {
+    const heading = currentCourseType === "instructor" ? "Instructor Candidates" : "Assessors & Senior Instructors";
+    html += `<div class="list-heading">${heading} (${summary(people)})</div>` + people.map(personRow).join("");
+  } else {
+    const candidates = people.filter(p => ["instructor", "assessor"].includes(effectiveRole(p)));
+    const faculty    = people.filter(p => ["faculty", "full-instructor", "itc", "director", "assessor-faculty"].includes(effectiveRole(p)));
+    if (candidates.length) html += `<div class="list-heading">Candidates (${summary(candidates)})</div>` + candidates.map(personRow).join("");
+    if (faculty.length)    html += `<div class="list-heading">Faculty &amp; Team (${summary(faculty)})</div>` + faculty.map(personRow).join("");
+  }
+  wrap.innerHTML = html + declinedHtml;
 }
+
+function renderGroupFilter(base) {
+  const el = document.getElementById("groupFilter");
+  if (!el) return;
+  const counts = {};
+  base.forEach(p => { counts[groupOf(p)] = (counts[groupOf(p)] || 0) + 1; });
+  const names = Object.keys(counts).sort((a, b) => a === NO_GROUP ? 1 : b === NO_GROUP ? -1 : a.localeCompare(b, undefined, { numeric: true }));
+  if (currentGroup !== "all" && !counts[currentGroup]) currentGroup = "all";
+  el.innerHTML = `<div class="gf-lbl">Group</div>` +
+    `<div class="cf-btn ${currentGroup === "all" ? "active" : ""}" onclick="setGroup('all')">All (${base.length})</div>` +
+    names.map(n => `<div class="cf-btn ${currentGroup === n ? "active" : ""}" onclick="setGroup(this.dataset.g)" data-g="${esc(n)}">${esc(n)} (${counts[n]})</div>`).join("") +
+    `<div class="cf-btn gv ${groupView ? "active" : ""}" onclick="toggleGroupView()">${groupView ? "Grouped by group" : "Group the list"}</div>`;
+}
+function setGroup(g) { currentGroup = g; renderList(); }
+function toggleGroupView() { groupView = !groupView; renderList(); }
 
 function personRow(p) {
   const rec         = attendance[p.id];
-  const arrived     = !!rec?.["arrived_" + currentDay];
-  const notExpected = !arrived && !!rec?.["notExpected_" + currentDay];
+  const arrived     = hasArrived(p);
+  const absent      = isAbsent(p);
+  const left        = hasLeft(p);
   const initials = (p.name || "?").split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
   const role    = effectiveRole(p);
-  const colour  = arrived ? "avatar-green" : (ROLE_COLOURS[role] || "avatar-muted");
+  const colour  = arrived ? (left ? "avatar-muted" : "avatar-green") : (ROLE_COLOURS[role] || "avatar-muted");
   const label   = customRoleLabel(p.roleLabel) || ROLE_LABELS[role] || role;
   const sub     = [label, p.group].filter(Boolean).join(" · ");
 
-  let timeStr = "";
-  if (arrived) {
-    const raw = rec["arrived_" + currentDay];
-    const d = raw.toDate ? raw.toDate() : new Date(raw);
-    timeStr = String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
-  }
+  const fmtT = raw => { const d = raw.toDate ? raw.toDate() : new Date(raw); return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0"); };
+  const timeStr = arrived ? fmtT(rec["arrived_" + currentDay]) : "";
+  const leftStr = left ? fmtT(rec["left_" + currentDay]) : "";
+  const leftWhy = left ? (LEFT_REASONS[rec["leftReason_" + currentDay]] || "") : "";
+  const note = absent ? (rec["absentNote_" + currentDay] || "") : (left ? (rec["leftNote_" + currentDay] || "") : "");
 
-  const rowClass = arrived ? "arrived" : (notExpected ? "not-expected" : "not-here");
-
+  const rowClass = arrived ? (left ? "arrived left" : "arrived") : (absent ? "not-expected" : "not-here");
   const dayOpen = dayIsOpen(currentDay);
+  const notHereBtn = `<button class="btn-not-expected" onclick="openAbsentSheet('${esc(p.id)}')">Not here</button>`;
   let statusHtml;
   if (canEdit) {
     if (arrived) {
-      statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>
-                 <button class="btn-undo" onclick="undoCheckIn('${esc(p.id)}')">Undo</button>`;
-    } else if (notExpected) {
-      statusHtml = `<div class="not-expected-label">Not expected</div>
-                 <button class="btn-undo" onclick="undoNotExpected('${esc(p.id)}')">Undo</button>`;
+      statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>` +
+        (left ? `<div class="left-label">Left ${leftStr}${leftWhy ? " · " + esc(leftWhy) : ""}</div><button class="btn-undo" onclick="undoLeft('${esc(p.id)}')">Undo left</button>`
+              : `<button class="btn-undo" onclick="undoCheckIn('${esc(p.id)}')">Undo</button> <button class="btn-not-expected" onclick="openLeftSheet('${esc(p.id)}')">Left early</button>`);
+    } else if (absent) {
+      statusHtml = `<div class="not-expected-label">${esc(absentLabel(rec))}</div>` + (note ? `<div class="status-note">${esc(note)}</div>` : "") +
+                 `<button class="btn-undo" onclick="undoNotExpected('${esc(p.id)}')">Undo</button>`;
     } else if (!dayOpen) {
-      statusHtml = `<div class="arrived-time" style="opacity:.5;">Opens ${IW_DAY_LABELS[currentDay]}</div>
-                 <button class="btn-not-expected" onclick="markNotExpected('${esc(p.id)}')">Not expected</button>`;
+      statusHtml = `<div class="arrived-time" style="opacity:.5;">Opens ${IW_DAY_LABELS[currentDay]}</div>${notHereBtn}`;
     } else {
-      statusHtml = `<button class="btn-checkin" onclick="checkIn('${esc(p.id)}')">Check in</button>
-                 <button class="btn-not-expected" onclick="markNotExpected('${esc(p.id)}')">Not expected</button>`;
+      statusHtml = `<button class="btn-checkin" onclick="checkIn('${esc(p.id)}')">Check in</button>${notHereBtn}`;
     }
   } else {
     if (arrived) {
-      statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>`;
-    } else if (notExpected) {
-      statusHtml = `<div class="not-expected-label">Not expected</div>`;
+      statusHtml = `<div class="arrived-time">✓ ${timeStr}</div>` + (left ? `<div class="left-label">Left ${leftStr}${leftWhy ? " · " + esc(leftWhy) : ""}</div>` : "");
+    } else if (absent) {
+      statusHtml = `<div class="not-expected-label">${esc(absentLabel(rec))}</div>`;
     } else {
       statusHtml = `<div class="arrived-time" style="opacity:.5;">Not yet arrived</div>`;
     }
@@ -694,16 +917,29 @@ function personRow(p) {
 }
 
 function updateStats() {
-  const total       = allPeople.length;
-  const arrived     = Object.values(attendance).filter(a => a?.["arrived_" + currentDay]).length;
-  const notExpected = Object.values(attendance).filter(a => !a?.["arrived_" + currentDay] && a?.["notExpected_" + currentDay]).length;
-  const outstand    = Math.max(0, total - arrived - notExpected);
+  const people      = visiblePeople();
+  const total       = people.length;
+  const arrived     = people.filter(hasArrived).length;
+  const absent      = people.filter(isAbsent);
+  const outstand    = people.filter(p => !hasArrived(p) && !isAbsent(p)).length;
   const pct         = total ? Math.round(arrived / total * 100) : 0;
+  const ill         = absent.filter(p => dayRec(p)["absentType_" + currentDay] === "ill").length;
+  const dna         = absent.filter(p => dayRec(p)["absentType_" + currentDay] === "dna").length;
+  const left        = people.filter(hasLeft).length;
+  const declined    = allPeople.filter(isDeclined).length;
 
   document.getElementById("statArrived").textContent    = arrived;
   document.getElementById("statOutstanding").textContent = outstand;
   document.getElementById("statTotal").textContent       = total;
   document.getElementById("statPct").textContent         = pct + "%";
+  const bits = [];
+  if (absent.length - ill - dna > 0) bits.push((absent.length - ill - dna) + " not expected");
+  if (ill) bits.push(ill + " known ill");
+  if (dna) bits.push(dna + " did not attend");
+  if (left) bits.push(left + " left early");
+  if (declined) bits.push(declined + " declined (left out)");
+  const line = document.getElementById("statLine");
+  if (line) { line.textContent = bits.join("  ·  "); line.classList.toggle("hidden", !bits.length); }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

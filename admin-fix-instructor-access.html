@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fix Instructor Access — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 40px; color:#1f2540; }
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar a.back { color:rgba(255,255,255,.7); text-decoration:none; font-size:12px; }
+    .wrap { max-width:860px; margin:0 auto; padding:16px 14px; }
+    .card { background:#fff; border:1.5px solid #dde2ed; border-radius:12px; padding:16px; margin-bottom:14px; }
+    h2 { margin:0 0 6px; font-size:16px; color:var(--rmd-navy); }
+    p { line-height:1.5; margin:6px 0; font-size:14px; }
+    .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    button.pri { appearance:none; border:none; background:var(--rmd-navy); color:#fff; font-weight:700; font-size:14px; padding:10px 18px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    button.pri:disabled { opacity:.4; cursor:not-allowed; }
+    button.sec { appearance:none; border:1.5px solid #c9cfe0; background:#fff; color:var(--rmd-navy); font-weight:700; font-size:14px; padding:9px 16px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+    th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#5a6b8c; padding:6px 8px; border-bottom:2px solid #e0e4ee; }
+    td { padding:7px 8px; border-bottom:1px solid #eef1f8; vertical-align:top; }
+    .tbl-wrap { overflow-x:auto; }
+    .msg { padding:10px 12px; border-radius:9px; font-size:14px; font-weight:600; margin-top:10px; }
+    .msg.ok { background:#e6f4ea; color:#1a6e31; } .msg.warn { background:#fff3cd; color:#7a5200; } .msg.err { background:#fde8ea; color:#b3261e; }
+    .muted { color:#5a6b8c; font-size:13px; }
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+  </style>
+</head>
+<body>
+<div id="authOverlay" class="auth-overlay"><div style="font-size:36px">🔧</div><div id="authMsg">Checking access…</div></div>
+
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Fix Instructor Access</div>
+  <a class="back" href="member-menu.html">← Menu</a>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>What this fixes</h2>
+    <p>Some instructors were added to the website before they had a login, so their record sits under a placeholder ID. When they sign in, the site cannot find that record, so they get no Current Course or OPIS links and are not matched to their room.</p>
+    <p>This tool moves everything for each affected person (role, room teams, OPIS access, Instructor Weekend attendance and feedback) onto their real login. People who have no login yet are listed and left alone. It is safe to run again.</p>
+    <div class="btns">
+      <button class="pri" id="checkBtn" type="button">1. Check who is affected</button>
+      <button class="pri" id="fixBtn" type="button" disabled>2. Fix them now</button>
+    </div>
+    <div id="status"></div>
+  </div>
+  <div id="results"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+const call = data => firebase.functions().httpsCallable("repairOrphanPeople")(data).then(r => r.data);
+
+requireDirector().then(() => { $("authOverlay").style.display = "none"; });
+
+function table(rows, cols) {
+  if (!rows.length) return `<p class="muted">None.</p>`;
+  return `<div class="tbl-wrap"><table><tr>${cols.map(c => `<th>${esc(c[0])}</th>`).join("")}</tr>` +
+    rows.map(r => `<tr>${cols.map(c => `<td>${esc(c[1](r))}</td>`).join("")}</tr>`).join("") + `</table></div>`;
+}
+const FIXCOLS = [
+  ["Name", r => r.name], ["Email", r => r.email], ["Role", r => r.role || "-"],
+  ["Room records", r => r.candidateRecords], ["Room teams", r => r.roomAllocations],
+  ["Feedback records", r => r.sessionFeedback], ["Attendance", r => r.attendance ? "yes" : "-"]
+];
+
+function show(res) {
+  const list = res.dryRun ? res.wouldFix : res.fixed;
+  $("results").innerHTML =
+    `<div class="card"><h2>${res.dryRun ? "Will be fixed" : "Fixed"} (${list.length})</h2>${table(list, FIXCOLS)}</div>` +
+    `<div class="card"><h2>No login yet (${res.noLogin.length})</h2><p class="muted">These people have no website login, so there is nothing to fix until they create one. Send them the account setup link, then run this again.</p>` +
+    table(res.noLogin, [["Name", r => r.name], ["Email", r => r.email], ["Role", r => r.role || "-"]]) + `</div>`;
+}
+
+let lastCount = 0;
+$("checkBtn").onclick = async () => {
+  $("checkBtn").disabled = true; $("fixBtn").disabled = true;
+  $("status").innerHTML = `<div class="msg warn">Checking…</div>`;
+  try {
+    const res = await call({ dryRun: true });
+    lastCount = res.wouldFix.length; show(res);
+    $("status").innerHTML = lastCount
+      ? `<div class="msg warn">${lastCount} ${lastCount === 1 ? "person needs" : "people need"} fixing. Check the list, then press "Fix them now". Nothing has been changed yet.</div>`
+      : `<div class="msg ok">Nobody with a login needs fixing.</div>`;
+    $("fixBtn").disabled = !lastCount;
+  } catch (e) { $("status").innerHTML = `<div class="msg err">Could not check: ${esc(e.message)}</div>`; }
+  $("checkBtn").disabled = false;
+};
+$("fixBtn").onclick = async () => {
+  if (!confirm(`Move ${lastCount} ${lastCount === 1 ? "person" : "people"} onto their real login? This updates their profile, room teams, attendance and feedback records.`)) return;
+  $("checkBtn").disabled = true; $("fixBtn").disabled = true;
+  $("status").innerHTML = `<div class="msg warn">Fixing… this can take a minute.</div>`;
+  try {
+    const res = await call({ dryRun: false });
+    show(res);
+    $("status").innerHTML = `<div class="msg ok">Fixed ${res.fixed.length}. Ask each of them to sign out and sign back in, and the Current Course and OPIS links will appear.</div>`;
+  } catch (e) { $("status").innerHTML = `<div class="msg err">The fix stopped part-way: ${esc(e.message)}. It is safe to press "Check who is affected" and run it again.</div>`; $("checkBtn").disabled = false; return; }
+  $("checkBtn").disabled = false;
+};
+</script>
+</body>
+</html>

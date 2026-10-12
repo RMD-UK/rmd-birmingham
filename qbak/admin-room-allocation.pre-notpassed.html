@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Room Allocation — RMD Instructor Weekend 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    body { background:#f0f2f7; margin:0; }
+
+    /* ── Toolbar ── */
+    .ra-toolbar { background:var(--rmd-navy); color:#fff; padding:10px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:50; flex-wrap:wrap; }
+    .ra-back { color:rgba(255,255,255,.55); text-decoration:none; font-size:13px; }
+    .ra-back:hover { color:#fff; }
+    .ra-title { font-size:16px; font-weight:800; flex:1; margin:0; white-space:nowrap; }
+    .ra-btn { background:rgba(255,255,255,.14); color:#fff; border:none; padding:7px 13px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; font-family:var(--font); white-space:nowrap; }
+    .ra-btn:hover { background:rgba(255,255,255,.24); }
+    .ra-btn.save { background:var(--rmd-red); }
+    .ra-btn.save:hover { background:#a93226; }
+    #saveStatus { font-size:12px; min-width:80px; }
+    #saveStatus.ok  { color:#4ade80; }
+    #saveStatus.err { color:#f87171; }
+
+    /* ── Tab bar ── */
+    .tab-bar { background:#fff; border-bottom:2px solid #e0e4ee; display:flex; }
+    .tab-btn { padding:11px 22px; font-size:13px; font-weight:700; border:none; background:none; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; color:#6b7696; font-family:var(--font); transition:color .15s; }
+    .tab-btn:hover { color:var(--rmd-navy); }
+    .tab-btn.active { color:var(--rmd-navy); border-bottom-color:var(--rmd-navy); }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+
+    /* ── Stats bar ── */
+    .ra-stats { background:rgba(13,32,53,.9); color:rgba(255,255,255,.55); font-size:12px; padding:5px 16px; display:flex; gap:20px; }
+    .ra-stats b { color:#fff; }
+
+    /* ── Tab 1: Room Groups layout ── */
+    .rooms-layout { display:flex; height:calc(100vh - 112px); }
+
+    /* Pool */
+    .ra-pool { width:230px; min-width:180px; background:#fff; border-right:2px solid #dde1ec; display:flex; flex-direction:column; flex-shrink:0; }
+    .pool-head { padding:9px 14px; background:#e8ecf4; border-bottom:1px solid #d5daea; font-weight:800; font-size:13px; color:var(--rmd-navy); display:flex; justify-content:space-between; align-items:center; }
+    .pool-badge { background:var(--rmd-navy); color:#fff; border-radius:10px; padding:1px 8px; font-size:11px; font-weight:700; }
+    .pool-search { padding:7px 8px 4px; }
+    .pool-search input { width:100%; padding:6px 10px; border:1.5px solid #d0d5e0; border-radius:6px; font-size:13px; box-sizing:border-box; outline:none; font-family:var(--font); }
+    .pool-search input:focus { border-color:var(--rmd-blue); }
+    .pool-list { flex:1; overflow-y:auto; padding:6px; }
+    .pool-empty { padding:20px 10px; text-align:center; color:#b0b8cc; font-size:12px; }
+    .pool-type-label { font-size:10px; font-weight:700; color:#8893b0; padding:5px 4px 2px; text-transform:uppercase; letter-spacing:.5px; }
+
+    /* Person cards */
+    .pcard { border:1.5px solid #dde2ed; border-radius:6px; padding:5px 8px; margin-bottom:3px; font-size:13px; font-family:var(--font); cursor:grab; user-select:none; display:flex; align-items:center; gap:6px; background:#f7f9fc; transition:background .1s, opacity .15s; }
+    .pcard:hover { background:#edf1f9; border-color:#b8c2d8; }
+    .pcard.is-dragging { opacity:.35; }
+    .pcard.selected { background:#dbeafe; border-color:#3b82f6; box-shadow:0 0 0 2px rgba(59,130,246,.18); }
+    .pcard-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .role-pip { font-size:10px; font-weight:700; padding:2px 5px; border-radius:4px; flex-shrink:0; }
+    .pip-cand { background:#e8f0fe; color:#1a56a8; }
+    .pip-inst { background:#fef3c7; color:#92400e; }
+    .pcard-rm { background:none; border:none; color:#c0c8d8; cursor:pointer; padding:0 2px 0 4px; font-size:15px; line-height:1; flex-shrink:0; font-family:var(--font); }
+    .pcard-rm:hover { color:var(--rmd-red); }
+
+    /* Rooms grid */
+    .rooms-grid { flex:1; overflow:auto; padding:10px; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; align-content:start; grid-auto-rows:max-content; align-items:start; }
+    /* Cards grow to show every member (2026-10-08): they used to be squeezed to
+       180px and clipped, hiding most of each room. The grid scrolls instead. */
+    .room-col { background:#fff; border:1.5px solid #dde2ed; border-radius:10px; display:flex; flex-direction:column; min-height:180px; overflow:visible; transition:border-color .12s, box-shadow .12s; }
+    .room-col.drag-over { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.15); background:#f0f6ff; }
+    .room-col.click-target { border-color:#22c55e; box-shadow:0 0 0 3px rgba(34,197,94,.18); }
+    .room-head { background:var(--rmd-navy); color:#fff; padding:8px 10px; flex-shrink:0; border-radius:8px 8px 0 0; }
+    .room-head-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:5px; }
+    .room-id { font-size:15px; font-weight:800; letter-spacing:.5px; }
+    .room-count { font-size:11px; opacity:.55; }
+    .room-body { flex:1; padding:5px; min-height:60px; }
+    .room-sec-label { font-size:10px; font-weight:700; color:#aab0c8; text-transform:uppercase; padding:3px 3px 1px; letter-spacing:.5px; }
+    .room-drop-hint { text-align:center; color:#c8cede; font-size:12px; padding:18px 8px; }
+
+    /* ── Tab 2: Teaching Faculty ── */
+    .tf-wrap { padding:16px; max-width:960px; }
+    .tf-intro { background:#fff; border:1.5px solid #e0e4ee; border-radius:8px; padding:12px 16px; margin-bottom:14px; font-size:13px; color:#505878; line-height:1.5; }
+    .tf-intro b { color:var(--rmd-navy); }
+    .tf-controls { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    .tf-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:8px; }
+    .tf-item { background:#fff; border:1.5px solid #dde2ed; border-radius:8px; padding:9px 12px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:background .1s; }
+    .tf-item:hover { background:#f5f7fc; }
+    .tf-item.checked { background:#f0fdf4; border-color:#22c55e; }
+    .tf-item input[type=checkbox] { width:16px; height:16px; cursor:pointer; flex-shrink:0; accent-color:var(--rmd-navy); }
+    .tf-name { font-size:13px; font-weight:600; color:var(--rmd-navy); }
+    .tf-rolelabel { font-size:11px; color:#8893b0; }
+
+    /* ── Tab 3: ITC Schedule ── */
+    .itc-wrap { padding:16px; }
+    .itc-section { background:#fff; border:1.5px solid #e0e4ee; border-radius:10px; margin-bottom:14px; overflow:hidden; }
+    .itc-sec-head { background:#e8ecf4; padding:10px 14px; font-weight:800; font-size:13px; color:var(--rmd-navy); display:flex; align-items:center; justify-content:space-between; }
+    .itc-sec-body { padding:12px 14px; }
+    .itc-picker-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:6px; max-height:230px; overflow-y:auto; margin-top:10px; }
+    .itc-pick-item { background:#f7f9fc; border:1.5px solid #dde2ed; border-radius:6px; padding:7px 10px; display:flex; align-items:center; gap:8px; cursor:pointer; transition:background .1s; }
+    .itc-pick-item:hover { background:#edf1f9; }
+    .itc-pick-item.selected { background:#dbeafe; border-color:#3b82f6; }
+    .itc-pick-item input { width:14px; height:14px; accent-color:var(--rmd-navy); flex-shrink:0; }
+    .itc-grid-wrap { overflow-x:auto; }
+    .itc-grid { border-collapse:collapse; font-size:12px; min-width:500px; width:100%; }
+    .itc-grid th { background:var(--rmd-navy); color:#fff; padding:8px 10px; text-align:left; font-size:11px; white-space:nowrap; }
+    .itc-grid td { border:1px solid #e0e4ee; padding:6px 8px; vertical-align:middle; }
+    .itc-grid td:first-child { background:#f7f9fc; font-weight:600; font-size:13px; color:var(--rmd-navy); }
+    .itc-grid .room-sel { width:100%; border:1px solid #d0d5e0; border-radius:4px; font-size:12px; padding:3px 5px; font-family:var(--font); }
+
+    /* ── Auth overlay ── */
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+    #authMsg { font-size:15px; opacity:.7; }
+
+    @media (max-width:1100px) { .rooms-grid { grid-template-columns:repeat(3,1fr); } }
+    @media (max-width:820px)  { .rooms-grid { grid-template-columns:repeat(2,1fr); } .rooms-layout { flex-direction:column; height:auto; } .ra-pool { width:100%; border-right:none; border-bottom:2px solid #dde1ec; max-height:200px; } }
+  </style>
+</head>
+<body>
+
+<!-- Auth -->
+<div id="authOverlay" class="auth-overlay">
+  <div style="font-size:36px">🏫</div>
+  <div id="authMsg">Checking access…</div>
+</div>
+
+<!-- Toolbar -->
+<div class="ra-toolbar">
+  <a href="timetable.html" class="ra-back">← Timetable</a>
+  <h1 class="ra-title">Room Allocation — Instructor Weekend 2026</h1>
+  <span id="saveStatus"></span>
+  <button class="ra-btn" id="clearSelBtn" style="display:none" onclick="clearSelection()">✕ Deselect</button>
+  <button class="ra-btn" id="autoBtn" onclick="randomizeCandidates()" style="display:none">🎲 Randomly sort Instructor Candidates</button>
+  <button class="ra-btn" id="autoInstBtn" onclick="randomizeInstructors()" style="display:none">🎲 Randomly allocate Instructor Trainers</button>
+  <button class="ra-btn save" onclick="saveAll()">💾 Save all</button>
+</div>
+
+<!-- Tabs -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tbtn-rooms"    onclick="showTab('rooms')">🏠 Room Groups</button>
+  <button class="tab-btn"        id="tbtn-teaching" onclick="showTab('teaching')">👥 Teaching Faculty</button>
+  <button class="tab-btn"        id="tbtn-itc"      onclick="showTab('itc')">🔄 ITC Schedule</button>
+</div>
+
+<!-- ══ TAB 1: ROOM GROUPS ══════════════════════════════════════════════════ -->
+<div id="tab-rooms" class="tab-content active">
+  <div class="ra-stats">
+    <div>Instructor Candidates: <b id="statCand">—</b></div>
+    <div>Instructor Trainers (selected): <b id="statInst">—</b></div>
+    <div>Assigned: <b id="statAssigned">0</b></div>
+    <div>Unassigned: <b id="statUnassigned">—</b></div>
+    <div id="selHint" style="display:none;color:rgba(255,255,255,.8)">Click a room to assign selected person</div>
+  </div>
+  <div class="rooms-layout">
+    <div class="ra-pool">
+      <div class="pool-head">Pool <span class="pool-badge" id="poolCount">0</span></div>
+      <div style="padding:6px 10px 0;font-size:11px;color:#8893b0;line-height:1.4">Assessors &amp; Senior Instructors are handled separately and never appear here. Instructor Trainers only appear once selected on the <b>Teaching Faculty</b> tab.</div>
+      <div class="pool-search">
+        <input type="search" id="poolSearch" placeholder="Search…" oninput="renderPool()">
+      </div>
+      <div class="pool-list" id="poolList"
+           ondragover="onDragOver(event,'pool')" ondragleave="onDragLeave(event)" ondrop="onDrop(event,'pool')">
+        <div class="pool-empty" id="poolLoading">Loading…</div>
+      </div>
+    </div>
+    <div class="rooms-grid" id="roomsGrid"></div>
+  </div>
+</div>
+
+<!-- ══ TAB 2: TEACHING FACULTY ════════════════════════════════════════════ -->
+<div id="tab-teaching" class="tab-content">
+  <div class="tf-wrap">
+    <div class="tf-intro">
+      Select which confirmed <b>Instructor Trainers</b> will actually be placed into rooms this weekend. Only checked names appear in the Room Groups pool for assignment — Instructor Trainers in non-teaching roles (e.g. floating, observing, administrative) should be left unchecked and simply won't show up as available to place.
+    </div>
+    <div class="tf-controls">
+      <span style="font-size:13px;color:#6b7696"><b id="tfCount">0</b> selected to be placed in rooms</span>
+      <div style="display:flex;gap:8px">
+        <button class="ra-btn" onclick="tfSelectAll(true)">Select all</button>
+        <button class="ra-btn" onclick="tfSelectAll(false)">Clear all</button>
+      </div>
+    </div>
+    <div class="tf-grid" id="tfGrid"></div>
+  </div>
+</div>
+
+<!-- ══ TAB 3: ITC SCHEDULE ════════════════════════════════════════════════ -->
+<div id="tab-itc" class="tab-content">
+  <div class="itc-wrap">
+
+    <div class="itc-section">
+      <div class="itc-sec-head">
+        Step 1 — Select who's rotating this year
+        <span style="font-size:11px;font-weight:600;opacity:.7"><b id="itcCount">0</b> selected</span>
+      </div>
+      <div class="itc-sec-body">
+        <p style="font-size:13px;color:#505878;margin:0 0 6px">List below is confirmed Instructor Trainer Candidates (ITCs) only. They rotate through rooms across 4 session blocks during the weekend — max one ITC per room per block. You can change an ITC's room at any point during the course, including mid-weekend.</p>
+        <input type="search" id="itcSearch" placeholder="Search people…" oninput="renderITCPicker()"
+               style="padding:6px 10px;border:1.5px solid #d0d5e0;border-radius:6px;font-size:13px;font-family:var(--font);width:100%;max-width:320px;box-sizing:border-box;outline:none;">
+        <div class="itc-picker-grid" id="itcPickerGrid"></div>
+      </div>
+    </div>
+
+    <div class="itc-section">
+      <div class="itc-sec-head">
+        Step 2 — Assign a room per session block
+        <button class="ra-btn" id="itcAutoBtn" onclick="autoAllocateITCs()" style="background:rgba(255,255,255,.14);color:var(--rmd-navy);border:1.5px solid var(--rmd-navy);">⚡ Auto-allocate</button>
+      </div>
+      <div class="itc-sec-body">
+        <p style="font-size:13px;color:#505878;margin:0 0 12px">Each ITC gets a different room for each block. Leave blank if an ITC is not rotating in that block. <b>Auto-allocate</b> fills the whole grid in one go: each block gets every selected ITC in a different room (never two ITCs sharing a room in the same block), and rotates each ITC through a different room each block, same as picking it by hand.</p>
+        <div class="itc-grid-wrap" id="itcGridWrap">
+          <p style="color:#b0b8cc;font-size:13px;">Select ITCs in Step 1 first.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+// DIRECTOR_EMAILS is declared once in js/firebase-config.js, loaded above.
+// Re-declaring it here as a second top-level `const` throws a SyntaxError
+// (two <script> tags share one global scope) and silently kills this entire
+// script block — confirmed 2026-07-15. Do not redeclare it.
+
+const ITC_SESSIONS = [
+  { key: "sat_group",    label: "Sat — Equipment Practice / BLS/AED / First Aid & Catastrophic Haemorrhage" },
+  { key: "sat_conv",     label: "Sat — Learning Conversation" },
+  { key: "sun_teaching", label: "Sun — Group Practice: Teaching" },
+  { key: "sun_assess",   label: "Sun — Group Practice: Continuous Assessment" },
+];
+
+// ── State ──────────────────────────────────────────────────────────────────
+const ROOMS = INSTRUCTOR_ROOMS;
+
+let allCandidates  = [];   // role=instructor
+let allInstructors = [];   // role=full-instructor
+let allFaculty     = [];   // role=faculty (Teaching Faculty tab pool: Faculty + Instructor Trainer)
+let allITC         = [];   // role=Instructor Trainer Candidate (confirmed, from faculty_responses)
+let allPeople      = [];   // everyone
+
+let groups = {};           // {CM01:{candidates:[],instructors:[]}, ...}
+let teachingFaculty = new Set();
+let itcSet          = new Set();
+let itcSchedule     = {};  // {email: {sat_group:"CM01", ...}}
+
+let dragging     = null;   // {email, source}
+let draggingRole = null;   // "candidate" | "instructor"
+let selectedEmail = null;
+
+ROOMS.forEach(r => { groups[r] = { candidates: [], instructors: [] }; });
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+// resolveRole() is the shared one from js/firebase-config.js — do not
+// redeclare it locally (see note above re: duplicate DIRECTOR_EMAILS).
+
+initFirebase();
+
+requireDirector("timetable.html").then(async () => {
+  document.getElementById("authOverlay").style.display = "none";
+  await loadData();
+});
+
+// ── Load ───────────────────────────────────────────────────────────────────
+async function loadData() {
+  // ① Build mou_roster role map — used to classify Faculty respondents
+  //   Candidates (role=instructor) always attend and come directly from this
+  const rosterRoleByEmail = {};
+  try {
+    const rSnap = await db.collection(COLLECTIONS.mouRoster).get();
+    rSnap.forEach(doc => {
+      const d  = doc.data();
+      const em = (d.email || doc.id).toLowerCase();
+      rosterRoleByEmail[em] = d.role;
+      // mou_roster's own role field uses its own literal labels (Instructor,
+      // Senior Instructor, Assessor, RMD Student Faculty, RMD Senior Faculty
+      // -- see admin-mou-dashboard.html ROSTER_ROLE_ORDER), NOT the platform
+      // ROLES enum (ROLES.INSTRUCTOR = "instructor"). Comparing against
+      // ROLES.INSTRUCTOR here always failed, silently, giving 0 Candidates.
+      if (d.role === "Instructor") {
+        const p = { name: d.name || doc.id, email: em };
+        allCandidates.push(p);
+        allPeople.push(p);
+      }
+    });
+  } catch(e) { console.warn("Roster load failed:", e.message); }
+
+  // ② Confirmed IW attendees from faculty_responses
+  //   Faculty or Instructor Trainer role → Teaching Faculty tab pool (allFaculty); Instructor Trainer
+  //   role → also room-placement pool if full-instructor (allInstructors)
+  //   ITC role → ITC picker only (via allPeople)
+  //   Note: "Instructor Trainer" and "Assessor Faculty" were added as distinct faculty-form.html
+  //   role options 2026-07-11 (previously Instructor Trainers had to pick "Faculty" as the closest
+  //   fit). Assessor Faculty are deliberately NOT added to this gate — this tool is instructor-track
+  //   room allocation only, it has no assessor-day equivalent yet.
+  //   2026-08-27: skip anyone Jon has marked "Declined" (or who self-declined via the faculty-form
+  //   "can't attend" shortcut) on admin-faculty-responses.html — they were showing up here regardless
+  //   of that status. This is a filter, not a deletion: their response record is untouched, they just
+  //   don't appear as available for room placement while declined.
+  try {
+    const fSnap = await db.collection("faculty_responses").get();
+    fSnap.forEach(doc => {
+      const d   = doc.data();
+      const em  = (d.email || "").toLowerCase();
+      if (!em) return;
+      if (d.attendanceStatus === "declined" || d.cannotAttend === true) return;
+      const name = [d.firstName, d.lastName].filter(Boolean).join(" ") || em;
+      const p   = { name, email: em };
+      if (!allPeople.some(x => x.email === em)) allPeople.push(p);
+      if (d.role === "Faculty" || d.role === "Instructor Trainer") {
+        allFaculty.push(p);  // all Faculty/Instructor Trainer respondents → Teaching Faculty tab pool
+        if (rosterRoleByEmail[em] === "full-instructor" || d.role === "Instructor Trainer") {
+          allInstructors.push(p);  // full instructors also go in the room pool
+        }
+      } else if (d.role === "Instructor Trainer Candidate" || d.role === "ITC") {
+        // "ITC" is the legacy value some older faculty_responses docs still carry
+        // (faculty-form.html normalizes new submissions to the full label, never rewrites old ones).
+        allITC.push(p);
+      }
+    });
+  } catch(e) { console.warn("Faculty responses load failed:", e.message); }
+
+  [allCandidates, allInstructors, allFaculty, allITC, allPeople].forEach(a => a.sort((x,y) => x.name.localeCompare(y.name)));
+
+  try {
+    const snap = await db.collection(COLLECTIONS.groups).get();
+    snap.forEach(doc => {
+      const rid = doc.id;
+      if (groups[rid]) {
+        const d = doc.data();
+        groups[rid].candidates   = d.candidates   || [];
+        groups[rid].instructors  = d.instructors  || [];
+      }
+    });
+  } catch(e) { console.warn("Groups load failed:", e.message); }
+
+  try {
+    const doc = await db.collection("config").doc("teaching_faculty").get();
+    if (doc.exists) (doc.data().members || []).forEach(m => teachingFaculty.add(m.email));
+  } catch(e) {}
+
+  try {
+    const doc = await db.collection("config").doc("itc_schedule").get();
+    if (doc.exists) {
+      const d = doc.data();
+      (d.itcs || []).forEach(p => itcSet.add(p.email));
+      itcSchedule = d.assignments || {};
+    }
+  } catch(e) {}
+
+  // 2026-10-02 (Jon: "By default, select all of them") — only kicks in
+  // when nothing's been explicitly selected yet (no saved config, or a
+  // saved config with an empty list), so it never fights a selection
+  // someone already saved. Auto-allocate needs at least one ITC checked
+  // to do anything, so starting empty meant an extra manual step every
+  // time before it could be used.
+  if (itcSet.size === 0) {
+    allITC.forEach(p => itcSet.add(p.email));
+  }
+
+  render();
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function showTab(id) {
+  document.querySelectorAll(".tab-content").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(el => el.classList.remove("active"));
+  document.getElementById("tab-" + id).classList.add("active");
+  document.getElementById("tbtn-" + id).classList.add("active");
+  document.getElementById("autoBtn").style.display = id === "rooms" ? "" : "none";
+}
+
+// ── Master render ──────────────────────────────────────────────────────────
+function render() {
+  renderPool();
+  renderRooms();
+  updateStats();
+  renderTeachingFaculty();
+  renderITCPicker();
+  renderITCGrid();
+}
+
+// ── Pool ───────────────────────────────────────────────────────────────────
+function assignedEmails() {
+  const s = new Set();
+  ROOMS.forEach(r => {
+    groups[r].candidates.forEach(p  => s.add(p.email));
+    groups[r].instructors.forEach(p => s.add(p.email));
+  });
+  return s;
+}
+
+function selectedInstructors() {
+  return allInstructors.filter(p => teachingFaculty.has(p.email));
+}
+
+function renderPool() {
+  const assigned = assignedEmails();
+  const q = (document.getElementById("poolSearch").value || "").toLowerCase();
+  const selInst = selectedInstructors();
+  const cands = allCandidates.filter(p => !assigned.has(p.email) && (!q || RMD_FUZZY.score(q, [p.name]) > 0));
+  const insts  = selInst.filter(p => !assigned.has(p.email) && (!q || RMD_FUZZY.score(q, [p.name]) > 0));
+  const totalUnassigned = allCandidates.filter(p => !assigned.has(p.email)).length
+                        + selInst.filter(p => !assigned.has(p.email)).length;
+
+  document.getElementById("poolCount").textContent  = totalUnassigned;
+  // "Loading…" placeholder only exists in the pre-render static HTML — the innerHTML write below
+  // (and every prior call to it) replaces it. Referencing it unguarded threw "Cannot read
+  // properties of null" on every renderPool() after the very first one, which silently aborted
+  // the rest of the calling function (renderRooms()/updateStats() never ran) — nothing ever
+  // visually updated after page load: not drag/drop, not click-to-move, not randomize. The
+  // underlying data changes were fine; the screen just never repainted. Found 2026-08-27 while
+  // debugging "randomize doesn't move candidates into rooms". Optional-chain it so it's a no-op
+  // once the placeholder is gone, same as poolLoading's one-time purpose was always meant to be.
+  document.getElementById("poolLoading")?.style.setProperty("display", "none");
+
+  let html = "";
+  if (cands.length) {
+    html += `<div class="pool-type-label">Instructor Candidates (${allCandidates.filter(p=>!assigned.has(p.email)).length})</div>`;
+    html += cands.map(p => makeCard(p, "pool", "candidate")).join("");
+  }
+  if (insts.length) {
+    html += `<div class="pool-type-label">Instructor Trainers (${selInst.filter(p=>!assigned.has(p.email)).length})</div>`;
+    html += insts.map(p => makeCard(p, "pool", "instructor")).join("");
+  }
+  if (!html) {
+    html = `<div class="pool-empty">${totalUnassigned === 0 ? "All assigned ✓" : "No matches"}</div>`;
+  }
+  document.getElementById("poolList").innerHTML = html;
+}
+
+function makeCard(person, source, roleType) {
+  const sel  = selectedEmail === person.email;
+  const pip  = roleType === "candidate"
+    ? `<span class="role-pip pip-cand">Cand</span>`
+    : `<span class="role-pip pip-inst">Instr</span>`;
+  const rmBtn = source !== "pool"
+    ? `<button class="pcard-rm" onclick="removeFromRoom('${source}','${person.email}','${roleType}',event)" title="Return to pool">×</button>`
+    : "";
+  return `<div class="pcard${sel ? " selected" : ""}"
+               draggable="true" data-email="${person.email}" data-roletype="${roleType}"
+               ondragstart="onDragStart(event,'${person.email}','${source}','${roleType}')"
+               onclick="onCardClick(event,'${person.email}','${source}','${roleType}')">
+            ${pip}<span class="pcard-name">${person.name}</span>${rmBtn}
+          </div>`;
+}
+
+// ── Rooms ──────────────────────────────────────────────────────────────────
+function renderRooms() {
+  document.getElementById("autoBtn").style.display = "";
+  document.getElementById("autoInstBtn").style.display = "";
+  document.getElementById("roomsGrid").innerHTML = ROOMS.map(rid => {
+    const g     = groups[rid];
+    const total = g.candidates.length + g.instructors.length;
+    return `<div class="room-col${total===0?" empty":""}" id="room-${rid}"
+                 ondragover="onDragOver(event,'${rid}')"
+                 ondragleave="onDragLeave(event)"
+                 ondrop="onDrop(event,'${rid}')"
+                 onclick="onRoomClick('${rid}',event)">
+              <div class="room-head">
+                <div class="room-head-row">
+                  <span class="room-id">${rid}</span>
+                  <span class="room-count">${total} assigned</span>
+                </div>
+              </div>
+              <div class="room-body">
+                ${g.instructors.length ? `<div class="room-sec-label">Instructor Trainers</div>${g.instructors.map(p=>makeCard(p,rid,"instructor")).join("")}` : ""}
+                ${g.candidates.length  ? `<div class="room-sec-label">Instructor Candidates</div>${g.candidates.map(p=>makeCard(p,rid,"candidate")).join("")}` : ""}
+                ${total===0 ? `<div class="room-drop-hint">Drop here</div>` : ""}
+              </div>
+            </div>`;
+  }).join("");
+}
+
+function updateStats() {
+  const a = assignedEmails();
+  const selInst = selectedInstructors();
+  const total = allCandidates.length + selInst.length;
+  document.getElementById("statCand").textContent      = allCandidates.length;
+  document.getElementById("statInst").textContent      = selInst.length;
+  document.getElementById("statAssigned").textContent  = a.size;
+  document.getElementById("statUnassigned").textContent = total - a.size;
+}
+
+// ── Drag & drop ────────────────────────────────────────────────────────────
+function onDragStart(event, email, source, roleType) {
+  dragging = { email, source }; draggingRole = roleType;
+  event.dataTransfer.effectAllowed = "move";
+  setTimeout(() => { document.querySelector(`[data-email="${email}"]`)?.classList.add("is-dragging"); }, 0);
+}
+function onDragOver(event, target) {
+  event.preventDefault();
+  const el = target === "pool" ? document.getElementById("poolList") : document.getElementById(`room-${target}`);
+  el?.classList.add("drag-over");
+}
+function onDragLeave(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.classList.remove("drag-over");
+}
+function onDrop(event, target) {
+  event.preventDefault(); clearHighlights();
+  if (!dragging) return;
+  movePerson(dragging.email, dragging.source, target, draggingRole);
+  dragging = null; draggingRole = null;
+}
+function clearHighlights() { document.querySelectorAll(".drag-over").forEach(el => el.classList.remove("drag-over")); }
+document.addEventListener("dragend", () => {
+  clearHighlights();
+  document.querySelectorAll(".is-dragging").forEach(el => el.classList.remove("is-dragging"));
+  dragging = null;
+});
+
+// ── Click-to-move ──────────────────────────────────────────────────────────
+function onCardClick(event, email, source, roleType) {
+  event.stopPropagation();
+  if (selectedEmail === email) { clearSelection(); return; }
+  selectedEmail = email;
+  document.getElementById("clearSelBtn").style.display = "";
+  document.getElementById("selHint").style.display = "";
+  ROOMS.forEach(r => document.getElementById(`room-${r}`)?.classList.add("click-target"));
+  renderPool(); renderRooms();
+}
+function onRoomClick(rid, event) {
+  if (!selectedEmail) return; event.stopPropagation();
+  const src = findSource(selectedEmail);
+  const rt  = findRoleType(selectedEmail);
+  if (!src || !rt) return;
+  movePerson(selectedEmail, src, rid, rt);
+  clearSelection();
+}
+function clearSelection() {
+  selectedEmail = null;
+  document.getElementById("clearSelBtn").style.display = "none";
+  document.getElementById("selHint").style.display = "none";
+  document.querySelectorAll(".click-target").forEach(el => el.classList.remove("click-target"));
+  renderPool(); renderRooms();
+}
+function findSource(email) {
+  const a = assignedEmails();
+  if (!a.has(email)) return "pool";
+  for (const r of ROOMS) { if (groups[r].candidates.some(p=>p.email===email)||groups[r].instructors.some(p=>p.email===email)) return r; }
+  return null;
+}
+function findRoleType(email) {
+  if (allCandidates.some(p=>p.email===email)) return "candidate";
+  if (allInstructors.some(p=>p.email===email)) return "instructor";
+  return null;
+}
+
+// ── Move logic ─────────────────────────────────────────────────────────────
+function movePerson(email, source, target, roleType) {
+  if (source === target) return;
+  const pool   = roleType === "candidate" ? allCandidates : allInstructors;
+  const person = pool.find(p => p.email === email);
+  if (!person) return;
+  if (source !== "pool") {
+    if (roleType === "candidate") groups[source].candidates  = groups[source].candidates.filter(p=>p.email!==email);
+    else                          groups[source].instructors = groups[source].instructors.filter(p=>p.email!==email);
+  }
+  if (target !== "pool") {
+    const arr = roleType === "candidate" ? groups[target].candidates : groups[target].instructors;
+    if (!arr.some(p=>p.email===email)) arr.push(person);
+  }
+  renderPool(); renderRooms(); updateStats();
+}
+
+function removeFromRoom(rid, email, roleType, event) {
+  event.stopPropagation();
+  if (roleType === "candidate") groups[rid].candidates  = groups[rid].candidates.filter(p=>p.email!==email);
+  else                          groups[rid].instructors = groups[rid].instructors.filter(p=>p.email!==email);
+  renderPool(); renderRooms(); updateStats();
+}
+
+// ── Randomize (Instructor Candidates) ──
+function randomizeCandidates() {
+  if (!allCandidates.length) { showStatus("No candidates loaded — check mou_roster data","err"); return; }
+  const assigned = assignedEmails();
+  const pool = allCandidates.filter(p=>!assigned.has(p.email));
+  if (!pool.length) { showStatus("All candidates already assigned","ok"); return; }
+  pool.sort(()=>Math.random()-.5).forEach(person => {
+    const smallest = ROOMS.slice().sort((a,b)=>(groups[a].candidates.length+groups[a].instructors.length)-(groups[b].candidates.length+groups[b].instructors.length))[0];
+    groups[smallest].candidates.push(person);
+  });
+  renderPool(); renderRooms(); updateStats();
+}
+
+// ── Randomize (Instructor Trainers) — added 2026-10-02 per Jon; the candidate
+// randomizer above used to be scoped "Instructor Trainers are placed deliberately",
+// so check the spread this produces rather than assuming it matches whatever
+// manual logic that comment was protecting. Balances by instructor count per
+// room (not total headcount) so trainers spread evenly across all rooms. ──
+function randomizeInstructors() {
+  const selInst = selectedInstructors();
+  if (!selInst.length) { showStatus("No Instructor Trainers selected — pick them on the Teaching Faculty tab first","err"); return; }
+  const assigned = assignedEmails();
+  const pool = selInst.filter(p=>!assigned.has(p.email));
+  if (!pool.length) { showStatus("All selected Instructor Trainers already assigned","ok"); return; }
+  pool.sort(()=>Math.random()-.5).forEach(person => {
+    const smallest = ROOMS.slice().sort((a,b)=>groups[a].instructors.length-groups[b].instructors.length)[0];
+    groups[smallest].instructors.push(person);
+  });
+  renderPool(); renderRooms(); updateStats();
+}
+
+// ── Teaching Faculty ───────────────────────────────────────────────────────
+function uniquePeople(arr) {
+  const seen = new Set();
+  return arr.filter(p => !seen.has(p.email) && seen.add(p.email));
+}
+
+function renderTeachingFaculty() {
+  const people = uniquePeople([...allFaculty,...allInstructors]).sort((a,b)=>a.name.localeCompare(b.name));
+  document.getElementById("tfCount").textContent = teachingFaculty.size;
+  document.getElementById("tfGrid").innerHTML = people.map(p => {
+    const checked = teachingFaculty.has(p.email);
+    return `<label class="tf-item${checked?" checked":""}">
+              <input type="checkbox" ${checked?"checked":""} onchange="toggleTF('${p.email}',this.checked)">
+              <div>
+                <div class="tf-name">${p.name}</div>
+                <div class="tf-rolelabel">${p.role === "full-instructor" ? "Instructor Trainer" : "Faculty"}</div>
+              </div>
+            </label>`;
+  }).join("") || '<p style="color:#b0b8cc;font-size:13px;">No faculty or instructors loaded yet.</p>';
+}
+function toggleTF(email, checked) {
+  if (checked) teachingFaculty.add(email); else teachingFaculty.delete(email);
+  document.getElementById("tfCount").textContent = teachingFaculty.size;
+  document.querySelectorAll(".tf-item").forEach(el => { const cb=el.querySelector("input"); if(cb) el.classList.toggle("checked",cb.checked); });
+}
+function tfSelectAll(state) {
+  uniquePeople([...allFaculty,...allInstructors]).forEach(p => { if(state) teachingFaculty.add(p.email); else teachingFaculty.delete(p.email); });
+  renderTeachingFaculty();
+}
+
+// ── ITC ────────────────────────────────────────────────────────────────────
+function renderITCPicker() {
+  const q = (document.getElementById("itcSearch").value || "").toLowerCase();
+  const people = allITC.filter(p => !q || RMD_FUZZY.score(q, [p.name]) > 0);
+  document.getElementById("itcCount").textContent = itcSet.size;
+  document.getElementById("itcPickerGrid").innerHTML = people.map(p => {
+    const sel = itcSet.has(p.email);
+    return `<label class="itc-pick-item${sel?" selected":""}">
+              <input type="checkbox" ${sel?"checked":""} onchange="toggleITC('${p.email}',this.checked)">
+              <span style="font-size:13px">${p.name}</span>
+            </label>`;
+  }).join("") || '<p style="color:#b0b8cc;font-size:13px;">No confirmed Instructor Trainer Candidates found.</p>';
+}
+function toggleITC(email, checked) {
+  if (checked) { itcSet.add(email); if (!itcSchedule[email]) itcSchedule[email] = {}; }
+  else itcSet.delete(email);
+  document.getElementById("itcCount").textContent = itcSet.size;
+  renderITCGrid();
+}
+
+function renderITCGrid() {
+  const wrap = document.getElementById("itcGridWrap");
+  if (itcSet.size === 0) {
+    wrap.innerHTML = '<p style="color:#b0b8cc;font-size:13px;">Select ITCs in Step 1 first.</p>';
+    return;
+  }
+  const itcs = allITC.filter(p => itcSet.has(p.email));
+  const roomOpts = `<option value="">—</option>` + ROOMS.map(r => `<option value="${r}">${r}</option>`).join("");
+  const headerCols = ITC_SESSIONS.map(s => `<th>${s.label}</th>`).join("");
+  const rows = itcs.map((itc, ri) => {
+    const sched = itcSchedule[itc.email] || {};
+    const cells = ITC_SESSIONS.map((s, ci) =>
+      `<td><select class="room-sel" data-itc="${itc.email}" data-session="${s.key}" onchange="setITCRoom('${itc.email}','${s.key}',this.value)"><option value="">—</option>${ROOMS.map(r=>`<option value="${r}"${sched[s.key]===r?" selected":""}>${r}</option>`).join("")}</select></td>`
+    ).join("");
+    return `<tr><td>${itc.name}</td>${cells}</tr>`;
+  }).join("");
+  wrap.innerHTML = `<table class="itc-grid"><thead><tr><th>ITC Name</th>${headerCols}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+function setITCRoom(email, sessionKey, roomId) {
+  // Enforce max 1 ITC per room per session block.
+  if (roomId) {
+    const conflictEmail = Object.keys(itcSchedule).find(em => em !== email && itcSchedule[em][sessionKey] === roomId);
+    if (conflictEmail) {
+      const other = allITC.find(p => p.email === conflictEmail);
+      alert(`${roomId} is already assigned to ${other ? other.name : conflictEmail} for this session block. Each room can only hold one ITC per block — pick a different room.`);
+      renderITCGrid(); // reset the dropdown back to its saved value
+      return;
+    }
+  }
+  if (!itcSchedule[email]) itcSchedule[email] = {};
+  itcSchedule[email][sessionKey] = roomId;
+}
+
+// One-button fill for the whole Step 2 grid. Uses a rotating offset so, for
+// ITC index i and block index b, the room slot is (i + b) % n — a bijection
+// within each block (so no two ITCs ever land on the same room that block,
+// same hard rule setITCRoom() enforces by hand) and a different slot for
+// every ITC from one block to the next (so nobody sits in the same room
+// twice running, matching "they rotate through rooms" above). If there are
+// more selected ITCs than rooms, whoever's slot lands past the last room
+// sits that block out — same rotating offset means it's a different person
+// each time, not always the same ones left out.
+function autoAllocateITCs() {
+  const itcs = allITC.filter(p => itcSet.has(p.email));
+  const n = itcs.length;
+  if (!n) { showStatus("Select ITCs in Step 1 first.", "err"); return; }
+
+  const hasExisting = itcs.some(itc => {
+    const sched = itcSchedule[itc.email] || {};
+    return ITC_SESSIONS.some(s => sched[s.key]);
+  });
+  if (hasExisting && !confirm("This replaces every room already assigned below for the selected ITCs. Continue?")) return;
+
+  const numRooms = ROOMS.length;
+  itcs.forEach((itc, i) => {
+    if (!itcSchedule[itc.email]) itcSchedule[itc.email] = {};
+    ITC_SESSIONS.forEach((s, b) => {
+      const slot = (i + b) % n;
+      itcSchedule[itc.email][s.key] = slot < numRooms ? ROOMS[slot] : "";
+    });
+  });
+
+  renderITCGrid();
+  showStatus(`Auto-allocated ${n} ITC${n === 1 ? "" : "s"} across ${ITC_SESSIONS.length} blocks — remember to Save all.`, "ok");
+}
+
+// ── Save ───────────────────────────────────────────────────────────────────
+async function saveAll() {
+  showStatus("Saving…","");
+  try {
+    const batch = db.batch();
+    const uid   = auth.currentUser?.uid;
+    const ts    = firebase.firestore.FieldValue.serverTimestamp();
+
+    // Room groups
+    ROOMS.forEach(rid => {
+      batch.set(db.collection(COLLECTIONS.groups).doc(rid), {
+        candidates:   groups[rid].candidates   || [],
+        instructors:  groups[rid].instructors  || [],
+        year:         CURRENT_MOU_YEAR,
+        updatedAt:    ts, updatedBy: uid || null
+      });
+    });
+
+    // Teaching faculty
+    const tfList = uniquePeople([...allFaculty,...allInstructors])
+      .filter(p => teachingFaculty.has(p.email))
+      .map(p => ({ name: p.name, email: p.email }));
+    batch.set(db.collection("config").doc("teaching_faculty"), { members: tfList, year: CURRENT_MOU_YEAR, updatedAt: ts });
+
+    // ITC schedule
+    const itcList = allITC.filter(p => itcSet.has(p.email)).map(p => ({ name: p.name, email: p.email }));
+    batch.set(db.collection("config").doc("itc_schedule"), { itcs: itcList, assignments: itcSchedule, year: CURRENT_MOU_YEAR, updatedAt: ts });
+
+    // Sync each room onto the person's own people/{uid} doc.
+    // Added 2026-09-12: session-feedback.html (candidate rating) and
+    // itc-observations.html (ITC rotation) both work out "my room" from
+    // currentUserDoc.group/.room on the signed-in person's OWN people doc —
+    // not from this groups collection. Nothing wrote that field before this,
+    // so those two pages could never actually find someone's real room
+    // (they'd either fall through to the demo candidates or, worse, an
+    // unfiltered query returning every candidate across every room). This
+    // keeps people.group in sync with whatever's actually saved here:
+    // assigned to a room → that room's id; removed/never assigned → cleared.
+    try {
+      const peopleSnap = await db.collection(COLLECTIONS.people).get();
+      const uidByEmail = {};
+      peopleSnap.forEach(doc => {
+        const em = (doc.data().email || "").toLowerCase();
+        if (em) uidByEmail[em] = doc.id;
+      });
+
+      const roomByEmail = {};
+      ROOMS.forEach(rid => {
+        [...(groups[rid].candidates || []), ...(groups[rid].instructors || [])]
+          .forEach(p => { roomByEmail[(p.email || "").toLowerCase()] = rid; });
+      });
+
+      // Anyone who could ever be assigned to a room this year — including
+      // people just removed from one, so their stale group gets cleared.
+      const assignablePool = uniquePeople([...allCandidates, ...allInstructors, ...allFaculty]);
+      assignablePool.forEach(p => {
+        const em  = (p.email || "").toLowerCase();
+        const uid = uidByEmail[em];
+        if (!uid) return; // no login/people doc yet — nothing to sync onto
+        const rid = roomByEmail[em] || null;
+        batch.set(db.collection(COLLECTIONS.people).doc(uid), {
+          group: rid || firebase.firestore.FieldValue.delete()
+        }, { merge: true });
+      });
+    } catch (e) {
+      console.warn("Could not sync rooms onto people docs:", e.message);
+    }
+
+    await batch.commit();
+    showStatus("✓ All saved","ok");
+  } catch(e) {
+    console.error(e);
+    showStatus("Save failed — check Firestore rules","err");
+  }
+}
+
+function showStatus(msg, cls) {
+  const el = document.getElementById("saveStatus");
+  el.textContent = msg; el.className = cls;
+  if (cls === "ok") setTimeout(() => { el.textContent = ""; el.className = ""; }, 3000);
+}
+</script>
+</body>
+</html>

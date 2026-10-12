@@ -175,8 +175,12 @@ service cloud.firestore {
       // Faculty above) — only name/email were requested — but Firestore
       // can't grant get/list on a subset of fields, so this line opens the
       // whole document, same all-or-nothing limit as before.
-      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
-      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor();
+      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
+        (isAssessorFaculty() && resource.data.role == 'assessor'));
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
+        // 2026-10-10: Assessor Faculty may list ONLY Assessor / Senior Instructor
+        // candidates (assessor-feedback.html's query), not the whole roster.
+        (isAssessorFaculty() && resource.data.role == 'assessor');
       allow write: if isDirector();
 
       // Self-service "My Account" (added 2026-09-06): a signed-in member may
@@ -449,7 +453,10 @@ service cloud.firestore {
     // director-only, same as the admin-bulk-users.html page that writes it.
     match /iw_assignments/{docId} {
       allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
-      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor();
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
+        // 2026-10-10: Assessor Faculty may list ONLY Assessor / Senior Instructor
+        // candidates (assessor-feedback.html's query), not the whole roster.
+        (isAssessorFaculty() && resource.data.role == 'assessor');
       allow write: if isDirector();
     }
 
@@ -740,8 +747,10 @@ service cloud.firestore {
       // it for someone else (Jon: "if allocated but then marked, remove
       // and make free slot") — Faculty can only ever null these two via
       // the page's own code, never set them to an arbitrary room/slot.
+      // 2026-10-12 (Jon): rap and twoPlusAssessments added so Student/Senior Faculty can set the
+      // RAP and two-plus attempt tags from course-roster-edit.html. Those two booleans only.
       allow update: if (isStudentFaculty() || isSeniorFaculty()) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'instructorTeamUids', 'instructorTeamNames', 'firstTimeAssessment', 'assessmentAbsent', 'assessmentRoom', 'assessmentSlot']);
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'instructorTeamUids', 'instructorTeamNames', 'firstTimeAssessment', 'assessmentAbsent', 'assessmentRoom', 'assessmentSlot', 'rap', 'twoPlusAssessments']);
     }
 
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────
@@ -870,6 +879,20 @@ service cloud.firestore {
         && request.resource.data.acknowledgedNoGuarantee == true
         && request.resource.data.submittedAt == request.time;
       allow delete: if isDirector();
+    }
+
+
+    // ── Organiser Board (organiser-board.html) ──────────────────────────────
+    // Private planning board for the 2-3 people organising the Instructor
+    // Weekend. The board's code is part of the document path, so only people
+    // who know the code can find it. Any signed-in user can read/write a board
+    // whose code they know; nobody can LIST boards (so codes can't be
+    // discovered). get/create/update only on the settings doc, never list.
+    match /organiser_boards/{code} {
+      allow get, create, update: if isSignedIn();
+    }
+    match /organiser_boards/{code}/tasks/{taskId} {
+      allow read, write: if isSignedIn();
     }
 
   }

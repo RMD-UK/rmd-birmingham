@@ -165,7 +165,7 @@
       <button class="save-btn hidden" id="cpdDownloadBtn" onclick="downloadCpdCertificate()">Download certificate</button>
     </div>
 
-    <div class="card">
+    <div class="card" id="emailCard">
       <h2>Change email</h2>
       <div class="card-sub">Moving on from a university address, or just prefer a different one? Change it here and everything on RMD's platform moves with it — your login, your MOU, your responses, all of it. Nothing gets left behind on the old address.</div>
       <div class="field">
@@ -243,6 +243,17 @@
     let standing = null;
     try { standing = await resolveAxisAStanding(user.uid, user.email || ""); } catch (e) {}
     document.getElementById("acctRole").textContent = standing ? standing.label : "Not yet confirmed";
+
+    // 2026-10-11 (Jon): candidates, instructors, senior instructors and assessors cannot
+    // change their own email here; the Course Director does it for them. (Also enforced in
+    // the changeMyEmail Cloud Function, so hiding this is not the only protection.)
+    try {
+      const myRole = await resolveRole(user.uid, user.email || "");
+      if (myRole === "instructor" || myRole === "assessor") {
+        const ec = document.getElementById("emailCard");
+        if (ec) ec.remove();
+      }
+    } catch (e) {}
 
     try {
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();

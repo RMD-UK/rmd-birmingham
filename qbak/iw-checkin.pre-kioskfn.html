@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Check-in — RMD Instructor Weekend 2026</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--rmd-navy); font-family: var(--font); margin: 0;
+      display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden;
+    }
+
+    .kiosk-header {
+      padding: 22px 16px 10px; text-align: center; color: white; flex-shrink: 0;
+    }
+    .kiosk-header img { height: 44px; margin-bottom: 8px; }
+    .kiosk-header h1 { font-size: 18px; margin: 0 0 2px; }
+    .kiosk-header p  { font-size: 12px; opacity: 0.65; margin: 0; }
+
+    .kiosk-body {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+      padding: 10px 16px 30px;
+    }
+
+    .search-wrap {
+      width: 100%; max-width: 420px; background: white; border-radius: 16px;
+      padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    }
+    .search-wrap input {
+      width: 100%; padding: 13px 14px; border: 2px solid #dce3ea; border-radius: 8px;
+      font-size: 16px; font-family: var(--font); color: var(--rmd-navy);
+    }
+    .search-result {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border-radius: 8px; background: #f0f3f6; margin-top: 8px;
+    }
+    .search-result .name { font-size: 14px; font-weight: 700; color: var(--rmd-navy); }
+    .search-result .role { font-size: 11px; color: var(--rmd-muted); }
+    .btn-checkin-small {
+      padding: 8px 16px; border-radius: 6px; border: none; background: var(--rmd-blue);
+      color: white; font-family: var(--font); font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .search-hint { font-size: 12px; color: var(--rmd-muted); padding: 8px 2px 0; }
+
+    .status-box {
+      width: 100%; max-width: 420px; margin-top: 16px; border-radius: 14px;
+      padding: 22px; text-align: center; transition: background 0.2s;
+      background: rgba(255,255,255,0.08); color: white; display: none;
+    }
+    .status-box.show    { display: block; }
+    .status-box.success { background: #1a6e31; }
+    .status-box.error   { background: #b7410e; }
+    .status-icon  { font-size: 40px; margin-bottom: 6px; }
+    .status-title { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+    .status-sub   { font-size: 13px; opacity: 0.85; }
+
+    .kiosk-footer { text-align: center; padding: 10px; }
+    .kiosk-footer a { color: rgba(255,255,255,0.4); font-size: 11px; text-decoration: none; }
+
+    .closed-wrap {
+      width: 100%; max-width: 420px; background: white; border-radius: 16px;
+      padding: 26px 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); text-align: center;
+    }
+    .closed-wrap .closed-icon { font-size: 34px; margin-bottom: 8px; }
+    .closed-wrap h2 { font-size: 17px; color: var(--rmd-navy); margin: 0 0 6px; }
+    .closed-wrap p { font-size: 13px; color: var(--rmd-muted); margin: 0; }
+    .hidden { display: none !important; }
+
+    /* Faculty lookup mode (2026-10-11) */
+    .faculty-wrap { width: 100%; max-width: 560px; }
+    .f-status { color: rgba(255,255,255,.85); font-size: 13px; text-align: center; margin-bottom: 10px; }
+    .f-pending { background: #fff3cd; color: #856404; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 10px; }
+    .f-pending button { margin-left: 8px; padding: 4px 10px; border-radius: 6px; border: 1px solid #856404; background: white; font-weight: 700; cursor: pointer; }
+    .f-input { width: 100%; padding: 16px; border: 0; border-radius: 14px; font-size: 20px; font-family: var(--font); color: var(--rmd-navy); box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+    .f-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: white; border-radius: 14px; padding: 12px 14px; margin-top: 10px; }
+    .f-card.is-in { background: #e6f3e9; }
+    .f-name { font-size: 17px; font-weight: 800; color: var(--rmd-navy); }
+    .f-sub { font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
+    .f-go { min-height: 48px; padding: 0 20px; border: 0; border-radius: 12px; background: var(--rmd-blue); color: white; font-family: var(--font); font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+    .f-done { color: #1a6e31; font-weight: 800; font-size: 14px; white-space: nowrap; }
+    .f-pend { color: #856404; font-weight: 700; font-size: 13px; }
+    .f-none { color: rgba(255,255,255,.85); text-align: center; padding: 18px 8px; font-size: 14px; }
+    .f-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: #111; color: white; padding: 12px 18px; border-radius: 12px; font-weight: 700; font-size: 14px; opacity: 0; pointer-events: none; transition: all .2s; z-index: 50; max-width: calc(100% - 30px); }
+    .f-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<div class="kiosk-header">
+  <img src="assets/rmd-logo.png" alt="RMD logo">
+  <h1>Instructor Weekend Check-in</h1>
+  <p id="hdrSub">Search for your name below to check in</p>
+  <p id="modeLink" style="margin-top:6px;"><a href="iw-checkin.html?mode=faculty" style="color:rgba(255,255,255,.75);font-size:12px;">Faculty lookup</a></p>
+</div>
+
+<div class="kiosk-body">
+  <div class="search-wrap" id="searchWrap">
+    <input type="text" id="searchInput" placeholder="Type your name…" autocomplete="off" autofocus oninput="runSearch(this.value)">
+    <div id="searchResults"></div>
+    <div class="search-hint" id="searchHint">Start typing to find your name.</div>
+  </div>
+
+  <!-- Faculty lookup mode: iw-checkin.html?mode=faculty -->
+  <div class="faculty-wrap hidden" id="facultyWrap">
+    <div class="f-status" id="fStatus">Loading names...</div>
+    <div class="f-pending hidden" id="fPending"></div>
+    <input type="search" id="fInput" class="f-input" placeholder="Type part of a name" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="fRender()">
+    <div id="fResults"></div>
+  </div>
+  <div class="f-toast" id="fToast" role="status"></div>
+
+  <div class="closed-wrap hidden" id="closedWrap">
+    <div class="closed-icon">🕒</div>
+    <h2 id="closedTitle">Check-in isn't open yet</h2>
+    <p id="closedSub"></p>
+  </div>
+
+  <div class="status-box" id="statusBox">
+    <div class="status-icon" id="statusIcon"></div>
+    <div class="status-title" id="statusTitle"></div>
+    <div class="status-sub" id="statusSub"></div>
+  </div>
+</div>
+
+<div class="kiosk-footer">
+  <a href="timetable.html">RMD Instructor Weekend 2026</a>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+
+initFirebase();
+
+// Check-in only opens on the actual Instructor Weekend days (2026-10-02,
+// Jon: don't let anyone check in before the date). Saturday 10 Oct / Sunday
+// 11 Oct 2026, same dates timetable.html's getDefaultDay() uses. Outside
+// those two calendar days the search box is hidden entirely and replaced
+// with an explanatory message — nobody can self-check-in early (or late).
+function currentIwDay() {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate();
+  if (y === 2026 && m === 10 && d === 10) return "saturday";
+  if (y === 2026 && m === 10 && d === 11) return "sunday";
+  return null;
+}
+const IW_DAY = currentIwDay();
+const IW_DAY_LABEL = { saturday: "Saturday", sunday: "Sunday" };
+
+(function gateCheckIn() {
+  if (IW_DAY) return; // open as normal
+  document.getElementById("searchWrap").classList.add("hidden");
+  const closedWrap = document.getElementById("closedWrap");
+  closedWrap.classList.remove("hidden");
+  const before = new Date() < new Date(2026, 9, 10);
+  document.getElementById("closedTitle").textContent = before ? "Check-in isn't open yet" : "Check-in has closed";
+  document.getElementById("closedSub").textContent = before
+    ? "Check-in opens Saturday 10 October 2026, on the day. See a member of staff if you need help before then."
+    : "Instructor Weekend 2026 has finished. See a member of staff if you still need to be marked present.";
+})();
+
+let processing = false;
+let allPeopleCache = null;
+let iwAssignmentsCache = null;  // { uid: function } -- this year's IW job, from iw_assignments; falls back to people.role when absent
+
+const ROLE_LABELS = {
+  "instructor": "Instructor Candidate", "assessor": "Assessor / Senior Instructor",
+  "assessor-faculty": "Assessor Faculty", "faculty": "Faculty",
+  "full-instructor": "Instructor Trainer", "itc": "Instructor Trainer Candidate", "director": "Course Director"
+};
+
+async function ensureIwAssignmentsCache() {
+  if (iwAssignmentsCache) return iwAssignmentsCache;
+  iwAssignmentsCache = {};
+  try {
+    const snap = await db.collection(COLLECTIONS.iwAssignments)
+      .where("year", "==", CURRENT_IW_YEAR).get();
+    snap.forEach(doc => {
+      const a = doc.data();
+      if (a.uid && a.function) iwAssignmentsCache[a.uid] = a.function;
+    });
+  } catch (e) { /* leave cache empty, effectiveRole() falls back to p.role */ }
+  return iwAssignmentsCache;
+}
+function effectiveRole(p, iwAssignments) {
+  return (iwAssignments && iwAssignments[p.id]) || p.role;
+}
+async function ensurePeopleCache() {
+  if (allPeopleCache) return allPeopleCache;
+  const [snap] = await Promise.all([db.collection(COLLECTIONS.people).get(), ensureIwAssignmentsCache()]);
+  allPeopleCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return allPeopleCache;
+}
+
+async function runSearch(val) {
+  const q = val.trim().toLowerCase();
+  const resultsEl = document.getElementById("searchResults");
+  const hintEl = document.getElementById("searchHint");
+
+  if (q.length < 2) {
+    resultsEl.innerHTML = "";
+    hintEl.style.display = "block";
+    return;
+  }
+  hintEl.style.display = "none";
+
+  let people;
+  try { people = await ensurePeopleCache(); }
+  catch (err) {
+    resultsEl.innerHTML = `<div style="font-size:13px;color:#b7410e;padding:8px 2px;line-height:1.5;">The list of names could not be loaded here (${esc(err.code || err.message || "unknown")}). A member of faculty can check you in with <a href="iw-checkin.html?mode=faculty">Faculty lookup</a>.</div>`;
+    return;
+  }
+  const iwAssignments = await ensureIwAssignmentsCache();
+  const matches = people.filter(p => (p.name || "").toLowerCase().includes(q)).slice(0, 8);
+
+  if (!matches.length) {
+    resultsEl.innerHTML = `<div style="font-size:13px;color:var(--rmd-muted);padding:8px 2px;">No matches — check the spelling, or see a member of staff.</div>`;
+    return;
+  }
+
+  resultsEl.innerHTML = matches.map(p => `
+    <div class="search-result">
+      <div>
+        <div class="name">${esc(p.name)}</div>
+        <div class="role">${esc(customRoleLabel(p.roleLabel) || ROLE_LABELS[effectiveRole(p, iwAssignments)] || effectiveRole(p, iwAssignments) || "")}</div>
+      </div>
+      <button class="btn-checkin-small" onclick="confirmCheckIn('${esc(p.id)}')">Confirm attendance</button>
+    </div>
+  `).join("");
+}
+
+async function confirmCheckIn(personId) {
+  if (processing) return;
+  if (!IW_DAY) { setStatus("error", "🕒", "Check-in isn't open", "See a member of staff."); resetAfter(3000); return; }
+  processing = true;
+
+  try {
+    const doc = await db.collection(COLLECTIONS.people).doc(personId).get();
+    if (!doc.exists) {
+      setStatus("error", "❓", "Not found", "Please see a member of staff.");
+      processing = false;
+      resetAfter(3000);
+      return;
+    }
+    const person = doc.data();
+    await db.collection(COLLECTIONS.attendance).doc(personId).set({
+      ["arrived_" + IW_DAY]: firebase.firestore.FieldValue.serverTimestamp(),
+      ["checkedInBy_" + IW_DAY]: "self-service-search"
+    }, { merge: true });
+
+    setStatus("success", "✅", `Welcome, ${(person.name || "there").split(" ")[0]}!`, `You're checked in for ${IW_DAY_LABEL[IW_DAY]} — have a great weekend.`);
+  } catch (err) {
+    setStatus("error", "⚠️", "Check-in failed", "Please try again or see a member of staff.");
+  }
+
+  document.getElementById("searchInput").value = "";
+  document.getElementById("searchResults").innerHTML = "";
+  document.getElementById("searchHint").style.display = "block";
+  processing = false;
+  resetAfter(3000);
+}
+
+function resetAfter(ms) {
+  setTimeout(() => {
+    const box = document.getElementById("statusBox");
+    box.classList.remove("show");
+  }, ms);
+}
+
+function setStatus(kind, icon, title, sub) {
+  const box = document.getElementById("statusBox");
+  box.className = "status-box show " + kind;
+  document.getElementById("statusIcon").textContent = icon;
+  document.getElementById("statusTitle").textContent = title;
+  document.getElementById("statusSub").textContent = sub;
+}
+
+function esc(s) {
+  return (s || "").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+
+// ── Faculty lookup mode (2026-10-11, per Jon) ─────────────────────────────
+// Open this page as iw-checkin.html?mode=faculty. For faculty, trainers and
+// directors who are signed in: the names are loaded as soon as the page opens
+// (and kept on the phone, so they appear straight away next time even on poor
+// signal), search is instant and local, and a check-in that cannot be sent is
+// kept on the phone and sent when the signal returns. The candidate kiosk
+// above is unchanged apart from loading names on arrival and explaining a
+// failure instead of showing nothing.
+const MODE = new URLSearchParams(location.search).get("mode") === "faculty" ? "faculty" : "kiosk";
+const PEOPLE_CACHE_KEY = "iwPeopleCache_v1";
+const QUEUE_KEY = "iwCheckinQueue_v1";
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } }
+let facultyUser = null, attToday = {}, listState = "loading", listErr = "";
+
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej({ code: "timeout", message: "timed out" }), ms))]);
+}
+
+async function loadPeopleList() {
+  const [snap] = await withTimeout(Promise.all([db.collection(COLLECTIONS.people).get(), ensureIwAssignmentsCache()]), 20000);
+  allPeopleCache = snap.docs.map(d => { const x = d.data(); return { id: d.id, name: x.name || "", role: x.role || "", roleLabel: x.roleLabel || "", group: x.group || "" }; });
+  lsSet(PEOPLE_CACHE_KEY, JSON.stringify({ at: Date.now(), people: allPeopleCache, assign: iwAssignmentsCache || {} }));
+}
+
+if (MODE === "faculty") (function startFacultyMode() {
+  document.body.classList.add("faculty-mode");
+  document.getElementById("searchWrap").classList.add("hidden");
+  document.getElementById("facultyWrap").classList.remove("hidden");
+  document.getElementById("hdrSub").textContent = "Faculty lookup: find someone and check them in";
+  document.getElementById("modeLink").innerHTML = '<a href="iw-checkin.html">Candidate kiosk</a>';
+  if (!IW_DAY) { document.getElementById("facultyWrap").classList.add("hidden"); return; }
+
+  // Names saved on this phone appear immediately
+  try {
+    const c = JSON.parse(lsGet(PEOPLE_CACHE_KEY) || "null");
+    if (c && c.people && c.people.length) { allPeopleCache = c.people; iwAssignmentsCache = c.assign || {}; listState = "cached"; }
+  } catch (e) { /* ignore */ }
+  fRender();
+
+  auth.onAuthStateChanged(async user => {
+    if (!user) { window.location.href = "signin.html"; return; }
+    facultyUser = user;
+    try { await loadPeopleList(); listState = "live"; listErr = ""; }
+    catch (e) {
+      listErr = (e && (e.code || e.message)) || "unknown";
+      if (!allPeopleCache) listState = "error"; else listState = "cached";
+    }
+    fRender();
+    try {
+      db.collection(COLLECTIONS.attendance).onSnapshot(snap => {
+        attToday = {}; snap.docs.forEach(d => { attToday[d.id] = d.data(); });
+        fRender();
+      }, () => { /* status badges simply stay as they were */ });
+    } catch (e) { /* ignore */ }
+    flushQueue();
+  });
+  window.addEventListener("online", flushQueue);
+  setTimeout(() => { const i = document.getElementById("fInput"); if (i) i.focus(); }, 300);
+})();
+
+function fRoleLabel(p) { const r = effectiveRole(p, iwAssignmentsCache); return customRoleLabel(p.roleLabel) || ROLE_LABELS[r] || r || ""; }
+function getQueue() { try { return JSON.parse(lsGet(QUEUE_KEY) || "[]"); } catch (e) { return []; } }
+function setQueue(q) { lsSet(QUEUE_KEY, JSON.stringify(q)); }
+
+function fRender() {
+  if (MODE !== "faculty") return;
+  const q = (document.getElementById("fInput")?.value || "").trim().toLowerCase();
+  const words = q.split(/\s+/).filter(Boolean);
+  const people = allPeopleCache || [];
+  const arrived = people.filter(p => attToday[p.id]?.["arrived_" + IW_DAY]).length;
+  const st = document.getElementById("fStatus");
+  if (listState === "loading") st.textContent = "Loading names...";
+  else if (listState === "error") st.innerHTML = 'The name list could not be loaded (' + esc(listErr) + '). Check you are signed in as faculty, a trainer or a director, then <a href="#" onclick="location.reload();return false;" style="color:#fff;">try again</a>.';
+  else st.textContent = people.length + " names ready" + (arrived ? " · " + arrived + " checked in today" : "") + (listState === "cached" ? " · using the list saved on this phone" : "");
+
+  const pend = getQueue();
+  const pb = document.getElementById("fPending");
+  pb.classList.toggle("hidden", !pend.length);
+  pb.innerHTML = pend.length ? pend.length + " check-in" + (pend.length > 1 ? "s" : "") + " waiting to send. They will go as soon as there is signal. <button onclick=\"flushQueue()\">Send now</button>" : "";
+
+  const res = document.getElementById("fResults");
+  if (!words.length) { res.innerHTML = ""; return; }
+  const matches = people.filter(p => { const n = (p.name || "").toLowerCase(); return words.every(w => n.includes(w)); }).slice(0, 12);
+  if (!matches.length) { res.innerHTML = '<div class="f-none">No one found. Try fewer letters, or the other spelling.</div>'; return; }
+  res.innerHTML = matches.map(p => {
+    const rec = attToday[p.id] || {};
+    const a = rec["arrived_" + IW_DAY];
+    const pending = pend.some(x => x.id === p.id && x.day === IW_DAY);
+    let t = "";
+    if (a) { const d = a.toDate ? a.toDate() : new Date(a); t = String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+    const badge = a ? '<div class="f-done">✓ Checked in ' + t + '</div>'
+      : pending ? '<div class="f-pend">Saved, sending...</div>'
+      : '<button class="f-go" onclick="checkInFaculty(\'' + esc(p.id) + '\')">' + (rec.declinedIw ? 'Check in anyway' : 'Check in') + '</button>';
+    return '<div class="f-card ' + (a ? "is-in" : "") + '"><div><div class="f-name">' + esc(p.name) + '</div><div class="f-sub">' +
+      esc([fRoleLabel(p), p.group].filter(Boolean).join(" · ")) + (rec.declinedIw && !a ? ' · <b>declined on registration</b>' : '') + '</div></div>' + badge + '</div>';
+  }).join("");
+}
+
+function checkInPayload(ms) {
+  const del = () => firebase.firestore.FieldValue.delete();
+  return {
+    ["arrived_" + IW_DAY]: ms ? firebase.firestore.Timestamp.fromMillis(ms) : firebase.firestore.FieldValue.serverTimestamp(),
+    ["checkedInBy_" + IW_DAY]: "faculty:" + (facultyUser ? facultyUser.uid : "unknown"),
+    ["notExpected_" + IW_DAY]: del(), ["markedNotExpectedBy_" + IW_DAY]: del(), ["markedNotExpectedAt_" + IW_DAY]: del(),
+    ["absentType_" + IW_DAY]: del(), ["absentReason_" + IW_DAY]: del(), ["absentNote_" + IW_DAY]: del()
+  };
+}
+async function checkInFaculty(id) {
+  if (!IW_DAY || !facultyUser) return;
+  const p = (allPeopleCache || []).find(x => x.id === id);
+  const q = getQueue();
+  if (q.some(x => x.id === id && x.day === IW_DAY)) return;
+  const at = Date.now();
+  try {
+    await withTimeout(db.collection(COLLECTIONS.attendance).doc(id).set(checkInPayload(null), { merge: true }), 6000);
+    toastF((p ? p.name : "Checked in") + " checked in ✓");
+  } catch (e) {
+    q.push({ id, day: IW_DAY, at }); setQueue(q);
+    toastF("No signal. Saved on this phone, will send soon");
+  }
+  fRender();
+}
+let flushing = false;
+async function flushQueue() {
+  if (flushing || !facultyUser) return;
+  let q = getQueue(); if (!q.length) return;
+  flushing = true;
+  const left = [];
+  for (const item of q) {
+    try { await withTimeout(db.collection(COLLECTIONS.attendance).doc(item.id).set(Object.assign(checkInPayload(item.at), {}), { merge: true }), 8000); }
+    catch (e) { left.push(item); }
+  }
+  setQueue(left); flushing = false; fRender();
+  if (q.length && !left.length) toastF("All waiting check-ins sent ✓");
+}
+let toastT;
+function toastF(msg) { const t = document.getElementById("fToast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2600); }
+
+// Kiosk: load the names as soon as the page opens, not on the first keystroke.
+if (MODE === "kiosk" && IW_DAY) ensurePeopleCache().catch(function () { /* runSearch explains the problem when someone types */ });
+</script>
+</body>
+</html>

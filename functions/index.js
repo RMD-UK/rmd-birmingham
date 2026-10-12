@@ -124,6 +124,8 @@ const DIMENSIONS = [
   { key: "response",   label: "Response to difficulty or questions" }
 ];
 const SCALE_LABELS = ["Needs development", "Developing", "Meeting expectations", "Exceeding expectations"];
+// 2026-10-10: the observation form moved to red/amber/green (stored 1 red, 2 amber, 3 green, scale:"rag").
+const RAG_LABELS = ["Red: serious concerns", "Amber: some concerns", "Green: no concerns"];
 
 // No hardcoded email list (removed 2026-07-29 — personal emails should not
 // live in a public repo). Mirrors isDirector() in firestore.rules.
@@ -157,6 +159,184 @@ async function callerFacultyRosterGroup(auth) {
 }
 
 
+// getRosterForMembers (2026-10-12, Jon: every instructor can open Current Course)
+// Read-only roster for any signed-in RMD member (anyone with a role on their
+// people record, a faculty_roster entry, or a director). Firestore rules keep
+// the full candidate collection and the people directory closed to ordinary
+// instructors, because those documents carry email, date of birth and passport
+// names. This function reads them with admin rights and returns ONLY what the
+// Current Course page shows: name, programme, course, room, assessment slot and
+// the instructor names per room. No email, no date of birth, no student ID.
+exports.getRosterForMembers = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  let ok = await callerIsDirector(auth);
+  if (!ok) {
+    try {
+      const me = await db.collection("people").doc(auth.uid).get();
+      ok = me.exists && !!String(me.data().role || "").trim();
+    } catch (e) { ok = false; }
+  }
+  if (!ok) ok = !!(await callerFacultyRosterGroup(auth));
+  if (!ok) throw new HttpsError("permission-denied", "RMD members only.");
+
+  const [candSnap, datesSnap, allocSnap] = await Promise.all([
+    db.collection("stage1_candidates").get(),
+    db.collection("config").doc("stage1_course_dates").get(),
+    db.collection("course_allocations").get()
+  ]);
+
+  const candidates = candSnap.docs.map(d => {
+    const c = d.data();
+    return {
+      id: d.id,
+      name: c.name || "",
+      degree: c.degree || "",
+      course: c.course || null,
+      room: c.room || null,
+      assessmentRoom: c.assessmentRoom || null,
+      assessmentSlot: c.assessmentSlot || null,
+      firstTimeAssessment: c.firstTimeAssessment === undefined ? null : c.firstTimeAssessment,
+      assessmentAbsent: c.assessmentAbsent === true,
+      rap: c.rap === true,
+      twoPlusAssessments: c.twoPlusAssessments === true
+    };
+  });
+
+  const allocDocs = allocSnap.docs.map(d => {
+    const a = d.data();
+    return { id: d.id, course: a.course || null, instructorTeams: a.instructorTeams || {} };
+  });
+
+  const uids = new Set();
+  allocDocs.forEach(a => Object.values(a.instructorTeams || {}).forEach(arr => (arr || []).forEach(u => uids.add(u))));
+  const instructors = [];
+  const list = Array.from(uids);
+  for (let i = 0; i < list.length; i += 30) {
+    const chunk = list.slice(i, i + 30);
+    const docs = await Promise.all(chunk.map(u => db.collection("people").doc(u).get().catch(() => null)));
+    docs.forEach((snap, k) => {
+      const uid = chunk[k];
+      const data = snap && snap.exists ? snap.data() : {};
+      const surname = data.passportLastName || (data.name ? String(data.name).trim().split(/\s+/).pop() : "");
+      const first = data.preferredName ? String(data.preferredName).trim().split(/\s+/)[0] : null;
+      const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || uid);
+      instructors.push({ uid, name });
+    });
+  }
+
+  return {
+    candidates,
+    courseDates: (datesSnap.exists && datesSnap.data().courses) || [],
+    allocDocs,
+    instructors
+  };
+});
+
+// swapUidInList: replaces oldId with newId in a list of uids, keeping order and dropping duplicates.
+function swapUidInList(list, oldId, newId) {
+  const out = [];
+  (list || []).forEach(u => { const v = u === oldId ? newId : u; if (!out.includes(v)) out.push(v); });
+  return out;
+}
+
+/**
+ * repairOrphanPeople (2026-10-12) - director-only.
+ *
+ * Why: some people records were created as an auto-ID "shell" (by the Instructor
+ * Weekend sync, before the person had a login). resolveRole() and the room-team
+ * checks look people up by the Firebase Auth uid, so once that person signs in
+ * they find no profile: no role, no Current Course or OPIS links, and the room
+ * teams (which hold the shell id) never match them. Eight instructors hit this.
+ *
+ * What: for every people doc whose id is not its email's Auth uid, and where the
+ * email DOES have a login, move everything onto the real uid:
+ *   - people/{authUid} gets the shell's fields (anything already on the real doc wins)
+ *   - attendance/{shellId} moves to attendance/{authUid}
+ *   - session_feedback.candidateId, course_allocations.instructorTeams and
+ *     stage1_candidates.instructorTeamUids swap the shell id for the real uid
+ *   - the shell people doc is deleted last
+ * People with no login yet are listed as noLogin and left alone. Safe to re-run.
+ *
+ * Defaults to a dry run; pass { dryRun: false } to write. Optional { emails: [...] }
+ * limits the run to those addresses.
+ */
+exports.repairOrphanPeople = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+  const dryRun = request.data?.dryRun !== false;
+  const only = Array.isArray(request.data?.emails)
+    ? new Set(request.data.emails.map(e => String(e || "").trim().toLowerCase()).filter(Boolean))
+    : null;
+
+  const peopleSnap = await db.collection("people").get();
+  const results = { dryRun, fixed: [], wouldFix: [], noLogin: [], alreadyFine: 0 };
+
+  for (const doc of peopleSnap.docs) {
+    const p = doc.data();
+    const email = String(p.email || "").trim().toLowerCase();
+    if (!email) continue;
+    if (only && !only.has(email)) continue;
+    if (!only && doc.id.length === 28) { results.alreadyFine++; continue; }   // Auth uids are 28 characters
+
+    let authUser = null;
+    try { authUser = await admin.auth().getUserByEmail(email); }
+    catch (e) { if (e.code !== "auth/user-not-found") throw e; }
+    if (!authUser) { results.noLogin.push({ name: p.name || "", email, role: p.role || null }); continue; }
+    if (authUser.uid === doc.id) { results.alreadyFine++; continue; }
+
+    const oldId = doc.id, newId = authUser.uid;
+    const [candSnap, fbSnap, attOld, attNew, newDoc, allocSnap] = await Promise.all([
+      db.collection("stage1_candidates").where("instructorTeamUids", "array-contains", oldId).get(),
+      db.collection("session_feedback").where("candidateId", "==", oldId).get(),
+      db.collection("attendance").doc(oldId).get(),
+      db.collection("attendance").doc(newId).get(),
+      db.collection("people").doc(newId).get(),
+      db.collection("course_allocations").get()
+    ]);
+    const allocHits = allocSnap.docs.filter(a => Object.values(a.data().instructorTeams || {}).some(arr => (arr || []).includes(oldId)));
+    const summary = {
+      name: p.name || "", email, role: p.role || null,
+      candidateRecords: candSnap.size, roomAllocations: allocHits.length,
+      sessionFeedback: fbSnap.size, attendance: attOld.exists, hadOwnProfile: newDoc.exists
+    };
+    if (dryRun) { results.wouldFix.push(summary); continue; }
+
+    const merged = { ...p, ...(newDoc.exists ? newDoc.data() : {}), email };
+    const role = (newDoc.exists && newDoc.data().role) || p.role;
+    if (role) merged.role = role;
+    merged.repairedFromShellId = oldId;
+    merged.repairedAt = admin.firestore.FieldValue.serverTimestamp();
+    await db.collection("people").doc(newId).set(merged);
+
+    if (attOld.exists) {
+      await db.collection("attendance").doc(newId).set({ ...attOld.data(), ...(attNew.exists ? attNew.data() : {}) });
+      await attOld.ref.delete();
+    }
+    for (let i = 0; i < fbSnap.docs.length; i += 400) {
+      const b = db.batch();
+      fbSnap.docs.slice(i, i + 400).forEach(d => b.update(d.ref, { candidateId: newId }));
+      await b.commit();
+    }
+    for (const a of allocHits) {
+      const nt = {};
+      Object.entries(a.data().instructorTeams || {}).forEach(([room, arr]) => { nt[room] = swapUidInList(arr, oldId, newId); });
+      await a.ref.update({ instructorTeams: nt });
+    }
+    for (let i = 0; i < candSnap.docs.length; i += 400) {
+      const b = db.batch();
+      candSnap.docs.slice(i, i + 400).forEach(d => b.update(d.ref, { instructorTeamUids: swapUidInList(d.data().instructorTeamUids, oldId, newId) }));
+      await b.commit();
+    }
+    await doc.ref.delete();
+    results.fixed.push(summary);
+  }
+  return results;
+});
+
 exports.generateItcSummary = onCall({ secrets: [anthropicApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -181,7 +361,8 @@ exports.generateItcSummary = onCall({ secrets: [anthropicApiKey], region: "us-ce
   const lines = observations.map((o, i) => {
     const dimStr = DIMENSIONS.map(d => {
       const v = (o.dims || {})[d.key];
-      return `${d.label}: ${v ? SCALE_LABELS[v - 1] : "not rated"}`;
+      const lbls = o.scale === "rag" ? RAG_LABELS : SCALE_LABELS;
+      return `${d.label}: ${v ? lbls[v - 1] : "not rated"}`;
     }).join("; ");
     return `Observer ${i + 1} (session ${o.sessionId || "unknown"}, room ${o.roomId || "unknown"}):\n  ${dimStr}\n  Comment: ${o.comment || "(none)"}`;
   }).join("\n\n");
@@ -2288,6 +2469,26 @@ exports.changeMyEmail = onCall({ region: "us-central1" }, async (request) => {
 
   const newEmailRaw = String((request.data && request.data.newEmail) || "").trim();
 
+  // 2026-10-11 (Jon): candidates and instructors / senior instructors / assessors
+  // cannot change their own login email. A Course Director can still do it for them
+  // (changePersonEmail). Directors listed in config/platform are never blocked.
+  try {
+    const cfg = await db.collection("config").doc("platform").get();
+    const c = cfg.exists ? cfg.data() : {};
+    const lc = (x) => String(x || "").toLowerCase();
+    const isDir = [...(c.directors || []), ...(c.superUsers || [])].map(lc).includes(lc(oldEmailRaw));
+    if (!isDir) {
+      const person = await db.collection("people").doc(auth.uid).get();
+      const role = person.exists ? person.data().role : null;
+      if (["instructor", "assessor"].includes(role)) {
+        throw new HttpsError("permission-denied", "Email changes are handled by the RMD team for your account. Please contact the Course Director.");
+      }
+    }
+  } catch (e) {
+    if (e instanceof HttpsError) throw e;
+    throw new HttpsError("internal", "Could not check your account type, so the email was not changed.");
+  }
+
   return performEmailChange(oldEmailRaw, newEmailRaw, oldEmailRaw);
 });
 
@@ -2549,8 +2750,12 @@ exports.syncIwRegistrationToPeople = onDocumentWritten(
  * won't block candidate imports or course allocation either way.
  */
 const STAGE1_SHEET_ID = "1vLFVFM3inl3iE-_8NnMzLjEiGrxlJo5wq-DXXyxLBLQ";
-const STAGE1_SHEET_TAB = "Candidates"; // update here if the tab is ever renamed
+const STAGE1_SHEET_TAB = "Master sheet"; // the ONLY tab the website reads or writes; renamed from "Candidates" 2026-10-11 (update here if renamed again)
+const STAGE1_SHEET_TAB_Q = `'${STAGE1_SHEET_TAB.replace(/'/g, "''")}'`; // quoted form for A1 ranges (tab names with spaces need quotes)
 const STAGE1_SHEET_COURSE_COL = "G"; // "Allocated course" — 7th column, after Year of study
+const STAGE1_SHEET_ROOM_COL = "H";   // "Allocated room" — 8th column, added 2026-10-11
+const STAGE1_SHEET_RAP_COL = "I";     // "RAP" — a Yes/blank tag chosen on the website (candidate.rap)
+const STAGE1_SHEET_TWOPLUS_COL = "J"; // "Two-plus assessments" — a Yes/blank tag chosen on the website (candidate.twoPlusAssessments)
 
 let stage1SheetsAuth = null;
 async function stage1SheetsAccessToken() {
@@ -2587,98 +2792,364 @@ async function stage1SheetsApiFetch(path, options = {}, attempt = 0) {
   return res.json();
 }
 
-// One-off repair for candidates whose course got allocated before the
-// retry fix above existed, and so never made it into the sheet (and for
-// anyone the per-candidate trigger still somehow misses later). Director-
-// only, same preview-before-commit shape as everything else in this
-// codebase that writes in bulk: dryRun:true reports what WOULD change,
-// nothing is written until dryRun:false. Deliberately ONE read of the
-// email column, ONE read of the existing "Allocated course" column, and
-// AT MOST one batched write for everything that's actually wrong — however
-// many candidates this covers, it's the same 2-3 API calls, never one call
-// per candidate, so it can't re-trip the exact rate limit it exists to
-// recover from.
+// ── Stage 1 master Google Sheet: keep it in step with the website ────────────
+// Rewritten 2026-10-11 (Jon): "make this whole process for keeping the Google
+// Sheet always synced and correct". The website is the single source of
+// truth; the sheet is a mirror. Four layers, so one failing never leaves it
+// wrong for long:
+//   1. reconcileStage1Sheet() — ONE read of the sheet + ONE read of the
+//      candidates, then at most a handful of batched writes however many
+//      people are involved. Does everything: course/room (G:H), appends
+//      candidates who are on the website but not in the sheet (flagged as
+//      added after the bulk set-up), strikes through people removed from
+//      the website, and un-strikes anyone who has been put back.
+//   2. backfillStage1CourseToSheet — director callable wrapper around (1);
+//      the website calls it right after imports, deletions, allocations and
+//      room moves, and from the Push-to-sheet button.
+//   3. reconcileStage1SheetScheduled — runs (1) every 30 minutes as a safety
+//      net, so anything a trigger or a rate-limited burst missed is repaired
+//      without anyone remembering to press anything.
+//   4. syncStage1CourseToSheet — per-document trigger for instant updates of
+//      course/room/email edits, and durable recording of removals
+//      (stage1_sheet_removals/{email}, applied:false until the strike-through
+//      has actually landed in the sheet; (1) retries any that are pending).
+// "Added after the bulk set-up" is defined by the sheet itself: anyone on the
+// website with no row in the sheet is, by definition, not part of the
+// original list. They get a new row at the bottom, tinted amber, with a note
+// in column J ("Added after bulk import (date)").
+const STAGE1_SHEET_NOTE_COL = "K"; // 11th column — "Notes" (layout agreed with Jon 2026-10-11: A–H details, I RAP, J Two-plus assessments, K Notes)
+const STAGE1_SHEET_NOTE_HEADER = "Notes";
+const STAGE1_REMOVED_RE = /(?:\s*\|\s*)?Removed from website[^|]*/;
+
+function stage1Today() {
+  return new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" });
+}
+function stage1NoteWithRemoval(note, today) {
+  const base = String(note || "").replace(STAGE1_REMOVED_RE, "").trim();
+  return (base ? base + " | " : "") + `Removed from website ${today}`;
+}
+function stage1NoteWithoutRemoval(note) {
+  return String(note || "").replace(STAGE1_REMOVED_RE, "").trim();
+}
+// firstName/surname are stored separately on candidates imported from
+// 2026-10-11; older records only have the combined name, split on the last
+// space as a best guess (compound surnames may need a manual fix in the sheet).
+function stage1SplitName(c) {
+  let first = String(c.firstName || "").trim();
+  let last = String(c.surname || "").trim();
+  if (!first && !last) {
+    const parts = String(c.name || "").trim().split(/\s+/).filter(Boolean);
+    if (parts.length > 1) { last = parts.pop(); first = parts.join(" "); }
+    else first = parts[0] || "";
+  }
+  return { first, last };
+}
+// Tags chosen on the website: true -> "Yes", false -> blank, never set (undefined)
+// -> null, meaning "leave whatever is in the sheet alone".
+function stage1TagCell(v) { return v === true ? "Yes" : v === false ? "" : null; }
+function stage1TagDiffers(cur, want) {
+  if (want === null) return false;
+  const c = String(cur || "").trim();
+  if (want === "") return c !== "";
+  return !/^(y|yes|true|x|✓)$/i.test(c);
+}
+function stage1NewSheetRow(c, today) {
+  const { first, last } = stage1SplitName(c);
+  const course = c.course || "";
+  return [last, first, String(c.email).trim(), c.degree || "", c.studentId || "", c.yearOfStudy || "",
+    course, course ? (c.room || "") : "", stage1TagCell(c.rap) || "", stage1TagCell(c.twoPlusAssessments) || "", `Added after bulk import (${today})`];
+}
+
+let stage1SheetNumericId = null;
+async function stage1SheetsNumericId() {
+  if (stage1SheetNumericId !== null) return stage1SheetNumericId;
+  const meta = await stage1SheetsApiFetch(`?fields=sheets.properties(sheetId,title)`);
+  const tab = (meta.sheets || []).map(s => s.properties).find(p => p.title === STAGE1_SHEET_TAB);
+  if (!tab) throw new Error(`Tab "${STAGE1_SHEET_TAB}" not found in the master sheet.`);
+  stage1SheetNumericId = tab.sheetId;
+  return stage1SheetNumericId;
+}
+function stage1FormatRequest(sheetId, row, kind) {
+  const range = { sheetId, startRowIndex: row - 1, endRowIndex: row, startColumnIndex: 0, endColumnIndex: 11 };
+  if (kind === "late") {
+    return { repeatCell: { range, cell: { userEnteredFormat: { backgroundColor: { red: 1, green: 0.949, blue: 0.8 } } }, fields: "userEnteredFormat.backgroundColor" } };
+  }
+  const struck = kind === "struck";
+  return { repeatCell: { range,
+    cell: { userEnteredFormat: { textFormat: { strikethrough: struck, foregroundColor: struck ? { red: 0.6, green: 0.6, blue: 0.6 } : { red: 0, green: 0, blue: 0 } } } },
+    fields: "userEnteredFormat.textFormat.strikethrough,userEnteredFormat.textFormat.foregroundColor" } };
+}
+// values:batchUpdate does NOT grow the sheet: writing below the last row of the
+// grid fails with "Range exceeds grid limits" (the 2026-10-11 INTERNAL error —
+// the sheet had exactly as many rows as the original list). Add rows first.
+async function stage1EnsureRows(lastRowNeeded) {
+  const meta = await stage1SheetsApiFetch(`?fields=sheets.properties(sheetId,title,gridProperties.rowCount)`);
+  const tab = (meta.sheets || []).map(s => s.properties).find(p => p.title === STAGE1_SHEET_TAB);
+  if (!tab) throw new Error(`Tab "${STAGE1_SHEET_TAB}" not found in the master sheet.`);
+  const have = (tab.gridProperties && tab.gridProperties.rowCount) || 0;
+  if (have >= lastRowNeeded) return;
+  await stage1SheetsApiFetch(`:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({ requests: [{ appendDimension: { sheetId: tab.sheetId, dimension: "ROWS", length: lastRowNeeded - have + 20 } }] }),
+  });
+}
+async function stage1WriteValues(updates) {
+  const CHUNK = 500;
+  for (let i = 0; i < updates.length; i += CHUNK) {
+    await stage1SheetsApiFetch(`/values:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({ valueInputOption: "RAW", data: updates.slice(i, i + CHUNK) }),
+    });
+  }
+}
+async function stage1WriteFormats(fmt) {
+  if (!fmt.length) return;
+  const sheetId = await stage1SheetsNumericId();
+  const CHUNK = 400;
+  for (let i = 0; i < fmt.length; i += CHUNK) {
+    await stage1SheetsApiFetch(`:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({ requests: fmt.slice(i, i + CHUNK).map(f => stage1FormatRequest(sheetId, f.row, f.kind)) }),
+    });
+  }
+}
+
+async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = {}) {
+  const tab = encodeURIComponent(STAGE1_SHEET_TAB_Q);
+  const [snap, removalsSnap, sheetData, headerData] = await Promise.all([
+    db.collection("stage1_candidates").get(),
+    db.collection("stage1_sheet_removals").where("applied", "==", false).get(),
+    stage1SheetsApiFetch(`/values/${tab}!A2:K`),
+    stage1SheetsApiFetch(`/values/${tab}!${STAGE1_SHEET_NOTE_COL}1`),
+  ]);
+
+  const cands = [];
+  const siteEmails = new Set();
+  snap.docs.forEach(d => {
+    const c = d.data();
+    const e = String(c.email || "").trim().toLowerCase();
+    if (!e || siteEmails.has(e)) return;
+    siteEmails.add(e);
+    cands.push({ ...c, _email: e });
+  });
+
+  const rows = sheetData.values || [];
+  const rowByEmail = new Map();
+  const duplicates = [];
+  rows.forEach((r, i) => {
+    const e = String(r[2] || "").trim().toLowerCase();
+    if (!e) return;
+    if (rowByEmail.has(e)) duplicates.push(e); else rowByEmail.set(e, i + 2); // +1 header, +1 for 1-indexing
+  });
+
+  const today = stage1Today();
+  const valueUpdates = [];
+  const fmt = [];
+  const struckRows = new Set();
+  const added = [], restored = [], struck = [], notOnWebsite = [];
+  let courseRoomUpdates = 0, tagUpdates = 0;
+
+  for (const c of cands) {
+    const row = rowByEmail.get(c._email);
+    if (!row) { added.push(c); continue; }
+    const cur = rows[row - 2] || [];
+    const wantCourse = c.course || "";
+    const wantRoom = c.course ? (c.room || "") : "";
+    if ((cur[6] || "") !== wantCourse || (cur[7] || "") !== wantRoom) {
+      valueUpdates.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_COURSE_COL}${row}:${STAGE1_SHEET_ROOM_COL}${row}`, values: [[wantCourse, wantRoom]] });
+      courseRoomUpdates++;
+    }
+    const wantRap = stage1TagCell(c.rap), wantTwo = stage1TagCell(c.twoPlusAssessments);
+    if (stage1TagDiffers(cur[8], wantRap)) { valueUpdates.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_RAP_COL}${row}`, values: [[wantRap]] }); tagUpdates++; }
+    if (stage1TagDiffers(cur[9], wantTwo)) { valueUpdates.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_TWOPLUS_COL}${row}`, values: [[wantTwo]] }); tagUpdates++; }
+    const note = cur[10] || "";
+    if (STAGE1_REMOVED_RE.test(note)) { // put back on the website after being removed
+      valueUpdates.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_NOTE_COL}${row}`, values: [[stage1NoteWithoutRemoval(note)]] });
+      fmt.push({ row, kind: "unstruck" });
+      restored.push(c);
+    }
+  }
+
+  const strikeRow = (row, email, name) => {
+    const note = (rows[row - 2] || [])[10] || "";
+    if (STAGE1_REMOVED_RE.test(note) || struckRows.has(row)) return;
+    valueUpdates.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_NOTE_COL}${row}`, values: [[stage1NoteWithRemoval(note, today)]] });
+    fmt.push({ row, kind: "struck" });
+    struckRows.add(row);
+    struck.push({ email, name });
+  };
+
+  // Removals recorded when someone was deleted from the website.
+  const removalRefsApplied = [], removalRefsCancelled = [];
+  for (const d of removalsSnap.docs) {
+    const p = d.data();
+    const e = String(p.email || "").trim().toLowerCase();
+    if (!e) { removalRefsApplied.push(d.ref); continue; }
+    if (siteEmails.has(e)) { removalRefsCancelled.push(d.ref); continue; } // since re-added
+    const row = rowByEmail.get(e);
+    if (row) strikeRow(row, e, p.name || "");
+    removalRefsApplied.push(d.ref);
+  }
+
+  // Rows in the sheet with no matching website record and no recorded removal.
+  for (const [e, row] of rowByEmail) {
+    if (siteEmails.has(e)) continue;
+    const cur = rows[row - 2] || [];
+    if (STAGE1_REMOVED_RE.test(cur[10] || "") || struckRows.has(row)) continue;
+    const name = `${cur[1] || ""} ${cur[0] || ""}`.trim();
+    notOnWebsite.push({ email: e, name, row });
+    if (strikeMissing) strikeRow(row, e, name);
+  }
+
+  let next = rows.length + 2;
+  added.forEach(c => {
+    valueUpdates.push({ range: `${STAGE1_SHEET_TAB_Q}!A${next}:${STAGE1_SHEET_NOTE_COL}${next}`, values: [stage1NewSheetRow(c, today)] });
+    fmt.push({ row: next, kind: "late" });
+    next++;
+  });
+  const needHeader = !((headerData.values || [])[0] || [])[0];
+  if (needHeader && (added.length || struck.length || restored.length)) {
+    valueUpdates.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_NOTE_COL}1`, values: [[STAGE1_SHEET_NOTE_HEADER]] });
+  }
+
+  const summary = {
+    checked: cands.length,
+    added: added.length,
+    addedNames: added.map(c => c.name || c.email),
+    restored: restored.length,
+    struck: struck.length,
+    struckNames: struck.map(s => s.name || s.email),
+    notOnWebsite: notOnWebsite.map(n => ({ email: n.email, name: n.name })),
+    duplicatesInSheet: duplicates,
+    // legacy keys read by the allocation page's dry-run summary
+    notFound: added.length,
+    notFoundEmails: added.map(c => c.email),
+  };
+
+  if (dryRun) return { dryRun: true, wouldUpdate: courseRoomUpdates, wouldUpdateTags: tagUpdates, ...summary };
+
+  if (added.length) await stage1EnsureRows(next - 1);
+  await stage1WriteValues(valueUpdates);
+  let formatError = null;
+  try { await stage1WriteFormats(fmt); } catch (err) { formatError = err.message; console.error("reconcileStage1Sheet: values written but formatting failed:", err.message); }
+
+  const batch = db.batch();
+  removalRefsApplied.forEach(ref => batch.set(ref, { applied: true, appliedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true }));
+  removalRefsCancelled.forEach(ref => batch.delete(ref));
+  if (removalRefsApplied.length || removalRefsCancelled.length) await batch.commit();
+
+  return { dryRun: false, updated: courseRoomUpdates, tagsUpdated: tagUpdates, formatError, ...summary };
+}
+
 exports.backfillStage1CourseToSheet = onCall({ region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
   if (!(await callerIsDirector(auth))) {
     throw new HttpsError("permission-denied", "Course Directors only.");
   }
-  const dryRun = !!request.data?.dryRun;
-
-  const snap = await db.collection("stage1_candidates").get();
-  const candidates = snap.docs
-    .map(d => d.data())
-    .filter(c => c.email && c.course);
-
-  const [colData, gData] = await Promise.all([
-    stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!C2:C`),
-    stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}2:${STAGE1_SHEET_COURSE_COL}`),
-  ]);
-
-  const rowByEmail = new Map();
-  (colData.values || []).forEach((r, i) => {
-    const email = (r[0] || "").trim().toLowerCase();
-    if (email) rowByEmail.set(email, i + 2); // +1 header row, +1 to move from 0- to 1-indexed
-  });
-  const currentG = gData.values || [];
-
-  const updates = []; // {range, values}
-  const notFoundEmails = [];
-  for (const c of candidates) {
-    const email = String(c.email).trim().toLowerCase();
-    const row = rowByEmail.get(email);
-    if (!row) { notFoundEmails.push(c.email); continue; }
-    const existing = (currentG[row - 2] && currentG[row - 2][0]) || "";
-    if (existing === c.course) continue; // already correct — don't touch it
-    updates.push({ range: `${STAGE1_SHEET_TAB}!${STAGE1_SHEET_COURSE_COL}${row}`, values: [[c.course]] });
+  try {
+    return await reconcileStage1Sheet({ dryRun: !!request.data?.dryRun, strikeMissing: !!request.data?.strikeMissing });
+  } catch (err) {
+    console.error("backfillStage1CourseToSheet failed:", err);
+    throw new HttpsError("internal", "Sheet sync failed: " + String(err.message || err).slice(0, 300));
   }
-
-  if (dryRun) {
-    return { dryRun: true, wouldUpdate: updates.length, notFound: notFoundEmails.length, notFoundEmails, checked: candidates.length };
-  }
-
-  if (updates.length) {
-    await stage1SheetsApiFetch(`/values:batchUpdate`, {
-      method: "POST",
-      body: JSON.stringify({ valueInputOption: "RAW", data: updates }),
-    });
-  }
-
-  return { dryRun: false, updated: updates.length, notFound: notFoundEmails.length, notFoundEmails, checked: candidates.length };
 });
+
+exports.reconcileStage1SheetScheduled = onSchedule(
+  { schedule: "every 30 minutes", region: "us-central1", timeZone: "Europe/London" },
+  async () => {
+    try {
+      const r = await reconcileStage1Sheet({ dryRun: false });
+      console.log(`reconcileStage1SheetScheduled: checked ${r.checked}, course/room fixed ${r.updated}, added ${r.added}, struck ${r.struck}, restored ${r.restored}, not on website ${r.notOnWebsite.length}.`);
+    } catch (err) {
+      console.error("reconcileStage1SheetScheduled failed:", err.message);
+    }
+  }
+);
 
 exports.syncStage1CourseToSheet = onDocumentWritten(
   { document: "stage1_candidates/{candidateId}", region: "us-central1" },
   async (event) => {
-    const after = event.data?.after?.exists ? event.data.after.data() : null;
-    if (!after || !after.email || !after.course) return; // nothing to mirror yet
-
     const before = event.data?.before?.exists ? event.data.before.data() : null;
-    if (before && before.course === after.course && before.email === after.email) return; // unchanged
-
-    const email = String(after.email).trim().toLowerCase();
-    if (!email) return;
+    const after = event.data?.after?.exists ? event.data.after.data() : null;
+    const emailOf = c => String(c?.email || "").trim().toLowerCase();
 
     try {
-      const colData = await stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!C2:C`);
-      const rows = colData.values || [];
-      const rowIndex = rows.findIndex(r => (r[0] || "").trim().toLowerCase() === email);
-      if (rowIndex === -1) {
-        console.log(`syncStage1CourseToSheet: no row found for ${email} in the import sheet — skipped.`);
+      // Removed from the website: record it durably, then try to strike the
+      // row through straight away. If the Sheets call fails (rate limit,
+      // outage) the record stays applied:false and the next reconcile does it.
+      if (!after) {
+        const email = emailOf(before);
+        if (!email) return;
+        const ref = db.collection("stage1_sheet_removals").doc(email);
+        await ref.set({ email, name: before.name || "", removedAt: admin.firestore.FieldValue.serverTimestamp(), applied: false });
+        const rows = ((await stage1SheetsApiFetch(`/values/${encodeURIComponent(STAGE1_SHEET_TAB_Q)}!A2:K`)).values) || [];
+        const idx = rows.findIndex(r => String(r[2] || "").trim().toLowerCase() === email);
+        if (idx !== -1) {
+          const row = idx + 2;
+          const note = rows[idx][10] || "";
+          if (!STAGE1_REMOVED_RE.test(note)) {
+            await stage1WriteValues([{ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_NOTE_COL}${row}`, values: [[stage1NoteWithRemoval(note, stage1Today())]] }]);
+            await stage1WriteFormats([{ row, kind: "struck" }]);
+          }
+        }
+        await ref.set({ applied: true, appliedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        console.log(`syncStage1CourseToSheet: struck through ${email}.`);
         return;
       }
-      const sheetRow = rowIndex + 2; // +1 for the header row, +1 to move from 0-index to 1-index
-      await stage1SheetsApiFetch(
-        `/values/${encodeURIComponent(STAGE1_SHEET_TAB)}!${STAGE1_SHEET_COURSE_COL}${sheetRow}?valueInputOption=RAW`,
-        { method: "PUT", body: JSON.stringify({ values: [[after.course]] }) }
-      );
-      console.log(`syncStage1CourseToSheet: wrote "${after.course}" for ${email} at row ${sheetRow}.`);
+
+      const email = emailOf(after);
+      if (!email) return;
+
+      // Newly created (or re-created): adding the row / lifting a strike-through
+      // is done by reconcileStage1Sheet (called by the website right after an
+      // import, and every 30 minutes) — a single writer, so a 230-person paste
+      // can't race itself into duplicate rows. Just drop any stale removal note.
+      if (!before) {
+        await db.collection("stage1_sheet_removals").doc(email).delete().catch(() => {});
+        return;
+      }
+
+      const courseNow = after.course || "";
+      const roomNow = courseNow ? (after.room || "") : "";
+      const courseWas = before.course || "";
+      const roomWas = courseWas ? (before.room || "") : "";
+      const emailWas = emailOf(before);
+      const rapNow = stage1TagCell(after.rap), rapWas = stage1TagCell(before.rap);
+      const twoNow = stage1TagCell(after.twoPlusAssessments), twoWas = stage1TagCell(before.twoPlusAssessments);
+      const courseChanged = courseWas !== courseNow || roomWas !== roomNow;
+      const tagsChanged = rapNow !== rapWas || twoNow !== twoWas;
+      if (!courseChanged && !tagsChanged && emailWas === email) return; // nothing the sheet shows has changed
+
+      const tab = encodeURIComponent(STAGE1_SHEET_TAB_Q);
+      const rows = ((await stage1SheetsApiFetch(`/values/${tab}!A2:K`)).values) || [];
+      const find = e => rows.findIndex(r => String(r[2] || "").trim().toLowerCase() === e);
+      let idx = find(email);
+      if (idx === -1 && emailWas && emailWas !== email) {
+        // the email was corrected on the website: carry the existing row over
+        const oldIdx = find(emailWas);
+        if (oldIdx !== -1) {
+          await stage1WriteValues([{ range: `${STAGE1_SHEET_TAB_Q}!C${oldIdx + 2}`, values: [[String(after.email).trim()]] }]);
+          idx = oldIdx;
+        }
+      }
+      if (idx === -1) {
+        console.log(`syncStage1CourseToSheet: no row for ${email} yet — the next reconcile will add it.`);
+        return;
+      }
+      const row = idx + 2;
+      const upd = [];
+      if (courseChanged || emailWas !== email) upd.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_COURSE_COL}${row}:${STAGE1_SHEET_ROOM_COL}${row}`, values: [[courseNow, roomNow]] });
+      if (rapNow !== null && rapNow !== rapWas) upd.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_RAP_COL}${row}`, values: [[rapNow]] });
+      if (twoNow !== null && twoNow !== twoWas) upd.push({ range: `${STAGE1_SHEET_TAB_Q}!${STAGE1_SHEET_TWOPLUS_COL}${row}`, values: [[twoNow]] });
+      if (upd.length) await stage1WriteValues(upd);
+      console.log(`syncStage1CourseToSheet: wrote "${courseNow}" / "${roomNow}" / RAP "${rapNow ?? ""}" / two-plus "${twoNow ?? ""}" for ${email} at row ${row}.`);
     } catch (err) {
-      console.error(`syncStage1CourseToSheet: failed to sync ${email}`, err.message);
+      console.error(`syncStage1CourseToSheet: failed (${emailOf(after || before)}) — the scheduled reconcile will repair it.`, err.message);
     }
   }
 );
+
 
 /**
  * recomputeInstructorIwScore: Firestore trigger (v2, onDocumentWritten) on
@@ -2719,8 +3190,10 @@ function iwEntryScore(data) {
   if (base === undefined) return null;
   return base + (data.strong ? 1 : 0) - (data.weak ? 1 : 0);
 }
-function iwTierFromAverage(average) {
-  return average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+function iwTierFromAverage(average, hasRed) {
+  const t = average >= 1.5 ? "strong" : average < 0.5 ? "weak" : "standard";
+  // 2026-10-11 (Jon): one RED (serious concern) rating anywhere means never "strong".
+  return (t === "strong" && hasRed) ? "standard" : t;
 }
 
 async function recomputeAndWriteIwScore(candidateId) {
@@ -2743,10 +3216,19 @@ async function recomputeAndWriteIwScore(candidateId) {
     return;
   }
   const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+  const allDocs = [...sessionSnap.docs, ...assessorSnap.docs];
+  const redCount = allDocs.filter((d) => d.data().rating === "red").length;
+  // Number of "notably strong" / "notably weak" tags (2026-10-11, Jon): shown in the
+  // rankings and used to break ties. They already move the average by +1 / -1 each.
+  const strongCount = allDocs.filter((d) => d.data().strong === true).length;
+  const weakCount = allDocs.filter((d) => d.data().weak === true).length;
   await peopleRef.set({
     iwRatingSummary: {
       average: Math.round(average * 100) / 100,
-      tier: iwTierFromAverage(average),
+      tier: iwTierFromAverage(average, redCount > 0),
+      redCount,
+      strongCount,
+      weakCount,
       count: scores.length,
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }
@@ -3692,4 +4174,95 @@ exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) 
   if (close) return { found: false, closeMatch: true, suggestedName: close.name || "" };
 
   return { found: false };
+});
+
+
+/**
+ * iwKioskSearch / iwKioskCheckIn: on-demand (callable), public, no sign-in.
+ * Added 2026-10-11 to fix the Instructor Weekend QR kiosk (iw-checkin.html).
+ * Candidates have no login, and firestore.rules (correctly) lets only
+ * faculty-level signed-in roles list the people collection, so the kiosk's
+ * old direct read of /people failed for candidates. These two functions do
+ * the read and the write with the Admin SDK instead, exposing as little as
+ * possible:
+ *   - only on the two Instructor Weekend days (Europe/London date);
+ *   - search needs at least 3 characters and returns at most 6 matches,
+ *     each only {id, name, role, roleLabel} (never email or passport name);
+ *   - searches only people with a 2026 iw_assignments record or a candidate
+ *     role (instructor / assessor), so it can't be used to browse the wider
+ *     membership; other faculty use Faculty lookup mode instead;
+ *   - check-in writes only arrived_<day> and checkedInBy_<day> on the
+ *     attendance doc, clears any "not expected" flags the same way faculty
+ *     check-in does, and never overwrites an earlier arrival time.
+ * Faculty lookup mode (iw-checkin.html?mode=faculty) does not use these.
+ */
+const IW_KIOSK_DAYS = { "2026-10-10": "saturday", "2026-10-11": "sunday" };
+const IW_KIOSK_YEAR = 2026;
+
+function iwKioskToday() {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const get = t => (parts.find(p => p.type === t) || {}).value;
+  return IW_KIOSK_DAYS[`${get("year")}-${get("month")}-${get("day")}`] || null;
+}
+
+let iwKioskCache = null; // { at, people: [{id,name,role,roleLabel,norm}] }
+async function iwKioskPeople() {
+  if (iwKioskCache && Date.now() - iwKioskCache.at < 3 * 60 * 1000) return iwKioskCache.people;
+  const [peopleSnap, assignSnap] = await Promise.all([
+    db.collection("people").select("name", "role", "roleLabel").get(),
+    db.collection("iw_assignments").where("year", "==", IW_KIOSK_YEAR).get()
+  ]);
+  const assign = {};
+  assignSnap.forEach(d => { const a = d.data(); if (a.uid && a.function) assign[a.uid] = a.function; });
+  const people = [];
+  peopleSnap.forEach(d => {
+    const x = d.data();
+    // Anyone with a 2026 Instructor Weekend assignment, plus anyone whose role
+    // is a candidate role even if their assignment record is missing.
+    if (!assign[d.id] && !["instructor", "assessor"].includes(x.role)) return;
+    if (!x.name) return;
+    people.push({ id: d.id, name: String(x.name), role: assign[d.id] || x.role || "", roleLabel: x.roleLabel || "", norm: normalizeNameForMatch(x.name) });
+  });
+  iwKioskCache = { at: Date.now(), people };
+  return people;
+}
+
+exports.iwKioskSearch = onCall({ region: "us-central1" }, async (request) => {
+  const day = iwKioskToday();
+  if (!day) throw new HttpsError("failed-precondition", "Check-in is not open today.");
+  const q = normalizeNameForMatch(request.data?.q || "");
+  if (q.length < 3) return { day, results: [] };
+  const words = q.split(" ").filter(Boolean);
+  const people = await iwKioskPeople();
+  const results = people
+    .filter(p => words.every(w => p.norm.includes(w)))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 6)
+    .map(p => ({ id: p.id, name: p.name, role: p.role, roleLabel: p.roleLabel }));
+  return { day, results };
+});
+
+exports.iwKioskCheckIn = onCall({ region: "us-central1" }, async (request) => {
+  const day = iwKioskToday();
+  if (!day) throw new HttpsError("failed-precondition", "Check-in is not open today.");
+  const personId = String(request.data?.personId || "").trim();
+  if (!personId) throw new HttpsError("invalid-argument", "Person required.");
+  const people = await iwKioskPeople();
+  const person = people.find(p => p.id === personId);
+  if (!person) throw new HttpsError("not-found", "Not found. Please see a member of staff.");
+
+  const ref = db.collection("attendance").doc(personId);
+  const snap = await ref.get();
+  const first = person.name.split(" ")[0];
+  if (snap.exists && snap.data()["arrived_" + day]) {
+    return { ok: true, alreadyCheckedIn: true, day, firstName: first };
+  }
+  const del = admin.firestore.FieldValue.delete();
+  await ref.set({
+    ["arrived_" + day]: admin.firestore.FieldValue.serverTimestamp(),
+    ["checkedInBy_" + day]: "self-service-qr",
+    ["notExpected_" + day]: del, ["markedNotExpectedBy_" + day]: del, ["markedNotExpectedAt_" + day]: del,
+    ["absentType_" + day]: del, ["absentReason_" + day]: del, ["absentNote_" + day]: del
+  }, { merge: true });
+  return { ok: true, alreadyCheckedIn: false, day, firstName: first };
 });

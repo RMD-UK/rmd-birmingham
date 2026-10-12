@@ -94,10 +94,10 @@
       line-height: 1.25;
     }
     .dim-btn:active { transform: scale(0.96); }
-    .dim-btn.active-1 { background: #fde8e4; border-color: #b7410e; color: #b7410e; }
-    .dim-btn.active-2 { background: #fdf1de; border-color: #c17a00; color: #c17a00; }
-    .dim-btn.active-3 { background: #e6f4ea; border-color: #1a6e31; color: #1a6e31; }
-    .dim-btn.active-4 { background: #1a6e31; border-color: #145727; color: white; }
+    .dim-btn small { display: block; font-size: 10px; font-weight: 600; opacity: .85; }
+    .dim-btn.active-1 { background: #b7410e; border-color: #8e3209; color: #fff; }
+    .dim-btn.active-2 { background: #c17a00; border-color: #9a6200; color: #fff; }
+    .dim-btn.active-3 { background: #1a6e31; border-color: #145727; color: #fff; }
 
     /* ── Comment box ── */
     .comment-wrap { padding: 10px 14px 12px; }
@@ -147,6 +147,7 @@
     .auto-save-indicator { font-size: 11px; color: var(--rmd-muted); text-align: center; margin-top: 4px; }
     .auto-save-indicator.saving { color: var(--rmd-blue); }
     .auto-save-indicator.saved  { color: #1a6e31; }
+    .auto-save-indicator.error  { color: #b7410e; font-weight: 700; }
 
     /* ── Toast ── */
     .toast {
@@ -192,7 +193,9 @@
   <a href="timetable.html" style="font-size:12px;color:var(--rmd-blue);text-decoration:none;white-space:nowrap;">← Timetable</a>
 </div>
 
-<div class="blind-notice">🔒 Your ratings are private. Other observers cannot see them — only the Course Director sees the collated view.</div>
+<div data-rag-key></div>
+
+<div class="blind-notice" id="blindNotice">🔒 Your ratings are private. Other observers cannot see them — only the Course Director sees the collated view.</div>
 
 <!-- ── ITC list ── -->
 <div class="wrap" id="itcWrap">
@@ -218,6 +221,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/rag-key.js?v=20261010"></script>
+<script src="js/draft-guard.js?v=20261010"></script>
 <script src="js/programme-data.js?v=202610071300"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
@@ -231,7 +236,22 @@ const DIMENSIONS = [
   { key: "space",       label: "Management of teaching space" },
   { key: "response",    label: "Response to difficulty or questions" }
 ];
-const SCALE_LABELS = ["Needs development", "Developing", "Meeting expectations", "Exceeding expectations"];
+// 2026-10-10 (Jon): converted from the 1-4 scale to the site-wide red / amber / green wording.
+// Stored values stay numeric so older records and the dashboard still read: 3 = Green (no
+// concerns), 2 = Amber (some concerns), 1 = Red (serious concerns). Old 4s count as green.
+// Buttons are shown Green, Amber, Red left to right, like every other rating page.
+const RAG_BUTTONS = [
+  { val: 3, label: "Green", sub: "no concerns" },
+  { val: 2, label: "Amber", sub: "some concerns" },
+  { val: 1, label: "Red",   sub: "serious concerns" }
+];
+const SCALE_LABELS = ["Red: serious concerns", "Amber: some concerns", "Green: no concerns"];
+function dimButtons(itcEmail, dimKey, val) {
+  return RAG_BUTTONS.map(b =>
+    `<button class="dim-btn ${val === b.val ? `active-${b.val}` : ''}" title="${b.label}: ${b.sub}"
+      onclick="setDim('${itcEmail}','${dimKey}',${b.val})">${b.label}<small>${b.sub}</small></button>`
+  ).join("");
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Session-id → ITC-schedule-key mapping.
@@ -362,9 +382,46 @@ async function loadMyRatings() {
       .get();
     snap.docs.forEach(d => {
       const data = d.data();
-      ratings[data.itcEmail] = { dims: data.dims || {}, comment: data.comment || "", firestoreId: d.id };
+      ratings[data.itcEmail] = { dims: Object.fromEntries(Object.entries(data.dims || {}).map(([k, v]) => [k, v > 3 ? 3 : v])), comment: data.comment || "", firestoreId: d.id };
     });
-  } catch (e) { /* no saved ratings yet */ }
+  } catch (e) {
+    console.error("Could not load saved observations:", e.code, e.message);
+    ioLoadError = e.code || e.message || "error";
+  }
+  watchRemovedRatings();
+  // Put back anything entered on this device that the server never confirmed.
+  const draft = DraftGuard.read(ioDraftKey());
+  ioRestored = 0;
+  if (draft) Object.keys(draft).forEach(em => {
+    const dr = draft[em], cur = ratings[em] || { dims: {}, comment: "" };
+    if (JSON.stringify([dr.dims || {}, dr.comment || ""]) !== JSON.stringify([cur.dims || {}, cur.comment || ""])) {
+      ratings[em] = { ...cur, dims: dr.dims || {}, comment: dr.comment || "" };
+      ioRestored++;
+      ioPending[em] = true; DraftGuard.markDirty(em, true);
+      clearTimeout(saveDebounce[em]);
+      saveDebounce[em] = setTimeout(() => saveSingle(em), 1200);
+    }
+  });
+}
+let ioLoadError = "", ioRestored = 0;
+
+// 2026-10-11: drop an observation from this screen if the Course Director deletes it.
+var _ioRemovedWatch = null;
+function watchRemovedRatings() {
+  if (_ioRemovedWatch || !currentUser || !currentSession) return;
+  _ioRemovedWatch = db.collection(COLLECTIONS.itcObs)
+    .where("sessionId", "==", currentSession)
+    .where("raterUid", "==", currentUser.uid)
+    .onSnapshot(function (snap) {
+      var n = 0;
+      snap.docChanges().forEach(function (ch) {
+        if (ch.type !== "removed") return;
+        var em = (ch.doc.data() || {}).itcEmail;
+        if (!em || ioPending[em] || !ratings[em] || ratings[em].firestoreId !== ch.doc.id) return;
+        delete ratings[em]; n++;
+      });
+      if (n) { try { renderItcs(); } catch (e) {} if (typeof showToast === "function") showToast("An observation was removed by the Course Director", "green"); }
+    }, function (err) { console.warn("Removed-observation watch:", err.message); });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -388,6 +445,10 @@ function renderItcs() {
   wrap.innerHTML = myItcs.map(itc => buildCard(itc)).join("");
   btn.disabled = false; btn.style.display = "";
   btn.textContent = "Submit observation";
+  myItcs.forEach(i => ioRefreshTick(i.email));
+  if (ioLoadError) DraftGuard.banner("ioBanner", "blindNotice", "Could not load your saved observations (" + esc(ioLoadError) + "). Do not reload: anything you enter is still kept on this device.", "err");
+  else ioUpdateBanner();
+  if (ioRestored) { showToast("Restored " + ioRestored + " unsaved observation" + (ioRestored === 1 ? "" : "s") + " from this device", "green"); ioRestored = 0; }
 }
 
 function buildCard(itc) {
@@ -396,10 +457,7 @@ function buildCard(itc) {
 
   const dimRows = DIMENSIONS.map(d => {
     const val = r.dims[d.key] || 0;
-    const btns = [1,2,3,4].map(n =>
-      `<button class="dim-btn ${val === n ? `active-${n}` : ''}" title="${SCALE_LABELS[n-1]}"
-        onclick="setDim('${itc.email}','${d.key}',${n})">${n}<br>${SCALE_LABELS[n-1].split(" ")[0]}</button>`
-    ).join("");
+    const btns = dimButtons(itc.email, d.key, val);
     return `<div class="dim-row" id="dim-${itc.email}-${d.key}">
       <div class="dim-label">${d.label}</div>
       <div class="dim-scale">${btns}</div>
@@ -414,7 +472,7 @@ function buildCard(itc) {
       ${dimRows}
       <div class="comment-wrap">
         <div class="comment-label ${hasConcern ? 'required' : ''}" id="commentLabel-${itc.email}">
-          ${hasConcern ? "Comment required — a dimension is rated ‘Needs development’ *" : "Comment"}
+          ${hasConcern ? "Comment required — a dimension is rated Red *" : "Comment"}
         </div>
         <textarea class="comment-textarea" id="text-${itc.email}"
           placeholder="Describe what you observed"
@@ -436,10 +494,7 @@ function setDim(itcEmail, dimKey, value) {
   // Re-render just this dimension row's buttons
   const row = document.getElementById(`dim-${itcEmail}-${dimKey}`);
   if (row) {
-    const btns = [1,2,3,4].map(n =>
-      `<button class="dim-btn ${newVal === n ? `active-${n}` : ''}" title="${SCALE_LABELS[n-1]}"
-        onclick="setDim('${itcEmail}','${dimKey}',${n})">${n}<br>${SCALE_LABELS[n-1].split(" ")[0]}</button>`
-    ).join("");
+    const btns = dimButtons(itcEmail, dimKey, newVal);
     row.querySelector(".dim-scale").innerHTML = btns;
   }
 
@@ -450,7 +505,7 @@ function setDim(itcEmail, dimKey, value) {
   const label = document.getElementById("commentLabel-" + itcEmail);
   if (label) {
     label.classList.toggle("required", hasConcern);
-    label.textContent = hasConcern ? "Comment required — a dimension is rated ‘Needs development’ *" : "Comment";
+    label.textContent = hasConcern ? "Comment required — a dimension is rated Red *" : "Comment";
   }
 
   scheduleAutoSave(itcEmail);
@@ -470,16 +525,51 @@ function onCommentInput(itcEmail) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Auto-save (debounced)
 // ─────────────────────────────────────────────────────────────────────────────
+// Local draft (2026-10-10): everything entered is copied to this device straight away and kept
+// until the server confirms it, so a reload or pull-to-refresh puts it back.
+function ioDraftKey() { return "rmd_draft_io_" + (currentUser ? currentUser.uid : "x") + "_" + currentSession; }
+const ioPending = {};
+function writeIoDraft() {
+  const d = {};
+  Object.keys(ioPending).forEach(em => {
+    const r = ratings[em];
+    if (r && (Object.values(r.dims || {}).some(v => v) || r.comment)) d[em] = { dims: r.dims || {}, comment: r.comment || "", ts: Date.now() };
+  });
+  if (Object.keys(d).length) DraftGuard.write(ioDraftKey(), d); else DraftGuard.clear(ioDraftKey());
+}
+function ioRefreshTick(em) {
+  const card = document.getElementById("card-" + em);
+  const name = card && card.querySelector(".itc-name");
+  if (!name) return;
+  const r = ratings[em] || {};
+  let tick = name.querySelector(".dg-tick");
+  const show = !!(r.firestoreId && !ioPending[em] && Object.values(r.dims || {}).some(v => v));
+  if (show && !tick) { tick = document.createElement("span"); tick.className = "dg-tick"; tick.style.marginLeft = "8px"; tick.textContent = "\u2713 Saved"; name.insertBefore(tick, name.querySelector(".itc-sub")); }
+  else if (!show && tick) tick.remove();
+}
+function ioUpdateBanner() {
+  const total = myItcs.length;
+  const done = myItcs.filter(i => ratings[i.email] && ratings[i.email].firestoreId && Object.values(ratings[i.email].dims || {}).some(v => v)).length;
+  const sub = DraftGuard.read("rmd_io_submitted_" + (currentUser ? currentUser.uid : "x") + "_" + currentSession);
+  if (sub && sub.ts) DraftGuard.banner("ioBanner", "blindNotice", "\u2713 You submitted this observation at " + DraftGuard.hhmm(sub.ts) + " <small>(" + done + " of " + total + " ITC" + (total === 1 ? "" : "s") + "). Changes still save automatically.</small>");
+  else if (done) DraftGuard.banner("ioBanner", "blindNotice", "\u2713 Saved: " + done + " of " + total + " ITC" + (total === 1 ? "" : "s") + " observed <small>(press Submit when you are done)</small>");
+  else DraftGuard.banner("ioBanner", "blindNotice", "");
+}
 function scheduleAutoSave(itcEmail) {
+  ioPending[itcEmail] = true;
+  DraftGuard.markDirty(itcEmail, true);
+  writeIoDraft();
+  ioRefreshTick(itcEmail);
   clearTimeout(saveDebounce[itcEmail]);
   saveDebounce[itcEmail] = setTimeout(() => saveSingle(itcEmail), 1200);
   setSaveIndicator("saving");
 }
 
 async function saveSingle(itcEmail) {
-  if (!currentUser || !currentSession) return;
+  if (!currentUser || !currentSession) return false;
   const r = ratings[itcEmail];
-  if (!r || !Object.values(r.dims || {}).some(v => v)) return; // nothing rated yet
+  if (!r || !Object.values(r.dims || {}).some(v => v)) { delete ioPending[itcEmail]; DraftGuard.markDirty(itcEmail, false); writeIoDraft(); return true; } // nothing rated yet
+  const sig = JSON.stringify([r.dims || {}, r.comment || ""]);
 
   const itc = myItcs.find(x => x.email === itcEmail);
   const payload = {
@@ -491,6 +581,7 @@ async function saveSingle(itcEmail) {
     raterUid:   currentUser.uid,
     raterName:  currentUserDoc?.name || currentUser.email || "",
     dims:       r.dims,
+    scale:      "rag",
     comment:    r.comment || "",
     savedAt:    firebase.firestore.FieldValue.serverTimestamp()
   };
@@ -501,13 +592,21 @@ async function saveSingle(itcEmail) {
       : db.collection(COLLECTIONS.itcObs).doc();
 
     await docRef.set(payload, { merge: true });
-    ratings[itcEmail] = { ...r, firestoreId: docRef.id };
+    ratings[itcEmail] = { ...ratings[itcEmail], firestoreId: docRef.id };
+    const nowR = ratings[itcEmail] || {};
+    if (sig === JSON.stringify([nowR.dims || {}, nowR.comment || ""])) { delete ioPending[itcEmail]; DraftGuard.markDirty(itcEmail, false); }
+    writeIoDraft(); ioRefreshTick(itcEmail); ioUpdateBanner();
 
     setSaveIndicator("saved");
     setTimeout(() => setSaveIndicator(""), 3000);
+    return true;
   } catch (err) {
-    console.error("Auto-save failed:", err.message);
-    setSaveIndicator("");
+    console.error("Auto-save failed:", err.code, err.message);
+    setSaveIndicator("error");
+    showToast("NOT saved yet (" + (err.code || err.message) + "). Still trying; do not reload.", "red");
+    clearTimeout(saveDebounce[itcEmail]);
+    saveDebounce[itcEmail] = setTimeout(() => saveSingle(itcEmail), 5000);   // keep trying
+    return false;
   }
 }
 
@@ -541,8 +640,15 @@ async function submitAll() {
     const saves = myItcs
       .filter(itc => ratings[itc.email])
       .map(itc => saveSingle(itc.email));
-    await Promise.all(saves);
-
+    const results = await Promise.all(saves);
+    if (results.some(ok => !ok)) {
+      showToast("Some observations did not save - check your connection and press Submit again", "red");
+      btn.disabled = false;
+      btn.textContent = "Submit observation";
+      return;
+    }
+    DraftGuard.write("rmd_io_submitted_" + currentUser.uid + "_" + currentSession, { ts: Date.now(), n: rated });
+    ioUpdateBanner();
     showToast(`Observation submitted for ${rated} ITC${rated !== 1 ? "s" : ""}`, "green");
     btn.textContent = "✓ Submitted";
   } catch (err) {
@@ -558,7 +664,7 @@ async function submitAll() {
 function setSaveIndicator(state) {
   const el = document.getElementById("saveIndicator");
   el.className = "auto-save-indicator" + (state ? " " + state : "");
-  el.textContent = state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : "Changes save automatically";
+  el.textContent = state === "saving" ? "Saving…" : state === "saved" ? "Saved ✓" : state === "error" ? "Not saved yet - retrying" : "Changes save automatically";
 }
 
 let toastTimer;
