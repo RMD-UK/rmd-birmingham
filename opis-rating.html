@@ -550,7 +550,9 @@ function evaluate() {
   const scoredCount = vals.filter(v => v !== undefined && v !== null).length;
   const complete = scoredCount === CRITERIA.length;
   const total = vals.reduce((a, b) => a + (b || 0), 0);
-  return { total, complete, scoredCount };
+  // Any "Unsatisfactory" (1) on any criterion rules out "potential outstanding teaching ability".
+  const hasUnsat = vals.some(v => v === 1);
+  return { total, complete, scoredCount, hasUnsat };
 }
 
 function renderDetail() {
@@ -559,10 +561,11 @@ function renderDetail() {
   if (!candidate) { detail.style.display = "none"; return; }
   detail.style.display = "";
 
-  const { total, complete, scoredCount } = evaluate();
-  // Outstanding teaching ability can only be ticked once all five are scored
-  // and the total is 12 or more; otherwise it is greyed out and cleared.
-  const potOk = complete && total >= 12;
+  const { total, complete, scoredCount, hasUnsat } = evaluate();
+  // Outstanding teaching ability can only be ticked once all five are scored,
+  // the total is 12 or more, and none of the five is Unsatisfactory (1)
+  // (Jon, 2026-10-12); otherwise it is greyed out and cleared.
+  const potOk = complete && total >= 12 && !hasUnsat;
   if (!potOk) teachingPotential = false;
   // A second submission for someone already rated needs the "I made a mistake"
   // box. It is saved as a correction, and the Course Director views show the
@@ -622,7 +625,7 @@ function renderDetail() {
     <div class="checks ${justSubmitted ? "locked" : ""}">
       <label class="check pot ${potOk ? "" : "off"}">
         <input type="checkbox" id="teachingCheckbox" ${teachingPotential ? "checked" : ""} ${potOk ? "" : "disabled"} onchange="setTeachingPotential(this.checked)">
-        <span><b>Potential outstanding teaching ability</b> ${potOk ? "(optional: tick only if you saw it)" : "(only available when the total is 12 or more)"}</span>
+        <span><b>Potential outstanding teaching ability</b> ${potOk ? "(optional: tick only if you saw it)" : (hasUnsat ? "(not available when any criterion is scored Unsatisfactory)" : "(only available when the total is 12 or more)")}</span>
       </label>
       ${showMistake ? `
       <label class="check mistake">
@@ -666,7 +669,7 @@ function setCredibility(checked) {
 
 async function submitRating() {
   const candidate = candidatesForCourse(selectedCourse).find(c => c.id === selectedCandidateId);
-  const { total, complete } = evaluate();
+  const { total, complete, hasUnsat } = evaluate();
   const errEl = document.getElementById("submitErr");
   const btn = document.getElementById("submitBtn");
   errEl.style.display = "none";
@@ -686,7 +689,7 @@ async function submitRating() {
       room: selectedRoom,
       scores: { ...currentScores },
       total: total,
-      outstandingTeachingPotential: (teachingPotential === true && total >= 12),
+      outstandingTeachingPotential: (teachingPotential === true && total >= 12 && !hasUnsat),
       credibilityConfirmed: true,
       ...(mistakeChecked ? { correctsPrevious: true } : {}),
       submittedByUid: currentUser.uid,
