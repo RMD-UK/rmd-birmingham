@@ -106,6 +106,8 @@
   <span class="view-only-pill">View only</span>
 </div>
 
+<div id="filterBar" class="filter-bar" style="display:none"></div>
+
 <div id="statsStrip" class="stats-strip" style="display:none">
   <div class="stat-cell"><div class="num" id="statCand">0</div><div class="lbl">Candidates</div></div>
   <div class="stat-cell"><div class="num" id="statAssigned">0</div><div class="lbl">In a room</div></div>
@@ -131,6 +133,7 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/candidate-lookup.js"></script>
 <script src="js/fuzzy-search.js"></script>
+<script src="js/roster-tags.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // Evening Course Rosters — read-only view for RMD Student/Senior Faculty
@@ -153,6 +156,7 @@ let courseDates    = {};   // course name -> date, from config/stage1_course_dat
 let allInstructors = [];
 let allAllocDocs   = [];
 let defaultAllocDoc = null;
+let currentCourse = "";
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
@@ -335,11 +339,12 @@ function teamsFor(course) {
 // Same look as the Instructor Weekend room allocation: a role tag, the name,
 // and nothing else but the assessment slot. Email and degree are
 // deliberately not shown on this view-only page.
-function personCard(name, kind, id, sub) {
+function personCard(name, kind, id, sub, cand) {
   const pip = kind === "instr"
     ? `<span class="role-pip pip-inst">Instr</span>`
     : `<span class="role-pip pip-cand">Cand</span>`;
-  return `<div class="pcard"${id ? ` data-cid="${esc(id)}"` : ""}>${pip}<div class="pcard-main"><span class="pcard-name">${esc(name)}</span>${sub ? `<span class="pcard-sub">${esc(sub)}</span>` : ""}</div></div>`;
+  const tagHtml = cand ? (RMD_TAGS.badges(cand)) : "";
+  return `<div class="pcard"${id ? ` data-cid="${esc(id)}"` : ""}>${pip}<div class="pcard-main"><span class="pcard-name">${esc(name)}</span>${sub ? `<span class="pcard-sub">${esc(sub)}</span>` : ""}</div>${tagHtml ? `<span class="pcard-tags">${tagHtml}</span>` : ""}</div>`;
 }
 
 function selectCourse(course) {
@@ -358,10 +363,17 @@ function selectCourse(course) {
     assessmentRoom: c.assessmentRoom || null,
     assessmentSlot: c.assessmentSlot || null,
     firstTimeAssessment: c.firstTimeAssessment,
-    assessmentAbsent: c.assessmentAbsent === true
+    assessmentAbsent: c.assessmentAbsent === true,
+    rap: c.rap === true,
+    twoPlusAssessments: c.twoPlusAssessments === true
   }));
 
   const teams = teamsFor(course);
+
+  // Filters (degree course and tags): shared bar from js/roster-tags.js.
+  currentCourse = course;
+  const filt = RMD_TAGS.renderFilterBar(document.getElementById("filterBar"), candidates, () => selectCourse(currentCourse));
+  const shownCands = candidates.filter(filt.passes);
 
   const assignedCount = candidates.filter(c => c.room).length;
   document.getElementById("statCand").textContent = candidates.length;
@@ -371,9 +383,9 @@ function selectCourse(course) {
 
   // Only show rooms that actually have a candidate or an instructor team —
   // no point showing all 19 rooms empty for a small course.
-  const roomsWithContent = ROOMS.filter(rid =>
-    candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length)
-  );
+  const roomsWithContent = ROOMS.filter(rid => filt.active
+    ? shownCands.some(c => c.room === rid)
+    : (candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length)));
 
   // Courses whose instructor teams have not been saved yet (Course Room &
   // Instructor Allocation) show candidates only; say so rather than looking broken.
@@ -383,7 +395,7 @@ function selectCourse(course) {
     : "";
   document.getElementById("roomsGrid").innerHTML = noTeamNote + (roomsWithContent.length
     ? roomsWithContent.map(rid => {
-        const inRoom = candidates.filter(c => c.room === rid);
+        const inRoom = shownCands.filter(c => c.room === rid);
         const instrs = (teams[rid] || []);
         const total = inRoom.length + instrs.length;
         return `<div class="room-col" data-room="${esc(rid)}">
@@ -392,16 +404,16 @@ function selectCourse(course) {
                   </div>
                   <div class="room-body">
                     ${instrs.length ? `<div class="room-sec-label">Instructors</div>${instrs.map(uid => personCard(instructorName(uid), "instr", "", "")).join("")}` : ""}
-                    ${inRoom.length ? `<div class="room-sec-label">Candidates</div>${inRoom.map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c))).join("")}` : ""}
+                    ${inRoom.length ? `<div class="room-sec-label">Candidates</div>${inRoom.map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c), c)).join("")}` : ""}
                   </div>
                 </div>`;
       }).join("")
-    : `<div class="no-course" style="grid-column:1/-1">No rooms have been set up for this course yet.</div>`);
+    : `<div class="no-course" style="grid-column:1/-1">${filt.active ? "No candidates on this course match the filters." : "No rooms have been set up for this course yet."}</div>`);
 
-  const unassigned = candidates.filter(c => !c.room);
+  const unassigned = shownCands.filter(c => !c.room);
   document.getElementById("unassignedWrap").style.display = unassigned.length ? "" : "none";
   document.getElementById("unassignedGrid").innerHTML = unassigned
-    .map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c)))
+    .map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c), c))
     .join("");
 }
 
@@ -457,7 +469,7 @@ function onSearchInput() {
   const candHtml = candMatches.map(c => {
     const where = c.course ? `${esc(L.courseText(c, courseDates))} - ${esc(L.roomText(c))}` : "Not on a course yet";
     return `<div class="search-result" onclick="jumpToCandidate('${esc(c.id)}')">
-              <div class="sr-name">${esc(c.name || "(no name)")} <span style="font-weight:600;color:#8893b0;font-size:11px;">Candidate</span></div>
+              <div class="sr-name">${esc(c.name || "(no name)")} <span style="font-weight:600;color:#8893b0;font-size:11px;">Candidate</span> ${RMD_TAGS.badges(c)}</div>
               <div class="sr-meta">${where}</div>
               <div class="sr-meta">${esc(c.course ? L.assessmentText(c) : "")}</div>
             </div>`;

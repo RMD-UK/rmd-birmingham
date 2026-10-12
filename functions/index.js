@@ -197,7 +197,9 @@ exports.getRosterForMembers = onCall({ region: "us-central1" }, async (request) 
       assessmentRoom: c.assessmentRoom || null,
       assessmentSlot: c.assessmentSlot || null,
       firstTimeAssessment: c.firstTimeAssessment === undefined ? null : c.firstTimeAssessment,
-      assessmentAbsent: c.assessmentAbsent === true
+      assessmentAbsent: c.assessmentAbsent === true,
+      rap: c.rap === true,
+      twoPlusAssessments: c.twoPlusAssessments === true
     };
   });
 
