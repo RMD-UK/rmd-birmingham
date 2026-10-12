@@ -159,6 +159,78 @@ async function callerFacultyRosterGroup(auth) {
 }
 
 
+// getRosterForMembers (2026-10-12, Jon: every instructor can open Current Course)
+// Read-only roster for any signed-in RMD member (anyone with a role on their
+// people record, a faculty_roster entry, or a director). Firestore rules keep
+// the full candidate collection and the people directory closed to ordinary
+// instructors, because those documents carry email, date of birth and passport
+// names. This function reads them with admin rights and returns ONLY what the
+// Current Course page shows: name, programme, course, room, assessment slot and
+// the instructor names per room. No email, no date of birth, no student ID.
+exports.getRosterForMembers = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  let ok = await callerIsDirector(auth);
+  if (!ok) {
+    try {
+      const me = await db.collection("people").doc(auth.uid).get();
+      ok = me.exists && !!String(me.data().role || "").trim();
+    } catch (e) { ok = false; }
+  }
+  if (!ok) ok = !!(await callerFacultyRosterGroup(auth));
+  if (!ok) throw new HttpsError("permission-denied", "RMD members only.");
+
+  const [candSnap, datesSnap, allocSnap] = await Promise.all([
+    db.collection("stage1_candidates").get(),
+    db.collection("config").doc("stage1_course_dates").get(),
+    db.collection("course_allocations").get()
+  ]);
+
+  const candidates = candSnap.docs.map(d => {
+    const c = d.data();
+    return {
+      id: d.id,
+      name: c.name || "",
+      degree: c.degree || "",
+      course: c.course || null,
+      room: c.room || null,
+      assessmentRoom: c.assessmentRoom || null,
+      assessmentSlot: c.assessmentSlot || null,
+      firstTimeAssessment: c.firstTimeAssessment === undefined ? null : c.firstTimeAssessment,
+      assessmentAbsent: c.assessmentAbsent === true
+    };
+  });
+
+  const allocDocs = allocSnap.docs.map(d => {
+    const a = d.data();
+    return { id: d.id, course: a.course || null, instructorTeams: a.instructorTeams || {} };
+  });
+
+  const uids = new Set();
+  allocDocs.forEach(a => Object.values(a.instructorTeams || {}).forEach(arr => (arr || []).forEach(u => uids.add(u))));
+  const instructors = [];
+  const list = Array.from(uids);
+  for (let i = 0; i < list.length; i += 30) {
+    const chunk = list.slice(i, i + 30);
+    const docs = await Promise.all(chunk.map(u => db.collection("people").doc(u).get().catch(() => null)));
+    docs.forEach((snap, k) => {
+      const uid = chunk[k];
+      const data = snap && snap.exists ? snap.data() : {};
+      const surname = data.passportLastName || (data.name ? String(data.name).trim().split(/\s+/).pop() : "");
+      const first = data.preferredName ? String(data.preferredName).trim().split(/\s+/)[0] : null;
+      const name = first ? [first, surname].filter(Boolean).join(" ") : (data.name || uid);
+      instructors.push({ uid, name });
+    });
+  }
+
+  return {
+    candidates,
+    courseDates: (datesSnap.exists && datesSnap.data().courses) || [],
+    allocDocs,
+    instructors
+  };
+});
+
 exports.generateItcSummary = onCall({ secrets: [anthropicApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
