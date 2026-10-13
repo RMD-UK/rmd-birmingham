@@ -233,6 +233,110 @@ exports.getRosterForMembers = onCall({ region: "us-central1" }, async (request) 
   };
 });
 
+// swapUidInList: replaces oldId with newId in a list of uids, keeping order and dropping duplicates.
+function swapUidInList(list, oldId, newId) {
+  const out = [];
+  (list || []).forEach(u => { const v = u === oldId ? newId : u; if (!out.includes(v)) out.push(v); });
+  return out;
+}
+
+/**
+ * repairOrphanPeople (2026-10-12) - director-only.
+ *
+ * Why: some people records were created as an auto-ID "shell" (by the Instructor
+ * Weekend sync, before the person had a login). resolveRole() and the room-team
+ * checks look people up by the Firebase Auth uid, so once that person signs in
+ * they find no profile: no role, no Current Course or OPIS links, and the room
+ * teams (which hold the shell id) never match them. Eight instructors hit this.
+ *
+ * What: for every people doc whose id is not its email's Auth uid, and where the
+ * email DOES have a login, move everything onto the real uid:
+ *   - people/{authUid} gets the shell's fields (anything already on the real doc wins)
+ *   - attendance/{shellId} moves to attendance/{authUid}
+ *   - session_feedback.candidateId, course_allocations.instructorTeams and
+ *     stage1_candidates.instructorTeamUids swap the shell id for the real uid
+ *   - the shell people doc is deleted last
+ * People with no login yet are listed as noLogin and left alone. Safe to re-run.
+ *
+ * Defaults to a dry run; pass { dryRun: false } to write. Optional { emails: [...] }
+ * limits the run to those addresses.
+ */
+exports.repairOrphanPeople = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) {
+    throw new HttpsError("permission-denied", "Course Directors only.");
+  }
+  const dryRun = request.data?.dryRun !== false;
+  const only = Array.isArray(request.data?.emails)
+    ? new Set(request.data.emails.map(e => String(e || "").trim().toLowerCase()).filter(Boolean))
+    : null;
+
+  const peopleSnap = await db.collection("people").get();
+  const results = { dryRun, fixed: [], wouldFix: [], noLogin: [], alreadyFine: 0 };
+
+  for (const doc of peopleSnap.docs) {
+    const p = doc.data();
+    const email = String(p.email || "").trim().toLowerCase();
+    if (!email) continue;
+    if (only && !only.has(email)) continue;
+    if (!only && doc.id.length === 28) { results.alreadyFine++; continue; }   // Auth uids are 28 characters
+
+    let authUser = null;
+    try { authUser = await admin.auth().getUserByEmail(email); }
+    catch (e) { if (e.code !== "auth/user-not-found") throw e; }
+    if (!authUser) { results.noLogin.push({ name: p.name || "", email, role: p.role || null }); continue; }
+    if (authUser.uid === doc.id) { results.alreadyFine++; continue; }
+
+    const oldId = doc.id, newId = authUser.uid;
+    const [candSnap, fbSnap, attOld, attNew, newDoc, allocSnap] = await Promise.all([
+      db.collection("stage1_candidates").where("instructorTeamUids", "array-contains", oldId).get(),
+      db.collection("session_feedback").where("candidateId", "==", oldId).get(),
+      db.collection("attendance").doc(oldId).get(),
+      db.collection("attendance").doc(newId).get(),
+      db.collection("people").doc(newId).get(),
+      db.collection("course_allocations").get()
+    ]);
+    const allocHits = allocSnap.docs.filter(a => Object.values(a.data().instructorTeams || {}).some(arr => (arr || []).includes(oldId)));
+    const summary = {
+      name: p.name || "", email, role: p.role || null,
+      candidateRecords: candSnap.size, roomAllocations: allocHits.length,
+      sessionFeedback: fbSnap.size, attendance: attOld.exists, hadOwnProfile: newDoc.exists
+    };
+    if (dryRun) { results.wouldFix.push(summary); continue; }
+
+    const merged = { ...p, ...(newDoc.exists ? newDoc.data() : {}), email };
+    const role = (newDoc.exists && newDoc.data().role) || p.role;
+    if (role) merged.role = role;
+    merged.repairedFromShellId = oldId;
+    merged.repairedAt = admin.firestore.FieldValue.serverTimestamp();
+    await db.collection("people").doc(newId).set(merged);
+
+    if (attOld.exists) {
+      await db.collection("attendance").doc(newId).set({ ...attOld.data(), ...(attNew.exists ? attNew.data() : {}) });
+      await attOld.ref.delete();
+    }
+    for (let i = 0; i < fbSnap.docs.length; i += 400) {
+      const b = db.batch();
+      fbSnap.docs.slice(i, i + 400).forEach(d => b.update(d.ref, { candidateId: newId }));
+      await b.commit();
+    }
+    for (const a of allocHits) {
+      const nt = {};
+      Object.entries(a.data().instructorTeams || {}).forEach(([room, arr]) => { nt[room] = swapUidInList(arr, oldId, newId); });
+      await a.ref.update({ instructorTeams: nt });
+    }
+    for (let i = 0; i < candSnap.docs.length; i += 400) {
+      const b = db.batch();
+      candSnap.docs.slice(i, i + 400).forEach(d => b.update(d.ref, { instructorTeamUids: swapUidInList(d.data().instructorTeamUids, oldId, newId) }));
+      await b.commit();
+    }
+    await doc.ref.delete();
+    results.fixed.push(summary);
+  }
+  return results;
+});
+
 exports.generateItcSummary = onCall({ secrets: [anthropicApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");

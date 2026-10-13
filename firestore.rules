@@ -753,6 +753,36 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'instructorTeamUids', 'instructorTeamNames', 'firstTimeAssessment', 'assessmentAbsent', 'assessmentRoom', 'assessmentSlot', 'rap', 'twoPlusAssessments']);
     }
 
+    // ── Phase 1 weekly register (2026-10-13, Jon) ───────────────────────────
+    // phase1.html. One doc per candidate (doc id = the stage1_candidates id)
+    // holding week 1 / week 2 attendance: {course, room, w1:{status,time,by,
+    // byName,at}, w2:{...}, updatedAt}. status is here | late | absent.
+    // get: Director / Student / Senior Faculty, or an instructor on THAT
+    //   candidate's room team (isOnCandidateTeam - the same check OPIS uses).
+    // list: Director / Student / Senior Faculty only (a list query cannot be
+    //   checked against each candidate's team, so room instructors read their
+    //   candidates one document at a time).
+    // write: same people as get. The "only on the day" limit is enforced in
+    //   the page; a Director can edit any date. Delete: Director only.
+    match /stage1_register/{candidateId} {
+      allow get: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isOnCandidateTeam(candidateId);
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isOnCandidateTeam(candidateId))
+        && request.resource.data.keys().hasOnly(['course', 'room', 'w1', 'w2', 'updatedAt']);
+      allow delete: if isDirector();
+    }
+
+    // Instructor arrivals for the same register: doc id {course}__w{1|2}__{uid}.
+    // Anyone signed in may read (name, room and arrival time only). An
+    // instructor writes only their own arrival; a Director can write any.
+    match /stage1_register_staff/{docId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && (isDirector() || docId.matches('.*__' + request.auth.uid))
+        && request.resource.data.keys().hasOnly(['course', 'week', 'room', 'uid', 'name', 'time', 'at']);
+      allow delete: if isSignedIn() && (isDirector() || docId.matches('.*__' + request.auth.uid));
+    }
+
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────
     // One doc per Stage 1 evening course, holding that course's per-room
     // instructor teams (candidate→room assignment lives on stage1_candidates

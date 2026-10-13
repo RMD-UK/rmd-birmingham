@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Phase 1 Evening Management - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ink:#1A2233; --mut:#6B7C93; --line:#E3E8EF; --bg:#F5F7FA; --card:#fff;
+  --pur:#44247C; --pur2:#2E1856; --purtint:#EFEAF8; --blu:#0067A4; --org:#F49001;
+  --ok:#1E8449; --okbg:#E3F3E8; --bad:#B3261E; --badbg:#FCE8E6; --warn:#8A5200; --warnbg:#FFF1D6;
+  --font:'Inter','Segoe UI',Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;min-height:100vh}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:16px;color:var(--ink)}
+.hidden{display:none!important}
+.gate{height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;font-weight:700;color:var(--pur)}
+.top{background:var(--pur);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+.top h1{font-size:18px;font-weight:800;letter-spacing:-.2px}
+.top .grow{flex:1}
+.seg{display:inline-flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:#fff;padding:7px 14px;border-radius:8px;font-weight:700;font-size:14px;opacity:.85}
+.seg button.on{background:#fff;color:var(--pur);opacity:1}
+.seg button .nowdot{display:inline-block;background:var(--ok);color:#fff;font-size:10px;font-weight:800;border-radius:6px;padding:1px 5px;margin-left:5px;vertical-align:1px}
+.tbtn{border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:8px 13px;font-weight:700;font-size:13px;text-decoration:none;display:inline-block}
+.tbtn:hover{background:rgba(255,255,255,.26)}
+.main{display:grid;grid-template-columns:330px minmax(0,1fr);align-items:start}
+.side{background:#fff;border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:10px;position:sticky;top:58px;min-height:calc(100vh - 58px)}
+.side .lab{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.steps{display:flex;flex-direction:column;gap:8px}
+.stepcard{display:flex;gap:12px;align-items:flex-start;text-align:left;padding:11px 12px;border-radius:12px;border:2px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;line-height:1.25}
+.stepcard .no{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:#C9D1DE;color:#fff;font-size:14px;font-weight:800}
+.stepcard b{display:block;font-size:15px;font-weight:800}
+.stepcard small{display:block;font-size:12.5px;color:var(--mut);margin-top:2px;font-weight:500}
+.stepcard.on{border-color:var(--pur);background:var(--purtint)}
+.stepcard.on .no{background:var(--pur)}
+.stepcard.on b{color:var(--pur)}
+.stepcard.link:hover{border-color:var(--blu)}
+.stepcard.link .no{background:var(--blu)}
+.stepcard.soon{opacity:.55;cursor:default}
+.pane{padding:16px 20px 90px;min-width:0}
+.plain{background:#fff;border:1px solid var(--line);border-left:6px solid var(--pur);border-radius:14px;padding:14px 18px;margin-bottom:14px;font-size:17px;line-height:1.55}
+.plain .lbl{display:block;font-size:11px;font-weight:800;color:var(--pur);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.plain .mut{color:var(--mut)}
+.msg{border-radius:12px;padding:10px 14px;margin-bottom:12px;font-weight:600;font-size:14px}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.msg.warn{background:var(--warnbg);color:var(--warn)}
+.msg.err{background:var(--badbg);color:var(--bad)}
+.tools{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tools select{padding:9px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;font-weight:700}
+.btn{border:2px solid var(--pur);background:#fff;color:var(--pur);border-radius:10px;padding:8px 14px;font-weight:800;font-size:14px}
+.btn.pri{background:var(--pur);color:#fff}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.4;cursor:default}
+.tg{display:inline-flex;gap:8px;align-items:center;font-weight:700;font-size:14px}
+.tg input{width:18px;height:18px;accent-color:var(--pur)}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-bottom:14px}
+.rooms .r{background:#fff;border:2px solid var(--line);border-radius:10px;padding:7px 10px;text-align:left;color:var(--ink)}
+.rooms .r b{font-size:14px;display:block}
+.rooms .r small{display:block;color:var(--mut);font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.rooms .r.on{border-color:var(--pur);background:var(--purtint)}
+.rooms .r.mine{box-shadow:inset 4px 0 0 var(--org)}
+.sumstrip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:130px}
+.tile .n{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .l{font-size:12px;color:var(--mut);font-weight:600;margin-top:2px}
+.tile.warn .n{color:var(--bad)}
+.weeks{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.wk{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.wk h3{font-size:16px;font-weight:800;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.wk .when{font-size:12px;font-weight:800;border-radius:6px;padding:2px 8px}
+.when.today{background:var(--okbg);color:var(--ok)}
+.when.past{background:#EEF1F6;color:var(--mut)}
+.when.future{background:var(--purtint);color:var(--pur)}
+.team{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tm{border:2px solid var(--line);background:#fff;border-radius:20px;padding:4px 11px;font-size:13px;font-weight:700;color:var(--mut)}
+.tm.in{border-color:var(--ok);background:var(--okbg);color:var(--ok)}
+.tm.me{box-shadow:0 0 0 2px var(--purtint)}
+.wk .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.wk .hint{font-size:12.5px;color:var(--mut);margin-top:6px}
+.sched{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.rowhead,.row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;padding:9px 14px}
+.rowhead{background:#F8F9FC;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.row{border-top:1px solid #F0F3F8}
+.row .nm b{display:flex;gap:6px;align-items:center;font-size:15px}
+.row .nm small{color:var(--mut);font-size:12.5px}
+.cell{display:flex;gap:5px;flex-wrap:wrap}
+.cb{border:2px solid var(--line);background:#fff;border-radius:9px;padding:7px 10px;font-weight:800;font-size:13px;color:var(--mut);min-width:48px}
+.cb.here.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.cb.late.on{background:var(--org);border-color:var(--org);color:#fff}
+.cb.abs.on{background:var(--bad);border-color:var(--bad);color:#fff}
+.cb:hover:not(.on){border-color:var(--pur);color:var(--pur)}
+.chip{display:inline-block;font-size:12.5px;font-weight:800;border-radius:8px;padding:5px 10px}
+.chip.here{background:var(--okbg);color:var(--ok)}
+.chip.late{background:var(--warnbg);color:var(--warn)}
+.chip.abs{background:var(--badbg);color:var(--bad)}
+.chip.none{background:#EEF1F6;color:var(--mut);font-weight:700}
+.chip.fut{background:#F6F2FC;color:#8E7BB5;font-weight:700}
+.rap{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#fde8ea;flex:none}
+.sheetbg{position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:20px 20px 26px}
+.sheet h3{font-size:18px;font-weight:800;margin-bottom:6px}
+.sheet p{color:var(--mut);margin-bottom:14px}
+.sheet .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sheet .two button{padding:14px;border-radius:12px;font-weight:800;font-size:16px;border:2px solid var(--pur);background:#fff;color:var(--pur)}
+.sheet .two button.pri{background:var(--org);border-color:var(--org);color:#fff}
+.sheet .cancel{display:block;width:100%;margin-top:10px;border:0;background:none;color:var(--mut);font-weight:700;padding:8px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:600;z-index:80;max-width:90vw}
+.toast.err{background:var(--bad)}
+@media (max-width:900px){
+  .main{grid-template-columns:1fr}
+  .side{position:static;min-height:0;border-right:0;border-bottom:1px solid var(--line);padding:12px}
+  .steps{flex-direction:row;overflow-x:auto;padding-bottom:4px}
+  .stepcard{min-width:210px}
+  .weeks{grid-template-columns:1fr}
+  .pane{padding:12px 12px 90px}
+  .rowhead{display:none}
+  .row{grid-template-columns:1fr 1fr}
+  .row .nm{grid-column:1 / -1}
+  .row .cell::before{content:attr(data-wk);flex:0 0 100%;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+}
+</style>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+
+<div class="hidden" id="app">
+  <div class="top">
+    <h1>Phase 1 Evening Management</h1>
+    <div class="seg" id="courseTabs" role="tablist" aria-label="Course"></div>
+    <div class="grow"></div>
+    <a class="tbtn dir-only" href="admin-stage1-candidates.html">Stage 1 Candidates</a>
+    <a class="tbtn dir-only" href="admin-comms.html">Comms</a>
+  </div>
+
+  <div class="main">
+    <aside class="side">
+      <div class="lab">Pick a job</div>
+      <div class="steps" id="steps"></div>
+    </aside>
+
+    <section class="pane" id="pane">
+      <div class="plain" id="plain"></div>
+      <div id="msgs"></div>
+      <div class="tools" id="tools"></div>
+      <div class="rooms" id="rooms"></div>
+      <div class="sumstrip" id="sum"></div>
+      <div class="weeks" id="weeks"></div>
+      <div class="sched hidden" id="schedWrap">
+        <div class="rowhead"><div>Candidate</div><div id="h1"></div><div id="h2"></div></div>
+        <div id="rows"></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="overlay"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 1 Evening Management hub (2026-10-13, Jon).
+// One page for running a Stage 1 evening course. This first release holds the
+// WEEKLY REGISTER. Other jobs (people, assessment allocation, retest pool,
+// assessment night, comms) are listed on the left; those that already exist
+// open their current page, the rest are marked "coming" and move in here later.
+//
+// Register rules (Jon, 12 Oct 2026):
+//  - Instructors are always in the same room. They mark themselves as arrived
+//    and mark which of their candidates have arrived.
+//  - After 18:45 (London) a "Here" tap asks "was this person late?".
+//  - Week 1 and Week 2 sit side by side. Buttons only work on the date of that
+//    week. The other week is view only. A Director can switch on "edit any
+//    date" to correct or backfill a past week.
+//
+// Data: stage1_register/{candidateId} = {course, room, w1:{status,time,by,byName,at}, w2:{...}, updatedAt}
+//       stage1_register_staff/{course}__w{1|2}__{uid} = {course, week, room, uid, name, time, at}
+//       config/stage1_register = {lateAfter:"HH:MM"}  (optional, default 18:45)
+// status is "here" | "late" | "absent".
+// ────────────────────────────────────────────────────────────────────────────
+initFirebase();
+
+const ROOMS = STAGE1_TEACHING_ROOMS;
+const DEFAULT_LATE_AFTER = "18:45";
+const S = {
+  user: null, role: null, isDirector: false, full: false, myName: "",
+  courseDates: [],            // [{name,date}]
+  mine: [],                   // candidates whose room team includes me (any course)
+  course: null, room: null,
+  cands: [],                  // candidates of the selected course I can see
+  reg: {}, staff: {},         // live registers (by candidate id / by doc id)
+  lateAfter: DEFAULT_LATE_AFTER, editAny: false,
+  unsubs: []
+};
+const $ = id => document.getElementById(id);
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ── London date/time ────────────────────────────────────────────────────────
+function londonNow() {
+  const p = {};
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, hm: p.hour + ":" + p.minute };
+}
+function addDays(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function nice(iso) {
+  return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
+// A course's three Mondays: week 1, week 2, assessment evening (the assessment date is the stored date)
+function weekDates(courseName) {
+  const c = S.courseDates.find(x => x.name === courseName);
+  if (!c || !c.date) return null;
+  return [addDays(c.date, -14), addDays(c.date, -7), c.date];
+}
+function weekState(iso) { const t = londonNow().date; return iso === t ? "today" : (iso < t ? "past" : "future"); }
+function canEditWeek(n) {
+  const d = weekDates(S.course); if (!d) return false;
+  return S.editAny || weekState(d[n - 1]) === "today";
+}
+
+// ── Access ──────────────────────────────────────────────────────────────────
+auth.onAuthStateChanged(async user => {
+  if (!user) { window.location.href = "signin.html"; return; }
+  try {
+    S.user = user;
+    S.role = await resolveRole(user.uid, user.email || "");
+    S.isDirector = S.role === ROLES.DIRECTOR;
+    const stu = await isStudentFaculty(user.email || "").catch(() => false);
+    const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+    S.full = S.isDirector || stu || sen;
+    S.myName = user.displayName || (user.email || "").split("@")[0];
+    try {
+      const me = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (me.exists && me.data().name) S.myName = me.data().preferredName ? me.data().name : me.data().name;
+    } catch (e) {}
+
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", user.uid).get();
+    S.mine = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+
+    if (!S.full && !S.mine.length) {
+      $("authMsg").textContent = "This page is for instructors with a room on a Phase 1 course. You are not on a room team yet. Ask the Course Director if this looks wrong.";
+      return;
+    }
+    const cfg = await db.collection("config").doc("stage1_course_dates").get();
+    S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
+    try {
+      const lc = await db.collection("config").doc("stage1_register").get();
+      if (lc.exists && lc.data().lateAfter) S.lateAfter = lc.data().lateAfter;
+    } catch (e) {}
+
+    document.querySelectorAll(".dir-only").forEach(el => { if (!S.full) el.classList.add("hidden"); });
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    renderSteps();
+    renderCourseTabs();
+    // default course: first whose assessment date is today or later, else the last
+    const today = londonNow().date;
+    let first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    if (!S.full) { // instructors: only courses where they have candidates
+      const mineCourses = new Set(S.mine.map(c => c.course));
+      first = S.courseDates.find(c => mineCourses.has(c.name) && c.date >= today) || S.courseDates.find(c => mineCourses.has(c.name)) || first;
+    }
+    if (first) selectCourse(first.name);
+    else $("plain").innerHTML = '<span class="lbl">Nothing set up yet</span>No course dates are set. A Director can add them on Stage 1 Settings.';
+  } catch (err) {
+    console.error(err);
+    $("authMsg").textContent = "Could not open this page: " + (err && err.message ? err.message : err);
+  }
+});
+
+// ── Left-hand list of jobs ──────────────────────────────────────────────────
+function renderSteps() {
+  const jobs = [
+    { no: 1, t: "People", s: "Add, remove, move, tags", href: "admin-stage1-candidates.html", dir: true },
+    { no: 2, t: "Assessment allocation", s: "Rooms and time slots for assessment night", href: "admin-stage1-assessment-allocation.html", dir: true },
+    { no: 3, t: "Retest pool and reallocation", s: "Coming: attempt 2 and above, managed by the team", soon: true },
+    { no: 4, t: "Assessment night", s: "Coming: runner view, assessor view, exam form", soon: true },
+    { no: 5, t: "Register", s: "Who arrived in weeks 1 and 2", on: true },
+    { no: 6, t: "Comms", s: "Bulk emails, copy addresses, log", href: "admin-comms.html", dir: true }
+  ];
+  $("steps").innerHTML = jobs.filter(j => !(j.dir && !S.full)).map(j => {
+    if (j.on) return `<div class="stepcard on"><span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}</small></span></div>`;
+    if (j.soon) return `<div class="stepcard soon"><span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}</small></span></div>`;
+    return `<a class="stepcard link" href="${j.href}"><span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)} (opens current page)</small></span></a>`;
+  }).join("");
+}
+
+function renderCourseTabs() {
+  const today = londonNow().date;
+  let list = S.courseDates;
+  if (!S.full) { const set = new Set(S.mine.map(c => c.course)); list = list.filter(c => set.has(c.name)); }
+  const live = list.find(c => c.date >= today);
+  $("courseTabs").innerHTML = list.map(c =>
+    `<button type="button" data-course="${esc(c.name)}" class="${c.name === S.course ? "on" : ""}">${esc(c.name)}${live && live.name === c.name ? '<span class="nowdot">next</span>' : ""}</button>`
+  ).join("");
+  $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => selectCourse(b.dataset.course));
+}
+
+// ── Loading a course ────────────────────────────────────────────────────────
+function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
+async function selectCourse(name) {
+  detach();
+  S.course = name; S.reg = {}; S.staff = {}; S.cands = [];
+  renderCourseTabs();
+  $("plain").innerHTML = '<span class="lbl">Loading</span>Opening ' + esc(name) + '...';
+  try {
+    if (S.full) {
+      const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
+      S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    } else {
+      S.cands = S.mine.filter(c => c.course === name);
+    }
+  } catch (err) {
+    $("plain").innerHTML = '<span class="lbl">Could not load</span>' + esc(err.message || err);
+    return;
+  }
+  // pick a room: mine first
+  const myRooms = [...new Set(S.mine.filter(c => c.course === name).map(c => c.room).filter(Boolean))];
+  const present = roomList();
+  S.room = (S.room && present.includes(S.room) && (S.full || myRooms.includes(S.room))) ? S.room : (myRooms[0] || present[0] || null);
+  attachListeners();
+  render();
+}
+function roomList() {
+  const set = new Set(S.cands.map(c => c.room).filter(Boolean));
+  return ROOMS.filter(r => set.has(r)).concat([...set].filter(r => !ROOMS.includes(r)).sort());
+}
+function attachListeners() {
+  const course = S.course;
+  // register entries
+  if (S.full) {
+    S.unsubs.push(db.collection("stage1_register").where("course", "==", course).onSnapshot(snap => {
+      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render();
+    }, err => onListenErr("register", err)));
+  } else {
+    S.cands.forEach(c => {
+      S.unsubs.push(db.collection("stage1_register").doc(c.id).onSnapshot(d => {
+        if (d.exists) S.reg[c.id] = d.data(); else delete S.reg[c.id];
+        render();
+      }, err => onListenErr("register", err)));
+    });
+  }
+  // instructor arrivals
+  S.unsubs.push(db.collection("stage1_register_staff").where("course", "==", course).onSnapshot(snap => {
+    S.staff = {}; snap.forEach(d => { S.staff[d.id] = d.data(); }); render();
+  }, err => onListenErr("instructor arrivals", err)));
+}
+let lastErr = "";
+function onListenErr(what, err) {
+  lastErr = "Could not read the " + what + ": " + (err && err.message ? err.message : err) + ". If this says permission denied, the new rules have not been deployed yet.";
+  render();
+}
+
+// ── Helpers on the data ─────────────────────────────────────────────────────
+function roomCands() {
+  return S.cands.filter(c => (c.room || "") === (S.room || "")).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+function statusOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n].status : null; }
+function entryOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n] : null; }
+function counts(list, n) {
+  let here = 0, late = 0, absent = 0;
+  list.forEach(c => { const s = statusOf(c.id, n); if (s === "here") here++; else if (s === "late") late++; else if (s === "absent") absent++; });
+  return { here, late, absent, marked: here + late + absent, total: list.length };
+}
+function teamOf(list) {
+  const map = new Map();
+  list.forEach(c => (c.instructorTeamUids || []).forEach((u, i) => { if (!map.has(u)) map.set(u, (c.instructorTeamNames || [])[i] || "Instructor"); }));
+  return [...map.entries()].map(([uid, name]) => ({ uid, name }));
+}
+function staffDoc(n, uid) { return S.staff[S.course + "__w" + n + "__" + uid]; }
+const RAPSVG = '<span class="rap" title="RMD Reasonable Adjustments Pathway" aria-label="RAP"><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="M3.4 0h3.2v3.4H10v3.2H6.6V10H3.4V6.6H0V3.4h3.4z" fill="#d11a2a"/></svg></span>';
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  if (!S.course) return;
+  const dates = weekDates(S.course);
+  const list = roomCands();
+  const rooms = roomList();
+  const now = londonNow();
+
+  // messages
+  let msgs = "";
+  if (lastErr) msgs += `<div class="msg err">${esc(lastErr)}</div>`;
+  if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
+  if (!dates) msgs += `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
+  $("msgs").innerHTML = msgs;
+
+  // tools
+  let tools = "";
+  if (S.full && rooms.length) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
+  else if (!S.full && rooms.length > 1) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
+  if (S.isDirector) {
+    tools += `<label class="tg"><input type="checkbox" id="editAny"${S.editAny ? " checked" : ""}> Edit any date (Director)</label>`;
+    tools += `<label class="tg">Late after <input type="time" id="lateIn" value="${esc(S.lateAfter)}" style="padding:6px 8px;border:2px solid var(--line);border-radius:8px"></label><button class="btn sm" id="lateSave" type="button">Save</button>`;
+  } else {
+    tools += `<span class="tg" style="color:var(--mut)">Late after ${esc(S.lateAfter)}</span>`;
+  }
+  $("tools").innerHTML = tools;
+  if ($("roomSel")) $("roomSel").onchange = e => { S.room = e.target.value; render(); };
+  if ($("editAny")) $("editAny").onchange = e => { S.editAny = e.target.checked; render(); };
+  if ($("lateSave")) $("lateSave").onclick = saveLateAfter;
+
+  // room grid (full access only; instructors see their own room)
+  if (S.full && rooms.length) {
+    const myRooms = new Set(S.mine.filter(c => c.course === S.course).map(c => c.room));
+    $("rooms").innerHTML = rooms.map(r => {
+      const rc = S.cands.filter(c => c.room === r);
+      const a = counts(rc, 1), b = counts(rc, 2);
+      return `<button type="button" class="r${r === S.room ? " on" : ""}${myRooms.has(r) ? " mine" : ""}" data-room="${esc(r)}"><b>${esc(r)}</b><small>W1 ${a.here + a.late}/${rc.length} · W2 ${b.here + b.late}/${rc.length}</small></button>`;
+    }).join("");
+    $("rooms").querySelectorAll("button").forEach(b => b.onclick = () => { S.room = b.dataset.room; render(); });
+  } else $("rooms").innerHTML = "";
+
+  if (!dates || !S.room) {
+    $("sum").innerHTML = ""; $("weeks").innerHTML = ""; $("schedWrap").classList.add("hidden");
+    if (dates && !S.room) $("plain").innerHTML = '<span class="lbl">No room</span>Nobody in ' + esc(S.course) + ' has a room that you can see yet.';
+    return;
+  }
+
+  // plain English
+  const a1 = counts(list, 1), a2 = counts(list, 2);
+  const st1 = weekState(dates[0]), st2 = weekState(dates[1]);
+  const todayWk = st1 === "today" ? 1 : (st2 === "today" ? 2 : 0);
+  let plain;
+  if (todayWk) {
+    const c = todayWk === 1 ? a1 : a2;
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> Tonight is week ${todayWk}. <b>${c.here + c.late} of ${c.total}</b> have been marked as here${c.late ? ` (${c.late} late)` : ""}${c.absent ? `, ${c.absent} absent` : ""}. ${c.total - c.marked} not marked yet. Buttons work for tonight only.`;
+  } else {
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> There is no register night today. Week 1 was ${nice(dates[0])}, week 2 is ${nice(dates[1])}, assessment night is ${nice(dates[2])}. Buttons switch on for each week on its own date.`;
+  }
+  $("plain").innerHTML = '<span class="lbl">In plain English</span>' + plain;
+
+  // tiles
+  const tileSet = (c, n) => `<div class="tile"><div class="n">${c.here + c.late}/${c.total}</div><div class="l">Week ${n} here</div></div>` +
+    `<div class="tile"><div class="n">${c.late}</div><div class="l">Week ${n} late</div></div>` +
+    `<div class="tile${c.absent ? " warn" : ""}"><div class="n">${c.absent}</div><div class="l">Week ${n} absent</div></div>`;
+  $("sum").innerHTML = tileSet(a1, 1) + tileSet(a2, 2);
+
+  // week cards
+  const team = teamOf(list);
+  const whenTxt = s => s === "today" ? "Today" : (s === "past" ? "Past" : "Upcoming");
+  const weekCard = n => {
+    const d = dates[n - 1], s = weekState(d), c = n === 1 ? a1 : a2, edit = canEditWeek(n);
+    const chips = team.map(t => {
+      const sd = staffDoc(n, t.uid), me = t.uid === S.user.uid;
+      return `<span class="tm${sd ? " in" : ""}${me ? " me" : ""}" title="${sd ? "Arrived " + esc(sd.time || "") : "Not marked as arrived"}">${esc(t.name)}${me ? " (you)" : ""}${sd ? " " + esc(sd.time || "") : ""}</span>`;
+    }).join("") || '<span class="tm">No room team on record</span>';
+    const meIn = team.some(t => t.uid === S.user.uid);
+    const myDoc = staffDoc(n, S.user.uid);
+    let acts = "";
+    if (edit && meIn) acts += myDoc
+      ? `<button class="btn sm" type="button" data-arrive="${n}" data-undo="1">Undo my arrival</button>`
+      : `<button class="btn pri" type="button" data-arrive="${n}">I'm here</button>`;
+    if (edit) {
+      const unmarked = list.filter(x => !statusOf(x.id, n)).length;
+      const lateNow = !S.editAny && s === "today" && now.hm > S.lateAfter;
+      acts += `<button class="btn" type="button" data-allhere="${n}"${unmarked && !lateNow ? "" : " disabled"}>Everyone not marked is here (${unmarked})</button>`;
+    }
+    let hint = "";
+    if (!edit) hint = s === "future" ? `Opens on ${nice(d)}.` : `View only. This week was ${nice(d)}.`;
+    else if (!S.editAny && now.hm > S.lateAfter) hint = `It is after ${esc(S.lateAfter)}, so each person has to be marked one by one and you will be asked if they were late.`;
+    return `<div class="wk"><h3>Week ${n} <span style="font-weight:600;color:var(--mut)">${nice(d)}</span><span class="when ${s}">${whenTxt(s)}</span></h3>` +
+      `<div class="team">${chips}</div>` + (acts ? `<div class="acts">${acts}</div>` : "") + (hint ? `<div class="hint">${hint}</div>` : "") + `</div>`;
+  };
+  $("weeks").innerHTML = weekCard(1) + weekCard(2);
+  $("weeks").querySelectorAll("[data-arrive]").forEach(b => b.onclick = () => setArrival(+b.dataset.arrive, b.dataset.undo === "1"));
+  $("weeks").querySelectorAll("[data-allhere]").forEach(b => b.onclick = () => allHere(+b.dataset.allhere));
+
+  // candidate rows
+  $("h1").textContent = "Week 1 · " + nice(dates[0]);
+  $("h2").textContent = "Week 2 · " + nice(dates[1]);
+  const cellHtml = (c, n) => {
+    const d = dates[n - 1], s = weekState(d), edit = canEditWeek(n), cur = statusOf(c.id, n), en = entryOf(c.id, n);
+    if (edit) {
+      return `<div class="cell" data-wk="Week ${n}">` +
+        `<button type="button" class="cb here${cur === "here" ? " on" : ""}" data-set="here" data-n="${n}" data-id="${esc(c.id)}">Here</button>` +
+        `<button type="button" class="cb late${cur === "late" ? " on" : ""}" data-set="late" data-n="${n}" data-id="${esc(c.id)}">Late</button>` +
+        `<button type="button" class="cb abs${cur === "absent" ? " on" : ""}" data-set="absent" data-n="${n}" data-id="${esc(c.id)}">Absent</button></div>`;
+    }
+    let chip;
+    if (cur === "here") chip = `<span class="chip here">Here${en && en.time ? " " + esc(en.time) : ""}</span>`;
+    else if (cur === "late") chip = `<span class="chip late">Late${en && en.time ? " " + esc(en.time) : ""}</span>`;
+    else if (cur === "absent") chip = `<span class="chip abs">Absent</span>`;
+    else chip = s === "future" ? `<span class="chip fut">Opens ${nice(d)}</span>` : `<span class="chip none">Not marked</span>`;
+    return `<div class="cell" data-wk="Week ${n}">${chip}</div>`;
+  };
+  $("rows").innerHTML = list.map(c =>
+    `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}</b><small>${esc(c.degree || "")}</small></div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
+  ).join("") || '<div class="row"><div class="nm">No candidates in this room.</div></div>';
+  $("schedWrap").classList.remove("hidden");
+  $("rows").querySelectorAll("[data-set]").forEach(b => b.onclick = () => onTap(b.dataset.id, +b.dataset.n, b.dataset.set));
+}
+
+// ── Actions ─────────────────────────────────────────────────────────────────
+function toast(text, isErr) {
+  const t = document.createElement("div"); t.className = "toast" + (isErr ? " err" : ""); t.textContent = text;
+  document.body.appendChild(t); setTimeout(() => t.remove(), isErr ? 6000 : 2200);
+}
+function candById(id) { return S.cands.find(c => c.id === id); }
+
+function onTap(cid, n, wanted) {
+  const cur = statusOf(cid, n);
+  const c = candById(cid); if (!c) return;
+  if (!canEditWeek(n)) { toast("That week can only be changed on its own date.", true); return; }
+  if (cur === wanted) { writeStatus(c, n, null); return; }          // tap the lit button again to clear it
+  const now = londonNow();
+  if (wanted === "here" && !S.editAny && weekState(weekDates(S.course)[n - 1]) === "today" && now.hm > S.lateAfter) {
+    askLate(c, n); return;
+  }
+  writeStatus(c, n, wanted);
+}
+function askLate(c, n) {
+  $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">` +
+    `<h3>Was ${esc(c.name)} late?</h3><p>It is after ${esc(S.lateAfter)}. Late arrivals are recorded so the course team can see them.</p>` +
+    `<div class="two"><button type="button" class="pri" id="lateYes">Yes, late</button><button type="button" id="lateNo">No, on time</button></div>` +
+    `<button type="button" class="cancel" id="lateCancel">Cancel</button></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("lateYes").onclick = () => { close(); writeStatus(c, n, "late"); };
+  $("lateNo").onclick = () => { close(); writeStatus(c, n, "here"); };
+  $("lateCancel").onclick = close;
+  $("sbg").onclick = e => { if (e.target.id === "sbg") close(); };
+}
+async function writeStatus(c, n, status) {
+  const ref = db.collection("stage1_register").doc(c.id);
+  const key = "w" + n;
+  const payload = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  payload[key] = status
+    ? { status, time: londonNow().hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() }
+    : firebase.firestore.FieldValue.delete();
+  try { await ref.set(payload, { merge: true }); }
+  catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+async function allHere(n) {
+  if (!canEditWeek(n)) return;
+  const todo = roomCands().filter(c => !statusOf(c.id, n));
+  if (!todo.length) return;
+  const now = londonNow();
+  if (!S.editAny && now.hm > S.lateAfter) { toast("After " + S.lateAfter + " each person has to be marked one by one.", true); return; }
+  try {
+    const batch = db.batch();
+    todo.forEach(c => {
+      const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      p["w" + n] = { status: "here", time: now.hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() };
+      batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
+    });
+    await batch.commit();
+    toast(todo.length + " marked as here.");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+}
+async function setArrival(n, undo) {
+  if (!canEditWeek(n)) return;
+  const id = S.course + "__w" + n + "__" + S.user.uid;
+  const ref = db.collection("stage1_register_staff").doc(id);
+  try {
+    if (undo) await ref.delete();
+    else await ref.set({ course: S.course, week: n, room: S.room || null, uid: S.user.uid, name: S.myName, time: londonNow().hm, at: firebase.firestore.FieldValue.serverTimestamp() });
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+async function saveLateAfter() {
+  const v = ($("lateIn") || {}).value;
+  if (!/^\d\d:\d\d$/.test(v || "")) { toast("Enter a time like 18:45.", true); return; }
+  S.lateAfter = v;
+  try { await db.collection("config").doc("stage1_register").set({ lateAfter: v }, { merge: true }); toast("Late cut-off saved: " + v); }
+  catch (err) { toast("Used for this visit only. Only a super-user can save it: " + (err.code || err.message), true); }
+  render();
+}
+</script>
+</body>
+</html>

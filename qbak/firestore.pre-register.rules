@@ -1,0 +1,899 @@
+rules_version = '2';
+
+// RMD Instructor Weekend 2026 — Firestore Security Rules
+//
+// Two access levels:
+//   - Public (unauthenticated): QR code arrivals, faculty pre-course form
+//   - Authenticated: all faculty/director platform features
+//   - Director: collections that decide who IS a director, plus admin-only lists
+//
+// To deploy: Firebase Console -> Firestore Database -> Rules -> paste and publish
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // True if the signed-in user is a director, checked the same way
+    // resolveRole() does in firebase-config.js: people doc role, then
+    // config/platform's directors array.
+    //
+    // No hardcoded email list here anymore (removed 2026-07-29 — personal
+    // emails should not live in a public repo). Director access now comes
+    // solely from people/{uid}.role == "director" or config/platform.directors.
+    // config/platform.directors already contains all current directors as of
+    // 2026-07-29 — confirmed before this change shipped.
+    // True if the signed-in user's email is in config/platform.superUsers.
+    // Added 2026-09-03 — super-users are the ONLY callers who may write to
+    // /config/*, which is the collection that decides who is a director (and
+    // now who is a super-user). Before this, any director could rewrite
+    // config/platform.directors, including removing another director or
+    // themselves — this closes that escalation path down to a short,
+    // deliberately-named list. Super-user status is intentionally NOT
+    // grantable via people/{uid}.role (unlike director) — it only ever comes
+    // from config/platform.superUsers, so the one place that can grant it is
+    // also the one place locked to existing super-users.
+    function isSuperUser() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/config/platform) &&
+        request.auth.token.email.lower() in get(/databases/$(database)/documents/config/platform).data.superUsers;
+    }
+
+    // A super-user can do everything a director can, plus manage config/*.
+    // Defined here (super-user implies director) rather than duplicating
+    // the super-user check on every director-gated rule in this file.
+    function isDirector() {
+      return isSuperUser() || (isSignedIn() && (
+        (exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "director") ||
+        (exists(/databases/$(database)/documents/config/platform) &&
+          request.auth.token.email.lower() in get(/databases/$(database)/documents/config/platform).data.directors)
+      ));
+    }
+
+    // True if the signed-in user's people/{uid} doc has role == "faculty".
+    // Candidates (instructor/assessor/itc) must never be able to write their own
+    // assessment/observation records — only the faculty member assessing them,
+    // or the director, can. This is what draws that line at the rules level.
+    function isFaculty() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "faculty";
+    }
+
+    // True if the signed-in user's people/{uid} doc has role == "assessor-faculty".
+    // Used to gate the assessor-stream timing/messaging portal (2026-07-21) —
+    // this role may post to the assessor-stream target only, never "all",
+    // "faculty", or "instructor-stream".
+    function isAssessorFaculty() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "assessor-faculty";
+    }
+
+    // Can record/amend an assessment: faculty or director.
+    function canAssess() {
+      return isFaculty() || isDirector();
+    }
+
+    // True if the signed-in user's people/{uid} doc has role == "full-instructor".
+    // These are Instructor Trainers — room leads who observe ITCs rotating
+    // through their room (admin-room-allocation.html assigns them the same
+    // room-lead slot as faculty). Kept separate from canAssess() rather than
+    // folded into it, so this role gains ITC-observation rights only, not the
+    // broader assessments/gateway_assessments/development_assessments powers
+    // faculty and director have over instructor/assessor-stream candidates.
+    function isFullInstructor() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "full-instructor";
+    }
+
+    // Can record/amend an ITC observation: faculty, full-instructor, or director.
+    function canObserveItc() {
+      return isFaculty() || isFullInstructor() || isDirector();
+    }
+
+    // True if the signed-in user is on this year's RMD Student/Senior Faculty
+    // roster (faculty_roster, group "student"/"senior") — added 2026-09-07
+    // for read-only oversight of Stage 1 evening-course allocations (Jon:
+    // "RMD student & senior faculty to be able to see, but not edit, all
+    // evening course allocations"). Deliberately checked against
+    // faculty_roster, NOT people/{uid}.role — Student/Senior Faculty
+    // membership has never lived on the people record (see the
+    // "Roster comes from faculty_roster... deliberately NOT derived from
+    // people.role" note on SFR_CYCLE_YEAR in firebase-config.js): the
+    // roster includes named committee seats (Finance, Research, etc.) with
+    // no teaching role or people doc at all. faculty_roster docs are keyed
+    // by the person's own lowercased email (rosterDocId() in
+    // admin-faculty-roster.html), and the existing
+    // "allow get: ... docId == request.auth.token.email.lower()" rule below
+    // already lets a signed-in user read their OWN roster doc this way —
+    // these two functions just name that check. A person on the roster with
+    // no email on file (committee seats without a personal login) is
+    // correctly excluded, same pre-existing limitation as everywhere else
+    // this roster is read.
+    function myFacultyRosterGroup() {
+      return exists(/databases/$(database)/documents/faculty_roster/$(request.auth.token.email.lower()))
+        ? get(/databases/$(database)/documents/faculty_roster/$(request.auth.token.email.lower())).data.group
+        : null;
+    }
+    function isStudentFaculty() {
+      return isSignedIn() && myFacultyRosterGroup() == "student";
+    }
+    function isSeniorFaculty() {
+      return isSignedIn() && myFacultyRosterGroup() == "senior";
+    }
+
+    // Added 2026-10-03 for OPIS access (opis-rating.html): a Stage 1
+    // evening-course instructor who isn't Director/Student Faculty/Senior
+    // Faculty can still rate candidates they actually teach, if their uid
+    // is on that specific candidate's room team. instructorTeamUids is a
+    // flat denormalized copy of that candidate's room's instructor team
+    // (written by admin-course-room-allocation.html's saveAll(), see
+    // stage1_candidates.update below) — kept flat specifically so this
+    // check never has to re-derive a course-name slug inside a rule.
+    function isOnCandidateTeam(candidateId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/stage1_candidates/$(candidateId)).data.get("instructorTeamUids", []).hasAny([request.auth.uid]);
+    }
+
+    // ── People directory ────────────────────────────────────────────────────
+    // Read: public — QR landing page looks up candidate name without login
+    // Write: director only — this collection decides who counts as a director,
+    //   so any signed-in user being able to write here is a privilege escalation
+    // Anyone signed in can read their OWN doc (resolveRole() in
+    // firebase-config.js needs this to determine role right after login).
+    // Full read/listing of OTHER people's docs is director-only — this
+    // collection holds every user's name, email and role, so a blanket
+    // "read: if true" let anyone anonymously harvest the entire faculty
+    // list, including exactly who has director access. Tightened 2026-08-31
+    // after confirming no legitimate flow reads another user's own doc by
+    // uid directly (admin-erc-export.html, the one page that lists the
+    // whole collection, is already director-only; Cloud Functions use the
+    // Admin SDK and bypass these rules entirely regardless).
+    match /people/{docId} {
+      // Widened 2026-09-07 per Jon: RMD Student Faculty and Senior Faculty
+      // may see the full roster (name, email, passport name fields
+      // included) — explicitly confirmed acceptable to share within the
+      // team, not just each other's own records. Powers attendance.html's
+      // registration roster and session-feedback.html's "all groups" view
+      // for these two tiers, both of which need to list/query this
+      // collection, not just fetch their own doc. Write stays
+      // director-only — this is read visibility only.
+      //
+      // Widened again 2026-09-07 (same session, second decision) per Jon:
+      // ordinary Faculty and Full-Instructor also need real names/emails to
+      // give session feedback on their own group — session-feedback.html's
+      // original core audience was left out of the first widening above.
+      // Jon explicitly accepted full name + email visibility for these two
+      // roles as the price of making the feedback flow work. Still no
+      // passport-field promise was made for this tier (unlike Student/Senior
+      // Faculty above) — only name/email were requested — but Firestore
+      // can't grant get/list on a subset of fields, so this line opens the
+      // whole document, same all-or-nothing limit as before.
+      allow get: if isSignedIn() && (request.auth.uid == docId || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
+        (isAssessorFaculty() && resource.data.role == 'assessor'));
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
+        // 2026-10-10: Assessor Faculty may list ONLY Assessor / Senior Instructor
+        // candidates (assessor-feedback.html's query), not the whole roster.
+        (isAssessorFaculty() && resource.data.role == 'assessor');
+      allow write: if isDirector();
+
+      // Self-service "My Account" (added 2026-09-06): a signed-in member may
+      // write their OWN people doc, but only the four name-identity fields
+      // my-account.html exposes — never role, stream, email, roleHistory, or
+      // anything else. hasOnly() means the write is rejected outright if it
+      // touches any other key, so this can't be used to self-promote a role
+      // or edit someone else's record. Passport fields written here are the
+      // person's own self-declaration — same "considered true" status as a
+      // mou-form.html/faculty-form.html submission (Jon, 2026-09-06): no
+      // director/admin path writes to these fields at all any more, by
+      // design — see [[rmd_website_preferred_name_field]].
+      //
+      // Split into create + update (2026-09-07, after Jon's own account hit
+      // this): some accounts — director/super-user ones especially — predate
+      // admin-bulk-users.html and have no people/{uid} doc at all, so
+      // my-account.html's first save is a create, not an update. `resource`
+      // is null during create, so the update rule's diff() against it can't
+      // run — hasOnly() on the request data's own keys instead, which also
+      // guarantees a self-created doc can ONLY ever contain these 4 fields.
+      allow create: if isSignedIn() && request.auth.uid == docId &&
+        request.resource.data.keys()
+          .hasOnly(["preferredName", "passportFirstName", "passportMiddleName", "passportLastName"]);
+      allow update: if isSignedIn() && request.auth.uid == docId &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["preferredName", "passportFirstName", "passportMiddleName", "passportLastName"]);
+    }
+
+    // ── Attendance ──────────────────────────────────────────────────────────
+    // Create/update: public — candidates write their own arrival via QR scan
+    // Read/delete: authenticated only — faculty dashboard and admin only
+    match /attendance/{docId} {
+      allow create, update: if true;
+      allow read, delete: if isSignedIn();
+    }
+
+    // ── Faculty pre-course form ─────────────────────────────────────────────
+    // Document ID is the lowercased submitter email (see faculty-form.html) —
+    //   this lets a caller with no login look up/edit their own response via a
+    //   direct-by-ID fetch, without ever needing to query/list the collection.
+    // get:  public — caller must already know the exact email (= docId) to
+    //   fetch one record. Residual risk: knowing someone's email is enough to
+    //   see/overwrite their response — accepted trade-off for no-login editing.
+    // list: director only — this is what stops anyone dumping every faculty
+    //   member's dietary/accessibility/travel data in one unauthenticated query.
+    // create/update: public — supports pre-login submit and edit-by-email re-open.
+    // delete: authenticated only.
+    match /faculty_responses/{docId} {
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
+    // ── Assessments ─────────────────────────────────────────────────────────
+    // Read: any signed-in user, including candidates (they can see their own
+    //   results; this collection isn't per-user scoped so this also means
+    //   candidates can see others' — acceptable per current design, revisit if not).
+    // Create/update: faculty or director only — candidates must never be able
+    //   to write/alter their own or anyone else's assessment record.
+    // Delete: director only — this is the "cannot be undone" action; faculty
+    //   can correct a result by updating it, but never permanently remove one.
+    match /assessments/{docId} {
+      allow read: if isSignedIn();
+      allow create, update: if canAssess();
+      allow delete: if isDirector();
+    }
+
+    // ── Sessions ────────────────────────────────────────────────────────────
+    // Programme schedule, live since 2026-08-06 (previously a static file —
+    // see admin-migrate-programme.html and timetable.html's listenProgramme()).
+    // Read: authenticated — everyone needs to see the live programme.
+    // Write: director only, and only meant for the one-time/occasional
+    //   migration page (admin-migrate-programme.html) — this is a narrowing
+    //   from the previous "any signed-in user" rule, not a widening. Ongoing
+    //   time shifts during the course do NOT write here directly: they go
+    //   through the shiftProgrammeSession Cloud Function (functions/index.js),
+    //   which uses the Admin SDK (bypasses these rules entirely) and does its
+    //   own director/assessor-faculty + stream-scoping check server-side —
+    //   that's what timetable.html's shift panel actually calls. Assessor
+    //   Faculty therefore has no direct write access here at all, only via
+    //   that function, which is deliberate: it's the only path that keeps
+    //   pairWith twins in sync and writes an audit entry to
+    //   programme_shift_log, so it should be the only way times change once
+    //   the course is live.
+    match /sessions/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isDirector();
+    }
+
+    // ── Programme shift log ─────────────────────────────────────────────────
+    // Written only by the shiftProgrammeSession Cloud Function (Admin SDK
+    // bypasses these rules) — audit trail of every live time shift, so
+    // "write: false" here is belt-and-braces against any client writing
+    // directly, same pattern as itc_summaries/senior_faculty_review_reminders
+    // below.
+    // Read: director only.
+    match /programme_shift_log/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    // ── Messages ────────────────────────────────────────────────────────────
+    // Read: authenticated — recipient filtering by role/stream happens
+    //   client-side in timetable.html (isMessageForRole()), same posture as
+    //   the rest of this ruleset (e.g. sessionsForRole filtering on the client).
+    // Create: director can post any target. Assessor-faculty can post ONLY
+    //   target == "assessor-stream" — this is the write-side enforcement of
+    //   "assessor course faculty portal, assessor-stream audience only"
+    //   (2026-07-21). No other role (including generic "faculty" and
+    //   candidates) may create a message at all — matches the pre-existing
+    //   posture where only the director's panel could send.
+    // Update/delete: director only — previously any signed-in user could
+    //   edit or delete any message (isSignedIn() covered write); tightened
+    //   as part of this change since it was an open gap.
+    match /messages/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isDirector() ||
+        (isAssessorFaculty() && request.resource.data.target == "assessor-stream");
+      allow update, delete: if isDirector();
+    }
+
+    // ── Rooms ────────────────────────────────────────────────────────────────
+    // Authenticated only — room state (timer, current message)
+    match /rooms/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── Feedback ────────────────────────────────────────────────────────────
+    // Authenticated only — faculty voice feedback transcripts
+    match /feedback/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // ── Session feedback (traffic-light ratings, session-feedback.html) ─────
+    // FIX 2026-09-08 (bug found 2026-09-07 on self-review): this collection
+    //   had NO rule at all until now — every read/write here had always
+    //   failed with permission-denied for everyone, including directors,
+    //   since the page was built. See rmd_website_permissions_audit project
+    //   memory for the full history.
+    // Same "blind, self-scoped" shape as itc_observations below — session-
+    //   feedback.html's own query (.where("sessionId","==",...)
+    //   .where("submittedByUid","==",currentUser.uid)) already restricts
+    //   every read to the caller's own submitted ratings for a session;
+    //   nothing in the app ever asks for anyone else's. So "own records
+    //   only" is both what's needed AND what Firestore can cleanly enforce
+    //   here — the "own group only, can't be scoped by a list rule" concern
+    //   flagged 2026-09-07 doesn't actually apply to this collection once
+    //   the real query shape was checked against the code.
+    // Read: the submitter (resource.data.submittedByUid), or director.
+    // Create: faculty, full-instructor, or director only, and only
+    //   self-attributed (request.resource.data.submittedByUid must equal
+    //   the caller) — mirrors itc_observations' raterUid self-attribution.
+    // Update: same self-attribution check against the EXISTING doc — the
+    //   auto-save path uses set(...,{merge:true}) on an existing doc once a
+    //   candidate's already been rated this session, which rules treat as
+    //   an update, not a create.
+    // Delete: director only. The app has no delete path for this collection
+    //   today — belt-and-braces, matching the pattern used elsewhere.
+    match /session_feedback/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.submittedByUid == request.auth.uid);
+      allow create: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow update: if (isFaculty() || isFullInstructor() || isDirector()) &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── Assessor / Senior Instructor feedback (2026-09-14, per Jon) ──────────
+    // Same traffic-light principle as session_feedback above, mirrored with
+    // isAssessorFaculty() in place of isFaculty()/isFullInstructor() — this
+    // collection is rated by Assessor Faculty + Director, not teaching
+    // faculty. Not session-scoped, so doc id is `${candidateId}_${uid}`
+    // rather than an auto id — assessor-feedback.html always writes/reads
+    // via that deterministic id, so create vs. update (merge) both hit the
+    // same self-attribution checks as session_feedback's do.
+    match /assessor_feedback/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.submittedByUid == request.auth.uid);
+      allow create: if (isAssessorFaculty() || isDirector()) &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow update: if (isAssessorFaculty() || isDirector()) &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── Session quality (found 2026-09-08: same missing-rule bug as
+    // session_feedback had, never fixed until now — no submission had ever
+    // actually saved). session-quality.html's own role gate already
+    // restricts who can open the page (faculty/full-instructor/director,
+    // fixed 2026-09-07); this rule mirrors that plus session_feedback's
+    // exact self-scoped read/write shape, since the two collections have
+    // an identical upsert pattern: one doc per (sessionId, submittedByUid),
+    // queried and updated via set(...,{merge:true}) once already submitted.
+    match /session_quality/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.submittedByUid == request.auth.uid);
+      // 2026-10-08: Assessor Faculty added (the form is shown to them on the
+      // Assessor/SI programme). Candidates are not on this list, by design.
+      allow create: if (isFaculty() || isFullInstructor() || isAssessorFaculty() || isDirector()) &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow update: if (isFaculty() || isFullInstructor() || isAssessorFaculty() || isDirector()) &&
+        resource.data.submittedByUid == request.auth.uid &&
+        request.resource.data.submittedByUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── Participant feedback (found 2026-09-08: same missing-rule bug as
+    // session_feedback had — every survey submission had been silently
+    // failing since built). participant-feedback.html is deliberately a
+    // fully anonymous, unauthenticated end-of-course evaluation survey (no
+    // login gate on the page at all, no submittedByUid field) — so unlike
+    // session_feedback/session_quality this can't be self-scoped, and the
+    // create rule has no request.auth to check at all. Jon confirmed
+    // 2026-09-08: results visible to Course Director only, nobody else.
+    // hasOnly() constrains the shape of what an anonymous write can
+    // contain, since "allow create: if true" would otherwise accept any
+    // document shape from anyone who can reach the Firestore API directly,
+    // not just through this page.
+    match /participant_feedback/{docId} {
+      allow read: if isDirector();
+      allow create: if request.resource.data.keys().hasOnly([
+        "stream", "experience", "likert", "averageScore", "duration",
+        "valuable", "recommend", "suggestions", "submittedAt", "courseId"
+      ]);
+      allow update, delete: if isDirector();
+    }
+
+    // ── Course Director Dashboard collections (found 2026-09-08, same
+    // missing-rule bug as session_feedback/session_quality/participant_feedback
+    // — never had ANY firestore.rules coverage since built). All three are
+    // read and written exclusively by cd-dashboard.html, which is itself
+    // wrapped in requireDirector() for its entire boot sequence (verified —
+    // correcting an earlier mistaken claim in this session that the page had
+    // no gate at all; it does, this was just never checked properly the
+    // first time). Director-only end to end, no other page or role touches
+    // any of these three.
+    match /decisions/{docId} {
+      allow read, write: if isDirector();
+    }
+    match /meeting_notes/{docId} {
+      allow read, write: if isDirector();
+    }
+    match /report/{docId} {
+      allow read, write: if isDirector();
+    }
+
+    // Written only by the changePersonEmail Cloud Function (Admin SDK,
+    // bypasses these rules) when a director changes someone's login email —
+    // see functions/index.js. Read-only here so admin-bulk-users.html can
+    // warn a director before a bulk import reuses a retired address for an
+    // unrelated new person. No client write path, deliberately.
+    match /retired_emails/{docId} {
+      allow read: if isDirector();
+    }
+
+    // ── Instructor Weekend per-year function (Axis B) ───────────────────────
+    // Added 2026-09-08, layered-access build-sequence step 4. docId is
+    // "{year}_{uid}" (e.g. "2026_abc123"); each doc carries its own `uid`
+    // field since docId isn't just the uid, unlike people/{uid}. Read grant
+    // deliberately mirrors people/{docId}'s current widened rule below,
+    // since this collection holds the same category of information (what
+    // someone's role is) for the same audience - keeping the two consistent
+    // matters while both are being written to in parallel (see
+    // CURRENT_IW_YEAR / resolveIwFunction() in firebase-config.js for why
+    // this is additive, not a replacement, for now). Write stays
+    // director-only, same as the admin-bulk-users.html page that writes it.
+    match /iw_assignments/{docId} {
+      allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor());
+      allow list: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isFullInstructor() ||
+        // 2026-10-10: Assessor Faculty may list ONLY Assessor / Senior Instructor
+        // candidates (assessor-feedback.html's query), not the whole roster.
+        (isAssessorFaculty() && resource.data.role == 'assessor');
+      allow write: if isDirector();
+    }
+
+    // ── ITC observations ────────────────────────────────────────────────────
+    // Blind feedback (decided 2026-07-09): each observer's rating of an ITC
+    //   must not be visible to other observers rating the same ITC — only
+    //   the rater themselves and the director can see a given doc.
+    // Read: the rater who wrote the doc (resource.data.raterUid), or director.
+    //   NOTE: list queries (e.g. "my saved ratings for this session") must
+    //   include .where("raterUid","==", auth.uid) for a non-director caller —
+    //   itc-observations.html's loadMyRatings() does this. A query without
+    //   that filter will be denied for non-directors, which is intentional:
+    //   it's what stops one Instructor Trainer listing another's observations.
+    // Create: faculty, full-instructor, or director only, and only
+    //   self-attributed (request.resource.data.raterUid must equal the
+    //   caller) — the ITC being observed must never be able to write their
+    //   own record, and no rater can write a doc claiming to be someone
+    //   else's observation.
+    // Update: same self-attribution check against the EXISTING doc
+    //   (resource.data.raterUid) — a rater can only amend their own doc.
+    // Delete: director only.
+    match /itc_observations/{docId} {
+      allow read: if isSignedIn() &&
+        (isDirector() || resource.data.raterUid == request.auth.uid);
+      allow create: if canObserveItc() &&
+        request.resource.data.raterUid == request.auth.uid;
+      allow update: if canObserveItc() &&
+        resource.data.raterUid == request.auth.uid &&
+        request.resource.data.raterUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── ITC summaries (AI-generated) ────────────────────────────────────────
+    // Written only by the generateItcSummary Cloud Function via the Admin
+    // SDK, which bypasses these rules entirely — so "write: false" here is
+    // just belt-and-braces against any client ever writing directly.
+    // Read: director only — this is the collated, de-blinded view, so it
+    //   must stay behind the same gate as the raw itc_observations aggregate.
+    match /itc_summaries/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    // ── Gateway assessments ─────────────────────────────────────────────────
+    // Read: any signed-in user (candidate can see their own gateway outcome).
+    // Create/update: faculty or director only — recordOutcome()/toggleFlag()/
+    //   lockOutcome() in assessment-gateway.html are all faculty/director actions.
+    // Delete: director only — a locked/recorded gateway outcome (pass/fail on
+    //   whether a candidate continues to Sunday) must never be silently erasable
+    //   by a faculty member; unlocking to correct it is a separate, non-destructive
+    //   update (lockedAt: null), already handled above.
+    //
+    // Added 2026-10 (per Jon): an Instructor Trainer (full-instructor) who runs a
+    // room may record the PASS/FAIL gateway result for candidates IN THEIR OWN
+    // ROOM only (same people.group), via the BLS/AED rating in
+    // session-feedback.html. Narrower than canAssess() on purpose: they can only
+    // write outcome + audit fields, only while the doc is not locked, and they
+    // can never lock, flag, sign off or delete. The Course Director's sign-off
+    // (cdConfirmed*) can be cleared (set null) by a changed result, never set.
+    function sameRoomAsMe(candidateId) {
+      return exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        exists(/databases/$(database)/documents/people/$(candidateId)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('group',
+          get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('room', '')) != '' &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('group',
+          get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('room', '')) ==
+        get(/databases/$(database)/documents/people/$(candidateId)).data.get('group', '');
+    }
+    match /gateway_assessments/{docId} {
+      allow read: if isSignedIn();
+      allow create, update: if canAssess();
+      allow create: if isFullInstructor() && sameRoomAsMe(docId)
+        && request.resource.data.keys().hasOnly(['outcome', 'updatedAt', 'assessorUid', 'source'])
+        && request.resource.data.outcome in ['pass', 'fail']
+        && request.resource.data.assessorUid == request.auth.uid;
+      allow update: if isFullInstructor() && sameRoomAsMe(docId)
+        && resource.data.get('lockedAt', null) == null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['outcome', 'updatedAt', 'assessorUid', 'source', 'cdConfirmedAt', 'cdConfirmedBy', 'cdConfirmedOutcome'])
+        && request.resource.data.outcome in ['pass', 'fail', '']
+        && request.resource.data.get('cdConfirmedBy', null) == null
+        && request.resource.data.assessorUid == request.auth.uid;
+      allow delete: if isDirector();
+    }
+
+    // ── Course Director recommended overall course result (2026-10) ─────────
+    // One doc per Instructor Candidate (doc id = candidate's people id), written
+    // from assessment-development.html when the Course Director toggles the
+    // "Course result" PASS/FAIL button; read by admin-iw-pass-confirmation.html
+    // to pre-fill its PASS/FAIL defaults. Director only, read and write: it is
+    // a pass/fail recommendation, so candidates and faculty must not see or
+    // change it. Deleting a doc just returns that candidate to the automatic
+    // default (see js/course-result.js).
+    match /cd_course_results/{docId} {
+      allow read, write: if isDirector();
+    }
+
+    // ── Development assessments ─────────────────────────────────────────────
+    // Read: any signed-in user (candidate can see their own RAG trajectory).
+    // Create/update: faculty or director only.
+    // Delete: director only.
+    match /development_assessments/{docId} {
+      allow read: if isSignedIn();
+      allow create, update: if canAssess();
+      allow delete: if isDirector();
+    }
+
+    // ── Platform config ──────────────────────────────────────────────────────
+    // Read: authenticated — pages display the current director list
+    // Write: director only — this is the OTHER place director status can be
+    //   granted from (config/platform.directors), same escalation risk as people
+    match /config/{docId} {
+      allow read: if isSignedIn();
+      // Write: super-user only (tightened 2026-09-03 — was isDirector(),
+      // which let any director rewrite the directors/superUsers lists
+      // themselves; see isSuperUser() above for why).
+      allow write: if isSuperUser();
+    }
+
+    // ── Candidate resource access code (Section 3.5 follow-up, 2026-09-06) ──
+    // A single shared "pass" Stage 1 candidates use on candidate-resources.html
+    // — confirmed by Jon as a deliberate first (RMD has never had a no-login
+    // generic-code gate before): not a personal login, just enough of a
+    // barrier that the resources aren't wide open with no gate at all. Handed
+    // out at the intro session, not tied to any individual's record.
+    // Public/unauthenticated read is intentional and safe here: this single
+    // document holds nothing but the code itself, and Firestore evaluates
+    // matching rules as OR'd — this only widens access to this ONE document,
+    // every other config/* document still requires isSignedIn() via the
+    // wildcard rule above. Write stays super-user only, same as config/platform.
+    match /config/candidate_access {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+
+    // ── Instructor EOI master on/off (2026-09-27) ───────────────────────────
+    // Course-director-controlled kill switch for instructor-eoi.html, set from
+    // admin-global-tools.html. Public/unauthenticated read is intentional,
+    // same reasoning as config/candidate_access just above — this document
+    // holds nothing but a boolean, and every other config/* document still
+    // requires isSignedIn() via the wildcard rule. Write stays super-user only.
+    match /config/instructor_eoi {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+
+    // ── Stage 1 course dates (2026-10-02) ───────────────────────────────────
+    // Session dates per Stage 1 course (admin-stage1-settings.html), used to
+    // populate the course dropdown on candidate-resources.html's public,
+    // no-login room-lookup. Public/unauthenticated read is intentional, same
+    // reasoning as config/candidate_access and config/instructor_eoi above —
+    // this document holds only course names/dates/capacity, nothing personal,
+    // and every other config/* document still requires isSignedIn() via the
+    // wildcard rule. Write stays super-user only.
+    match /config/stage1_course_dates {
+      allow read: if true;
+      allow write: if isSuperUser();
+    }
+
+    // ── MOU responses ───────────────────────────────────────────────────────
+    // Create: authenticated — member submits their own MOU form response
+    // Read/update/delete: director only — only directors review submissions
+    match /mou_responses/{docId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isDirector();
+    }
+
+    // ── MOU roster ──────────────────────────────────────────────────────────
+    // Director only — expected member list, managed exclusively via director tools
+    match /mou_roster/{docId} {
+      allow read, write: if isDirector();
+    }
+
+    // ── Senior faculty annual review ────────────────────────────────────────
+    // Create/update: authenticated — member submits/edits ONLY their own
+    //   review response. Doc id must be exactly {cycleYear}_{uid} and the
+    //   uid field must match the caller — prevents overwriting someone
+    //   else's submission even if their doc id were guessed.
+    //   (see senior-faculty-review.html)
+    // Read/delete: director only — admin-senior-faculty-review.html
+    match /senior_faculty_review/{docId} {
+      allow create, update: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && docId == request.resource.data.cycleYear + "_" + request.auth.uid;
+      allow read, delete: if isDirector();
+    }
+
+    // ── Annual faculty roster ───────────────────────────────────────────────
+    // Populated once a year via a single bulk paste on
+    // admin-faculty-roster.html — see js/firebase-config.js for the full
+    // picture. Two collections, split because one holds emails:
+    //
+    // faculty_roster (has email — director tooling + reminder function only):
+    //   get: also allowed for a signed-in user fetching ONLY their own doc
+    //     (docId == their lowercased email) — this is how
+    //     senior-faculty-review.html checks "am I on the roster" without
+    //     exposing the rest of the roster's emails to them.
+    //   list (querying the whole collection) and all writes: director only.
+    match /faculty_roster/{docId} {
+      allow get: if isDirector() || (isSignedIn() && docId == request.auth.token.email.lower());
+      allow list, write: if isDirector();
+    }
+
+    // faculty_directory (no email — public display copy for faculty.html):
+    //   read: public, same as the people collection above.
+    //   write: director only (written alongside faculty_roster by the bulk
+    //     upload tool — never add an email field here).
+    match /faculty_directory/{docId} {
+      allow read: if true;
+      allow write: if isDirector();
+    }
+
+    // ── Senior faculty review reminder log ──────────────────────────────────
+    // Written only by the sendSeniorFacultyReminders Cloud Function (admin
+    // SDK bypasses these rules) — no client should ever write here directly.
+    match /senior_faculty_review_reminders/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    match /account_reminders/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    match /mou_reminders/{docId} {
+      allow read: if isDirector();
+      allow write: if false;
+    }
+
+    // ── Room groups ──────────────────────────────────────────────────────────
+    // Read: authenticated — all staff need to see their room assignment
+    //   (timetable.html room banner reads this for every signed-in user)
+    // Write: director only — room allocation admin page
+    match /groups/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isDirector();
+    }
+
+    // ── Stage 1 (taught first-year) candidates — Section 3.5 ────────────────
+    // BUG FIX 2026-09-07: this collection has existed since 3.5 was built
+    // 2026-09-06 (admin-stage1-candidates.html reads/writes it) but no match
+    // block was ever added here — Firestore denies by default with no
+    // matching rule, so every read/write on this collection has been failing
+    // with permission-denied since the page went live. Found while building
+    // 3.6, which depends on reading/writing stage1_candidates.room. Director
+    // only, same as the page's own requireDirector() gate — no candidate
+    // login exists to need broader read access, and no public form writes
+    // here (bulk import is the only write path, director-only).
+    match /stage1_candidates/{docId} {
+      // Read widened 2026-09-08 to match the people-collection decision:
+      // Jon confirmed RMD Student/Senior Faculty can see full candidate
+      // detail (name, email, DOB, degree, room) for evening-course
+      // candidates, same as they already can for people.
+      // Read widened again 2026-10-03 for OPIS (opis-rating.html): a
+      // room-team instructor who is neither Director nor Student/Senior
+      // Faculty can still read candidates on their own team (see
+      // isOnCandidateTeam() above) — everyone else's candidates stay
+      // invisible to them, since the check is per-document against that
+      // candidate's own instructorTeamUids, not a blanket collection open.
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty()
+        || (isSignedIn() && resource.data.get("instructorTeamUids", []).hasAny([request.auth.uid]));
+      // Full write (add/edit/delete a candidate, change course, etc.)
+      // stays director-only — admin-stage1-candidates.html is unaffected.
+      allow write: if isDirector();
+      // Write widened 2026-10-01 (Jon: "anyone on RMD student faculty &
+      // RMD senior faculty" should be able to use the room-allocation
+      // page) but deliberately scoped to ONLY the room field — this is
+      // what Course Room & Instructor Allocation (3.6) actually needs to
+      // write, and nothing more. affectedKeys().hasOnly(['room']) means a
+      // write touching any other field (course, degree, email, a delete,
+      // ...) is rejected even from this role, so this can't be used as a
+      // side door into full candidate editing.
+      // 2026-10-03: widened to also allow instructorTeamUids — saveAll()
+      // now writes that alongside room in the same update() call, so
+      // Student/Senior Faculty saving a course's room teams would
+      // otherwise get rejected the moment that field is touched.
+      // 2026-10-03: instructorTeamNames added alongside instructorTeamUids
+      // — a display-name copy so OPIS can show teammates to a room-team
+      // instructor without needing people-collection access.
+      // 2026-10-03 (second widening, same day): firstTimeAssessment and
+      // assessmentAbsent added for course-roster-view.html's two new
+      // Faculty actions (mark repeat / mark unable to attend) — Jon:
+      // "need way for faculty to confirm who will not be able to attend
+      // assessment" and "who is not first sit". assessmentRoom/
+      // assessmentSlot added alongside assessmentAbsent so marking someone
+      // absent can also clear their booked slot in the same write, freeing
+      // it for someone else (Jon: "if allocated but then marked, remove
+      // and make free slot") — Faculty can only ever null these two via
+      // the page's own code, never set them to an arbitrary room/slot.
+      // 2026-10-12 (Jon): rap and twoPlusAssessments added so Student/Senior Faculty can set the
+      // RAP and two-plus attempt tags from course-roster-edit.html. Those two booleans only.
+      allow update: if (isStudentFaculty() || isSeniorFaculty()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'instructorTeamUids', 'instructorTeamNames', 'firstTimeAssessment', 'assessmentAbsent', 'assessmentRoom', 'assessmentSlot', 'rap', 'twoPlusAssessments']);
+    }
+
+    // ── Course roster / room + instructor allocation — Section 3.6 ─────────
+    // One doc per Stage 1 evening course, holding that course's per-room
+    // instructor teams (candidate→room assignment lives on stage1_candidates
+    // .room instead, reusing that existing field rather than duplicating it
+    // here). Director only — see admin-course-room-allocation.html.
+    match /course_allocations/{docId} {
+      // Read for RMD Student/Senior Faculty added 2026-09-07 (Jon: view all
+      // evening-course allocations). Write widened to the same two roles
+      // 2026-10-01 (Jon: "anyone on RMD student faculty & RMD senior
+      // faculty" should be able to use Course Room & Instructor Allocation
+      // itself, not just look at the result) — this collection exists
+      // entirely for that page's own per-room instructor teams, so unlike
+      // stage1_candidates there's no need to scope the write to specific
+      // fields; the whole collection is already that page's business.
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow write: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+    }
+
+    // ── OPIS candidate ratings (2026-09-27) ─────────────────────────────────
+    // One doc PER SUBMISSION (auto id) from a Stage 1 evening-course
+    // instructor rating a candidate against the 5 OPIS criteria — see
+    // opis-rating.html. Deliberately NOT keyed by candidateId: several
+    // instructors (or the same one more than once) can each submit their own
+    // rating for the same candidate, per Jon 2026-09-27.
+    // create: same population that can already see the evening-course roster
+    //   (director / RMD Student Faculty / RMD Senior Faculty) — this is who
+    //   actually teaches in the rooms. submittedByUid must match the caller
+    //   (stops one person's submission being attributed to someone else),
+    //   credibilityConfirmed must be true (the "spent enough time with this
+    //   person" checkbox on the form), and every OPIS score must be 1-3 (criteria revised 2026-10-07: communication, teamMember, confidentAdaptable, interactiveSupportive, punctuality, plus the outstandingTeachingPotential tick; older docs keep the old keys).
+    // read: director + RMD Senior Faculty only — this is the review-tool
+    //   audience deciding instructor potential, not the raters themselves.
+    // update: none — a submission is immutable once made.
+    // delete: director only (corrections/cleanup).
+    match /opis_ratings/{docId} {
+      allow read: if isDirector() || isSeniorFaculty();
+      allow create: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isOnCandidateTeam(request.resource.data.candidateId))
+        && request.resource.data.submittedByUid == request.auth.uid
+        && request.resource.data.credibilityConfirmed == true
+        && request.resource.data.candidateId is string
+        && request.resource.data.candidateId.size() > 0
+        && request.resource.data.scores.communication in [1, 2, 3]
+        && request.resource.data.scores.teamMember in [1, 2, 3]
+        && request.resource.data.scores.confidentAdaptable in [1, 2, 3]
+        && request.resource.data.scores.interactiveSupportive in [1, 2, 3]
+        && request.resource.data.scores.punctuality in [1, 2, 3]
+        && request.resource.data.outstandingTeachingPotential is bool;
+      allow update: if false;
+      allow delete: if isDirector();
+    }
+
+    // ── IW registrations ────────────────────────────────────────────────────
+    // Director only — director-managed attendee list for Instructor Weekend
+    match /iw_registrations/{docId} {
+      allow read, write: if isDirector();
+    }
+
+    // ── IW Assessor / Senior Instructor RSVP ────────────────────────────────
+    // Self-service Y/N attendance confirmation for Assessors/Senior
+    // Instructors, whose attendance at the Instructor Weekend is NOT
+    // mandatory (unlike Instructor Candidates, who must attend and so need
+    // no RSVP step). Added 2026-07-31 — see iw-rsvp.html.
+    // Document ID is the lowercased responder email — same no-login
+    // edit-by-email pattern as faculty_responses/summer_meeting_dietary.
+    // get:  public — caller must already know the exact email (= docId).
+    // list: director only — stops one unauthenticated request dumping every
+    //   assessor's RSVP status. The only reader of the full list is
+    //   admin-iw-registrations.html's "Import assessor RSVPs" panel, which
+    //   is itself director-gated.
+    // create/update: public — supports pre-login submit and resubmit-to-edit
+    //   (e.g. someone who said No then changes their mind).
+    // delete: authenticated only.
+    match /iw_assessor_rsvp/{docId} {
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
+    // ── Summer meeting dietary requirements ─────────────────────────────────
+    // Document ID is the lowercased submitter email (see summer-meeting-dietary.html)
+    //   — same no-login edit-by-email pattern as faculty_responses.
+    // get:  public — caller must already know the exact email (= docId).
+    // list: director only — stops one unauthenticated request dumping every
+    //   attendee's dietary/allergy data.
+    // create/update: public — supports pre-login submit and resubmit-to-edit.
+    // delete: authenticated only.
+    match /summer_meeting_dietary/{docId} {
+      allow get: if true;
+      allow list: if isDirector();
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
+    // ── Instructor Expression of Interest ───────────────────────────────────
+    // Open all year, no login — see instructor-eoi.html. Document ID is the
+    // lowercased submitter email.
+    // Tightened 2026-10 (per Jon's review): before, anyone who knew an email
+    // address could READ that person's EOI (name, student number, degree) and
+    // any signed-in user could DELETE one. Now:
+    // get/list: Director and Senior Faculty only (same audience as
+    //   admin-instructor-review.html). instructor-eoi.html only ever WRITES,
+    //   it never reads an EOI back, so closing public reads breaks nothing.
+    // create/update: still public (a resubmission from the same email
+    //   overwrites the previous one), gated on config/instructor_eoi.open,
+    //   and now shape-checked: exactly the seven fields the form sends, doc id
+    //   must equal the lowercased email field, consent ticked, bounded string
+    //   lengths, server timestamp. Known limit: with no login, anyone who knows
+    //   an email address can still overwrite (not read) that person's EOI.
+    // delete: Director only.
+    match /instructor_eoi/{docId} {
+      allow get, list: if isDirector() || isSeniorFaculty();
+      allow create, update: if (!exists(/databases/$(database)/documents/config/instructor_eoi)
+          || get(/databases/$(database)/documents/config/instructor_eoi).data.open != false)
+        && request.resource.data.keys().hasOnly(['name', 'email', 'studentNumber', 'degree', 'assessmentPassDate', 'acknowledgedNoGuarantee', 'submittedAt'])
+        && request.resource.data.keys().hasAll(['name', 'email', 'studentNumber', 'degree', 'assessmentPassDate', 'acknowledgedNoGuarantee', 'submittedAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email == docId
+        && request.resource.data.email == request.resource.data.email.lower()
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
+        && request.resource.data.studentNumber is string && request.resource.data.studentNumber.size() > 0 && request.resource.data.studentNumber.size() <= 50
+        && request.resource.data.degree is string && request.resource.data.degree.size() > 0 && request.resource.data.degree.size() <= 200
+        && request.resource.data.assessmentPassDate is string && request.resource.data.assessmentPassDate.size() > 0 && request.resource.data.assessmentPassDate.size() <= 40
+        && request.resource.data.acknowledgedNoGuarantee == true
+        && request.resource.data.submittedAt == request.time;
+      allow delete: if isDirector();
+    }
+
+
+    // ── Organiser Board (organiser-board.html) ──────────────────────────────
+    // Private planning board for the 2-3 people organising the Instructor
+    // Weekend. The board's code is part of the document path, so only people
+    // who know the code can find it. Any signed-in user can read/write a board
+    // whose code they know; nobody can LIST boards (so codes can't be
+    // discovered). get/create/update only on the settings doc, never list.
+    match /organiser_boards/{code} {
+      allow get, create, update: if isSignedIn();
+    }
+    match /organiser_boards/{code}/tasks/{taskId} {
+      allow read, write: if isSignedIn();
+    }
+
+  }
+}
