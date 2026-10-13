@@ -199,6 +199,18 @@ async function createTest() {
   if (!confirm(`Create "${TEST_COURSE}" with assessment night on ${date}?\n\n15 test candidates, plus 2 earlier-attempt records on "${TEST_EARLIER}" (${earlierDate}).\nEvery record is flagged as a test record and can be removed with one button.`)) return;
   $("createBtn").disabled = true; $("createMsg").innerHTML = '<div class="msg warn">Creating…</div>';
   try {
+    // Course dates first: only a super-user may write config/*, so if this account
+    // cannot, stop here before any test candidate exists.
+    const cref = db.collection("config").doc("stage1_course_dates");
+    const cur = await cref.get();
+    const courses = ((cur.exists && cur.data().courses) || []).filter(c => c.name !== TEST_COURSE && c.name !== TEST_EARLIER);
+    courses.push({ name: TEST_EARLIER, date: earlierDate, capacity: 0, test: true });
+    courses.push({ name: TEST_COURSE, date, capacity: 0, test: true });
+    try { await cref.set({ courses }, { merge: true }); }
+    catch (e) {
+      $("createMsg").innerHTML = `<div class="msg err">Not created: adding the test course dates needs a super-user account${e.code === "permission-denied" ? "" : " (" + esc(e.message) + ")"}. Nothing was written.</div>`;
+      await refresh(); return;
+    }
     // ids first, so the repeat pairs can point at each other
     const refs = {};
     docs.forEach(d => { refs[d.key] = db.collection(COLLECTIONS.stage1Candidates).doc(); });
@@ -209,13 +221,6 @@ async function createTest() {
     const batch = db.batch();
     docs.forEach(d => batch.set(refs[d.key], d.data));
     await batch.commit();
-    // course dates: add the two test courses, capacity 0, flagged test
-    const ref = db.collection("config").doc("stage1_course_dates");
-    const cur = await ref.get();
-    const courses = ((cur.exists && cur.data().courses) || []).filter(c => c.name !== TEST_COURSE && c.name !== TEST_EARLIER);
-    courses.push({ name: TEST_EARLIER, date: earlierDate, capacity: 0, test: true });
-    courses.push({ name: TEST_COURSE, date, capacity: 0, test: true });
-    await ref.set({ courses }, { merge: true });
     $("createMsg").innerHTML = `<div class="msg ok">Test course created. Assessment night is ${esc(date)}. Open the Phase 1 hub and choose "${TEST_COURSE}".</div>`;
   } catch (err) {
     $("createMsg").innerHTML = `<div class="msg err">Not created: ${esc(err.message)}${err.code === "permission-denied" ? " (permission denied: check the rules deploy)" : ""}. Use "Remove everything test" to clear any partial records.</div>`;

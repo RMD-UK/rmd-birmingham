@@ -698,13 +698,18 @@ async function allHere(n) {
   const now = londonNow();
   if (!S.editAny && now.hm > S.lateAfter) { toast("After " + S.lateAfter + " each person has to be marked one by one.", true); return; }
   try {
-    const batch = db.batch();
-    todo.forEach(c => {
-      const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-      p["w" + n] = { status: "here", time: now.hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() };
-      batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
-    });
-    await batch.commit();
+    // Small batches on purpose: for a room instructor the security rules look up
+    // each candidate's room team, and Firestore allows only 20 such lookups in
+    // one batched write. Eight at a time stays well inside that limit.
+    for (let i = 0; i < todo.length; i += 8) {
+      const batch = db.batch();
+      todo.slice(i, i + 8).forEach(c => {
+        const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        p["w" + n] = { status: "here", time: now.hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() };
+        batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
+      });
+      await batch.commit();
+    }
     toast(todo.length + " marked as here.");
   } catch (err) { toast("Not saved: " + err.message, true); }
 }
