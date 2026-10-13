@@ -224,6 +224,8 @@ details.lst .in{padding:0 14px 12px}
 .stp .sn{flex:none;width:22px;height:22px;border-radius:50%;background:#EEF1F6;color:var(--mut);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
 .stp.on{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
 .stp.on .sn{background:var(--bad);color:#fff}
+.stphead{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 0}
+.stphead b{color:var(--pur)}
 .resline{font-weight:800;padding:10px 12px;border-radius:10px;background:#EEF1F6;color:var(--mut);margin:10px 0}
 .resline.pass{background:var(--okbg);color:var(--ok)}
 .resline.refer{background:var(--warnbg);color:var(--warn)}
@@ -1172,36 +1174,40 @@ function amNamed() {
   return N.named.some(n => me.includes(normId(n)));
 }
 
-// Mark sheet. Steps are in the order of the ERC 2025 lay-rescuer BLS sequence (single rescuer);
+// Mark sheet. Steps follow the ERC / Resuscitation Council UK 2025 lay-rescuer sequence (single rescuer: safety, response, call 999 on speaker, airway and breathing check, compressions, 30:2, AED);
+// each step starts with the code used in the Google Form's Reasons for Failure section (1a, 1b, 1c, 2a);
 // a Director can edit them under Night settings (saved in config/stage1_assessment_form.markSheet).
 const COMPS = [{ k: "bls", label: "BLS + AED" }, { k: "rec", label: "First aid (recovery position)" }];
+const CODE_NAMES = { "1a": "Chest compressions / BLS", "1b": "Rescue breaths", "1c": "AED", "2a": "Recovery position" };   // same codes as the Google Form's "Reasons for Failure" section
 const DEFAULT_STEPS = {
   bls: [
-    "Checked for danger (self, casualty, others)",
-    "Checked response (shook shoulders, asked loudly)",
-    "Opened airway (head tilt, chin lift)",
-    "Checked breathing (look, listen, feel, no more than 10 seconds)",
-    "Recognised not breathing normally",
-    "Called emergency services (speaker) and sent for or asked for an AED",
-    "Compression hand position (centre of chest)",
-    "Compression depth (5-6 cm)",
-    "Compression rate (100-120 per minute)",
-    "Full recoil, minimal pauses",
-    "Rescue breaths (30:2, airway open, nose pinched, chest rise)",
-    "AED switched on and pads placed correctly",
-    "Followed AED prompts, stood clear for the shock",
-    "Restarted CPR straight after the shock or prompt"
+    "1a Checked for danger (self, casualty, bystanders)",
+    "1a Checked response (shook shoulders, asked loudly)",
+    "1a Called 999 on speaker without delay (or shouted for help) and asked for an AED",
+    "1a Opened airway (head tilt, chin lift)",
+    "1a Checked breathing (look, listen, feel; no more than 10 seconds)",
+    "1a Recognised not breathing normally (gasping, slow or noisy breaths) and started CPR",
+    "1a Compression position (heel of hand on lower half of sternum, other hand on top, arms straight)",
+    "1a Compression depth (5-6 cm)",
+    "1a Compression rate (100-120 per minute)",
+    "1a Full recoil, minimal interruptions",
+    "1b Gave 30 compressions then 2 breaths (30:2)",
+    "1b Breath technique (airway open, nose pinched, about 1 second, chest rises)",
+    "1b Pause for breaths no more than 10 seconds, compressions restarted",
+    "1c AED switched on as soon as it arrived and prompts followed",
+    "1c Pads placed correctly on bare chest",
+    "1c Nobody touching during analysis and shock",
+    "1c Shock delivered safely when advised",
+    "1c Compressions restarted immediately after the shock or no-shock prompt"
   ],
   rec: [
-    "Confirmed unresponsive but breathing normally",
-    "Arm nearest placed at right angle",
-    "Far arm across chest, back of hand against cheek",
-    "Far knee bent, foot flat",
-    "Rolled casualty towards them in one controlled movement",
-    "Airway open (head tilted back, chin lifted, hand under cheek)",
-    "Stable position (upper leg bent, cannot roll back)",
-    "Stayed or called for help, checked breathing again",
-    "Knew to restart CPR if breathing stopped"
+    "2a Confirmed unresponsive but breathing normally, and 999 called",
+    "2a Near arm at right angle, far arm across chest with back of hand against cheek",
+    "2a Far knee pulled up with foot flat on the floor",
+    "2a Rolled casualty towards them onto their side in one controlled movement",
+    "2a Upper leg adjusted (hip and knee at right angles) so position is stable",
+    "2a Head tilted back and chin lifted so airway stays open",
+    "2a Stayed with casualty and monitored breathing; knew to roll back and restart CPR if breathing stopped"
   ]
 };
 function stepsFor(k) { const m = N.form && N.form.markSheet; return m && Array.isArray(m[k]) && m[k].length ? m[k] : DEFAULT_STEPS[k]; }
@@ -1240,6 +1246,15 @@ function compsText(a) {
     const m = a.components[x.k], rs = a.reasons && a.reasons[x.k] && a.reasons[x.k].length ? " (" + a.reasons[x.k].join("; ") + ")" : "";
     return x.label + ": " + (m === "pass" ? "pass" : m === "fail" ? "not yet" + rs : "not retested");
   }).join(". ");
+}
+
+function failCodes(id) {
+  // codes (1a, 1b, 1c, 2a) of the parts failed at the latest referred attempt, as the Google Form shows next to resit names
+  const a = nattempts(id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").sort((x, y) => y - x);
+  if (!ks.length) return "";
+  const set = new Set();
+  COMPS.forEach(x => (((a[ks[0]].reasons || {})[x.k]) || []).forEach(t => { const m = /^(\d[a-z])\b/.exec(t); if (m) set.add(m[1]); }));
+  return Array.from(set).sort().join(", ");
 }
 
 function canAssessCandidate(c, att) {
@@ -1435,7 +1450,7 @@ function poolBody(pool) {
   const row = c => {
     const att = effAttempt(c), chk = canAssessCandidate(c, att), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
     const prev = nattempts(c.id)["1"];
-    const needs = att === 2 && prev && prev.components ? "Retest: " + requiredComps(c.id, att).map(compLabel).join(" + ") : (att >= 3 ? "Both parts: BLS + AED, then recovery position" : "");
+    const needs = att === 2 && prev && prev.components ? "Retest: " + requiredComps(c.id, att).map(compLabel).join(" + ") + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : (att >= 3 ? "Both parts: BLS + AED, then first aid (recovery position)" : "");
     const action = mine ? `<button type="button" class="btn sm pri" data-aopen="${esc(c.id)}">Open form</button><button type="button" class="btn sm" data-release="${esc(c.id)}">Release</button>`
       : cl ? `<span class="nchip claim">With ${esc(cl.name || "an assessor")}</span>`
       : chk.ok ? `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`
@@ -1481,7 +1496,13 @@ function openForm(id) {
   }
   const cmpHtml = COMPS.map(x => {
     if (!req.includes(x.k)) return `<div class="cmp off"><b>${esc(x.label)}</b> <span class="nchip pass">Passed at attempt 1</span></div>`;
-    const steps = stepsFor(x.k).map((t, i) => `<button type="button" class="stp" data-stp="${x.k}" data-i="${i}"><span class="sn">${i + 1}</span>${esc(t)}</button>`).join("");
+    let lastCode = "";
+    const steps = stepsFor(x.k).map((t, i) => {
+      const m = /^(\d[a-z])\s+(.*)$/.exec(t), code = m ? m[1] : "";
+      let head = "";
+      if (code && code !== lastCode) { head = `<div class="stphead"><b>${esc(code)}</b> ${esc(CODE_NAMES[code] || "")}</div>`; lastCode = code; }
+      return head + `<button type="button" class="stp" data-stp="${x.k}" data-i="${i}"><span class="sn">${i + 1}</span>${esc(m ? m[2] : t)}</button>`;
+    }).join("");
     return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b><div class="fqo" style="margin-top:8px">` +
       `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
       `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
@@ -1637,7 +1658,7 @@ function renderRetest() {
   const prow = c => {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
     const hist = Object.keys(nattempts(c.id)).sort((a, b) => a - b).map(k => { const a = nattempts(c.id)[k]; return `Attempt ${esc(k)}: ${esc(outcomeLabel(a.outcome, Number(k)))}${a.assessorName ? " (" + esc(a.assessorName) + ")" : ""}${compsText(a) ? " - " + esc(compsText(a)) : ""}`; }).join(" · ");
-    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest " + requiredComps(c.id, 2).map(compLabel).join(" + ") : "") : "Senior Faculty or extra named assessor";
+    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest " + requiredComps(c.id, 2).map(compLabel).join(" + ") + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : "") : "Senior Faculty or extra named assessor";
     return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
       `<small style="flex-basis:100%">${rule}${hist ? " · " + hist : " · no result recorded on the site yet"}</small>` +
       `<span class="pact">${cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : '<span class="nchip bad">Waiting</span>'}` +
@@ -1649,7 +1670,7 @@ function renderRetest() {
     h += `<div class="card"><h3><span class="stepno">3</span>Night settings</h3>` +
       `<div class="hint" style="margin:0 0 6px">Extra assessors for attempt 3 and above, on top of Senior Faculty. One per line: the name as it appears on their account, or their email.</div>` +
       `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc((N.named || []).join("\n"))}</textarea>` +
-      COMPS.map(x => `<div class="hint" style="margin:12px 0 4px"><b>${esc(x.label)}</b> mark sheet steps, one per line, in the order they should appear (the ERC 2025 lay-rescuer sequence is the default). Assessors tap the ones missed.</div><textarea id="steps_${x.k}" style="min-height:150px">${esc(stepsFor(x.k).join("\n"))}</textarea>`).join("") +
+      COMPS.map(x => `<div class="hint" style="margin:12px 0 4px"><b>${esc(x.label)}</b> mark sheet steps, one per line, in the order they should appear (the ERC / Resuscitation Council UK 2025 lay-rescuer sequence is the default). Start each line with its code (1a, 1b, 1c for BLS + AED; 2a for recovery position) to match the Google Form. Assessors tap the ones missed.</div><textarea id="steps_${x.k}" style="min-height:150px">${esc(stepsFor(x.k).join("\n"))}</textarea>`).join("") +
       `<div class="hint" style="margin:10px 0 4px">Google Form link (shown on the assessment form as a fallback; leave blank to hide).</div>` +
       `<input type="text" id="formUrl" placeholder="https://forms.gle/..." value="${esc(N.form.formUrl || "")}">` +
       `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveNight">Save settings</button><span class="hint" id="nightMsg"></span></div>` +
