@@ -1638,6 +1638,35 @@ function staleAttempts() {
   // candidates whose recorded results imply a higher attempt than the number saved on them
   return N.cands.filter(c => !c.absent && derivedAttempt(c.id) > (c.attempt || 1));
 }
+// Attempts overview (2026-10-13, Jon): everyone on this course who has a result
+// or is on attempt 2 or above, in one collapsed list, so the team can see at a
+// glance where each person stands. Collapsed by default.
+function attemptStatus(c) {
+  const p = passedAtKey(c.id);
+  if (p) return { cls: "pass", text: "Passed at attempt " + p };
+  if (c.absent) return { cls: "bad", text: "Not there" };
+  if (inPool(c)) return { cls: "bad", text: "In the retest pool" };
+  const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+  const k = ks.length ? Math.max.apply(null, ks) : 0;
+  if (k === 1) return { cls: "bad", text: "Referred, due a retest tonight" };
+  if (k === 2) return { cls: "", text: "Awaiting retraining (attempt 3 on a later course)" };
+  if (k === 3) return { cls: "", text: "Back to degree leads" };
+  if (k >= 4) return { cls: "bad", text: "Not passed (final)" };
+  return { cls: "", text: "Not yet assessed" };
+}
+function attemptsOverview() {
+  const list = N.cands.filter(c => effAttempt(c) >= 2 || isDoneN(c))
+    .sort((a, b) => effAttempt(b) - effAttempt(a) || String(a.name).localeCompare(String(b.name)));
+  const body = list.length
+    ? list.map(c => {
+        const st = attemptStatus(c), a = nattempts(c.id);
+        const hist = Object.keys(a).sort((x, y) => x - y).map(k => "A" + k + " " + outcomeShort(a[k].outcome, Number(k))).join(" · ");
+        return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small>${esc(c.degree || "")}</small>` +
+          `<small style="flex-basis:100%">${hist ? esc(hist) + " · " : ""}<span class="nchip ${st.cls}">${esc(st.text)}</span></small></div>`;
+      }).join("")
+    : '<div class="hint">Nobody has a result or a retest yet.</div>';
+  return `<details class="card" id="attDetails"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All attempts on this course (${list.length})</summary><div style="margin-top:8px">${body}</div></details>`;
+}
 function renderRetest() {
   if (!S.course || !S.full) return;
   const d = assessDate(), pool = poolList(), stale = staleAttempts();
@@ -1665,6 +1694,7 @@ function renderRetest() {
       `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span></span></div>`;
   };
   h += `<div class="card"><h3><span class="stepno">1</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
+  h += attemptsOverview();
   h += teamCard(af);
   if (S.isDirector) {
     h += `<div class="card"><h3><span class="stepno">3</span>Night settings</h3>` +
@@ -1676,7 +1706,9 @@ function renderRetest() {
       `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveNight">Save settings</button><span class="hint" id="nightMsg"></span></div>` +
       `<div class="hint">Saving needs a super-user account, the same as the other site settings.</div></div>`;
   }
+  const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
+  if (wasOpen && $("attDetails")) $("attDetails").open = true;
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {

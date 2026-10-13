@@ -2973,6 +2973,12 @@ async function stage1WriteFormats(fmt) {
   }
 }
 
+// Test candidates (created by admin-stage1-testcourse.html, flagged isTest:true,
+// emails always contain ".test@") must never reach the real Master sheet.
+function isStage1TestRecord(c) {
+  return !!c && (c.isTest === true || String(c.email || "").toLowerCase().includes(".test@"));
+}
+
 async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = {}) {
   const tab = encodeURIComponent(STAGE1_SHEET_TAB_Q);
   const [snap, removalsSnap, sheetData, headerData] = await Promise.all([
@@ -2986,6 +2992,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
   const siteEmails = new Set();
   snap.docs.forEach(d => {
     const c = d.data();
+    if (isStage1TestRecord(c)) return; // never mirror test candidates to the real sheet
     const e = String(c.email || "").trim().toLowerCase();
     if (!e || siteEmails.has(e)) return;
     siteEmails.add(e);
@@ -3132,6 +3139,7 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
     const before = event.data?.before?.exists ? event.data.before.data() : null;
     const after = event.data?.after?.exists ? event.data.after.data() : null;
     const emailOf = c => String(c?.email || "").trim().toLowerCase();
+    if (isStage1TestRecord(before) || isStage1TestRecord(after)) return; // test candidates never touch the real sheet
 
     try {
       // Removed from the website: record it durably, then try to strike the
