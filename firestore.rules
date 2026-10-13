@@ -128,6 +128,20 @@ service cloud.firestore {
       return isSignedIn() && myFacultyRosterGroup() == "senior";
     }
 
+    // 2026-10-13 (Jon): people who run the Phase 1 assessment night under a course
+    // name rather than an Instructor Weekend role (Senior Instructors, for example),
+    // plus the extra named assessors for later retests. Both are email lists kept in
+    // config (stage1_assessors.emails and stage1_named_assessors.emails), edited from
+    // Night settings in phase1.html by a super-user. Matched on sign-in email only.
+    function onNightList(docName) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/config/$(docName)) &&
+        request.auth.token.email.lower() in get(/databases/$(database)/documents/config/$(docName)).data.get("emails", []);
+    }
+    function isNightTeam() {
+      return onNightList("stage1_assessors") || onNightList("stage1_named_assessors");
+    }
+
     // Added 2026-10-03 for OPIS access (opis-rating.html): a Stage 1
     // evening-course instructor who isn't Director/Student Faculty/Senior
     // Faculty can still rate candidates they actually teach, if their uid
@@ -799,14 +813,15 @@ service cloud.firestore {
     // stage1_candidates id): {course, candidateName, notThere:{flag,by,byName,at}|null,
     // claim:{uid,name,at}|null (assessor has taken on a retest), attempts:{"1":{outcome,
     // assessorUid,assessorName,room,slot,comment,answers,at}, "2":{...}}, updatedAt}.
-    // Read and write: Director, Student / Senior Faculty, and people whose role is
-    // faculty or assessor-faculty (the people who run the assessment evening).
+    // Read and write: Director, Student / Senior Faculty, people whose role is
+    // faculty or assessor-faculty, and anyone on the assessment night team or named
+    // extra assessor emails (isNightTeam, 2026-10-13) - the people who run the evening.
     // Instructors on room teams cannot read results. Delete: Director only.
     // Rules that depend on who assessed whom (attempt 2 needs a different assessor,
     // attempt 3+ from the named list) are enforced in the page, not here.
     match /stage1_assessments/{candidateId} {
-      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty();
-      allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty())
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam();
+      allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam())
         && request.resource.data.keys().hasOnly(['course', 'candidateName', 'notThere', 'claim', 'attempts', 'updatedAt']);
       allow delete: if isDirector();
     }
