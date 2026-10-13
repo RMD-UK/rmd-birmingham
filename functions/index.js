@@ -233,6 +233,65 @@ exports.getRosterForMembers = onCall({ region: "us-central1" }, async (request) 
   };
 });
 
+// getAssessmentNight (2026-10-13, Jon: runner and assessor views for assessment night)
+// Read-only list for the people who run the assessment evening: Directors, Student and
+// Senior Faculty, and people whose role is faculty or assessor-faculty. Returns only what
+// the night needs for ONE course: name, programme, RAP, assessment room and slot, attempt
+// number. No email, date of birth or student ID. Also returns the named-assessor list
+// (attempt 3 and above) and the assessment form settings from config.
+exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const course = String((request.data && request.data.course) || "").trim();
+  if (!course) throw new HttpsError("invalid-argument", "Course is required.");
+
+  let ok = await callerIsDirector(auth);
+  if (!ok) ok = !!(await callerFacultyRosterGroup(auth));
+  if (!ok) {
+    try {
+      const me = await db.collection("people").doc(auth.uid).get();
+      const role = me.exists ? String(me.data().role || "") : "";
+      ok = role === "faculty" || role === "assessor-faculty";
+    } catch (e) { ok = false; }
+  }
+  if (!ok) throw new HttpsError("permission-denied", "Assessment night access only.");
+
+  const [candSnap, namedSnap, formSnap, datesSnap, roomsSnap] = await Promise.all([
+    db.collection("stage1_candidates").where("course", "==", course).get(),
+    db.collection("config").doc("stage1_named_assessors").get(),
+    db.collection("config").doc("stage1_assessment_form").get(),
+    db.collection("config").doc("stage1_course_dates").get(),
+    db.collection("config").doc("stage1_assessment_rooms").get()
+  ]);
+
+  const candidates = candSnap.docs.map(d => {
+    const c = d.data();
+    const attempt = (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1)
+      ? Math.floor(c.assessmentAttempt)
+      : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1);
+    return {
+      id: d.id,
+      name: c.name || "",
+      degree: c.degree || "",
+      rap: c.rap === true,
+      attempt,
+      absent: c.assessmentAbsent === true,
+      assessmentRoom: c.assessmentRoom || null,
+      assessmentSlot: c.assessmentSlot || null
+    };
+  });
+  const dates = (datesSnap.exists && datesSnap.data().courses) || [];
+  const found = dates.find(x => x && x.name === course);
+  return {
+    course,
+    date: found ? found.date : null,
+    candidates,
+    rooms: (roomsSnap.exists && roomsSnap.data().rooms) || [],
+    namedAssessors: (namedSnap.exists && namedSnap.data().names) || [],
+    form: formSnap.exists ? formSnap.data() : {}
+  };
+});
+
 // swapUidInList: replaces oldId with newId in a list of uids, keeping order and dropping duplicates.
 function swapUidInList(list, oldId, newId) {
   const out = [];
@@ -3804,6 +3863,38 @@ function buildCommsSummaryHtml(text) {
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;">${body}</div>`;
 }
 
+// 2026-10-13, Jon: the copy that goes to the RMD address should be HTML with a clear
+// structure. Same facts as the plain-text summary, laid out as: status banner, a small
+// facts table (group, sent by, counts), the subject, the message exactly as sent, the
+// addresses it went to (paste-ready, semicolon separated), and any that failed.
+function buildCommsSummaryHtmlStructured(headerLines, { subject, message, sentTo, failedEmails }) {
+  const esc = escapeHtmlForEmail;
+  const facts = [], notes = [];
+  (headerLines || []).forEach(l => {
+    const m = /^(Group|Sent by|Recipients):\s*(.*)$/.exec(l || "");
+    if (m) facts.push([m[1], m[2]]); else if (l) notes.push(l);
+  });
+  const lab = "font-size:11px;font-weight:bold;letter-spacing:0.6px;text-transform:uppercase;color:#6b7c93;margin:18px 0 6px;";
+  const allDone = notes.some(n => /have now been sent/i.test(n));
+  const banner = notes.length
+    ? `<div style="background:${allDone ? "#e3f3e8" : "#fff1d6"};color:${allDone ? "#1e6b3a" : "#7a4a00"};border-radius:8px;padding:10px 14px;font-weight:bold;margin:0 0 14px;">${notes.map(n => esc(n)).join("<br>")}</div>`
+    : "";
+  const factRows = facts.map(([k, v]) => `<tr><td style="padding:5px 12px 5px 0;color:#6b7c93;white-space:nowrap;vertical-align:top;">${esc(k)}</td><td style="padding:5px 0;font-weight:bold;">${linkifyForEmail(esc(v))}</td></tr>`).join("");
+  const sent = (sentTo || []), failed = (failedEmails || []);
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1a2233;max-width:680px;">` +
+    `<div style="background:#44247c;color:#fff;border-radius:8px 8px 0 0;padding:12px 16px;font-size:16px;font-weight:bold;">RMD Comms copy</div>` +
+    `<div style="border:1px solid #e3e8ef;border-top:0;border-radius:0 0 8px 8px;padding:16px;">` +
+    banner +
+    (factRows ? `<table style="border-collapse:collapse;font-size:14px;">${factRows}</table>` : "") +
+    `<div style="${lab}">Subject</div><div style="font-weight:bold;font-size:15px;">${esc(subject)}</div>` +
+    `<div style="${lab}">Message as sent</div>` +
+    `<div style="border-left:4px solid #44247c;background:#f8f9fc;padding:10px 14px;white-space:pre-wrap;word-break:break-word;">${linkifyForEmail(esc(message))}</div>` +
+    `<div style="${lab}">Sent to (${sent.length} address${sent.length === 1 ? "" : "es"}) - paste into a To: field</div>` +
+    `<div style="font-family:Menlo,Consolas,monospace;font-size:12px;background:#f8f9fc;border:1px solid #e3e8ef;border-radius:6px;padding:10px;word-break:break-all;">${sent.length ? esc(sent.join("; ")) : "(none yet)"}</div>` +
+    (failed.length ? `<div style="${lab}color:#b3261e;">Failed (${failed.length})</div><div style="font-family:Menlo,Consolas,monospace;font-size:12px;background:#fcece9;border:1px solid #f1c4bd;border-radius:6px;padding:10px;word-break:break-all;color:#8c1c13;">${esc(failed.join("; "))}</div>` : "") +
+    `</div></div>`;
+}
+
 // Builds the paste-ready admin summary copy text shared by sendBulkComms
 // and processCommsQueueDaily's completion step — same shape either way,
 // just different framing lines at the top.
@@ -3912,7 +4003,7 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
       replyTo: REPLY_TO,
       subject: `[RMD Comms copy] ${subject} — ${sent} sent${deferred.length ? `, ${deferred.length} queued` : ""}${groupLabel ? ` (${groupLabel})` : ""}`,
       text: buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }),
-      html: buildCommsSummaryHtml(buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }))
+      html: buildCommsSummaryHtmlStructured(headerLines, { subject, message, sentTo, failedEmails })
     });
   } catch (err) {
     console.error("sendBulkComms: summary copy to COMMS_BCC failed", err.message);
@@ -3998,7 +4089,7 @@ exports.processCommsQueueDaily = onSchedule(
             replyTo: REPLY_TO,
             subject: `[RMD Comms copy] ${job.subject} — staggered send complete, ${cumulativeSentTo.length} sent`,
             text: buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed }),
-            html: buildCommsSummaryHtml(buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed }))
+            html: buildCommsSummaryHtmlStructured(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed })
           });
         } catch (err) {
           console.error("processCommsQueueDaily: completion summary failed", err.message);

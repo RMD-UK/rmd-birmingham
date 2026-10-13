@@ -784,6 +784,33 @@ service cloud.firestore {
       allow delete: if isSignedIn() && (isDirector() || docId.matches('.*__' + request.auth.uid));
     }
 
+    // ── Bulk comms history (2026-10-13, Jon) ────────────────────────────────
+    // sendBulkComms and processCommsQueueDaily write comms_log with admin
+    // rights. admin-comms.html now shows the history, so the people who can
+    // send (Director, Student / Senior Faculty) can read it. Nobody can write
+    // from the browser, so the log cannot be edited or faked.
+    match /comms_log/{docId} {
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow write: if false;
+    }
+
+    // ── Phase 1 assessment night results (2026-10-13, Jon) ──────────────────
+    // phase1.html runner / assessor views. One doc per candidate (doc id = the
+    // stage1_candidates id): {course, candidateName, notThere:{flag,by,byName,at}|null,
+    // claim:{uid,name,at}|null (assessor has taken on a retest), attempts:{"1":{outcome,
+    // assessorUid,assessorName,room,slot,comment,answers,at}, "2":{...}}, updatedAt}.
+    // Read and write: Director, Student / Senior Faculty, and people whose role is
+    // faculty or assessor-faculty (the people who run the assessment evening).
+    // Instructors on room teams cannot read results. Delete: Director only.
+    // Rules that depend on who assessed whom (attempt 2 needs a different assessor,
+    // attempt 3+ from the named list) are enforced in the page, not here.
+    match /stage1_assessments/{candidateId} {
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty();
+      allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty())
+        && request.resource.data.keys().hasOnly(['course', 'candidateName', 'notThere', 'claim', 'attempts', 'updatedAt']);
+      allow delete: if isDirector();
+    }
+
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────
     // One doc per Stage 1 evening course, holding that course's per-room
     // instructor teams (candidate→room assignment lives on stage1_candidates

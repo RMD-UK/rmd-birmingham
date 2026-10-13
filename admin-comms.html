@@ -88,6 +88,19 @@
       </div>
       <div class="selected-summary" id="selectedSummary"></div>
       <p class="hint">Tick as many as you need. Recipients from every ticked group are combined and de-duplicated by email, so nobody gets it twice even if they're in more than one group you pick.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 8px;">
+        <button class="btn-secondary" type="button" onclick="showAddresses()">Show addresses to copy</button>
+      </div>
+      <div id="addrBox" style="display:none;margin-bottom:12px;border:2px solid #ccd6dd;border-radius:8px;padding:12px;">
+        <div class="recipient-count" id="addrCount"></div>
+        <textarea id="addrText" readonly style="min-height:90px;font-family:monospace;font-size:12px;"></textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="btn-secondary" type="button" onclick="copyAddr(false)">Copy addresses</button>
+          <button class="btn-secondary" type="button" onclick="copyAddr(true)">Copy names and addresses</button>
+          <span class="hint" id="addrMsg" style="margin:0;"></span>
+        </div>
+        <p class="hint" style="margin-top:8px;">Semicolon separated, so it pastes straight into an Outlook To: or Bcc: field. Copying does not send anything and does not appear in the sent history.</p>
+      </div>
       <p class="hint">Sends from <strong>rmdbirmingham@rmd.uk.com</strong> (replies go to the monitored RMD Birmingham inbox), same address every automated reminder on this site already uses.</p>
     </div>
   </div>
@@ -117,6 +130,15 @@
       <button class="btn-danger" id="sendBtn" onclick="sendNow()" disabled>✉ Send now</button>
 
       <div id="log" style="margin-top:14px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Sent history</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">The last 40 sends from this tool, newest first. Open one to see the message, who it went to, and anything that failed or is still queued.</p>
+      <button class="btn-secondary" type="button" onclick="loadHistory()" id="histBtn">Refresh history</button>
+      <div id="histList" style="margin-top:12px;"></div>
     </div>
   </div>
 
@@ -523,7 +545,64 @@ async function sendNow() {
   }
 }
 
-requireDirectorOrFaculty("timetable.html").then(() => loadGroups());
+// ── Copy addresses instead of sending (2026-10-13, Jon) ──────────────────────
+let addrPeople = [];
+function showAddresses() {
+  const selected = getSelectedGroups();
+  if (!selected.length) { alert("Choose at least one group first."); return; }
+  addrPeople = dedupe(selected.flatMap(g => g.people)).filter(p => p.email);
+  document.getElementById("addrBox").style.display = "block";
+  document.getElementById("addrCount").textContent = addrPeople.length
+    ? `${addrPeople.length} address${addrPeople.length === 1 ? "" : "es"} (de-duplicated) from ${selected.length} group${selected.length === 1 ? "" : "s"}`
+    : "Nobody in the ticked groups has an email on file.";
+  document.getElementById("addrText").value = addrPeople.map(p => p.email).join("; ");
+  document.getElementById("addrMsg").textContent = "";
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+  const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  ta.remove(); return ok;
+}
+async function copyAddr(withNames) {
+  if (!addrPeople.length) return;
+  const text = addrPeople.map(p => withNames && p.name ? `${p.name} <${p.email}>` : p.email).join("; ");
+  const ok = await copyText(text);
+  document.getElementById("addrMsg").textContent = ok ? `Copied ${addrPeople.length}.` : "Could not copy. Select the box and copy it by hand.";
+}
+
+// ── Sent history (2026-10-13, Jon: comms_log was written but nothing showed it) ──
+function londonStamp(ts) {
+  if (!ts || !ts.toDate) return "";
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(ts.toDate()).replace(",", "");
+}
+async function loadHistory() {
+  const box = document.getElementById("histList");
+  box.innerHTML = '<div class="hint">Loading...</div>';
+  try {
+    const snap = await db.collection("comms_log").orderBy("sentAt", "desc").limit(40).get();
+    if (snap.empty) { box.innerHTML = '<div class="hint">Nothing has been sent from this tool yet.</div>'; return; }
+    box.innerHTML = snap.docs.map(d => {
+      const x = d.data(), sentTo = x.sentTo || [], failed = x.failedEmails || [];
+      const counts = `${x.sent != null ? x.sent : sentTo.length} sent` + (failed.length ? `, <span style="color:#b3261e;font-weight:700;">${failed.length} failed</span>` : "") + (x.queuedCount ? `, ${x.queuedCount} queued` : "");
+      const tag = x.queueBatch ? ` <span style="background:#eef1f6;border-radius:6px;padding:1px 7px;font-size:11px;font-weight:700;">${x.queueCompleted ? "final queued batch" : "queued batch"}</span>` : "";
+      return `<details style="border:1px solid #e8edf2;border-radius:8px;margin-bottom:8px;">
+        <summary style="padding:9px 12px;cursor:pointer;font-size:13px;"><b>${esc(londonStamp(x.sentAt))}</b> · ${esc(x.groupLabel || "(no group)")} · ${esc(x.subject || "")}${tag}<br><span style="color:#6b7c93;">${counts} · by ${esc(x.sentByEmail || "unknown")}</span></summary>
+        <div style="padding:4px 12px 12px;">
+          <label class="field-label">Message</label>
+          <div style="white-space:pre-wrap;background:#f8fafc;border-left:4px solid #44247c;padding:10px 12px;font-size:13px;margin-bottom:10px;">${esc(x.message || "")}</div>
+          <label class="field-label">Sent to (${sentTo.length})</label>
+          <textarea readonly style="min-height:70px;font-family:monospace;font-size:12px;">${esc(sentTo.join("; "))}</textarea>
+          ${failed.length ? `<label class="field-label" style="color:#b3261e;">Failed (${failed.length})</label><textarea readonly style="min-height:50px;font-family:monospace;font-size:12px;">${esc(failed.join("; "))}</textarea>` : ""}
+        </div></details>`;
+    }).join("");
+  } catch (err) {
+    box.innerHTML = `<div class="log-line err">Could not load the history: ${esc(err.message)}${/permission/i.test(err.message || "") ? " (the new rules may not be deployed yet)" : ""}</div>`;
+  }
+}
+
+requireDirectorOrFaculty("timetable.html").then(() => { loadGroups(); loadHistory(); });
 </script>
 </body>
 </html>
