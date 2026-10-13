@@ -217,6 +217,18 @@ details.lst .in{padding:0 14px 12px}
 .fqb.out.pass.on{background:var(--ok);border-color:var(--ok);color:#fff}
 .fqb.out.refer.on{background:var(--org);border-color:var(--org);color:#fff}
 .fqb:disabled{opacity:.4}
+.cmp{border:2px solid var(--line);border-radius:14px;padding:12px 14px;margin:12px 0}
+.cmp.off{background:#F6F8FB;border-style:dashed;color:var(--mut)}
+.stps{display:flex;flex-direction:column;gap:6px}
+.stp{display:flex;gap:10px;align-items:center;text-align:left;border:2px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font-weight:600;font-size:14px;color:var(--ink)}
+.stp .sn{flex:none;width:22px;height:22px;border-radius:50%;background:#EEF1F6;color:var(--mut);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.stp.on{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
+.stp.on .sn{background:var(--bad);color:#fff}
+.resline{font-weight:800;padding:10px 12px;border-radius:10px;background:#EEF1F6;color:var(--mut);margin:10px 0}
+.resline.pass{background:var(--okbg);color:var(--ok)}
+.resline.refer{background:var(--warnbg);color:var(--warn)}
+.tgroup{margin-top:12px}
+.tghead{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .fullscr{position:fixed;inset:0;background:#fff;z-index:70;display:flex;flex-direction:column}
 .fullbar{display:flex;gap:14px;align-items:center;padding:12px 18px;background:var(--pur);color:#fff}
 .fullbar b{font-size:26px;font-weight:800}
@@ -353,6 +365,7 @@ auth.onAuthStateChanged(async user => {
     S.isDirector = S.role === ROLES.DIRECTOR;
     const stu = await isStudentFaculty(user.email || "").catch(() => false);
     const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+    S.sen = sen; S.stu = stu;
     S.full = S.isDirector || stu || sen;
     S.night = S.full || S.role === "faculty" || S.role === "assessor-faculty";   // can use the assessment night views
     S.myName = user.displayName || (user.email || "").split("@")[0];
@@ -734,21 +747,24 @@ function parseBackfill(text) {
     byName.set(k, byName.has(k) ? "dup" : c);
   });
   const matched = new Map(), unmatched = [], noStatus = [], dups = [], conflicts = [];
+  let weekCol = -1;   // when the pasted header row has "Week 1" / "Week 2" columns, read only the chosen week's column
   String(text || "").split(/\r?\n/).forEach(line => {
     if (!line.trim()) return;
     const cells = line.split(line.includes("\t") ? "\t" : ",").map(x => x.trim());
-    if (cells.some(x => /^(surname|last name|first name|email|e-mail|name|status|room)$/i.test(x)) && !cells.some(statusToken)) return; // header row
+    const wk = cells.findIndex(x => new RegExp("^week\\s*" + bf.week + "\\b", "i").test(x));
+    if (wk >= 0 && !cells.some(statusToken)) { weekCol = wk; return; }
+    if (cells.some(x => /^(surname|last name|first name|email|student email|e-mail|name|status|room|cm room\W*)$/i.test(x) || /^week\s*\d/i.test(x)) && !cells.some(statusToken)) return; // header row
     let cand = null, ambiguous = false;
     const em = cells.find(x => /@/.test(x));
     if (em) cand = byEmail.get(em.toLowerCase()) || null;
     if (!cand) {
-      const textCells = cells.filter(x => x && !/@/.test(x) && !statusToken(x));
+      const textCells = cells.filter(x => x && !/@/.test(x) && !statusToken(x) && !/^(cm|room)\s*\d+[a-z]?$/i.test(x) && !/^n\/?a$/i.test(x));
       const tries = [];
       if (textCells.length >= 2) { tries.push(textCells[0] + " " + textCells[1]); }
       textCells.forEach(x => tries.push(x));
       for (const t of tries) { const hit = byName.get(normName(t)); if (hit === "dup") ambiguous = true; else if (hit) { cand = hit; break; } }
     }
-    const st = cells.map(statusToken).filter(Boolean).pop() || null;
+    const st = weekCol >= 0 ? statusToken(cells[weekCol]) : (cells.map(statusToken).filter(Boolean).pop() || null);
     if (!cand) { (ambiguous ? dups : unmatched).push(line); return; }
     if (!st) { noStatus.push(cand.name); return; }
     if (matched.has(cand.id) && matched.get(cand.id).status !== st) conflicts.push(cand.name);
@@ -1118,13 +1134,21 @@ document.addEventListener("DOMContentLoaded", () => { const s = document.getElem
 //   {course, candidateName, notThere:{flag,by,byName,at}|null,
 //    claim:{uid,name,at}|null, attempts:{"1":{outcome,assessorUid,assessorName,
 //    room,slot,comment,answers,at}, "2":{...}}, updatedAt}
-// Attempt number: the number saved on the candidate, or one more than the
-// highest attempt that has a "refer" result, whichever is higher. Referring
-// someone puts them in the retest pool; they are never given a slot automatically.
+// Attempt number: the number saved on the candidate, or 2 when attempt 1 was
+// referred tonight, whichever is higher. Only an attempt 1 referral creates a
+// same-night retest (the Retest pool); they are never given a slot automatically.
+// Each attempt records two parts separately - BLS + AED and recovery position -
+// plus the reasons for any part not passed. Overall Pass needs every part tested
+// at that attempt to pass. Outcomes by attempt (Course Director, Oct 2026):
+//   1: Pass / Refer for retest (same evening)
+//   2: Pass / Refer to attempt 3 (after retraining on a later course)
+//   3: Pass / Refer back to degree leads
+//   4: Pass / Not passed, refer back to degree leads and inform them (final)
+// Attempts 2+ never create a same-night attempt 3: those people are listed for the team.
 // Rules enforced here (not in the database rules):
-//   - attempt 2 must be assessed by someone other than the attempt 1 assessor
-//   - attempt 3 and above only by someone on the named assessor list
-// The outcome options below are placeholders until the Course Director confirms them.
+//   - attempt 2 must be assessed by Student Faculty or Senior Faculty (or an extra named assessor),
+//     and by someone other than the attempt 1 assessor
+//   - attempt 3 and above only by Senior Faculty or an extra named assessor
 // ════════════════════════════════════════════════════════════════════════════
 const NIGHT_VIEWS = ["retest", "runner", "assessor"];
 const N = {
@@ -1134,14 +1158,11 @@ const N = {
 
 function nres(id) { return N.results[id] || {}; }
 function nattempts(id) { return nres(id).attempts || {}; }
-function derivedAttempt(id) {
-  const a = nattempts(id); let m = 0;
-  Object.keys(a).forEach(k => { if (a[k] && a[k].outcome === "refer") m = Math.max(m, Number(k)); });
-  return m ? m + 1 : 1;
-}
+function derivedAttempt(id) { const a = nattempts(id)["1"]; return a && a.outcome === "refer" ? 2 : 1; }
 function effAttempt(c) { return Math.max(c.attempt || 1, derivedAttempt(c.id)); }
 function passedAtKey(id) { const a = nattempts(id); return Object.keys(a).find(k => a[k] && a[k].outcome === "pass") || null; }
-function inPool(c) { return !c.absent && effAttempt(c) >= 2 && !passedAtKey(c.id); }
+function recordedAt(id, att) { return nattempts(id)[String(att)] || null; }
+function inPool(c) { if (c.absent || passedAtKey(c.id)) return false; const e = effAttempt(c); return e >= 2 && !recordedAt(c.id, e); }
 function isDoneN(c) { return Object.keys(nattempts(c.id)).length > 0; }
 function formAttemptOf(c) { const p = passedAtKey(c.id); return p ? Number(p) : effAttempt(c); }
 function firstNameOf(c) { return String(c.name || "").trim().split(/\s+/)[0] || "this candidate"; }
@@ -1150,13 +1171,76 @@ function amNamed() {
   const me = [normId(S.myName), normId(S.user && S.user.email)].filter(Boolean);
   return N.named.some(n => me.includes(normId(n)));
 }
-function outcomesFor(att) {
-  return [
-    { v: "pass", label: "Pass", cls: "pass" },
-    { v: "refer", label: att === 1 ? "Refer for retest" : att === 2 ? "Refer again (named assessor next)" : "Refer again (named assessor)", cls: "refer" }
-  ];
+
+// Mark sheet. Steps are in the order of the ERC 2025 lay-rescuer BLS sequence (single rescuer);
+// a Director can edit them under Night settings (saved in config/stage1_assessment_form.markSheet).
+const COMPS = [{ k: "bls", label: "BLS + AED" }, { k: "rec", label: "First aid (recovery position)" }];
+const DEFAULT_STEPS = {
+  bls: [
+    "Checked for danger (self, casualty, others)",
+    "Checked response (shook shoulders, asked loudly)",
+    "Opened airway (head tilt, chin lift)",
+    "Checked breathing (look, listen, feel, no more than 10 seconds)",
+    "Recognised not breathing normally",
+    "Called emergency services (speaker) and sent for or asked for an AED",
+    "Compression hand position (centre of chest)",
+    "Compression depth (5-6 cm)",
+    "Compression rate (100-120 per minute)",
+    "Full recoil, minimal pauses",
+    "Rescue breaths (30:2, airway open, nose pinched, chest rise)",
+    "AED switched on and pads placed correctly",
+    "Followed AED prompts, stood clear for the shock",
+    "Restarted CPR straight after the shock or prompt"
+  ],
+  rec: [
+    "Confirmed unresponsive but breathing normally",
+    "Arm nearest placed at right angle",
+    "Far arm across chest, back of hand against cheek",
+    "Far knee bent, foot flat",
+    "Rolled casualty towards them in one controlled movement",
+    "Airway open (head tilted back, chin lifted, hand under cheek)",
+    "Stable position (upper leg bent, cannot roll back)",
+    "Stayed or called for help, checked breathing again",
+    "Knew to restart CPR if breathing stopped"
+  ]
+};
+function stepsFor(k) { const m = N.form && N.form.markSheet; return m && Array.isArray(m[k]) && m[k].length ? m[k] : DEFAULT_STEPS[k]; }
+function compLabel(k) { return (COMPS.find(x => x.k === k) || {}).label || k; }
+function requiredComps(id, att) {
+  const all = COMPS.map(x => x.k);
+  if (att !== 2) return all;
+  const p1 = nattempts(id)["1"];
+  if (!p1 || !p1.components) return all;
+  const need = all.filter(k => p1.components[k] !== "pass");
+  return need.length ? need : all;
 }
-function outcomeLabel(o, att) { const x = outcomesFor(att).find(y => y.v === o); return x ? x.label : (o || ""); }
+function outcomeFor(marks, req) {
+  // marks: {bls:"pass"|"fail"|"skip", rec:...}; returns "pass" | "refer" | null (incomplete)
+  if (req.some(k => !marks[k])) return null;
+  if (req.some(k => marks[k] === "fail")) return "refer";
+  return req.some(k => marks[k] === "pass") ? "pass" : null;
+}
+function outcomeLabel(o, att) {
+  if (o === "pass") return "Pass";
+  if (att <= 1) return "Refer for retest (same evening)";
+  if (att === 2) return "Refer to attempt 3 (after retraining on a later course)";
+  if (att === 3) return "Refer back to degree leads";
+  return "Not passed: refer back to degree leads and inform them (final attempt)";
+}
+function outcomeShort(o, att) {
+  if (o === "pass") return "Pass";
+  if (att <= 1) return "Retest tonight";
+  if (att === 2) return "Retraining";
+  if (att === 3) return "To degree leads";
+  return "Not passed";
+}
+function compsText(a) {
+  if (!a || !a.components) return "";
+  return COMPS.filter(x => a.components[x.k]).map(x => {
+    const m = a.components[x.k], rs = a.reasons && a.reasons[x.k] && a.reasons[x.k].length ? " (" + a.reasons[x.k].join("; ") + ")" : "";
+    return x.label + ": " + (m === "pass" ? "pass" : m === "fail" ? "not yet" + rs : "not retested");
+  }).join(". ");
+}
 
 function canAssessCandidate(c, att) {
   const mine = S.user.uid;
@@ -1166,10 +1250,8 @@ function canAssessCandidate(c, att) {
     const p = nattempts(c.id)["1"];
     if (p && p.assessorUid && p.assessorUid === mine) return { ok: false, why: "You assessed " + firstNameOf(c) + " at attempt 1. A different assessor must do the retest." };
   }
-  if (att >= 3) {
-    if (!N.named.length) return { ok: false, why: "Attempt " + att + " must be assessed by a named assessor, and the named list is empty. A Director can add names under Night settings (Retest pool page)." };
-    if (!amNamed()) return { ok: false, why: "Attempt " + att + " and above must be assessed by someone on the named assessor list. You are not on it." };
-  }
+  if (att === 2 && !(S.sen || S.stu || amNamed())) return { ok: false, why: "The second sit is assessed by Student Faculty or Senior Faculty (or a named extra assessor). You are not on those lists." };
+  if (att >= 3 && !(S.sen || amNamed())) return { ok: false, why: "Attempt " + att + " is assessed by Senior Faculty or the extra named assessors. You are on neither list." };
   return { ok: true };
 }
 
@@ -1237,7 +1319,7 @@ function stateChips(c) {
   const keys = Object.keys(a).sort((x, y) => Number(x) - Number(y));
   keys.forEach(k => {
     const o = a[k].outcome;
-    out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${o === "pass" ? "Pass" : "Referred"}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
+    out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${esc(outcomeShort(o, Number(k)))}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
   });
   if (r.notThere && r.notThere.flag && !isDoneN(c)) out.push('<span class="nchip bad">Not there</span>');
   if (r.claim && r.claim.name) out.push(`<span class="nchip claim">With ${esc(r.claim.name)}</span>`);
@@ -1326,7 +1408,7 @@ function renderAssessor() {
   $("msgs").innerHTML = nightBanner();
   $("plain").innerHTML = '<span class="lbl">Assessor view</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Pick your room, then tap a candidate to open the assessment form. ` +
-    `Candidates referred tonight go to the <b>Retest pool</b>${pool.length ? ` (${pool.length} now)` : ""}, where an assessor can take them on.`;
+    `Anyone referred at attempt 1 goes straight to the <b>Retest pool</b>${pool.length ? ` (${pool.length} now)` : ""}, where an assessor can take them on the same evening.`;
   const chips = rooms.map(r => {
     const l = by[r], dn = l.filter(isDoneN).length;
     return `<button type="button" class="rchip${N.room === r ? " on" : ""}" data-aroom="${esc(r)}"><b>${esc(r)}</b><small>${dn}/${l.length} done</small></button>`;
@@ -1349,17 +1431,18 @@ function roomBody(room, list) {
     (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
 }
 function poolBody(pool) {
-  if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody is waiting for a retest. People appear here as soon as they are referred, or when their attempt number is 2 or more.</div>';
+  if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody is waiting for a retest. People appear here as soon as they are referred at attempt 1, or when their attempt number is 2 or more.</div>';
   const row = c => {
     const att = effAttempt(c), chk = canAssessCandidate(c, att), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
     const prev = nattempts(c.id)["1"];
+    const needs = att === 2 && prev && prev.components ? "Retest: " + requiredComps(c.id, att).map(compLabel).join(" + ") : (att >= 3 ? "Both parts: BLS + AED, then recovery position" : "");
     const action = mine ? `<button type="button" class="btn sm pri" data-aopen="${esc(c.id)}">Open form</button><button type="button" class="btn sm" data-release="${esc(c.id)}">Release</button>`
       : cl ? `<span class="nchip claim">With ${esc(cl.name || "an assessor")}</span>`
       : chk.ok ? `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`
       : `<span class="why">${esc(chk.why)}</span>`;
-    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
+    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
   };
-  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2 needs a different assessor from attempt 1. Attempt 3 and above needs someone on the named assessor list.</div>` + pool.map(row).join("");
+  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1. Attempt 3 and above is Senior Faculty or the extra named assessors.</div>` + pool.map(row).join("");
 }
 async function claimCand(id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
@@ -1384,10 +1467,27 @@ function openForm(id) {
   const att = formAttemptOf(c), chk = canAssessCandidate(c, att);
   const existing = nattempts(id)[att] || null;
   const prevKeys = Object.keys(nattempts(id)).filter(k => Number(k) !== att).sort((a, b) => a - b);
+  const req = requiredComps(id, att);
+  const p1 = nattempts(id)["1"];
+  const noHistory = att === 2 && !(p1 && p1.components);    // attempt 1 was on an earlier course: let the assessor leave a part out
   const qs = Array.isArray(N.form.questions) ? N.form.questions : [];
   const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
   N.formOpen = true;
-  const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
+  const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
+  const state = { marks: {}, reasons: { bls: new Set(), rec: new Set() }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
+  if (existing && existing.components) {
+    req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
+    COMPS.forEach(x => ((existing.reasons || {})[x.k] || []).forEach(r => state.reasons[x.k].add(r)));
+  }
+  const cmpHtml = COMPS.map(x => {
+    if (!req.includes(x.k)) return `<div class="cmp off"><b>${esc(x.label)}</b> <span class="nchip pass">Passed at attempt 1</span></div>`;
+    const steps = stepsFor(x.k).map((t, i) => `<button type="button" class="stp" data-stp="${x.k}" data-i="${i}"><span class="sn">${i + 1}</span>${esc(t)}</button>`).join("");
+    return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b><div class="fqo" style="margin-top:8px">` +
+      `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
+      `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
+      (noHistory ? `<button type="button" class="fqb" data-mk="${x.k}" data-m="skip"${chk.ok ? "" : " disabled"}>Not retested</button>` : "") +
+      `</div><div class="why2 hidden" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Tap what was missed or done wrongly, in the order of the sequence:</div><div class="stps">${steps}</div></div></div>`;
+  }).join("");
   const qHtml = qs.map(q => {
     const val = existing && existing.answers ? existing.answers[q.id] : "";
     if (q.type === "choice" || q.type === "yesno") {
@@ -1398,34 +1498,53 @@ function openForm(id) {
   }).join("");
   $("overlay").innerHTML = `<div class="modalbg" id="fbg"><div class="modal" role="dialog" aria-modal="true">` +
     `<h3>${esc(c.name)} ${c.rap ? RAPSVG : ""} ${attBadge(att)}</h3><div class="sub">${esc(S.course)} · ${esc(c.degree || "")}${c.assessmentRoom ? " · " + esc(c.assessmentRoom) + " at " + esc(c.assessmentSlot) : ""} · attempt ${att}</div>` +
+    `<div class="hint" style="margin:0 0 4px">Single-rescuer scenario. Assess BLS + AED first, then the recovery position.${att === 2 && req.length < COMPS.length ? " This is a retest of the part not passed at attempt 1." : ""}</div>` +
     hist +
     (chk.ok ? "" : `<div class="msg err">${esc(chk.why)}</div>`) +
     (existing ? `<div class="msg warn">Already recorded: ${esc(outcomeLabel(existing.outcome, att))}${existing.assessorName ? " by " + esc(existing.assessorName) : ""}. Saving again will amend it.</div>` : "") +
-    `<div class="fq"><label>Outcome</label><div class="fqo" id="fOut">${outcomesFor(att).map(o => `<button type="button" class="fqb out ${o.cls}${existing && existing.outcome === o.v ? " on" : ""}" data-out="${o.v}"${chk.ok ? "" : " disabled"}>${esc(o.label)}</button>`).join("")}</div></div>` +
-    qHtml +
-    `<div class="fq"><label>Comments</label><textarea id="fComment" style="min-height:90px;font-family:inherit" ${chk.ok ? "" : "disabled"}>${esc(existing ? existing.comment || "" : "")}</textarea></div>` +
+    cmpHtml + qHtml +
+    `<div class="fq"><label>Comments</label><textarea id="fComment" style="min-height:80px;font-family:inherit" ${chk.ok ? "" : "disabled"}>${esc(existing ? existing.comment || "" : "")}</textarea></div>` +
+    `<div class="resline" id="fRes">Mark each part to see the result.</div>` +
     (url ? `<div class="hint" style="margin:6px 0"><a href="${esc(url)}" target="_blank" rel="noopener">Open the Google Form instead</a> (fallback if this page has a problem).</div>` : "") +
-    `<div class="row2"><button type="button" class="btn pri" id="fSave"${chk.ok ? "" : " disabled"}>Save result</button><button type="button" class="btn" id="fCancel">Cancel</button><span class="hint" id="fMsg"></span></div>` +
+    `<div class="row2"><button type="button" class="btn pri" id="fSave" disabled>Save result</button><button type="button" class="btn" id="fCancel">Cancel</button><span class="hint" id="fMsg"></span></div>` +
     `</div></div>`;
-  const state = { out: existing ? existing.outcome : null, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
   const close = () => { $("overlay").innerHTML = ""; N.formOpen = false; };
+  const refresh = () => {
+    req.forEach(k => {
+      $("overlay").querySelectorAll('[data-mk="' + k + '"]').forEach(b => b.classList.toggle("on", state.marks[k] === b.dataset.m));
+      const w = $("overlay").querySelector('[data-why="' + k + '"]'); if (w) w.classList.toggle("hidden", state.marks[k] !== "fail");
+      $("overlay").querySelectorAll('[data-stp="' + k + '"]').forEach(b => b.classList.toggle("on", state.reasons[k].has(stepsFor(k)[Number(b.dataset.i)])));
+    });
+    const o = outcomeFor(state.marks, req);
+    $("fRes").className = "resline" + (o === "pass" ? " pass" : o ? " refer" : "");
+    $("fRes").textContent = o ? "Result: " + outcomeLabel(o, att) : "Mark each part to see the result.";
+    $("fSave").textContent = o ? "Save: " + outcomeShort(o, att) : "Save result";
+    $("fSave").disabled = !o || !chk.ok;
+  };
   $("fCancel").onclick = close;
   $("fbg").onclick = e => { if (e.target.id === "fbg") close(); };
-  $("overlay").querySelectorAll("[data-out]").forEach(b => b.onclick = () => {
-    state.out = b.dataset.out;
-    $("overlay").querySelectorAll("[data-out]").forEach(x => x.classList.toggle("on", x === b));
+  $("overlay").querySelectorAll("[data-mk]").forEach(b => b.onclick = () => { state.marks[b.dataset.mk] = b.dataset.m; refresh(); });
+  $("overlay").querySelectorAll("[data-stp]").forEach(b => b.onclick = () => {
+    const k = b.dataset.stp, t = stepsFor(k)[Number(b.dataset.i)];
+    if (state.reasons[k].has(t)) state.reasons[k].delete(t); else state.reasons[k].add(t);
+    refresh();
   });
   $("overlay").querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
     state.answers[b.dataset.q] = b.dataset.v;
     $("overlay").querySelectorAll('[data-q="' + b.dataset.q + '"]').forEach(x => x.classList.toggle("on", x === b));
   });
+  refresh();
   $("fSave").onclick = async () => {
-    if (!state.out) { $("fMsg").textContent = "Choose an outcome first."; return; }
+    const out = outcomeFor(state.marks, req); if (!out) return;
+    const comment = $("fComment").value.trim();
+    for (const k of req) { if (state.marks[k] === "fail" && !state.reasons[k].size && !comment) { $("fMsg").textContent = "Tap at least one reason for " + compLabel(k) + " (or add a comment)."; return; } }
     for (const q of qs) { if (q.required && !(state.answers[q.id] || ($("overlay").querySelector('[data-qt="' + q.id + '"]') || {}).value)) { $("fMsg").textContent = "Please answer: " + q.label; return; } }
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
+    const components = {}, reasons = {};
+    req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
     $("fSave").disabled = true;
     try {
-      await saveResult(c, att, state.out, $("fComment").value.trim(), state.answers, !!existing);
+      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons }, !!existing);
       close();
     } catch (err) {
       $("fSave").disabled = false;
@@ -1433,16 +1552,64 @@ function openForm(id) {
     }
   };
 }
-async function saveResult(c, att, outcome, comment, answers, amend) {
-  const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment, answers: answers || {}, at: new Date().toISOString() };
+async function saveResult(c, att, outcome, d, amend) {
+  const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
   if (amend) entry.amended = true;
   await db.collection("stage1_assessments").doc(c.id).set({
     course: S.course, candidateName: c.name || "", claim: null, notThere: null,
     attempts: { [String(att)]: entry },
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
-  if (outcome === "refer") toast(c.name + " is referred and now in the retest pool (attempt " + (att + 1) + ").");
-  else toast("Saved: " + c.name + " passed.");
+  if (outcome === "pass") toast("Saved: " + c.name + " passed.");
+  else if (att <= 1) toast(c.name + " is referred and now in the retest pool (attempt 2).");
+  else toast("Saved: " + c.name + " - " + outcomeShort(outcome, att).toLowerCase() + ". Listed for the team on the Retest pool page.");
+}
+
+// ── Follow-up for the team (not passed at attempt 2 or above) ───────────────
+function afterTonight() {
+  const out = { retrain: [], leads: [], final: [] };
+  N.cands.forEach(c => {
+    if (passedAtKey(c.id)) return;
+    const a = nattempts(c.id), keys = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+    if (!keys.length) return;
+    const k = Math.max.apply(null, keys);
+    if (k === 2) out.retrain.push({ c, k });
+    else if (k === 3) out.leads.push({ c, k });
+    else if (k >= 4) out.final.push({ c, k });
+  });
+  Object.keys(out).forEach(g => out[g].sort((x, y) => String(x.c.name).localeCompare(String(y.c.name))));
+  return out;
+}
+const NEXT_STEPS = {
+  2: "Next steps: a member of Student Faculty meets the candidate to explain the next steps. They attend a further BLS course in full (all 3 evenings), in a different teaching room (different instructors) from their first course, then sit attempt 3 with Senior Faculty on both BLS/AED and first aid.",
+  3: "Next steps: a member of Senior Faculty meets the candidate to discuss progress, barriers to performance and any extra support. The programme lead is emailed so they know the additional requirements. The candidate attends a further course in full (all 3 evenings) and sits attempt 4 with Senior Faculty on both BLS/AED and first aid.",
+  4: "Final attempt not passed: the candidate has not completed the course and cannot gain the ERC qualification. Tell the programme lead. The effect on their degree programme is decided by the programme lead."
+};
+function noteFor(c, k) {
+  const a = nattempts(c.id), last = a[String(k)] || {};
+  const lines = Object.keys(a).sort((x, y) => x - y).map(n => `  Attempt ${n}${a[n].assessorName ? " (" + a[n].assessorName + ")" : ""}: ${outcomeShort(a[n].outcome, Number(n))}${compsText(a[n]) ? ". " + compsText(a[n]) : ""}${a[n].comment ? ". Comment: " + a[n].comment : ""}`);
+  return `${c.name} (${c.degree || "degree not recorded"}), ${S.course}\n${outcomeLabel(last.outcome, k)}\n` + lines.join("\n") + (NEXT_STEPS[k] ? "\n" + NEXT_STEPS[k] : "");
+}
+function copyTxt(t) {
+  const fb = () => { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} ta.remove(); };
+  try { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t).catch(fb) : Promise.resolve(fb()); } catch (e) { fb(); return Promise.resolve(); }
+}
+function teamCard(af) {
+  const groups = [
+    { key: "retrain", title: "Awaiting retraining (referred at attempt 2)", hint: "Not retested tonight. A Student Faculty member meets them, then they repeat all 3 evenings in a different room (different instructors) before attempt 3 with Senior Faculty." },
+    { key: "leads", title: "Referred back to degree leads (attempt 3)", hint: "A Senior Faculty member meets them to discuss progress and support, and the programme lead is told. Further course in full, then attempt 4." },
+    { key: "final", title: "Not passed - final attempt (attempt 4)", hint: "Course not completed. Refer back to the degree leads, inform the candidate they have not passed, and tell the programme lead." }
+  ];
+  const any = groups.some(g => af[g.key].length);
+  let h = `<div class="card"><h3><span class="stepno">2</span>For the team</h3><div class="hint" style="margin:0 0 8px">Nothing is emailed from here. Copy the note and send it yourself.</div>`;
+  if (!any) return h + '<div class="hint">Nobody yet. People who are not passed at attempt 2 or above are listed here with their reasons.</div></div>';
+  groups.forEach(g => {
+    const l = af[g.key]; if (!l.length) return;
+    h += `<div class="tgroup"><div class="tghead"><b>${esc(g.title)} (${l.length})</b><button type="button" class="btn sm" data-copygroup="${g.key}">Copy all</button></div><div class="hint" style="margin:2px 0 6px">${esc(g.hint)}</div>`;
+    h += l.map(x => `<div class="lrow"><span class="nm">${esc(x.c.name)}${attBadge(x.k)}</span><small>${esc(x.c.degree || "")}</small><small style="flex-basis:100%">${esc(compsText(nattempts(x.c.id)[String(x.k)]))}</small><span class="pact"><button type="button" class="btn sm" data-copyone="${esc(x.c.id)}" data-k="${x.k}">Copy note</button></span></div>`).join("");
+    h += `</div>`;
+  });
+  return h + `</div>`;
 }
 
 // ── Retest pool page (organising team) ──────────────────────────────────────
@@ -1457,27 +1624,32 @@ function renderRetest() {
   const withA = pool.length - waiting.length;
   const passedRetest = N.cands.filter(c => passedAtKey(c.id) && Number(passedAtKey(c.id)) >= 2).length;
   $("msgs").innerHTML = nightBanner();
+  const af = afterTonight();
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
-    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} on attempt 2 or above and not yet passed. ` +
-    `They are never given a slot automatically: an assessor takes each one on from the Assessor view. Attempt 2 needs a different assessor from attempt 1, and attempt 3 and above needs someone on the named list.`;
-  let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}</div>`;
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt tonight. ` +
+    `They are never given a slot automatically: an assessor takes each one on from the Assessor view. Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1; attempt 3 and above is Senior Faculty or the extra named assessors. ` +
+    `Anyone not passed at attempt 2 or above is not retested tonight: they appear under <b>For the team</b> below.`;
+  let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
+    `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}</div>`;
   if (stale.length) {
     h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> ${stale.length === 1 ? "candidate was" : "candidates were"} referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet column in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
   }
   const prow = c => {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
-    const hist = Object.keys(nattempts(c.id)).sort((a, b) => a - b).map(k => { const a = nattempts(c.id)[k]; return `Attempt ${esc(k)}: ${esc(outcomeLabel(a.outcome, Number(k)))}${a.assessorName ? " (" + esc(a.assessorName) + ")" : ""}`; }).join(" · ");
-    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") : "Named assessor only";
+    const hist = Object.keys(nattempts(c.id)).sort((a, b) => a - b).map(k => { const a = nattempts(c.id)[k]; return `Attempt ${esc(k)}: ${esc(outcomeLabel(a.outcome, Number(k)))}${a.assessorName ? " (" + esc(a.assessorName) + ")" : ""}${compsText(a) ? " - " + esc(compsText(a)) : ""}`; }).join(" · ");
+    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest " + requiredComps(c.id, 2).map(compLabel).join(" + ") : "") : "Senior Faculty or extra named assessor";
     return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
       `<small style="flex-basis:100%">${rule}${hist ? " · " + hist : " · no result recorded on the site yet"}</small>` +
       `<span class="pact">${cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : '<span class="nchip bad">Waiting</span>'}` +
       `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span></span></div>`;
   };
   h += `<div class="card"><h3><span class="stepno">1</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
+  h += teamCard(af);
   if (S.isDirector) {
-    h += `<div class="card"><h3><span class="stepno">2</span>Night settings</h3>` +
-      `<div class="hint" style="margin:0 0 6px">Named assessors for attempt 3 and above. One per line: the name as it appears on their account, or their email.</div>` +
+    h += `<div class="card"><h3><span class="stepno">3</span>Night settings</h3>` +
+      `<div class="hint" style="margin:0 0 6px">Extra assessors for attempt 3 and above, on top of Senior Faculty. One per line: the name as it appears on their account, or their email.</div>` +
       `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc((N.named || []).join("\n"))}</textarea>` +
+      COMPS.map(x => `<div class="hint" style="margin:12px 0 4px"><b>${esc(x.label)}</b> mark sheet steps, one per line, in the order they should appear (the ERC 2025 lay-rescuer sequence is the default). Assessors tap the ones missed.</div><textarea id="steps_${x.k}" style="min-height:150px">${esc(stepsFor(x.k).join("\n"))}</textarea>`).join("") +
       `<div class="hint" style="margin:10px 0 4px">Google Form link (shown on the assessment form as a fallback; leave blank to hide).</div>` +
       `<input type="text" id="formUrl" placeholder="https://forms.gle/..." value="${esc(N.form.formUrl || "")}">` +
       `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveNight">Save settings</button><span class="hint" id="nightMsg"></span></div>` +
@@ -1492,6 +1664,14 @@ function renderRetest() {
     setAttempt(c, effAttempt(n) + Number(b.dataset.d)).then(() => { n.attempt = attemptOf(c); renderRetest(); });
   });
   const sv = $("saveNight"); if (sv) sv.onclick = saveNightSettings;
+  $("viewRetest").querySelectorAll("[data-copyone]").forEach(b => b.onclick = () => {
+    const c = N.cands.find(x => x.id === b.dataset.copyone); if (!c) return;
+    copyTxt(noteFor(c, Number(b.dataset.k))).then(() => toast("Note copied for " + c.name));
+  });
+  $("viewRetest").querySelectorAll("[data-copygroup]").forEach(b => b.onclick = () => {
+    const l = af[b.dataset.copygroup] || [];
+    copyTxt(l.map(x => noteFor(x.c, x.k)).join("\n\n")).then(() => toast("Copied " + l.length + " note" + (l.length === 1 ? "" : "s")));
+  });
 }
 async function syncAttempts() {
   const list = staleAttempts(); if (!list.length) return;
@@ -1513,11 +1693,16 @@ async function saveNightSettings() {
   const names = $("namedTxt").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const url = $("formUrl").value.trim();
   if (url && !/^https:\/\//i.test(url)) { $("nightMsg").textContent = "The form link must start with https://"; return; }
+  const markSheet = {};
+  COMPS.forEach(x => {
+    const lines = ($("steps_" + x.k).value || "").split(/\r?\n/).map(t => t.trim()).filter(Boolean);
+    markSheet[x.k] = JSON.stringify(lines) === JSON.stringify(DEFAULT_STEPS[x.k]) ? [] : lines;
+  });
   $("saveNight").disabled = true;
   try {
     await db.collection("config").doc("stage1_named_assessors").set({ names }, { merge: true });
-    await db.collection("config").doc("stage1_assessment_form").set({ formUrl: url }, { merge: true });
-    N.named = names; N.form = Object.assign({}, N.form, { formUrl: url });
+    await db.collection("config").doc("stage1_assessment_form").set({ formUrl: url, markSheet }, { merge: true });
+    N.named = names; N.form = Object.assign({}, N.form, { formUrl: url, markSheet });
     $("nightMsg").textContent = "Saved.";
   } catch (err) {
     $("nightMsg").textContent = "Not saved: " + (err.code === "permission-denied" ? "this needs a super-user account." : err.message);

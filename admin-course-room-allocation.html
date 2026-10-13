@@ -504,6 +504,7 @@ function resetInstructors() {
 
 // ── Master render ────────────────────────────────────────────────────────
 function render() {
+  repeatWarn = repeatConflicts();
   renderPool();
   renderInstructorPool();
   renderRooms();
@@ -529,12 +530,55 @@ function renderPool() {
     : `<div class="pool-empty">${courseCandidates.length ? "All assigned ✓" : "No candidates for this course yet."}</div>`;
 }
 
+// ── Repeat candidates: warn when they land with the same instructors as before ──
+// (Jon, 2026-10-13: the second and later attempts must be taught by different
+// instructors; the room is only a stand-in for that.) A repeat is a candidate whose
+// record is linked (linkedCandidateId, "Link repeat" on the Stage 1 candidates page)
+// to a record on another course. The other record's teaching team is read from
+// instructorTeamUids saved on it, else from that course's saved allocation. If neither
+// is available, the same room name is the stand-in. Warning only: nothing is blocked.
+let repeatWarn = {};
+function prevTeamFor(rec) {
+  if (Array.isArray(rec.instructorTeamUids) && rec.instructorTeamUids.length) return { uids: rec.instructorTeamUids, names: rec.instructorTeamNames || [] };
+  const doc = allAllocDocs.find(d => d.id === slugify(rec.course) || d.course === rec.course);
+  const t = doc && doc.instructorTeams && rec.room ? doc.instructorTeams[rec.room] : null;
+  return Array.isArray(t) && t.length ? { uids: t, names: [] } : null;
+}
+function repeatConflicts() {
+  const out = {};
+  if (!currentCourse) return out;
+  courseCandidates.forEach(c => {
+    if (!c.room) return;
+    const me = allCandidates.find(x => x.id === c.id);
+    if (!me || !me.linkedCandidateId) return;
+    const other = allCandidates.find(x => x.id === me.linkedCandidateId);
+    if (!other || other.course === currentCourse || !other.room) return;
+    const prev = prevTeamFor(other), now = (roomTeams[c.room] && roomTeams[c.room].uids) || [];
+    if (prev && now.length) {
+      const shared = now.filter(u => prev.uids.includes(u)).map(u => {
+        const inst = allInstructors.find(i => i.uid === u);
+        const k = prev.uids.indexOf(u);
+        return inst ? inst.name : (prev.names[k] || u);
+      });
+      if (shared.length) out[c.id] = { name: c.name, room: c.room, other: other.course, otherRoom: other.room, shared, proxy: false };
+    } else if (other.room === c.room) {
+      out[c.id] = { name: c.name, room: c.room, other: other.course, otherRoom: other.room, shared: [], proxy: true };
+    }
+  });
+  return out;
+}
+function repeatText(w) {
+  return w.name + " (" + w.room + "): " + (w.proxy ? "same room as their earlier attempt on " + w.other + ", so probably the same instructors (instructor lists not compared yet)" : "same instructor" + (w.shared.length > 1 ? "s" : "") + " as on " + w.other + ": " + w.shared.join(", "));
+}
+
 function makeCard(c, source) {
   const sel = selected && selected.kind === "candidate" && selected.id === c.id;
   const rmBtn = source !== "pool"
     ? `<button class="pcard-rm" onclick="removeFromRoom('${c.id}',event)" title="Return to unassigned">×</button>`
     : "";
-  const flag = c.flagText ? `<span class="pcard-flag">${c.flagText}</span>` : "";
+  const rw = source !== "pool" ? repeatWarn[c.id] : null;
+  const flag = (c.flagText ? `<span class="pcard-flag">${c.flagText}</span>` : "") +
+    (rw ? `<span class="pcard-flag" style="color:#b3261e;font-weight:700" title="${escAttr(repeatText(rw))}">⚠ repeat: ${rw.proxy ? "same room as" : "same instructors as"} ${escH(rw.other)}</span>` : "");
   return `<div class="pcard${sel ? " selected" : ""}"
                draggable="true" data-id="${c.id}"
                ondragstart="onDragStart(event,'${c.id}','${source}')"
@@ -1039,6 +1083,9 @@ async function syncStage1Sheet() {
 async function saveAll() {
   if (!currentCourse) return;
   const todo = checklistOutstanding();
+  repeatWarn = repeatConflicts();
+  const rwl = Object.values(repeatWarn);
+  if (rwl.length && !confirm("Repeat candidates are with the same instructors as their earlier attempt:\n\n- " + rwl.slice(0, 10).map(repeatText).join("\n- ") + (rwl.length > 10 ? "\n- and " + (rwl.length - 10) + " more" : "") + "\n\nSave anyway?")) return;
   if (instrTouched && todo.length &&
       !confirm("Instructor teams have changed, but the allocation checklist is not finished:\n\n- " + todo.join("\n- ") + "\n\nSave to the live site anyway?")) return;
   showStatus("Saving…", "");
@@ -1165,6 +1212,8 @@ function checklistOutstanding() {
   if (!allocRan) t.push("Step 4: run the allocation (after resetting)");
   const ri = roomIssues();
   if (ri.issues.some(x => x.bad)) t.push("Step 5: fix the rooms marked in red");
+  const nrw = Object.keys(repeatWarn).length;
+  if (nrw) t.push("Step 5: " + nrw + " repeat candidate" + (nrw === 1 ? " is" : "s are") + " with the same instructors as before (marked in red on their card)");
   if (!chk.room) t.push("Step 5: look at every room and tick the box");
   return t;
 }
@@ -1215,6 +1264,7 @@ function renderChecklist() {
   const roomLines = ri.issues.map(x => `<li class="${x.bad ? "chk-bad" : "chk-warn"}">${escH(x.text)}</li>`).join("");
   h += step(5, d5, "Check every room",
     `${ri.placed ? (ri.issues.length ? `<ul class="chk-list">${roomLines}</ul>` : `<div class="chk-good">No pairing or numbers problems found.</div>`) : `<div class="chk-note">Nothing placed yet.</div>`}
+     ${Object.keys(repeatWarn).length ? `<div class="chk-bad" style="margin-top:6px">Repeat candidates with the same instructors as their earlier attempt:</div><ul class="chk-list">${Object.values(repeatWarn).map(w => `<li class="chk-bad">${escH(repeatText(w))}</li>`).join("")}</ul>` : ""}
      ${leftover.length ? `<div class="chk-warn">${leftover.length} instructor${leftover.length !== 1 ? "s" : ""} not placed: ${leftover.slice(0, 12).map(i => escH(i.name)).join(", ")}${leftover.length > 12 ? "…" : ""}</div>` : ""}
      <div class="chk-note">Scan each room below: who is with whom, and whether the mix looks right to you.</div>${tick("room", "I have looked at every room", !ri.placed)}`);
 
