@@ -195,7 +195,7 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
             <button type="button" data-mode="course"><b>Put them on a different course</b><small>Checks their programme deadline and placement dates for you.</small></button>
             <button type="button" data-mode="room"><b>Move them to another room</b><small>Same course, different room.</small></button>
             <button type="button" data-mode="off"><b>Take them off their course</b><small>They go back to the waiting list.</small></button>
-            <button type="button" data-mode="tags"><b>Set tags: RAP, two-plus assessments</b><small>Saved on the person and copied to the Google Sheet.</small></button>
+            <button type="button" data-mode="tags"><b>Set tags: RAP, assessment attempt</b><small>Saved on the person and copied to the Google Sheet.</small></button>
           </div>
           <div id="modeBody"></div>
         </div>
@@ -772,12 +772,12 @@ function renderSide() {
   if (!c) { box.className = "selname empty"; box.textContent = "Tap a person in the list on the right, or search above."; $("modeArea").classList.add("hidden"); return; }
   box.className = "selname";
   const exact = (resolveStage1Degree(c.degree) || {}).exact, dl = exact ? programmeDeadlines[exact] : null;
-  box.innerHTML = `<b>${esc(c.name)}</b><small>${esc(c.degree)}${dl ? " · deadline " + fmt(dl) : ""}<br>${c.course ? `Now on ${esc(c.course)}, room ${esc(c.room || "none")}` : "Waiting for a course"}${c.avoidCourse ? `<br>Not to go back on ${esc(c.avoidCourse)}` : ""}${c.rap ? "<br>Tag: RAP" : ""}${c.twoPlusAssessments ? "<br>Tag: two-plus assessments" : ""}</small>`;
+  box.innerHTML = `<b>${esc(c.name)}</b><small>${esc(c.degree)}${dl ? " · deadline " + fmt(dl) : ""}<br>${c.course ? `Now on ${esc(c.course)}, room ${esc(c.room || "none")}` : "Waiting for a course"}${c.avoidCourse ? `<br>Not to go back on ${esc(c.avoidCourse)}` : ""}${c.rap ? "<br>Tag: RAP" : ""}${attemptNo(c) >= 2 ? `<br>Assessment attempt ${attemptNo(c)}` : ""}</small>`;
   $("modeArea").classList.remove("hidden");
   $("modes").querySelectorAll("button").forEach(b => {
     b.classList.toggle("on", sel.mode === b.dataset.mode);
     b.disabled = !c.course && b.dataset.mode !== "course" && b.dataset.mode !== "tags";
-    b.onclick = () => { sel.mode = b.dataset.mode; sel.target = null; sel.override = false; if (sel.mode === "tags") { sel.rap = !!c.rap; sel.two = !!c.twoPlusAssessments; } renderAll(); };
+    b.onclick = () => { sel.mode = b.dataset.mode; sel.target = null; sel.override = false; if (sel.mode === "tags") { sel.rap = !!c.rap; sel.att = attemptNo(c); } renderAll(); };
   });
   const body = $("modeBody"); body.innerHTML = "";
   if (sel.mode === "course") {
@@ -797,9 +797,14 @@ function renderSide() {
   if (sel.mode === "tags") {
     body.innerHTML = `<div class="fieldlab" style="margin-top:4px">Tags for ${esc(firstName(c))}</div>
       <label class="over-box" style="display:block;margin:6px 0;background:var(--card)"><input type="checkbox" id="tagRap" ${sel.rap ? "checked" : ""}> <b>RAP</b> <span class="mut">(RMD Reasonable Adjustments Pathway)</span></label>
-      <label class="over-box" style="display:block;margin:6px 0;background:var(--card)"><input type="checkbox" id="tagTwo" ${sel.two ? "checked" : ""}> <b>Two-plus assessments</b></label>`;
+      <div class="over-box" style="display:flex;align-items:center;gap:10px;margin:6px 0;background:var(--card)"><b>Assessment attempt</b>
+        <button type="button" class="btn" id="attDown" aria-label="Lower attempt number" ${sel.att <= 1 ? "disabled" : ""} style="padding:2px 10px">\u2212</button>
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;color:#fff;font-weight:800;background:${sel.att >= 3 ? "#c0392b" : sel.att === 2 ? "#d98e04" : "#2e8b57"}">${sel.att}</span>
+        <button type="button" class="btn" id="attUp" aria-label="Raise attempt number" style="padding:2px 10px">+</button>
+        <span class="mut">Everyone starts at 1; goes up each retest.</span></div>`;
     $("tagRap").onchange = e => { sel.rap = e.target.checked; renderAll(true); };
-    $("tagTwo").onchange = e => { sel.two = e.target.checked; renderAll(true); };
+    $("attDown").onclick = () => { sel.att = Math.max(1, sel.att - 1); renderAll(true); };
+    $("attUp").onclick = () => { sel.att = sel.att + 1; renderAll(true); };
   }
   if (sel.mode === "room") {
     const cap = perRoomCap(c.course);
@@ -824,15 +829,21 @@ function plan() {
   }
   if (sel.mode === "room" && sel.target) return { ok: true, btn: `Move to room ${sel.target}`, text: `<span class="lbl">Ready to apply</span>Move <b>${esc(c.name)}</b> from room <b>${esc(c.room || "none")}</b> to room <b>${esc(sel.target)}</b> on ${esc(c.course)}. Their course does not change, so no email is needed.` };
   if (sel.mode === "tags") {
-    const was = [!!c.rap, !!c.twoPlusAssessments], now2 = [!!sel.rap, !!sel.two];
-    if (was[0] === now2[0] && was[1] === now2[1]) return { ok: false, text: `<span class="lbl">Next</span>Tick or untick a tag for <b>${esc(c.name)}</b>. Nothing is changed yet.` };
+    const was = [!!c.rap, attemptNo(c)], now2 = [!!sel.rap, sel.att];
+    if (was[0] === now2[0] && was[1] === now2[1]) return { ok: false, text: `<span class="lbl">Next</span>Change a tag or the attempt number for <b>${esc(c.name)}</b>. Nothing is changed yet.` };
     const bits = [];
     if (was[0] !== now2[0]) bits.push(`RAP: <b>${now2[0] ? "on" : "off"}</b>`);
-    if (was[1] !== now2[1]) bits.push(`Two-plus assessments: <b>${now2[1] ? "on" : "off"}</b>`);
+    if (was[1] !== now2[1]) bits.push(`Assessment attempt: <b>${was[1]} \u2192 ${now2[1]}</b>`);
     return { ok: true, btn: "Save tags", text: `<span class="lbl">Ready to apply</span>${bits.join(" · ")} for <b>${esc(c.name)}</b>. Their course and room do not change and no email is sent. The Google Sheet is updated straight afterwards.` };
   }
   if (sel.mode === "off") return { ok: true, btn: "Take off course", text: `<span class="lbl">Ready to apply</span>Take <b>${esc(c.name)}</b> off <b>${esc(c.course)}</b>. They go back to the waiting list, marked not to be placed on ${esc(c.course)} again by the automatic placing. Nobody else changes.` };
   return { ok: false, text: `<span class="lbl">Next</span>Choose what you want to do with <b>${esc(c.name)}</b>.` };
+}
+
+// Assessment attempt number: saved number, else 2 for anyone already flagged repeat / two-plus, else 1.
+function attemptNo(c) {
+  if (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1) return Math.floor(c.assessmentAttempt);
+  return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1;
 }
 
 async function applyNow() {
@@ -846,8 +857,8 @@ async function applyNow() {
     logText = `${c.name}: ${c.course || "waiting"} → ${sel.target}, room ${room}${r.length ? " (voluntary override: " + r.join("; ") + ")" : ""}.`;
     goView = sel.target;
   } else if (sel.mode === "tags") {
-    upd = { rap: !!sel.rap, twoPlusAssessments: !!sel.two };
-    logText = `${c.name}: RAP ${upd.rap ? "on" : "off"}, two-plus assessments ${upd.twoPlusAssessments ? "on" : "off"}.`;
+    upd = { rap: !!sel.rap, assessmentAttempt: sel.att, twoPlusAssessments: sel.att >= 2 };
+    logText = `${c.name}: RAP ${upd.rap ? "on" : "off"}, assessment attempt ${upd.assessmentAttempt}.`;
   } else if (sel.mode === "room") {
     upd = { room: sel.target, ...teamFields(c.course, sel.target) };
     logText = `${c.name}: room ${c.room || "none"} → ${sel.target} on ${c.course}.`;
@@ -932,7 +943,7 @@ function renderPane(keepMsgs) {
     if (clash) st.push(`<span class="pill clash">Placement clash ${esc(fmtShort(clash.start))} to ${esc(fmtShort(clash.end))}</span>`);
     if (isPending(p)) st.push(`<span class="pill mail">Not emailed</span>`);
     if (p.rap) st.push(`<span class="pill tag">RAP</span>`);
-    if (p.twoPlusAssessments) st.push(`<span class="pill tag">2+ assessments</span>`);
+    if (attemptNo(p) >= 2) st.push(`<span class="pill tag">Attempt ${attemptNo(p)}</span>`);
     if (touched.has(p.id)) st.push(`<span class="pill new">Changed now</span>`);
     return `<div class="row ${sel && sel.id === p.id ? "sel" : ""} ${touched.has(p.id) ? "moved" : ""}" data-id="${esc(p.id)}"><div class="rm ${p.room ? "" : "none"}">${esc(p.room || "–")}</div><div class="nm"><b>${esc(p.name)}</b><small>${esc(p.course || "no course yet")}</small></div><div class="rest" style="font-size:13px;color:var(--mut)">${esc(p.degree)}</div><div class="rest st">${st.join("")}</div></div>`;
   }).join("") + (truncated ? `<div class="row" style="cursor:default;color:var(--mut)">Showing the first ${ROW_CAP}. Use the search box to narrow it down.</div>` : "") : `<div class="row" style="cursor:default;color:var(--mut)">Nobody here.</div>`;

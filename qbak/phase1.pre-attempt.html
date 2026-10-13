@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Phase 1 Evening Management - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ink:#1A2233; --mut:#6B7C93; --line:#E3E8EF; --bg:#F5F7FA; --card:#fff;
+  --pur:#44247C; --pur2:#2E1856; --purtint:#EFEAF8; --blu:#0067A4; --org:#F49001;
+  --ok:#1E8449; --okbg:#E3F3E8; --bad:#B3261E; --badbg:#FCE8E6; --warn:#8A5200; --warnbg:#FFF1D6;
+  --font:'Inter','Segoe UI',Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;min-height:100vh}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:16px;color:var(--ink)}
+.hidden{display:none!important}
+.gate{height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;font-weight:700;color:var(--pur)}
+.top{background:var(--pur);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+.top h1{font-size:18px;font-weight:800;letter-spacing:-.2px}
+.top .grow{flex:1}
+.seg{display:inline-flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:#fff;padding:7px 14px;border-radius:8px;font-weight:700;font-size:14px;opacity:.85}
+.seg button.on{background:#fff;color:var(--pur);opacity:1}
+.seg button .nowdot{display:inline-block;background:var(--ok);color:#fff;font-size:10px;font-weight:800;border-radius:6px;padding:1px 5px;margin-left:5px;vertical-align:1px}
+.tbtn{border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:8px 13px;font-weight:700;font-size:13px;text-decoration:none;display:inline-block}
+.tbtn:hover{background:rgba(255,255,255,.26)}
+.main{display:grid;grid-template-columns:330px minmax(0,1fr);align-items:start}
+.main>*{min-width:0}
+.steps{max-width:100%}
+.side{background:#fff;border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:10px;position:sticky;top:58px;min-height:calc(100vh - 58px)}
+.side .lab{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.steps{display:flex;flex-direction:column;gap:8px}
+.stepcard{display:flex;gap:12px;align-items:flex-start;text-align:left;padding:11px 12px;border-radius:12px;border:2px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;line-height:1.25}
+.stepcard .no{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:#C9D1DE;color:#fff;font-size:14px;font-weight:800}
+.stepcard b{display:block;font-size:15px;font-weight:800}
+.stepcard small{display:block;font-size:12.5px;color:var(--mut);margin-top:2px;font-weight:500}
+.stepcard.on{border-color:var(--pur);background:var(--purtint)}
+.stepcard.on .no{background:var(--pur)}
+.stepcard.on b{color:var(--pur)}
+.stepcard.link:hover{border-color:var(--blu)}
+.stepcard.link .no{background:var(--blu)}
+.stepcard.soon{opacity:.55;cursor:default}
+.pane{padding:16px 20px 90px;min-width:0}
+.plain{background:#fff;border:1px solid var(--line);border-left:6px solid var(--pur);border-radius:14px;padding:14px 18px;margin-bottom:14px;font-size:17px;line-height:1.55}
+.plain .lbl{display:block;font-size:11px;font-weight:800;color:var(--pur);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.plain .mut{color:var(--mut)}
+.msg{border-radius:12px;padding:10px 14px;margin-bottom:12px;font-weight:600;font-size:14px}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.msg.warn{background:var(--warnbg);color:var(--warn)}
+.msg.err{background:var(--badbg);color:var(--bad)}
+.tools{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tools select{padding:9px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;font-weight:700}
+.btn{border:2px solid var(--pur);background:#fff;color:var(--pur);border-radius:10px;padding:8px 14px;font-weight:800;font-size:14px}
+.btn.pri{background:var(--pur);color:#fff}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.4;cursor:default}
+.tg{display:inline-flex;gap:8px;align-items:center;font-weight:700;font-size:14px}
+.tg input{width:18px;height:18px;accent-color:var(--pur)}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-bottom:14px}
+.rooms .r{background:#fff;border:2px solid var(--line);border-radius:10px;padding:7px 10px;text-align:left;color:var(--ink)}
+.rooms .r b{font-size:14px;display:block}
+.rooms .r small{display:block;color:var(--mut);font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.rooms .r.on{border-color:var(--pur);background:var(--purtint)}
+.rooms .r.mine{box-shadow:inset 4px 0 0 var(--org)}
+.sumstrip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:130px}
+.tile .n{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .l{font-size:12px;color:var(--mut);font-weight:600;margin-top:2px}
+.tile.warn .n{color:var(--bad)}
+.weeks{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.wk{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.wk h3{font-size:16px;font-weight:800;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.wk .when{font-size:12px;font-weight:800;border-radius:6px;padding:2px 8px}
+.when.today{background:var(--okbg);color:var(--ok)}
+.when.past{background:#EEF1F6;color:var(--mut)}
+.when.future{background:var(--purtint);color:var(--pur)}
+.team{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tm{border:2px solid var(--line);background:#fff;border-radius:20px;padding:4px 11px;font-size:13px;font-weight:700;color:var(--mut)}
+.tm.in{border-color:var(--ok);background:var(--okbg);color:var(--ok)}
+.tm.me{box-shadow:0 0 0 2px var(--purtint)}
+.wk .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.wk .hint{font-size:12.5px;color:var(--mut);margin-top:6px}
+.sched{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.rowhead,.row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;padding:9px 14px}
+.rowhead{background:#F8F9FC;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.row{border-top:1px solid #F0F3F8}
+.row .nm b{display:flex;gap:6px;align-items:center;font-size:15px}
+.row .nm small{color:var(--mut);font-size:12.5px}
+.cell{display:flex;gap:5px;flex-wrap:wrap}
+.cb{border:2px solid var(--line);background:#fff;border-radius:9px;padding:7px 10px;font-weight:800;font-size:13px;color:var(--mut);min-width:48px}
+.cb.here.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.cb.late.on{background:var(--org);border-color:var(--org);color:#fff}
+.cb.abs.on{background:var(--bad);border-color:var(--bad);color:#fff}
+.cb:hover:not(.on){border-color:var(--pur);color:var(--pur)}
+.chip{display:inline-block;font-size:12.5px;font-weight:800;border-radius:8px;padding:5px 10px}
+.chip.here{background:var(--okbg);color:var(--ok)}
+.chip.late{background:var(--warnbg);color:var(--warn)}
+.chip.abs{background:var(--badbg);color:var(--bad)}
+.chip.none{background:#EEF1F6;color:var(--mut);font-weight:700}
+.chip.fut{background:#F6F2FC;color:#8E7BB5;font-weight:700}
+.rap{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#fde8ea;flex:none}
+.sheetbg{position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:20px 20px 26px}
+.sheet h3{font-size:18px;font-weight:800;margin-bottom:6px}
+.sheet p{color:var(--mut);margin-bottom:14px}
+.sheet .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sheet .two button{padding:14px;border-radius:12px;font-weight:800;font-size:16px;border:2px solid var(--pur);background:#fff;color:var(--pur)}
+.sheet .two button.pri{background:var(--org);border-color:var(--org);color:#fff}
+.sheet .cancel{display:block;width:100%;margin-top:10px;border:0;background:none;color:var(--mut);font-weight:700;padding:8px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:600;z-index:80;max-width:90vw}
+.toast.err{background:var(--bad)}
+@media (max-width:900px){
+  .main{grid-template-columns:1fr}
+  .side{position:static;min-height:0;border-right:0;border-bottom:1px solid var(--line);padding:12px}
+  .steps{flex-direction:row;overflow-x:auto;padding-bottom:4px}
+  .stepcard{min-width:210px}
+  .weeks{grid-template-columns:1fr}
+  .pane{padding:12px 12px 90px}
+  .rowhead{display:none}
+  .row{grid-template-columns:1fr 1fr}
+  .row .nm{grid-column:1 / -1}
+  .row .cell::before{content:attr(data-wk);flex:0 0 100%;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+}
+.modal{background:#fff;width:min(760px,96vw);max-height:92vh;overflow:auto;border-radius:16px;padding:20px 22px;margin:auto}
+.modal h3{font-size:18px;font-weight:800;margin-bottom:4px}
+.modal .sub{color:var(--mut);font-size:13.5px;margin-bottom:12px}
+.modal textarea{width:100%;min-height:150px;border:2px solid var(--line);border-radius:10px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.modal .row2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.modal table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+.modal th{text-align:left;background:#F8F9FC;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut);padding:6px 8px}
+.modal td{border-top:1px solid #F0F3F8;padding:5px 8px}
+.modalbg{position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:60;display:flex;padding:10px}
+.att{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:12px;font-weight:800;color:#fff;background:#1E8449;flex:none}
+.att.a2{background:#F49001}.att.a3{background:#B3261E}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.card h3{font-size:16px;font-weight:800;display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.card .stepno{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:var(--pur);color:#fff;font-size:14px;font-weight:800}
+.card .hint{font-size:13px;color:var(--mut);margin-top:6px}
+.card input[type=search],.card textarea,.card input[type=text]{width:100%;border:2px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
+.card textarea{min-height:130px;font-size:14px}
+.pick{border:2px solid var(--line);border-radius:10px;max-height:190px;overflow:auto;margin:8px 0}
+.pick div{padding:7px 10px;border-top:1px solid #F0F3F8;cursor:pointer;font-size:14px}
+.pick div:first-child{border-top:0}.pick div:hover{background:#FAFAFE}.pick small{color:var(--mut)}
+.selbox{background:var(--purtint);border:2px solid var(--pur);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.selbox b{font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.slotchip{border:2px solid var(--line);background:#fff;border-radius:10px;padding:7px 11px;font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
+.slotchip.on{border-color:var(--pur);background:var(--pur);color:#fff}
+.slotchip:hover:not(.on){border-color:var(--pur)}
+.grid{overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:8px;max-height:420px}
+.grid table{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.grid th{position:sticky;top:0;background:#F8F9FC;padding:5px 7px;font-size:11px;color:var(--mut)}
+.grid td{border:1px solid #F0F3F8;padding:2px;text-align:center;min-width:46px}
+.grid td.t{background:#F8F9FC;font-weight:800;position:sticky;left:0}
+.gc{border:0;background:var(--okbg);color:var(--ok);border-radius:6px;padding:4px 6px;font-weight:800;font-size:11px;width:100%}
+.gc.on{background:var(--pur);color:#fff}
+.gx{display:block;background:#EEF1F6;color:#9AA7BA;border-radius:6px;padding:4px 6px;font-size:11px;font-weight:700}
+details.lst{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:10px}
+details.lst summary{padding:10px 14px;font-weight:800;cursor:pointer}
+details.lst .in{padding:0 14px 12px}
+.lrow{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #F0F3F8;flex-wrap:wrap}
+.lrow .nm{flex:1;min-width:150px;font-weight:700;display:flex;gap:6px;align-items:center}
+.lrow small{color:var(--mut);font-weight:500}
+.stepper{display:inline-flex;align-items:center;gap:6px}
+.stepper button{width:30px;height:30px;border-radius:8px;border:2px solid var(--pur);background:#fff;color:var(--pur);font-weight:800;font-size:16px;line-height:1}
+.emailbox{background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:10px}
+.log{font-size:13px;color:var(--mut);margin-top:6px}
+</style>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+
+<div class="hidden" id="app">
+  <div class="top">
+    <h1>Phase 1 Evening Management</h1>
+    <div class="seg" id="courseTabs" role="tablist" aria-label="Course"></div>
+    <div class="grow"></div>
+    <a class="tbtn dir-only" href="admin-stage1-candidates.html">Stage 1 Candidates</a>
+    <a class="tbtn dir-only" href="admin-comms.html">Comms</a>
+  </div>
+
+  <div class="main">
+    <aside class="side">
+      <div class="lab">Pick a job</div>
+      <div class="steps" id="steps"></div>
+    </aside>
+
+    <section class="pane" id="pane">
+      <div class="plain" id="plain"></div>
+      <div id="msgs"></div>
+      <div id="viewRegister">
+        <div class="tools" id="tools"></div>
+        <div class="rooms" id="rooms"></div>
+        <div class="sumstrip" id="sum"></div>
+        <div class="weeks" id="weeks"></div>
+        <div class="sched hidden" id="schedWrap">
+          <div class="rowhead"><div>Candidate</div><div id="h1"></div><div id="h2"></div></div>
+          <div id="rows"></div>
+        </div>
+      </div>
+      <div id="viewAlloc" class="hidden">
+        <div class="sumstrip" id="aTiles"></div>
+        <div class="card" id="aAuto"></div>
+        <div class="card" id="aMove">
+          <h3><span class="stepno">2</span>Move one person</h3>
+          <input type="search" id="aSearch" placeholder="Type a name or email to find someone on this course..." autocomplete="off">
+          <div class="pick hidden" id="aPick"></div>
+          <div id="aMoveBody"></div>
+        </div>
+        <div id="aLists"></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="overlay"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 1 Evening Management hub (2026-10-13, Jon).
+// One page for running a Stage 1 evening course. This first release holds the
+// WEEKLY REGISTER. Other jobs (people, assessment allocation, retest pool,
+// assessment night, comms) are listed on the left; those that already exist
+// open their current page, the rest are marked "coming" and move in here later.
+//
+// Register rules (Jon, 12 Oct 2026):
+//  - Instructors are always in the same room. They mark themselves as arrived
+//    and mark which of their candidates have arrived.
+//  - After 18:45 (London) a "Here" tap asks "was this person late?".
+//  - Week 1 and Week 2 sit side by side. Buttons only work on the date of that
+//    week. The other week is view only. A Director can switch on "edit any
+//    date" to correct or backfill a past week.
+//
+// Data: stage1_register/{candidateId} = {course, room, w1:{status,time,by,byName,at}, w2:{...}, updatedAt}
+//       stage1_register_staff/{course}__w{1|2}__{uid} = {course, week, room, uid, name, time, at}
+//       config/stage1_register = {lateAfter:"HH:MM"}  (optional, default 18:45)
+// status is "here" | "late" | "absent".
+// ────────────────────────────────────────────────────────────────────────────
+initFirebase();
+
+const ROOMS = STAGE1_TEACHING_ROOMS;
+const DEFAULT_LATE_AFTER = "18:45";
+const S = {
+  user: null, role: null, isDirector: false, full: false, myName: "",
+  courseDates: [],            // [{name,date}]
+  mine: [],                   // candidates whose room team includes me (any course)
+  course: null, room: null,
+  cands: [],                  // candidates of the selected course I can see
+  reg: {}, staff: {},         // live registers (by candidate id / by doc id)
+  lateAfter: DEFAULT_LATE_AFTER, editAny: false,
+  unsubs: [], view: "register"
+};
+const $ = id => document.getElementById(id);
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ── London date/time ────────────────────────────────────────────────────────
+function londonNow() {
+  const p = {};
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, hm: p.hour + ":" + p.minute };
+}
+function addDays(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function nice(iso) {
+  return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "");
+}
+// A course's three Mondays: week 1, week 2, assessment evening (the assessment date is the stored date)
+function weekDates(courseName) {
+  const c = S.courseDates.find(x => x.name === courseName);
+  if (!c || !c.date) return null;
+  return [addDays(c.date, -14), addDays(c.date, -7), c.date];
+}
+function weekState(iso) { const t = londonNow().date; return iso === t ? "today" : (iso < t ? "past" : "future"); }
+function canEditWeek(n) {
+  const d = weekDates(S.course); if (!d) return false;
+  return S.editAny || weekState(d[n - 1]) === "today";
+}
+
+// ── Access ──────────────────────────────────────────────────────────────────
+auth.onAuthStateChanged(async user => {
+  if (!user) { window.location.href = "signin.html"; return; }
+  try {
+    S.user = user;
+    S.role = await resolveRole(user.uid, user.email || "");
+    S.isDirector = S.role === ROLES.DIRECTOR;
+    const stu = await isStudentFaculty(user.email || "").catch(() => false);
+    const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+    S.full = S.isDirector || stu || sen;
+    S.myName = user.displayName || (user.email || "").split("@")[0];
+    try {
+      const me = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (me.exists && me.data().name) S.myName = me.data().preferredName ? me.data().name : me.data().name;
+    } catch (e) {}
+
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", user.uid).get();
+    S.mine = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+
+    if (!S.full && !S.mine.length) {
+      $("authMsg").textContent = "This page is for instructors with a room on a Phase 1 course. You are not on a room team yet. Ask the Course Director if this looks wrong.";
+      return;
+    }
+    const cfg = await db.collection("config").doc("stage1_course_dates").get();
+    S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
+    try {
+      const lc = await db.collection("config").doc("stage1_register").get();
+      if (lc.exists && lc.data().lateAfter) S.lateAfter = lc.data().lateAfter;
+    } catch (e) {}
+
+    document.querySelectorAll(".dir-only").forEach(el => { if (!S.full) el.classList.add("hidden"); });
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    renderSteps();
+    renderCourseTabs();
+    // default course: first whose assessment date is today or later, else the last
+    const today = londonNow().date;
+    let first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    if (!S.full) { // instructors: only courses where they have candidates
+      const mineCourses = new Set(S.mine.map(c => c.course));
+      first = S.courseDates.find(c => mineCourses.has(c.name) && c.date >= today) || S.courseDates.find(c => mineCourses.has(c.name)) || first;
+    }
+    if (first) selectCourse(first.name);
+    else $("plain").innerHTML = '<span class="lbl">Nothing set up yet</span>No course dates are set. A Director can add them on Stage 1 Settings.';
+  } catch (err) {
+    console.error(err);
+    $("authMsg").textContent = "Could not open this page: " + (err && err.message ? err.message : err);
+  }
+});
+
+// ── Left-hand list of jobs ──────────────────────────────────────────────────
+function renderSteps() {
+  const jobs = [
+    { no: 1, t: "People", s: "Add, remove, move, tags", href: "admin-stage1-candidates.html", dir: true },
+    { no: 2, t: "Assessment allocation", s: "Slots for assessment night, move people, retest pool", view: "alloc", dir: true },
+    { no: 3, t: "Retest pool", s: "Coming: attempt 2 and above, managed by the team", soon: true },
+    { no: 4, t: "Assessment night", s: "Coming: runner view, assessor view, assessment form", soon: true },
+    { no: 5, t: "Register", s: "Who arrived in weeks 1 and 2", view: "register" },
+    { no: 6, t: "Comms", s: "Bulk emails, copy addresses, log", href: "admin-comms.html", dir: true }
+  ];
+  $("steps").innerHTML = jobs.filter(j => !(j.dir && !S.full)).map(j => {
+    const inner = `<span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}${j.href ? " (opens current page)" : ""}</small></span>`;
+    if (j.soon) return `<div class="stepcard soon">${inner}</div>`;
+    if (j.view) return `<button type="button" class="stepcard${S.view === j.view ? " on" : " link"}" data-view="${j.view}">${inner}</button>`;
+    return `<a class="stepcard link" href="${j.href}">${inner}</a>`;
+  }).join("");
+  $("steps").querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+}
+
+function renderCourseTabs() {
+  const today = londonNow().date;
+  let list = S.courseDates;
+  if (!S.full) { const set = new Set(S.mine.map(c => c.course)); list = list.filter(c => set.has(c.name)); }
+  const live = list.find(c => c.date >= today);
+  $("courseTabs").innerHTML = list.map(c =>
+    `<button type="button" data-course="${esc(c.name)}" class="${c.name === S.course ? "on" : ""}">${esc(c.name)}${live && live.name === c.name ? '<span class="nowdot">next</span>' : ""}</button>`
+  ).join("");
+  $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => selectCourse(b.dataset.course));
+}
+
+// ── Loading a course ────────────────────────────────────────────────────────
+function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
+async function selectCourse(name) {
+  detach();
+  S.course = name; S.reg = {}; S.staff = {}; S.cands = [];
+  renderCourseTabs();
+  $("plain").innerHTML = '<span class="lbl">Loading</span>Opening ' + esc(name) + '...';
+  try {
+    if (S.full) {
+      const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
+      S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    } else {
+      S.cands = S.mine.filter(c => c.course === name);
+    }
+  } catch (err) {
+    $("plain").innerHTML = '<span class="lbl">Could not load</span>' + esc(err.message || err);
+    return;
+  }
+  // pick a room: mine first
+  const myRooms = [...new Set(S.mine.filter(c => c.course === name).map(c => c.room).filter(Boolean))];
+  const present = roomList();
+  S.room = (S.room && present.includes(S.room) && (S.full || myRooms.includes(S.room))) ? S.room : (myRooms[0] || present[0] || null);
+  attachListeners();
+  A.sel = null; A.target = null;
+  if (S.view === "alloc") { showView(); renderAlloc(); } else render();
+}
+function roomList() {
+  const set = new Set(S.cands.map(c => c.room).filter(Boolean));
+  return ROOMS.filter(r => set.has(r)).concat([...set].filter(r => !ROOMS.includes(r)).sort());
+}
+function attachListeners() {
+  const course = S.course;
+  // register entries
+  if (S.full) {
+    S.unsubs.push(db.collection("stage1_register").where("course", "==", course).onSnapshot(snap => {
+      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render();
+    }, err => onListenErr("register", err)));
+  } else {
+    S.cands.forEach(c => {
+      S.unsubs.push(db.collection("stage1_register").doc(c.id).onSnapshot(d => {
+        if (d.exists) S.reg[c.id] = d.data(); else delete S.reg[c.id];
+        render();
+      }, err => onListenErr("register", err)));
+    });
+  }
+  // instructor arrivals
+  S.unsubs.push(db.collection("stage1_register_staff").where("course", "==", course).onSnapshot(snap => {
+    S.staff = {}; snap.forEach(d => { S.staff[d.id] = d.data(); }); render();
+  }, err => onListenErr("instructor arrivals", err)));
+}
+let lastErr = "";
+function onListenErr(what, err) {
+  lastErr = "Could not read the " + what + ": " + (err && err.message ? err.message : err) + ". If this says permission denied, the new rules have not been deployed yet.";
+  render();
+}
+
+// ── Helpers on the data ─────────────────────────────────────────────────────
+function roomCands() {
+  return S.cands.filter(c => (c.room || "") === (S.room || "")).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+function statusOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n].status : null; }
+function entryOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n] : null; }
+function counts(list, n) {
+  let here = 0, late = 0, absent = 0;
+  list.forEach(c => { const s = statusOf(c.id, n); if (s === "here") here++; else if (s === "late") late++; else if (s === "absent") absent++; });
+  return { here, late, absent, marked: here + late + absent, total: list.length };
+}
+function teamOf(list) {
+  const map = new Map();
+  list.forEach(c => (c.instructorTeamUids || []).forEach((u, i) => { if (!map.has(u)) map.set(u, (c.instructorTeamNames || [])[i] || "Instructor"); }));
+  return [...map.entries()].map(([uid, name]) => ({ uid, name }));
+}
+function staffDoc(n, uid) { return S.staff[S.course + "__w" + n + "__" + uid]; }
+const RAPSVG = '<span class="rap" title="RMD Reasonable Adjustments Pathway" aria-label="RAP"><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="M3.4 0h3.2v3.4H10v3.2H6.6V10H3.4V6.6H0V3.4h3.4z" fill="#d11a2a"/></svg></span>';
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  if (!S.course) return;
+  if (S.view !== "register") return;
+  const dates = weekDates(S.course);
+  const list = roomCands();
+  const rooms = roomList();
+  const now = londonNow();
+
+  // messages
+  let msgs = "";
+  if (lastErr) msgs += `<div class="msg err">${esc(lastErr)}</div>`;
+  if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
+  if (!dates) msgs += `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
+  $("msgs").innerHTML = msgs;
+
+  // tools
+  let tools = "";
+  if (S.full && rooms.length) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
+  else if (!S.full && rooms.length > 1) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
+  if (S.isDirector) {
+    tools += `<label class="tg"><input type="checkbox" id="editAny"${S.editAny ? " checked" : ""}> Edit any date (Director)</label>`;
+    tools += `<label class="tg">Late after <input type="time" id="lateIn" value="${esc(S.lateAfter)}" style="padding:6px 8px;border:2px solid var(--line);border-radius:8px;width:120px"></label><button class="btn sm" id="lateSave" type="button">Save</button>`;
+    tools += `<button class="btn sm" id="backfillBtn" type="button">Backfill from spreadsheet</button>`;
+  } else {
+    tools += `<span class="tg" style="color:var(--mut)">Late after ${esc(S.lateAfter)}</span>`;
+  }
+  $("tools").innerHTML = tools;
+  if ($("roomSel")) $("roomSel").onchange = e => { S.room = e.target.value; render(); };
+  if ($("editAny")) $("editAny").onchange = e => { S.editAny = e.target.checked; render(); };
+  if ($("lateSave")) $("lateSave").onclick = saveLateAfter;
+  if ($("backfillBtn")) $("backfillBtn").onclick = openBackfill;
+
+  // room grid (full access only; instructors see their own room)
+  if (S.full && rooms.length) {
+    const myRooms = new Set(S.mine.filter(c => c.course === S.course).map(c => c.room));
+    $("rooms").innerHTML = rooms.map(r => {
+      const rc = S.cands.filter(c => c.room === r);
+      const a = counts(rc, 1), b = counts(rc, 2);
+      return `<button type="button" class="r${r === S.room ? " on" : ""}${myRooms.has(r) ? " mine" : ""}" data-room="${esc(r)}"><b>${esc(r)}</b><small>W1 ${a.here + a.late}/${rc.length} · W2 ${b.here + b.late}/${rc.length}</small></button>`;
+    }).join("");
+    $("rooms").querySelectorAll("button").forEach(b => b.onclick = () => { S.room = b.dataset.room; render(); });
+  } else $("rooms").innerHTML = "";
+
+  if (!dates || !S.room) {
+    $("sum").innerHTML = ""; $("weeks").innerHTML = ""; $("schedWrap").classList.add("hidden");
+    if (dates && !S.room) $("plain").innerHTML = '<span class="lbl">No room</span>Nobody in ' + esc(S.course) + ' has a room that you can see yet.';
+    return;
+  }
+
+  // plain English
+  const a1 = counts(list, 1), a2 = counts(list, 2);
+  const st1 = weekState(dates[0]), st2 = weekState(dates[1]);
+  const todayWk = st1 === "today" ? 1 : (st2 === "today" ? 2 : 0);
+  let plain;
+  if (todayWk) {
+    const c = todayWk === 1 ? a1 : a2;
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> Tonight is week ${todayWk}. <b>${c.here + c.late} of ${c.total}</b> have been marked as here${c.late ? ` (${c.late} late)` : ""}${c.absent ? `, ${c.absent} absent` : ""}. ${c.total - c.marked} not marked yet. Buttons work for tonight only.`;
+  } else {
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> There is no register night today. Week 1 was ${nice(dates[0])}, week 2 is ${nice(dates[1])}, assessment night is ${nice(dates[2])}. Buttons switch on for each week on its own date.`;
+  }
+  $("plain").innerHTML = '<span class="lbl">In plain English</span>' + plain;
+
+  // tiles
+  const tileSet = (c, n) => `<div class="tile"><div class="n">${c.here + c.late}/${c.total}</div><div class="l">Week ${n} here</div></div>` +
+    `<div class="tile"><div class="n">${c.late}</div><div class="l">Week ${n} late</div></div>` +
+    `<div class="tile${c.absent ? " warn" : ""}"><div class="n">${c.absent}</div><div class="l">Week ${n} absent</div></div>`;
+  $("sum").innerHTML = tileSet(a1, 1) + tileSet(a2, 2);
+
+  // week cards
+  const team = teamOf(list);
+  const whenTxt = s => s === "today" ? "Today" : (s === "past" ? "Past" : "Upcoming");
+  const weekCard = n => {
+    const d = dates[n - 1], s = weekState(d), c = n === 1 ? a1 : a2, edit = canEditWeek(n);
+    const chips = team.map(t => {
+      const sd = staffDoc(n, t.uid), me = t.uid === S.user.uid;
+      return `<span class="tm${sd ? " in" : ""}${me ? " me" : ""}" title="${sd ? "Arrived " + esc(sd.time || "") : "Not marked as arrived"}">${esc(t.name)}${me ? " (you)" : ""}${sd ? " " + esc(sd.time || "") : ""}</span>`;
+    }).join("") || '<span class="tm">No room team on record</span>';
+    const meIn = team.some(t => t.uid === S.user.uid);
+    const myDoc = staffDoc(n, S.user.uid);
+    let acts = "";
+    if (edit && meIn) acts += myDoc
+      ? `<button class="btn sm" type="button" data-arrive="${n}" data-undo="1">Undo my arrival</button>`
+      : `<button class="btn pri" type="button" data-arrive="${n}">I'm here</button>`;
+    if (edit) {
+      const unmarked = list.filter(x => !statusOf(x.id, n)).length;
+      const lateNow = !S.editAny && s === "today" && now.hm > S.lateAfter;
+      acts += `<button class="btn" type="button" data-allhere="${n}"${unmarked && !lateNow ? "" : " disabled"}>Everyone not marked is here (${unmarked})</button>`;
+    }
+    let hint = "";
+    if (!edit) hint = s === "future" ? `Opens on ${nice(d)}.` : `View only. This week was ${nice(d)}.`;
+    else if (!S.editAny && now.hm > S.lateAfter) hint = `It is after ${esc(S.lateAfter)}, so each person has to be marked one by one and you will be asked if they were late.`;
+    return `<div class="wk"><h3>Week ${n} <span style="font-weight:600;color:var(--mut)">${nice(d)}</span><span class="when ${s}">${whenTxt(s)}</span></h3>` +
+      `<div class="team">${chips}</div>` + (acts ? `<div class="acts">${acts}</div>` : "") + (hint ? `<div class="hint">${hint}</div>` : "") + `</div>`;
+  };
+  $("weeks").innerHTML = weekCard(1) + weekCard(2);
+  $("weeks").querySelectorAll("[data-arrive]").forEach(b => b.onclick = () => setArrival(+b.dataset.arrive, b.dataset.undo === "1"));
+  $("weeks").querySelectorAll("[data-allhere]").forEach(b => b.onclick = () => allHere(+b.dataset.allhere));
+
+  // candidate rows
+  $("h1").textContent = "Week 1 · " + nice(dates[0]);
+  $("h2").textContent = "Week 2 · " + nice(dates[1]);
+  const cellHtml = (c, n) => {
+    const d = dates[n - 1], s = weekState(d), edit = canEditWeek(n), cur = statusOf(c.id, n), en = entryOf(c.id, n);
+    if (edit) {
+      return `<div class="cell" data-wk="Week ${n}">` +
+        `<button type="button" class="cb here${cur === "here" ? " on" : ""}" data-set="here" data-n="${n}" data-id="${esc(c.id)}">Here</button>` +
+        `<button type="button" class="cb late${cur === "late" ? " on" : ""}" data-set="late" data-n="${n}" data-id="${esc(c.id)}">Late</button>` +
+        `<button type="button" class="cb abs${cur === "absent" ? " on" : ""}" data-set="absent" data-n="${n}" data-id="${esc(c.id)}">Absent</button></div>`;
+    }
+    let chip;
+    if (cur === "here") chip = `<span class="chip here">Here${en && en.time ? " " + esc(en.time) : ""}</span>`;
+    else if (cur === "late") chip = `<span class="chip late">Late${en && en.time ? " " + esc(en.time) : ""}</span>`;
+    else if (cur === "absent") chip = `<span class="chip abs">Absent</span>`;
+    else chip = s === "future" ? `<span class="chip fut">Opens ${nice(d)}</span>` : `<span class="chip none">Not marked</span>`;
+    return `<div class="cell" data-wk="Week ${n}">${chip}</div>`;
+  };
+  $("rows").innerHTML = list.map(c =>
+    `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${S.full ? attBadge(attemptOf(c)) : ""}</b><small>${esc(c.degree || "")}</small></div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
+  ).join("") || '<div class="row"><div class="nm">No candidates in this room.</div></div>';
+  $("schedWrap").classList.remove("hidden");
+  $("rows").querySelectorAll("[data-set]").forEach(b => b.onclick = () => onTap(b.dataset.id, +b.dataset.n, b.dataset.set));
+}
+
+// ── Actions ─────────────────────────────────────────────────────────────────
+function toast(text, isErr) {
+  const t = document.createElement("div"); t.className = "toast" + (isErr ? " err" : ""); t.textContent = text;
+  document.body.appendChild(t); setTimeout(() => t.remove(), isErr ? 6000 : 2200);
+}
+function candById(id) { return S.cands.find(c => c.id === id); }
+
+function onTap(cid, n, wanted) {
+  const cur = statusOf(cid, n);
+  const c = candById(cid); if (!c) return;
+  if (!canEditWeek(n)) { toast("That week can only be changed on its own date.", true); return; }
+  if (cur === wanted) { writeStatus(c, n, null); return; }          // tap the lit button again to clear it
+  const now = londonNow();
+  if (wanted === "here" && !S.editAny && weekState(weekDates(S.course)[n - 1]) === "today" && now.hm > S.lateAfter) {
+    askLate(c, n); return;
+  }
+  writeStatus(c, n, wanted);
+}
+function askLate(c, n) {
+  $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">` +
+    `<h3>Was ${esc(c.name)} late?</h3><p>It is after ${esc(S.lateAfter)}. Late arrivals are recorded so the course team can see them.</p>` +
+    `<div class="two"><button type="button" class="pri" id="lateYes">Yes, late</button><button type="button" id="lateNo">No, on time</button></div>` +
+    `<button type="button" class="cancel" id="lateCancel">Cancel</button></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("lateYes").onclick = () => { close(); writeStatus(c, n, "late"); };
+  $("lateNo").onclick = () => { close(); writeStatus(c, n, "here"); };
+  $("lateCancel").onclick = close;
+  $("sbg").onclick = e => { if (e.target.id === "sbg") close(); };
+}
+async function writeStatus(c, n, status) {
+  const ref = db.collection("stage1_register").doc(c.id);
+  const key = "w" + n;
+  const payload = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  payload[key] = status
+    ? { status, time: londonNow().hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() }
+    : firebase.firestore.FieldValue.delete();
+  try { await ref.set(payload, { merge: true }); }
+  catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+async function allHere(n) {
+  if (!canEditWeek(n)) return;
+  const todo = roomCands().filter(c => !statusOf(c.id, n));
+  if (!todo.length) return;
+  const now = londonNow();
+  if (!S.editAny && now.hm > S.lateAfter) { toast("After " + S.lateAfter + " each person has to be marked one by one.", true); return; }
+  try {
+    const batch = db.batch();
+    todo.forEach(c => {
+      const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+      p["w" + n] = { status: "here", time: now.hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() };
+      batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
+    });
+    await batch.commit();
+    toast(todo.length + " marked as here.");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+}
+async function setArrival(n, undo) {
+  if (!canEditWeek(n)) return;
+  const id = S.course + "__w" + n + "__" + S.user.uid;
+  const ref = db.collection("stage1_register_staff").doc(id);
+  try {
+    if (undo) await ref.delete();
+    else await ref.set({ course: S.course, week: n, room: S.room || null, uid: S.user.uid, name: S.myName, time: londonNow().hm, at: firebase.firestore.FieldValue.serverTimestamp() });
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+async function saveLateAfter() {
+  const v = ($("lateIn") || {}).value;
+  if (!/^\d\d:\d\d$/.test(v || "")) { toast("Enter a time like 18:45.", true); return; }
+  S.lateAfter = v;
+  try { await db.collection("config").doc("stage1_register").set({ lateAfter: v }, { merge: true }); toast("Late cut-off saved: " + v); }
+  catch (err) { toast("Used for this visit only. Only a super-user can save it: " + (err.code || err.message), true); }
+  render();
+}
+
+// ── Backfill from a spreadsheet paste (Director, any course, week 1 or 2) ───
+// Paste rows copied from a spreadsheet. A row is matched to a candidate on this
+// course by email, or by name (first/last in either order, in one cell or two).
+// A status cell says Here / Late / Absent (also P, L, A, Y, N, tick, cross).
+// Rows with no status are left unmarked. Nothing is written until "Apply".
+let bf = { week: 1, plan: null };
+function normName(t) { return String(t || "").toLowerCase().replace(/[^a-z\u00c0-\u024f\s'-]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).sort().join(" "); }
+function statusToken(cell) {
+  const t = String(cell || "").trim().toLowerCase();
+  if (!t) return null;
+  if (/^(here|present|p|y|yes|1|\u2713|\u2714|attended|in|on time|ok)$/.test(t)) return "here";
+  if (/^(late|l)$/.test(t)) return "late";
+  if (/^(absent|a|n|no|0|\u2717|\u2718|x|dna|did not attend|missed)$/.test(t)) return "absent";
+  return null;
+}
+function parseBackfill(text) {
+  const byEmail = new Map(), byName = new Map();
+  S.cands.forEach(c => {
+    if (c.email) byEmail.set(String(c.email).trim().toLowerCase(), c);
+    const k = normName(c.name); if (!k) return;
+    byName.set(k, byName.has(k) ? "dup" : c);
+  });
+  const matched = new Map(), unmatched = [], noStatus = [], dups = [], conflicts = [];
+  String(text || "").split(/\r?\n/).forEach(line => {
+    if (!line.trim()) return;
+    const cells = line.split(line.includes("\t") ? "\t" : ",").map(x => x.trim());
+    if (cells.some(x => /^(surname|last name|first name|email|e-mail|name|status|room)$/i.test(x)) && !cells.some(statusToken)) return; // header row
+    let cand = null, ambiguous = false;
+    const em = cells.find(x => /@/.test(x));
+    if (em) cand = byEmail.get(em.toLowerCase()) || null;
+    if (!cand) {
+      const textCells = cells.filter(x => x && !/@/.test(x) && !statusToken(x));
+      const tries = [];
+      if (textCells.length >= 2) { tries.push(textCells[0] + " " + textCells[1]); }
+      textCells.forEach(x => tries.push(x));
+      for (const t of tries) { const hit = byName.get(normName(t)); if (hit === "dup") ambiguous = true; else if (hit) { cand = hit; break; } }
+    }
+    const st = cells.map(statusToken).filter(Boolean).pop() || null;
+    if (!cand) { (ambiguous ? dups : unmatched).push(line); return; }
+    if (!st) { noStatus.push(cand.name); return; }
+    if (matched.has(cand.id) && matched.get(cand.id).status !== st) conflicts.push(cand.name);
+    matched.set(cand.id, { cand, status: st });
+  });
+  return { matched: [...matched.values()], unmatched, noStatus, dups, conflicts };
+}
+function openBackfill() {
+  if (!S.isDirector) return;
+  bf.plan = null;
+  $("overlay").innerHTML = `<div class="modalbg" id="bfbg"><div class="modal" role="dialog" aria-modal="true">` +
+    `<h3>Backfill from a spreadsheet</h3>` +
+    `<div class="sub">${esc(S.course)}, every room. Copy the rows from your spreadsheet and paste them below. Each row needs the candidate's <b>email or name</b> and a status of <b>Here, Late or Absent</b> (P, L, A, Y, N, a tick or a cross also work). Rows with no status are left unmarked.</div>` +
+    `<div class="row2"><label class="tg">Week <select id="bfWeek"><option value="1">1 (${esc(nice((weekDates(S.course) || [])[0] || "2000-01-01"))})</option><option value="2">2 (${esc(nice((weekDates(S.course) || [])[1] || "2000-01-01"))})</option></select></label>` +
+    `<label class="tg"><input type="checkbox" id="bfOver"> Replace entries that are already marked</label></div>` +
+    `<textarea id="bfText" placeholder="Surname\tFirst name\temail\tstatus"></textarea>` +
+    `<div class="row2"><button class="btn" id="bfCheck" type="button">Check</button><button class="btn pri" id="bfApply" type="button" disabled>Apply</button><button class="btn" id="bfClose" type="button">Close</button></div>` +
+    `<div id="bfOut"></div></div></div>`;
+  $("bfWeek").value = String(bf.week);
+  $("bfClose").onclick = () => { $("overlay").innerHTML = ""; };
+  $("bfCheck").onclick = checkBackfill;
+  $("bfApply").onclick = applyBackfill;
+}
+function checkBackfill() {
+  bf.week = +$("bfWeek").value;
+  const over = $("bfOver").checked;
+  const plan = parseBackfill($("bfText").value);
+  const todo = plan.matched.filter(m => over || !statusOf(m.cand.id, bf.week));
+  const skipped = plan.matched.length - todo.length;
+  bf.plan = Object.assign({}, plan, { todo });
+  const tally = k => todo.filter(m => m.status === k).length;
+  let h = `<div class="msg ${todo.length ? "ok" : "warn"}">${todo.length} will be written: ${tally("here")} here, ${tally("late")} late, ${tally("absent")} absent.${skipped ? " " + skipped + " already marked, left as they are." : ""}</div>`;
+  if (plan.unmatched.length) h += `<div class="msg warn">${plan.unmatched.length} row(s) did not match anyone on ${esc(S.course)}:<br>${plan.unmatched.slice(0, 8).map(esc).join("<br>")}${plan.unmatched.length > 8 ? "<br>..." : ""}</div>`;
+  if (plan.dups.length) h += `<div class="msg warn">${plan.dups.length} row(s) matched two people with the same name. Use their email instead.</div>`;
+  if (plan.conflicts.length) h += `<div class="msg warn">Listed twice with different statuses (last one used): ${plan.conflicts.map(esc).join(", ")}</div>`;
+  if (plan.noStatus.length) h += `<div class="msg warn">${plan.noStatus.length} matched but had no status, so left unmarked.</div>`;
+  const missing = S.cands.filter(c => !plan.matched.some(m => m.cand.id === c.id) && !statusOf(c.id, bf.week)).length;
+  h += `<div class="hint" style="color:var(--mut);font-size:13px">${missing} people on ${esc(S.course)} will still be unmarked for week ${bf.week}.</div>`;
+  h += `<table><tr><th>Candidate</th><th>Room</th><th>Will be</th></tr>${todo.slice(0, 60).map(m => `<tr><td>${esc(m.cand.name)}</td><td>${esc(m.cand.room || "")}</td><td>${m.status === "here" ? "Here" : m.status === "late" ? "Late" : "Absent"}</td></tr>`).join("")}</table>` +
+    (todo.length > 60 ? `<div class="hint" style="font-size:13px;color:var(--mut)">...and ${todo.length - 60} more.</div>` : "");
+  $("bfOut").innerHTML = h;
+  $("bfApply").disabled = !todo.length;
+}
+async function applyBackfill() {
+  if (!bf.plan || !bf.plan.todo.length) return;
+  const n = bf.week, todo = bf.plan.todo;
+  $("bfApply").disabled = true; $("bfApply").textContent = "Writing...";
+  try {
+    for (let i = 0; i < todo.length; i += 400) {
+      const batch = db.batch();
+      todo.slice(i, i + 400).forEach(m => {
+        const p = { course: S.course, room: m.cand.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        p["w" + n] = { status: m.status, time: null, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp(), backfill: true };
+        batch.set(db.collection("stage1_register").doc(m.cand.id), p, { merge: true });
+      });
+      await batch.commit();
+    }
+    $("overlay").innerHTML = "";
+    toast(todo.length + " entries written to week " + n + ".");
+  } catch (err) {
+    $("bfApply").disabled = false; $("bfApply").textContent = "Apply";
+    $("bfOut").insertAdjacentHTML("afterbegin", `<div class="msg err">Not saved: ${esc(err.message || err)}</div>`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ASSESSMENT ALLOCATION view (2026-10-13, Jon) - job 2 in the hub.
+// Rules (Jon): the automatic allocation leaves out RAP candidates and anyone on
+// attempt 2 or above (they are managed by the organising team in the retest
+// pool and can be placed by hand). Slots are only ever on the assessment
+// evening, so moving someone is always "same evening". The email to a
+// candidate is optional everywhere (default off).
+// Attempt number: stage1_candidates.assessmentAttempt (1 if not set; a
+// candidate already marked "not first sit" counts as 2). The attempt circle
+// replaces the old two-plus lightbulb. Instructors never see it.
+// ════════════════════════════════════════════════════════════════════════════
+const BLS_ADMIN_EMAIL = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
+const ASSESS_SLOTS = (() => {
+  const out = []; let h = 18, m = 30;
+  while (h < 21 || (h === 21 && m <= 30)) { out.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0")); m += 15; if (m >= 60) { m -= 60; h++; } }
+  return out;
+})();
+const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
+const A = {
+  rooms: [], loaded: false, sel: null, target: null, showGrid: false, busy: false, log: [],
+  subject: "Your BLS assessment time - {{assessment_date}}",
+  body: "Dear {{first_name}},\n\nYour BLS assessment is on {{assessment_date}}. Your time is {{assessment_time}} in room {{assessment_room}}.\n\nPlease arrive a few minutes early. If you cannot attend, email us as soon as possible at " + BLS_ADMIN_EMAIL + ".\n\nThe RMD Birmingham team"
+};
+
+function attemptOf(c) { return Number.isFinite(c.assessmentAttempt) ? c.assessmentAttempt : (c.firstTimeAssessment === false ? 2 : 1); }
+function attBadge(n) { return '<span class="att ' + (n >= 3 ? "a3" : "a" + n) + '" title="Assessment attempt ' + n + '" aria-label="Attempt ' + n + '">' + n + "</span>"; }
+function assessDate() { const d = weekDates(S.course); return d ? d[2] : null; }
+function longDate(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }); }
+function shuffleArr(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function hasSlot(c) { return !!(c.assessmentRoom && c.assessmentSlot); }
+
+async function ensureRooms() {
+  if (A.loaded) return;
+  try {
+    const snap = await db.collection("config").doc("stage1_assessment_rooms").get();
+    A.rooms = snap.exists ? (snap.data().rooms || []) : [];
+  } catch (e) { A.rooms = []; }
+  if (!A.rooms.length) A.rooms = DEFAULT_ASSESS_ROOMS;
+  A.loaded = true;
+}
+function showView() {
+  $("viewRegister").classList.toggle("hidden", S.view !== "register");
+  $("viewAlloc").classList.toggle("hidden", S.view !== "alloc");
+}
+async function setView(v) {
+  if (v === "alloc" && !S.full) return;
+  S.view = v; showView(); renderSteps();
+  if (v === "alloc") { await ensureRooms(); renderAlloc(); } else render();
+}
+
+function stats() {
+  const c = S.cands;
+  const absent = c.filter(x => x.assessmentAbsent === true);
+  const live = c.filter(x => x.assessmentAbsent !== true);
+  const rap = live.filter(x => x.rap === true);
+  const retest = live.filter(x => attemptOf(x) >= 2);
+  const auto = live.filter(x => x.rap !== true && attemptOf(x) < 2);
+  const slotted = c.filter(hasSlot);
+  const toDo = auto.filter(x => !hasSlot(x));
+  return { absent, live, rap, retest, auto, slotted, toDo };
+}
+function takenSet(exceptId) {
+  const m = new Map();
+  S.cands.forEach(x => { if (x.id !== exceptId && hasSlot(x)) m.set(x.assessmentSlot + "|" + x.assessmentRoom, x.name || ""); });
+  return m;
+}
+function freePairs(taken) {
+  const out = [];
+  ASSESS_SLOTS.forEach(sl => A.rooms.forEach(r => { if (!taken.has(sl + "|" + r)) out.push({ slot: sl, room: r }); }));
+  return out;
+}
+function logAdd(t) { A.log.unshift(t); A.log = A.log.slice(0, 8); }
+
+function renderAlloc() {
+  if (!S.course || S.view !== "alloc") return;
+  const d = assessDate(), st = stats();
+  const cap = A.rooms.length * ASSESS_SLOTS.length;
+  $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set, so the assessment night cannot be worked out.</div>`;
+  $("plain").innerHTML = '<span class="lbl">In plain English</span>' +
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. ` +
+    `<b>${st.toDo.length}</b> ${st.toDo.length === 1 ? "person needs" : "people need"} a slot and will get one automatically. ` +
+    `<b>${st.rap.length}</b> with RAP and <b>${st.retest.length}</b> on attempt 2 or above are not allocated automatically: you place them by hand below.`;
+  const free = Math.max(0, cap - st.slotted.length);
+  const tile = (n, l, warn) => `<div class="tile${warn ? " warn" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  $("aTiles").innerHTML = tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
+    tile(st.toDo.length, "Still need a slot", st.toDo.length > 0 && st.toDo.length > free) + tile(st.rap.length, "RAP: place by hand") +
+    tile(st.retest.length, "Retest pool (attempt 2+)") + tile(st.absent.length, "Cannot attend") + tile(free, "Free slots (" + A.rooms.length + " rooms)");
+  renderAAuto(st); renderAMove(); renderALists(st);
+}
+
+// ── Step 1: automatic allocation ────────────────────────────────────────────
+function renderAAuto(st) {
+  const box = $("aAuto");
+  let h = `<h3><span class="stepno">1</span>Give everyone eligible a slot</h3>` +
+    `<div style="font-size:14px">Eligible means: on attempt 1, no RAP tag, not marked unable to attend. Slots fill earliest first, one person per room per 15 minutes from ${ASSESS_SLOTS[0]} to ${ASSESS_SLOTS[ASSESS_SLOTS.length - 1]}.</div>`;
+  if (!S.isDirector) {
+    box.innerHTML = h + `<div class="hint">A Director runs this step. You can move individual people in step 2.</div>`; return;
+  }
+  const taken = takenSet(null), free = freePairs(taken);
+  const n = st.toDo.length;
+  if (!n) h += `<div class="msg ok" style="margin:10px 0 0">Everyone eligible already has a slot.</div>`;
+  else {
+    const last = free[Math.min(n, free.length) - 1];
+    h += `<div class="msg ${n > free.length ? "warn" : "ok"}" style="margin:10px 0 0">${n} will be allocated across ${A.rooms.length} rooms, finishing at ${last ? last.slot : "-"}.${n > free.length ? ` ${n - free.length} will not fit and are left for you to place by hand.` : ""}</div>`;
+  }
+  h += `<label class="tg" style="margin-top:10px"><input type="checkbox" id="aEmailAuto"> Email each person their time after allocating</label>` +
+    `<details class="emailbox"><summary style="cursor:pointer;font-weight:700">Email wording (used by steps 1 and 2 when "email" is ticked)</summary>` +
+    `<div class="hint">Placeholders: {{first_name}}, {{assessment_date}}, {{assessment_time}}, {{assessment_room}}.</div>` +
+    `<input type="text" id="aSubject" value="${esc(A.subject)}" style="margin:8px 0"><textarea id="aBody">${esc(A.body)}</textarea></details>` +
+    `<div class="tools" style="margin:12px 0 0"><button class="btn pri" id="aGo" type="button"${n ? "" : " disabled"}>Allocate ${n || ""} now</button>` +
+    `<button class="btn" id="aClear" type="button"${st.slotted.length ? "" : " disabled"}>Clear all slots on ${esc(S.course)}</button></div>` +
+    `<div class="hint">Emails go through the same sender as Bulk Comms. Anything over the daily limit is queued and sent over the next days.</div>`;
+  box.innerHTML = h;
+  $("aSubject").oninput = e => { A.subject = e.target.value; };
+  $("aBody").oninput = e => { A.body = e.target.value; };
+  $("aGo").onclick = allocateAll;
+  $("aClear").onclick = clearAll;
+}
+function askSheet(title, text, yes) {
+  return new Promise(res => {
+    $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true"><h3>${esc(title)}</h3><p>${text}</p>` +
+      `<div class="two"><button type="button" class="pri" id="shYes">${esc(yes)}</button><button type="button" id="shNo">Cancel</button></div></div></div>`;
+    const done = v => { $("overlay").innerHTML = ""; res(v); };
+    $("shYes").onclick = () => done(true); $("shNo").onclick = () => done(false);
+    $("sbg").onclick = e => { if (e.target.id === "sbg") done(false); };
+  });
+}
+async function writeSlots(list, fields) {
+  for (let i = 0; i < list.length; i += 400) {
+    const batch = db.batch();
+    list.slice(i, i + 400).forEach(item => batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(item.id), fields(item)));
+    await batch.commit();
+  }
+}
+async function allocateAll() {
+  if (A.busy || !S.isDirector) return;
+  const st = stats(); if (!st.toDo.length) return;
+  const taken = takenSet(null), pairs = freePairs(taken);
+  const sh = shuffleArr(st.toDo);
+  const assign = sh.slice(0, pairs.length).map((c, i) => ({ id: c.id, c, pair: pairs[i] }));
+  const over = sh.length - assign.length;
+  const wantEmail = $("aEmailAuto") && $("aEmailAuto").checked;
+  const ok = await askSheet("Allocate " + assign.length + " people?", `One person per room per 15 minutes on ${esc(S.course)}, from ${ASSESS_SLOTS[0]}.${over ? ` ${over} will not fit.` : ""} ${wantEmail ? "Each person will also be emailed their time." : "Nobody will be emailed."}`, "Allocate");
+  if (!ok) return;
+  A.busy = true;
+  try {
+    await writeSlots(assign, x => ({ assessmentRoom: x.pair.room, assessmentSlot: x.pair.slot }));
+    assign.forEach(x => { x.c.assessmentRoom = x.pair.room; x.c.assessmentSlot = x.pair.slot; });
+    logAdd("Allocated " + assign.length + " people." + (over ? " " + over + " did not fit." : ""));
+    toast(assign.length + " allocated.");
+    if (wantEmail) await sendAssessmentEmails(assign.map(x => x.c));
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "no permission" : err.message), true); }
+  A.busy = false; renderAlloc();
+}
+async function clearAll() {
+  if (A.busy || !S.isDirector) return;
+  const list = S.cands.filter(hasSlot); if (!list.length) return;
+  const ok = await askSheet("Clear every slot?", `This removes the assessment room and time from ${list.length} people on ${esc(S.course)}. Their course and teaching room are not touched. Nobody is emailed.`, "Clear all");
+  if (!ok) return;
+  A.busy = true;
+  try {
+    await writeSlots(list, () => ({ assessmentRoom: null, assessmentSlot: null }));
+    list.forEach(c => { c.assessmentRoom = null; c.assessmentSlot = null; });
+    logAdd("Cleared " + list.length + " slots."); toast("Slots cleared.");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+  A.busy = false; A.target = null; renderAlloc();
+}
+
+// ── Step 2: move one person ─────────────────────────────────────────────────
+function selCand() { return A.sel ? S.cands.find(c => c.id === A.sel) : null; }
+function renderAMove() {
+  const body = $("aMoveBody"), c = selCand();
+  if (!c) { body.innerHTML = `<div class="hint">Search above, or press "Place / Move" beside a name in the lists below. Works for anyone on this course, including RAP and retest candidates.</div>${logHtml()}`; return; }
+  const taken = takenSet(c.id), free = freePairs(taken);
+  const now = hasSlot(c) ? `${esc(c.assessmentSlot)} in ${esc(c.assessmentRoom)}` : "no slot yet";
+  const tgt = A.target;
+  let h = `<div class="selbox"><b>${esc(c.name)}</b>${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}<span style="color:var(--mut);font-size:13px">${esc(c.degree || "")} · now: ${now}${c.assessmentAbsent === true ? " · marked unable to attend" : ""}</span></div>` +
+    `<div class="tools" style="margin:6px 0"><span class="tg">Attempt</span><span class="stepper"><button type="button" id="aDec"${attemptOf(c) <= 1 ? " disabled" : ""}>-</button><b>${attemptOf(c)}</b><button type="button" id="aInc"${attemptOf(c) >= 9 ? " disabled" : ""}>+</button></span><span class="hint" style="margin:0">Anyone on 2 or more is left out of the automatic allocation.</span></div>`;
+  if (!free.length) h += `<div class="msg warn">No free slots left on ${esc(S.course)}'s assessment night.</div>`;
+  else {
+    h += `<div class="fieldlab" style="font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">Earliest free slots (same evening, ${d8()})</div><div class="chips">` +
+      free.slice(0, 10).map(p => `<button type="button" class="slotchip${tgt && tgt.slot === p.slot && tgt.room === p.room ? " on" : ""}" data-slot="${p.slot}" data-room="${esc(p.room)}">${p.slot} · ${esc(p.room)}</button>`).join("") + `</div>` +
+      `<button type="button" class="btn sm" id="aGrid">${A.showGrid ? "Hide" : "Show"} every slot and room</button>`;
+    if (A.showGrid) {
+      h += `<div class="grid"><table><tr><th></th>${A.rooms.map(r => `<th>${esc(r)}</th>`).join("")}</tr>` +
+        ASSESS_SLOTS.map(sl => `<tr><td class="t">${sl}</td>${A.rooms.map(r => {
+          const who = taken.get(sl + "|" + r);
+          if (who !== undefined) return `<td><span class="gx" title="${esc(who)}">${esc((who || "?").split(" ").map(w => w[0]).join("").slice(0, 3))}</span></td>`;
+          return `<td><button type="button" class="gc${tgt && tgt.slot === sl && tgt.room === r ? " on" : ""}" data-slot="${sl}" data-room="${esc(r)}">free</button></td>`;
+        }).join("")}</tr>`).join("") + `</table></div>`;
+    }
+  }
+  h += `<label class="tg" style="display:flex;margin-top:12px"><input type="checkbox" id="aEmailOne"${c.email ? "" : " disabled"}> Email them the new time${c.email ? "" : " (no email address on record)"}</label>` +
+    `<div class="tools" style="margin:10px 0 0"><button class="btn pri" id="aMoveGo" type="button"${tgt ? "" : " disabled"}>${tgt ? "Move to " + tgt.slot + " in " + esc(tgt.room) : "Pick a slot first"}</button>` +
+    `<button class="btn" id="aOff" type="button"${hasSlot(c) ? "" : " disabled"}>Take them off their slot</button></div>` + logHtml();
+  body.innerHTML = h;
+  body.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => { A.target = { slot: b.dataset.slot, room: b.dataset.room }; renderAMove(); });
+  if ($("aGrid")) $("aGrid").onclick = () => { A.showGrid = !A.showGrid; renderAMove(); };
+  $("aMoveGo").onclick = moveOne; $("aOff").onclick = takeOff;
+  $("aDec").onclick = () => setAttempt(c, attemptOf(c) - 1); $("aInc").onclick = () => setAttempt(c, attemptOf(c) + 1);
+}
+function d8() { const d = assessDate(); return d ? nice(d) : ""; }
+function logHtml() { return A.log.length ? `<div class="log"><b>This visit:</b><br>${A.log.map(esc).join("<br>")}</div>` : ""; }
+async function moveOne() {
+  const c = selCand(), t = A.target; if (!c || !t || A.busy) return;
+  if (takenSet(c.id).has(t.slot + "|" + t.room)) { toast("That slot has just been taken. Pick another.", true); A.target = null; renderAMove(); return; }
+  const wantEmail = $("aEmailOne") && $("aEmailOne").checked && !!c.email;
+  A.busy = true;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentRoom: t.room, assessmentSlot: t.slot });
+    c.assessmentRoom = t.room; c.assessmentSlot = t.slot;
+    logAdd(c.name + " moved to " + t.slot + " in " + t.room + ".");
+    toast("Moved.");
+    A.target = null;
+    if (wantEmail) await sendAssessmentEmails([c]);
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission" : err.message), true); }
+  A.busy = false; renderAlloc();
+}
+async function takeOff() {
+  const c = selCand(); if (!c || !hasSlot(c) || A.busy) return;
+  A.busy = true;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentRoom: null, assessmentSlot: null });
+    logAdd(c.name + " taken off their slot (" + c.assessmentSlot + " in " + c.assessmentRoom + ")."); c.assessmentRoom = null; c.assessmentSlot = null; toast("Slot removed.");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+  A.busy = false; renderAlloc();
+}
+async function setAttempt(c, n) {
+  n = Math.max(1, Math.min(9, n)); if (A.busy || n === attemptOf(c)) return;
+  A.busy = true;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentAttempt: n });
+    c.assessmentAttempt = n; logAdd(c.name + " set to attempt " + n + ".");
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+  A.busy = false; renderAlloc();
+}
+
+// ── Optional emails ─────────────────────────────────────────────────────────
+async function sendAssessmentEmails(people) {
+  const d = assessDate(); const dateTxt = d ? longDate(d) : "";
+  const withEmail = people.filter(c => c.email && hasSlot(c));
+  const skipped = people.length - withEmail.length;
+  if (!withEmail.length) { toast("Nobody to email (no address or no slot).", true); return; }
+  const call = firebase.functions().httpsCallable("sendBulkComms");
+  try {
+    const probe = await call({ recipients: [{ name: "x", email: "x@x.x" }], subject: A.subject, message: A.body, groupLabel: "probe", dryRun: true });
+    if (!probe.data || probe.data.varsSupported !== true) { toast("Emails not sent: the updated functions have not been deployed yet.", true); logAdd("Email NOT sent: functions need deploying first."); return; }
+    const res = await call({
+      recipients: withEmail.map(c => ({ name: c.name, email: c.email, vars: { assessment_date: dateTxt, assessment_time: c.assessmentSlot, assessment_room: c.assessmentRoom } })),
+      subject: A.subject, message: A.body, groupLabel: "Stage 1 assessment time - " + S.course, dryRun: false
+    });
+    const r = res.data || {};
+    logAdd("Emailed " + (r.sent || 0) + " of " + withEmail.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + (skipped ? ", " + skipped + " had no address" : "") + ".");
+    toast("Emailed " + (r.sent || 0) + " of " + withEmail.length + ".");
+  } catch (err) { toast("Email failed: " + (err.message || err), true); logAdd("Email failed: " + (err.message || err)); }
+}
+
+// ── Lists ───────────────────────────────────────────────────────────────────
+function rowHtml(c) {
+  return `<div class="lrow"><div class="nm">${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}<small>${esc(c.degree || "")}</small></div>` +
+    `<span style="font-size:13px;font-weight:700;color:${hasSlot(c) ? "var(--ok)" : "var(--mut)"}">${hasSlot(c) ? esc(c.assessmentSlot) + " · " + esc(c.assessmentRoom) : "no slot"}</span>` +
+    `<button class="btn sm" type="button" data-pick="${esc(c.id)}">Place / Move</button></div>`;
+}
+function group(title, list, open, note) {
+  if (!list.length) return "";
+  return `<details class="lst"${open ? " open" : ""}><summary>${esc(title)} (${list.length})</summary><div class="in">${note ? `<div class="hint" style="margin:0 0 6px">${note}</div>` : ""}${list.map(rowHtml).join("")}</div></details>`;
+}
+function renderALists(st) {
+  const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""));
+  const sched = st.slotted.slice().sort((a, b) => a.assessmentSlot === b.assessmentSlot ? String(a.assessmentRoom).localeCompare(String(b.assessmentRoom)) : a.assessmentSlot.localeCompare(b.assessmentSlot));
+  $("aLists").innerHTML =
+    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from step 2 when you are ready.") +
+    group("Retest pool: attempt 2 and above", st.retest.slice().sort(byName), true, "Managed by the organising team. Not allocated automatically. Set the attempt number in step 2.") +
+    group("Eligible but no slot yet", st.toDo.slice().sort(byName), true, "") +
+    group("Cannot attend", st.absent.slice().sort(byName), false, "") +
+    group("Assessment schedule", sched, false, "");
+  $("aLists").querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { A.sel = b.dataset.pick; A.target = null; renderAMove(); $("aMove").scrollIntoView({ behavior: "smooth", block: "start" }); });
+}
+function renderAPick() {
+  const q = $("aSearch").value.trim().toLowerCase(), list = $("aPick");
+  if (q.length < 2) { list.classList.add("hidden"); return; }
+  const hits = S.cands.filter(c => String(c.name || "").toLowerCase().includes(q) || String(c.email || "").toLowerCase().includes(q)).slice(0, 8);
+  list.classList.remove("hidden");
+  list.innerHTML = hits.length ? hits.map(c => `<div data-id="${esc(c.id)}"><b>${esc(c.name)}</b> <small>${esc(c.degree || "")}${hasSlot(c) ? " · " + esc(c.assessmentSlot) + " " + esc(c.assessmentRoom) : ""}</small></div>`).join("") : `<div style="cursor:default;color:var(--mut)">Nobody found on ${esc(S.course)}.</div>`;
+  list.querySelectorAll("div[data-id]").forEach(d => d.onclick = () => { A.sel = d.dataset.id; A.target = null; $("aSearch").value = ""; list.classList.add("hidden"); renderAMove(); });
+}
+document.addEventListener("DOMContentLoaded", () => { const s = document.getElementById("aSearch"); if (s) s.oninput = renderAPick; });
+
+</script>
+</body>
+</html>

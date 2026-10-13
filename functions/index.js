@@ -196,10 +196,10 @@ exports.getRosterForMembers = onCall({ region: "us-central1" }, async (request) 
       room: c.room || null,
       assessmentRoom: c.assessmentRoom || null,
       assessmentSlot: c.assessmentSlot || null,
-      firstTimeAssessment: c.firstTimeAssessment === undefined ? null : c.firstTimeAssessment,
+      // 2026-10-13 (Jon): instructors see the RAP cross but never attempt / repeat status,
+      // so firstTimeAssessment, twoPlusAssessments and assessmentAttempt are not returned.
       assessmentAbsent: c.assessmentAbsent === true,
-      rap: c.rap === true,
-      twoPlusAssessments: c.twoPlusAssessments === true
+      rap: c.rap === true
     };
   });
 
@@ -3755,9 +3755,20 @@ async function sendPersonalisedBatch(resend, { subject, message, people }) {
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   for (const person of people) {
     const firstName = (person.name || "").trim().split(" ")[0] || "there";
-    const personalised = ensureFullUrls(message
+    let withVars = message
       .replace(/\{\{\s*first_?name\s*\}\}/gi, firstName)
-      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there"));
+      .replace(/\{\{\s*name\s*\}\}/gi, person.name || "there");
+    // 2026-10-13 (Jon): optional per-person placeholders, e.g. {{assessment_time}}, supplied by the
+    // caller as person.vars = { assessment_time: "18:45", ... }. Only plain strings/numbers, letters and underscores in names.
+    if (person.vars && typeof person.vars === "object") {
+      Object.keys(person.vars).forEach(k => {
+        if (!/^[a-z_]{1,40}$/i.test(k)) return;
+        const val = person.vars[k];
+        if (typeof val !== "string" && typeof val !== "number") return;
+        withVars = withVars.replace(new RegExp("\\{\\{\\s*" + k + "\\s*\\}\\}", "gi"), () => String(val));
+      });
+    }
+    const personalised = ensureFullUrls(withVars);
     const payload = {
       from: FROM_EMAIL,
       to: person.email,
@@ -3834,7 +3845,7 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
   if (!valid.length) throw new HttpsError("invalid-argument", "No recipients with an email address.");
 
   if (dryRun) {
-    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [], queued: 0 };
+    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [], queued: 0, varsSupported: true };
   }
 
   const resend = new Resend(resendApiKey.value());

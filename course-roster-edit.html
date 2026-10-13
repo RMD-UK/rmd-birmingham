@@ -168,7 +168,7 @@ function esc(s) {
 // staff see the same "managed separately" framing candidates do.
 function assessmentMetaStr(c) {
   if (c.assessmentAbsent === true) return "Assessment: marked unable to attend";
-  if (c.firstTimeAssessment === false) return "Assessment: repeat — managed separately by faculty";
+  if (RMD_TAGS.attemptOf(c) >= 2) return "Assessment: attempt " + RMD_TAGS.attemptOf(c) + ", retest pool (managed separately by faculty)";
   if (c.assessmentRoom && c.assessmentSlot) return `Assessment: ${c.assessmentRoom} @ ${c.assessmentSlot}`;
   return "Assessment: not yet allocated";
 }
@@ -185,6 +185,7 @@ window.addEventListener("load", () => {
       isStudentFaculty(email),
       isSeniorFaculty(email)
     ]);
+    RMD_TAGS.setFull(true);   // this page is full-access only
     if (role !== "director" && !studentFac && !seniorFac) {
       const msg = document.getElementById("authMsg");
       if (msg) msg.textContent = "RMD Senior/Student Faculty and Directors only.";
@@ -337,7 +338,8 @@ function selectCourse(course) {
     firstTimeAssessment: c.firstTimeAssessment,
     assessmentAbsent: c.assessmentAbsent === true,
     rap: c.rap === true,
-    twoPlusAssessments: c.twoPlusAssessments === true
+    twoPlusAssessments: c.twoPlusAssessments === true,
+    assessmentAttempt: typeof c.assessmentAttempt === "number" ? c.assessmentAttempt : null
   }));
 
   const teams = teamsFor(course);
@@ -483,9 +485,30 @@ function jumpToCandidate(id) {
   }, 50);
 }
 
-// Tag buttons on candidate cards: tap to switch RAP / two-plus attempt on or off.
-// Saves straight to the candidate (same fields as Course Allocation "Set tags").
+// Tag buttons on candidate cards: tap to switch RAP on or off, and the - / + buttons
+// move the assessment attempt number (everyone starts at 1; it goes up each retest).
+// Saves straight to the candidate. Attempt 2 or more also sets twoPlusAssessments so
+// the Master sheet column J keeps working.
 document.addEventListener("click", async (e) => {
+  const step = e.target.closest && e.target.closest("[data-attstep]");
+  if (step) {
+    const c = allCandidates.find(x => x.id === step.dataset.cid);
+    if (!c || step.dataset.busy || step.disabled) return;
+    step.dataset.busy = "1";
+    const before = { a: c.assessmentAttempt, t: c.twoPlusAssessments };
+    const next = Math.max(1, RMD_TAGS.attemptOf(c) + Number(step.dataset.attstep));
+    c.assessmentAttempt = next; c.twoPlusAssessments = next >= 2;
+    selectCourse(currentCourse);
+    try {
+      await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentAttempt: next, twoPlusAssessments: next >= 2 });
+      RMD_TAGS.toast(`${c.name || "Candidate"}: attempt ${next}`);
+    } catch (err) {
+      c.assessmentAttempt = before.a; c.twoPlusAssessments = before.t;
+      selectCourse(currentCourse);
+      RMD_TAGS.toast("Could not save the attempt: " + (err.message || err), true);
+    }
+    return;
+  }
   const btn = e.target.closest && e.target.closest("[data-rtag]");
   if (!btn) return;
   const id = btn.dataset.cid, key = btn.dataset.rtag;

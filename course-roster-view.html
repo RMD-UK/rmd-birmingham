@@ -169,7 +169,7 @@ function esc(s) {
 // staff see the same "managed separately" framing candidates do.
 function assessmentMetaStr(c) {
   if (c.assessmentAbsent === true) return "Assessment: marked unable to attend";
-  if (c.firstTimeAssessment === false) return "Assessment: repeat — managed separately by faculty";
+  if (RMD_TAGS.attemptOf(c) >= 2) return "Assessment: attempt " + RMD_TAGS.attemptOf(c) + ", retest pool (managed separately by faculty)";
   if (c.assessmentRoom && c.assessmentSlot) return `Assessment: ${c.assessmentRoom} @ ${c.assessmentSlot}`;
   return "Assessment: not yet allocated";
 }
@@ -187,6 +187,7 @@ window.addEventListener("load", () => {
       isSeniorFaculty(email)
     ]);
     hasFullAccess = role === "director" || studentFac || seniorFac;
+    RMD_TAGS.setFull(hasFullAccess);   // attempt circle for full access only; instructors see RAP only
     // 2026-10-12 (Jon): every instructor can open this page. Anyone with a role
     // on their account gets the same view-only roster through getRosterForMembers
     // (names, rooms and assessment slots only - no email or date of birth).
@@ -365,7 +366,8 @@ function selectCourse(course) {
     firstTimeAssessment: c.firstTimeAssessment,
     assessmentAbsent: c.assessmentAbsent === true,
     rap: c.rap === true,
-    twoPlusAssessments: c.twoPlusAssessments === true
+    twoPlusAssessments: c.twoPlusAssessments === true,
+    assessmentAttempt: typeof c.assessmentAttempt === "number" ? c.assessmentAttempt : null
   }));
 
   const teams = teamsFor(course);
