@@ -826,6 +826,21 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+    // ── Assessment night: who is here for attempt 3 or later (2026-10-14, Jon) ──
+    // One doc per Stage 1 course, doc id = the course name: {course, present:[names],
+    // updatedAt, updatedBy}. Ticked on the Phase 1 hub's Retest pool page by a
+    // Director, Student Faculty or Senior Faculty; everyone on the night can read
+    // it (the assessor view shows who is here). Information only: it does not
+    // change who may assess.
+    match /stage1_night_present/{courseId} {
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam();
+      allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.keys().hasOnly(['course', 'present', 'updatedAt', 'updatedBy'])
+        && request.resource.data.present is list
+        && request.resource.data.present.size() <= 60;
+      allow delete: if isDirector();
+    }
+
     // ── Course roster / room + instructor allocation — Section 3.6 ─────────
     // One doc per Stage 1 evening course, holding that course's per-room
     // instructor teams (candidate→room assignment lives on stage1_candidates
