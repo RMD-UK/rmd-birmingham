@@ -192,6 +192,9 @@ details.lst .in{padding:0 14px 12px}
 .rsep{font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;padding:10px 8px 2px;border-top:1px solid #F0F3F8}
 .nchip{display:inline-block;font-size:12px;font-weight:800;border-radius:8px;padding:3px 9px;background:#EEF1F6;color:var(--mut)}
 .nchip.pass{background:var(--okbg);color:var(--ok)}
+.nchip.exc-chip{background:#FFF3C4;color:#6B4E00}
+.exc{margin:0 0 10px}
+.fqb.exc-b.on{background:#FFE08A;border-color:#B8860B;color:#4A3500}
 .nchip.refer{background:var(--warnbg);color:var(--warn)}
 .nchip.bad{background:var(--badbg);color:var(--bad)}
 .nchip.due{background:var(--org);color:#fff}
@@ -1195,6 +1198,13 @@ function amNamed() {
 // Mark sheet. Steps follow the ERC / Resuscitation Council UK 2025 lay-rescuer sequence (single rescuer: safety, response, call 999 on speaker, airway and breathing check, compressions, 30:2, AED);
 // each step starts with the code used in the Google Form's Reasons for Failure section (1a, 1b, 1c, 2a);
 // a Director can edit them under Night settings (saved in config/stage1_assessment_form.markSheet).
+// "Excellent" is an internal note on a Pass (Jon, 14 Oct): never changes the result and is not shown to the candidate.
+const EXC_CRITERIA = [
+  "Compression rate held at 100 to 120 per minute throughout",
+  "Whole sequence completed in order with no prompting",
+  "Clear, confident communication with the 999 call and with helpers",
+  "Calm, safe and organised throughout"
+];
 const COMPS = [{ k: "bls", label: "BLS + AED" }, { k: "rec", label: "First aid (recovery position)" }];
 const CODE_NAMES = { "1a": "Chest compressions / BLS", "1b": "Rescue breaths", "1c": "AED", "2a": "Recovery position" };   // same codes as the Google Form's "Reasons for Failure" section
 const DEFAULT_STEPS = {
@@ -1507,7 +1517,7 @@ function openForm(id) {
   const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
   N.formOpen = true;
   const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
-  const state = { marks: {}, reasons: { bls: new Set(), rec: new Set() }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
+  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), marks: {}, reasons: { bls: new Set(), rec: new Set() }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
   if (existing && existing.components) {
     req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
     COMPS.forEach(x => ((existing.reasons || {})[x.k] || []).forEach(r => state.reasons[x.k].add(r)));
@@ -1544,6 +1554,8 @@ function openForm(id) {
     cmpHtml + qHtml +
     `<div class="fq"><label>Comments</label><textarea id="fComment" style="min-height:80px;font-family:inherit" ${chk.ok ? "" : "disabled"}>${esc(existing ? existing.comment || "" : "")}</textarea></div>` +
     `<div class="resline" id="fRes">Mark each part to see the result.</div>` +
+    `<div class="exc hidden" id="fExc"><button type="button" class="fqb exc-b" id="fExcBtn" ${chk.ok ? "" : "disabled"}>Excellent</button><span class="hint" style="margin-left:8px">Optional note for the team only. It does not change the result and the candidate does not see it.</span>` +
+    `<div class="exc-c hidden" id="fExcCrit"><div class="hint" style="margin:8px 0 4px">Tap at least one that applies:</div>${EXC_CRITERIA.map((t, i) => `<button type="button" class="stp" data-exc="${i}"><span class="sn">${i + 1}</span>${esc(t)}</button>`).join("")}</div></div>` +
     (url ? `<div class="hint" style="margin:6px 0"><a href="${esc(url)}" target="_blank" rel="noopener">Open the Google Form instead</a> (fallback if this page has a problem).</div>` : "") +
     `<div class="row2"><button type="button" class="btn pri" id="fSave" disabled>Save result</button><button type="button" class="btn" id="fCancel">Cancel</button><span class="hint" id="fMsg"></span></div>` +
     `</div></div>`;
@@ -1557,6 +1569,11 @@ function openForm(id) {
     const o = outcomeFor(state.marks, req);
     $("fRes").className = "resline" + (o === "pass" ? " pass" : o ? " refer" : "");
     $("fRes").textContent = o ? "Result: " + outcomeLabel(o, att) : "Mark each part to see the result.";
+    const showExc = o === "pass";
+    $("fExc").classList.toggle("hidden", !showExc);
+    $("fExcBtn").classList.toggle("on", showExc && state.exc);
+    $("fExcCrit").classList.toggle("hidden", !(showExc && state.exc));
+    $("overlay").querySelectorAll("[data-exc]").forEach(b => b.classList.toggle("on", state.excCrit.has(EXC_CRITERIA[Number(b.dataset.exc)])));
     $("fSave").textContent = o ? "Save: " + outcomeShort(o, att) : "Save result";
     $("fSave").disabled = !o || !chk.ok;
   };
@@ -1566,6 +1583,12 @@ function openForm(id) {
   $("overlay").querySelectorAll("[data-stp]").forEach(b => b.onclick = () => {
     const k = b.dataset.stp, t = stepsFor(k)[Number(b.dataset.i)];
     if (state.reasons[k].has(t)) state.reasons[k].delete(t); else state.reasons[k].add(t);
+    refresh();
+  });
+  $("fExcBtn").onclick = () => { state.exc = !state.exc; refresh(); };
+  $("overlay").querySelectorAll("[data-exc]").forEach(b => b.onclick = () => {
+    const t = EXC_CRITERIA[Number(b.dataset.exc)];
+    if (state.excCrit.has(t)) state.excCrit.delete(t); else state.excCrit.add(t);
     refresh();
   });
   $("overlay").querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
@@ -1578,12 +1601,14 @@ function openForm(id) {
     const comment = $("fComment").value.trim();
     for (const k of req) { if (state.marks[k] === "fail" && !state.reasons[k].size && !comment) { $("fMsg").textContent = "Tap at least one reason for " + compLabel(k) + " (or add a comment)."; return; } }
     for (const q of qs) { if (q.required && !(state.answers[q.id] || ($("overlay").querySelector('[data-qt="' + q.id + '"]') || {}).value)) { $("fMsg").textContent = "Please answer: " + q.label; return; } }
+    const wantExc = out === "pass" && state.exc;
+    if (wantExc && !state.excCrit.size) { $("fMsg").textContent = "Tap at least one reason for Excellent, or switch it off."; return; }
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
     const components = {}, reasons = {};
     req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
     $("fSave").disabled = true;
     try {
-      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons }, !!existing);
+      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [] }, !!existing);
       close();
     } catch (err) {
       $("fSave").disabled = false;
@@ -1594,6 +1619,7 @@ function openForm(id) {
 async function saveResult(c, att, outcome, d, amend) {
   const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
   if (amend) entry.amended = true;
+  if (d.excellent) { entry.excellent = true; entry.excellentCriteria = d.excellentCriteria || []; }
   await db.collection("stage1_assessments").doc(c.id).set({
     course: S.course, candidateName: c.name || "", claim: null, notThere: null,
     attempts: { [String(att)]: entry },
@@ -1679,8 +1705,9 @@ function attemptsOverview() {
     ? list.map(c => {
         const st = attemptStatus(c), a = nattempts(c.id);
         const hist = Object.keys(a).sort((x, y) => x - y).map(k => "A" + k + " " + outcomeShort(a[k].outcome, Number(k))).join(" · ");
+        const exc = Object.keys(a).some(k => a[k] && a[k].excellent);
         return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small>${esc(c.degree || "")}</small>` +
-          `<small style="flex-basis:100%">${hist ? esc(hist) + " · " : ""}<span class="nchip ${st.cls}">${esc(st.text)}</span></small></div>`;
+          `<small style="flex-basis:100%">${hist ? esc(hist) + " · " : ""}<span class="nchip ${st.cls}">${esc(st.text)}</span>${exc ? ' <span class="nchip exc-chip">Excellent</span>' : ""}</small></div>`;
       }).join("")
     : '<div class="hint">Nobody has a result or a retest yet.</div>';
   return `<details class="card" id="attDetails"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All attempts on this course (${list.length})</summary><div style="margin-top:8px">${body}</div></details>`;
