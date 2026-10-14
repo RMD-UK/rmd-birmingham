@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Register Live Screen - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{--ink:#1A2233;--mut:#6B7C93;--line:#E3E8EF;--bg:#F5F7FA;--pur:#44247C;--pur2:#2E1856;--purtint:#EFEAF8;--org:#F49001;--font:'Inter','Segoe UI',Arial,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;min-height:100vh}
+button,select{font-family:inherit;font-size:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+.gate{max-width:560px;margin:80px auto;padding:20px;font-weight:600;color:var(--ink)}
+.top{background:var(--pur2);color:#fff;padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.top h1{font-size:18px;font-weight:800;margin-right:auto}
+.top a{color:#D9CFF0;font-size:13px;font-weight:700}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 18px;background:#fff;border-bottom:1px solid var(--line)}
+.bar label{font-weight:700;font-size:13px;color:var(--mut);display:flex;gap:6px;align-items:center}
+.bar select{padding:7px 10px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-size:15px}
+.seg{display:flex;gap:0;border:2px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:8px 14px;font-weight:700;color:var(--ink)}
+.seg button.on{background:var(--purtint);color:var(--pur)}
+.btn{border:2px solid var(--line);background:#fff;border-radius:10px;padding:8px 14px;font-weight:700;color:var(--ink)}
+.btn.pri{background:var(--pur);border-color:var(--pur);color:#fff}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.msg{background:#FCE8E6;color:#B3261E;border-radius:10px;padding:9px 12px;font-weight:600;margin-bottom:12px}
+.hint{font-size:13px;color:var(--mut);margin-top:8px}
+.screen{background:var(--pur2);color:#fff;border-radius:16px;padding:22px}
+.screen .head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+.screen h2{font-size:22px;font-weight:800}
+.screen .clock{font-size:14px;color:#D9CFF0;font-variant-numeric:tabular-nums}
+.big{display:flex;align-items:baseline;gap:14px;margin:14px 0 6px;flex-wrap:wrap}
+.big .n{font-size:96px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.big .of{font-size:24px;color:#D9CFF0;font-weight:700}
+.sbar{height:22px;border-radius:11px;background:rgba(255,255,255,.15);overflow:hidden;display:flex;margin-bottom:6px}
+.sbar i{display:block;height:100%;transition:width .6s}
+.sbar .h{background:#58C07F}.sbar .l{background:var(--org)}
+.legend{font-size:13px;color:#D9CFF0;margin-bottom:14px;display:flex;gap:14px;flex-wrap:wrap}
+.dotk{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--org);vertical-align:-1px;margin-right:5px}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.sroom{background:rgba(255,255,255,.1);border-radius:12px;padding:12px;min-height:122px}
+.sroom b{font-size:16px}
+.sroom .v{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums}
+.sroom small{display:block;color:#D9CFF0;font-size:12px}
+.sroom.done{background:rgba(88,192,127,.25)}
+.sroom.low{background:rgba(244,144,1,.22)}
+.dots{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;min-height:14px}
+.dots i{display:block;width:14px;height:14px;border-radius:50%;background:var(--org);box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+.dots span{font-size:12px;font-weight:800;color:#FFD9A0}
+.screen.full{position:fixed;inset:0;border-radius:0;z-index:50;overflow:auto;padding:28px}
+.screen.full .big .n{font-size:min(22vw,200px)}
+#exitFull{position:fixed;right:16px;bottom:16px;z-index:60}
+@media(max-width:600px){.big .n{font-size:68px}}
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+
+<div id="app" class="hidden">
+  <div class="top"><h1>Register live screen</h1><a href="phase1.html">Back to Phase 1 hub</a></div>
+  <div class="bar" id="bar">
+    <label>Course <select id="courseSel"></select></label>
+    <div class="seg" id="weekSeg"><button type="button" data-w="auto" class="on">Auto</button><button type="button" data-w="1">Week 1</button><button type="button" data-w="2">Week 2</button></div>
+    <button type="button" class="btn pri" id="fullBtn">Full screen</button>
+  </div>
+  <main>
+    <div id="msgs"></div>
+    <div class="screen" id="screen"></div>
+    <div class="hint" id="hint">Counts only, no names. Updates by itself as each room marks people in. Orange dots are people marked late. Someone marked late counts as here.</div>
+  </main>
+</div>
+
+<script>
+initFirebase();
+const ROOMS = STAGE1_TEACHING_ROOMS;
+const S = { user: null, courseDates: [], course: null, week: "auto", cands: [], reg: {}, unsubs: [], err: "", late: 0, tick: null, wake: null };
+const $ = id => document.getElementById(id);
+const esc = v => (v == null ? "" : String(v)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function londonNow() {
+  const p = {};
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, hm: p.hour + ":" + p.minute };
+}
+function addDays(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function nice(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", ""); }
+function weekDates(name) {
+  const c = S.courseDates.find(x => x.name === name);
+  return c ? [addDays(c.date, -14), addDays(c.date, -7), c.date] : null;
+}
+// Which week to show: the one that is today, else the most recent week that has started, else week 1.
+function activeWeek() {
+  if (S.week !== "auto") return Number(S.week);
+  const d = weekDates(S.course); if (!d) return 1;
+  const t = londonNow().date;
+  if (t === d[0]) return 1;
+  if (t === d[1]) return 2;
+  if (t > d[1]) return 2;
+  return 1;
+}
+function roomList() {
+  const set = new Set(S.cands.map(c => c.room).filter(Boolean));
+  return ROOMS.filter(r => set.has(r)).concat([...set].filter(r => !ROOMS.includes(r)).sort());
+}
+const statusOf = (cid, n) => { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n].status : null; };
+function tally(list, n) {
+  const o = { here: 0, late: 0, absent: 0, total: list.length };
+  list.forEach(c => { const s = statusOf(c.id, n); if (s === "here") o.here++; else if (s === "late") o.late++; else if (s === "absent") o.absent++; });
+  return o;
+}
+const pct = (n, t) => t ? Math.round(n * 1000 / t) / 10 : 0;
+
+auth.onAuthStateChanged(async user => {
+  if (!user) { window.location.href = "signin.html"; return; }
+  try {
+    S.user = user;
+    const role = await resolveRole(user.uid, user.email || "");
+    const stu = await isStudentFaculty(user.email || "").catch(() => false);
+    const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+    if (!(role === ROLES.DIRECTOR || stu || sen)) {
+      $("authMsg").textContent = "This screen is for Directors, Student Faculty and Senior Faculty. If you should have access, ask the Course Director.";
+      return;
+    }
+    const cfg = await db.collection("config").doc("stage1_course_dates").get();
+    S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    if (!S.courseDates.length) { $("screen").innerHTML = '<h2>No courses set up yet</h2>'; return; }
+    $("courseSel").innerHTML = S.courseDates.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(nice(c.date))})</option>`).join("");
+    const today = londonNow().date;
+    const first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    $("courseSel").value = first.name;
+    $("courseSel").onchange = () => selectCourse($("courseSel").value);
+    $("weekSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+      S.week = b.dataset.w;
+      $("weekSeg").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+      render();
+    });
+    $("fullBtn").onclick = () => setFull(!$("screen").classList.contains("full"));
+    selectCourse(first.name);
+    S.tick = setInterval(render, 30000);          // keeps the clock and the Auto week fresh
+    setInterval(reloadCands, 5 * 60 * 1000);      // picks up added or moved candidates
+  } catch (err) {
+    console.error(err);
+    $("authMsg").textContent = "Could not open this page: " + (err.message || err);
+  }
+});
+
+function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
+async function reloadCands() {
+  if (!S.course) return;
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", S.course).get();
+    S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    render();
+  } catch (e) {}
+}
+async function selectCourse(name) {
+  detach();
+  S.course = name; S.reg = {}; S.cands = []; S.err = "";
+  $("screen").innerHTML = '<h2>Opening ' + esc(name) + '...</h2>';
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
+    S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  } catch (err) {
+    S.err = "Could not load the candidates: " + (err.message || err);
+    render(); return;
+  }
+  S.unsubs.push(db.collection("stage1_register").where("course", "==", name).onSnapshot(snap => {
+    S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); });
+    S.err = ""; render();
+  }, err => { S.err = "Could not read the register: " + (err.message || err) + ". If this says permission denied, check you are Student Faculty, Senior Faculty or a Director."; render(); }));
+  render();
+}
+
+function render() {
+  if (!S.course) return;
+  $("msgs").innerHTML = S.err ? `<div class="msg">${esc(S.err)}</div>` : "";
+  const d = weekDates(S.course), wk = activeWeek();
+  const rooms = roomList();
+  const noRoom = S.cands.filter(c => !c.room);
+  const all = S.cands;
+  const t = tally(all, wk), here = t.here + t.late;
+  const now = londonNow();
+  const dateTxt = d ? nice(d[wk - 1]) : "";
+  const tiles = rooms.map(r => {
+    const l = all.filter(c => c.room === r), x = tally(l, wk), h = x.here + x.late;
+    const lateN = x.late;
+    const shown = Math.min(lateN, 12);
+    const dots = lateN ? `<div class="dots" title="${lateN} late">${"<i></i>".repeat(shown)}${lateN > shown ? `<span>+${lateN - shown}</span>` : ""}</div>` : '<div class="dots"></div>';
+    const state = x.total && h === x.total ? "done" : (x.total && h / x.total < .4 ? "low" : "");
+    const sub = x.total && h === x.total ? "All here" : ((x.total - h) + " to come" + (x.absent ? " &middot; " + x.absent + " absent" : ""));
+    return `<div class="sroom ${state}"><b>${esc(r)}</b><div class="v">${h}/${x.total}</div><small>${sub}</small>${dots}</div>`;
+  }).join("") + (noRoom.length ? `<div class="sroom"><b>No room</b><div class="v">${tally(noRoom, wk).here + tally(noRoom, wk).late}/${noRoom.length}</div><small>not allocated yet</small></div>` : "");
+  $("screen").innerHTML =
+    `<div class="head"><h2>${esc(S.course)} &middot; Week ${wk} register${dateTxt ? " &middot; " + esc(dateTxt) : ""}</h2><span class="clock">${esc(now.hm)} &middot; live</span></div>` +
+    `<div class="big"><span class="n">${here}</span><span class="of">of ${t.total} here${t.late ? " &middot; " + t.late + " late" : ""}${t.absent ? " &middot; " + t.absent + " absent" : ""}</span></div>` +
+    `<div class="sbar"><i class="h" style="width:${pct(t.here, t.total)}%"></i><i class="l" style="width:${pct(t.late, t.total)}%"></i></div>` +
+    `<div class="legend"><span><span class="dotk"></span>one dot for each person marked late</span></div>` +
+    `<div class="sgrid">${tiles || '<div class="sroom"><b>No candidates on this course yet</b></div>'}</div>`;
+  if ($("screen").classList.contains("full")) ensureExit(true);
+}
+
+function ensureExit(on) {
+  let x = $("exitFull");
+  if (on && !x) { x = document.createElement("button"); x.id = "exitFull"; x.className = "btn"; x.textContent = "Close full screen"; x.onclick = () => setFull(false); document.body.appendChild(x); }
+  if (!on && x) x.remove();
+}
+async function setFull(on) {
+  $("screen").classList.toggle("full", on);
+  $("fullBtn").textContent = on ? "Close full screen" : "Full screen";
+  ensureExit(on);
+  try {
+    if (on) {
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) await document.documentElement.requestFullscreen().catch(() => {});
+      if (navigator.wakeLock) S.wake = await navigator.wakeLock.request("screen").catch(() => null);
+    } else {
+      if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen().catch(() => {});
+      if (S.wake) { S.wake.release().catch(() => {}); S.wake = null; }
+    }
+  } catch (e) {}
+}
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && $("screen").classList.contains("full")) setFull(false); });
+</script>
+</body>
+</html>
