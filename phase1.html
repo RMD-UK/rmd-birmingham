@@ -177,6 +177,12 @@ details.lst .in{padding:0 14px 12px}
 .rhead b{font-size:18px;font-weight:800;min-width:54px}
 .rhead .rmeta{font-size:13.5px;color:var(--mut);font-weight:600}
 .rhead .rhint{margin-left:auto;font-size:12px;color:var(--pur);font-weight:700}
+.rhead{display:flex;align-items:center;gap:8px;padding:0 12px 0 0;border:0;background:#fff}
+.rmain{flex:1 1 220px;display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;text-align:left;border:0;background:transparent;padding:13px 16px;color:var(--ink);cursor:pointer}
+.racts{display:flex;gap:6px;flex:none}
+.rbanner{background:#EFE9FA;border:1px solid #D9CFF0;border-radius:12px;padding:10px 14px;margin:0 0 10px;font-size:13.5px;color:#2a1655}
+.rbanner b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
+.rbanner .tools{margin-top:8px}
 .rcard.open{border-color:var(--pur)}
 .rcard.open .rhead{background:var(--purtint)}
 .rbody{padding:4px 8px 10px}
@@ -1473,21 +1479,28 @@ function renderRunner() {
   $("msgs").innerHTML = nightBanner();
   $("plain").innerHTML = '<span class="lbl">Runner view</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${doneN}</b> of <b>${all.length}</b> assessed` +
-    (flagged ? `, <b>${flagged}</b> flagged as not there` : "") + `. Tap a room to open it, tap it again for full screen. Tap a name to flag that person as not there at their time; tap again to clear it.`;
+    (flagged ? `, <b>${flagged}</b> flagged as not there` : "") + `.`;
   const cards = rooms.map(r => {
     const list = by[r], dn = list.filter(isDoneN).length;
     const fl = list.filter(c => { const x = nres(c.id); return x.notThere && x.notThere.flag && !isDoneN(c); }).length;
     const isOpen = N.open.has(r);
-    return `<div class="rcard${isOpen ? " open" : ""}"><button type="button" class="rhead" data-rroom="${esc(r)}"><b>${esc(r)}</b>` +
+    return `<div class="rcard${isOpen ? " open" : ""}"><div class="rhead"><button type="button" class="rmain" data-rroom="${esc(r)}"><b>${esc(r)}</b>` +
       `<span class="rmeta">${list.length} candidate${list.length === 1 ? "" : "s"} · ${dn} assessed${fl ? ` · <span class="bad">${fl} not there</span>` : ""}</span>` +
-      `<span class="rhint">${isOpen ? "tap for full screen" : "tap to open"}</span></button>` +
+      (isOpen ? "" : `<span class="rhint">tap to open</span>`) + `</button>` +
+      (isOpen ? `<span class="racts"><button type="button" class="btn sm" data-rfull="${esc(r)}">Full screen</button><button type="button" class="btn sm" data-rcollapse="${esc(r)}">Collapse</button></span>` : "") + `</div>` +
       (isOpen ? `<div class="rbody">${runnerRows(list, false)}</div>` : "") + `</div>`;
   }).join("");
-  $("viewRunner").innerHTML = cards || `<div class="card"><div class="hint">Nobody has an assessment slot yet for ${esc(S.course)}. Slots are made on the Assessment allocation page.</div></div>`;
+  const banner = rooms.length ? `<div class="rbanner"><b>How this screen works</b>Tap a room to open it. In an open room, press <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Full screen</b> for the big-screen view or <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Collapse</b> to close it again (tapping the room name also goes full screen). Tap a name to flag that person as not there at their time; tap it again to clear the flag.` +
+    `<div class="tools"><button type="button" class="btn sm" id="rOpenAll">Open all rooms</button><button type="button" class="btn sm" id="rCollapseAll">Collapse all</button></div></div>` : "";
+  $("viewRunner").innerHTML = banner + cards || `<div class="card"><div class="hint">Nobody has an assessment slot yet for ${esc(S.course)}. Slots are made on the Assessment allocation page.</div></div>`;
   $("viewRunner").querySelectorAll("[data-rroom]").forEach(b => b.onclick = () => {
     const r = b.dataset.rroom;
     if (N.open.has(r)) { N.fullRoom = r; renderFull(); } else { N.open.add(r); renderRunner(); }
   });
+  $("viewRunner").querySelectorAll("[data-rfull]").forEach(b => b.onclick = () => { N.fullRoom = b.dataset.rfull; renderFull(); });
+  $("viewRunner").querySelectorAll("[data-rcollapse]").forEach(b => b.onclick = () => { N.open.delete(b.dataset.rcollapse); renderRunner(); });
+  const oa = $("rOpenAll"); if (oa) oa.onclick = () => { rooms.forEach(r => N.open.add(r)); renderRunner(); };
+  const ca = $("rCollapseAll"); if (ca) ca.onclick = () => { N.open.clear(); renderRunner(); };
   $("viewRunner").querySelectorAll("[data-flag]").forEach(b => b.onclick = () => toggleNotThere(b.dataset.flag));
   if (N.fullRoom) renderFull();
 }
