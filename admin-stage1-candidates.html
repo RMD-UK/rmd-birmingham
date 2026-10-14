@@ -1303,7 +1303,8 @@ async function saveEditCandidate(id) {
 function linkedBadgeHtml(c) {
   if (!c.linkedCandidateId) return "";
   const other = allCandidates.find(x => x.id === c.linkedCandidateId);
-  return ` <span class="link-badge" title="Linked as the same person's repeat attempt">🔗 ${other ? esc(other.name) + " — " + esc(other.course || "no course") : "linked record"}</span>`;
+  const att = Number.isInteger(c.assessmentAttempt) && c.assessmentAttempt >= 2 ? ` · attempt ${c.assessmentAttempt}` : "";
+  return ` <span class="link-badge" title="Linked as the same person's repeat attempt">🔗 ${other ? esc(other.name) + " — " + esc(other.course || "no course") : "linked record"}${att}</span>`;
 }
 
 function eligibilityOverrideBadgeHtml(c) {
@@ -1484,22 +1485,70 @@ function possibleRepeatBadgeHtml(c) {
   return ` <span class="dup-warning" style="display:inline;background:#fff3cd;border-color:#f0b860;color:#8a5a00;" title="Same email as an earlier record with outcome Failed">⚠ possible repeat of ${esc(s.course || "earlier course")} <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="confirmSuggestedRepeat('${c.id}', '${s.id}')">Link &amp; mark repeat</button></span>`;
 }
 
+// ── Repeat attempt number (2026-10-13, Jon) ────────────────────────────────
+// The attempt number decides who may assess someone (attempt 2 = student or
+// senior faculty, attempt 3+ = senior faculty or named assessors) and which
+// instructors the room allocation warns about. A forgotten number meant the
+// wrong assessors were allowed with no warning, so linking now sets it:
+// the earlier record's attempt, or the highest attempt recorded on the
+// assessment night for it, plus one. The director can overwrite the suggestion.
+function recordedAttemptOf(c) {
+  if (Number.isInteger(c.assessmentAttempt) && c.assessmentAttempt >= 1) return c.assessmentAttempt;
+  return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1;
+}
+async function suggestedAttemptFor(earlier) {
+  let n = recordedAttemptOf(earlier);
+  try {
+    const d = await db.collection("stage1_assessments").doc(earlier.id).get();
+    if (d.exists) {
+      const att = (d.data().attempts) || {};
+      Object.keys(att).forEach(k => { const v = parseInt(k, 10); if (v > n) n = v; });
+    }
+  } catch (e) { /* no permission or no record: fall back to the saved number */ }
+  return n + 1;
+}
+// Which of two linked records is the earlier attempt, judged by course date.
+// Returns [earlier, later], or null when it cannot be told.
+function orderByCourseDate(a, b) {
+  const da = (courseSessions.find(s => s.name === a.course) || {}).date || "";
+  const db_ = (courseSessions.find(s => s.name === b.course) || {}).date || "";
+  if (da && db_ && da !== db_) return da < db_ ? [a, b] : [b, a];
+  if (da && !db_) return [b, a]; // the one with no known date is treated as the newer, not-yet-sat record
+  if (db_ && !da) return [a, b];
+  return null;
+}
+// Link two records and set the later one's attempt. Used by both link paths.
+async function linkWithAttempt(a, b, hintLaterId) {
+  let pair = hintLaterId ? (a.id === hintLaterId ? [b, a] : [a, b]) : orderByCourseDate(a, b);
+  if (!pair) {
+    const pick = prompt(`Which record is the LATER attempt?\n\n1. ${a.name} - ${a.course || "no course"}\n2. ${b.name} - ${b.course || "no course"}\n\nType 1 or 2.`);
+    if (pick !== "1" && pick !== "2") { alert("Nothing linked."); return false; }
+    pair = pick === "1" ? [b, a] : [a, b];
+  }
+  const [earlier, later] = pair;
+  const suggested = await suggestedAttemptFor(earlier);
+  const ans = prompt(`Link these as the same person's attempts.\n\nEarlier: ${earlier.name} - ${earlier.course || "no course"}\nLater:   ${later.name} - ${later.course || "no course"}\n\nAttempt number for the later record (suggested ${suggested}: earlier result plus one).\nThis decides who may assess them, so check it. Press OK to accept or change the number:`, String(suggested));
+  if (ans === null) return false;
+  const n = parseInt(ans, 10);
+  if (!(n >= 2 && n <= 9)) { alert("Enter a whole number from 2 upwards. Nothing linked."); return false; }
+  const linkedAt = firebase.firestore.FieldValue.serverTimestamp();
+  const batch = db.batch();
+  batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(later.id), { linkedCandidateId: earlier.id, linkedAt, firstTimeAssessment: false, assessmentAttempt: n, twoPlusAssessments: true });
+  batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(earlier.id), { linkedCandidateId: later.id, linkedAt });
+  await batch.commit();
+  later.linkedCandidateId = earlier.id; later.firstTimeAssessment = false; later.assessmentAttempt = n; later.twoPlusAssessments = true;
+  earlier.linkedCandidateId = later.id;
+  return true;
+}
+
 async function confirmSuggestedRepeat(id, otherId) {
   const c = allCandidates.find(x => x.id === id);
   const other = allCandidates.find(x => x.id === otherId);
   if (!c || !other) return;
   if (c.linkedCandidateId || other.linkedCandidateId) { alert("One of these records has been linked since the page loaded - refresh and check."); return; }
-  if (!confirm(`Link these as the same person's repeat attempts AND mark the newer one as a repeat assessment-taker?\n\nEarlier: ${other.name} - ${other.course || "no course"} (outcome: Failed)\nNewer: ${c.name} - ${c.course || "no course"}\n\nThe newer record will be excluded from Step 5's assessment-room auto-allocation; RMD faculty manage repeat assessments separately.`)) return;
   try {
-    const linkedAt = firebase.firestore.FieldValue.serverTimestamp();
-    const batch = db.batch();
-    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { linkedCandidateId: other.id, linkedAt, firstTimeAssessment: false });
-    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(other.id), { linkedCandidateId: c.id, linkedAt });
-    await batch.commit();
-    c.linkedCandidateId = other.id;
-    c.firstTimeAssessment = false;
-    other.linkedCandidateId = c.id;
-    renderCandidates();
+    // c is the newer record (it is the one flagged as a possible repeat of the failed one)
+    if (await linkWithAttempt(other, c, c.id)) renderCandidates();
   } catch (err) {
     alert("Failed: " + err.message);
   }
@@ -1624,17 +1673,8 @@ async function linkRepeat(candidateId) {
     target = matches[idx];
   }
 
-  if (!confirm(`Link these as the same person's repeat attempts?\n\n${c.name} — ${c.course || "no course"}\n${target.name} — ${target.course || "no course"}\n\nThis just connects the two records for reference — nothing else about either one changes.`)) return;
-
   try {
-    const linkedAt = firebase.firestore.FieldValue.serverTimestamp();
-    const batch = db.batch();
-    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { linkedCandidateId: target.id, linkedAt });
-    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(target.id), { linkedCandidateId: c.id, linkedAt });
-    await batch.commit();
-    c.linkedCandidateId = target.id;
-    target.linkedCandidateId = c.id;
-    renderCandidates();
+    if (await linkWithAttempt(c, target, null)) renderCandidates();
   } catch (err) {
     alert("Failed to link: " + err.message);
   }

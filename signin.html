@@ -24,8 +24,14 @@
       </form>
       <p id="loginError" style="color:var(--rmd-warn);font-size:13px;margin-top:10px;display:none;"></p>
 
+      <!-- Shown only when this browser is likely to lose the sign-in (2026-10-13). -->
+      <div id="envWarn" style="display:none;background:#fff3cd;border:1px solid #f0b860;color:#7a5200;font-size:13px;line-height:1.45;padding:10px 12px;border-radius:6px;margin-top:12px;"></div>
+
       <p style="text-align:center;margin-top:10px;">
         <a href="#" onclick="toggleForgotPassword(event)" style="font-size:13px;color:var(--rmd-blue);text-decoration:underline;">Forgot password?</a>
+      </p>
+      <p style="text-align:center;margin-top:6px;">
+        <a href="auth-check.html" style="font-size:13px;color:var(--rmd-blue);text-decoration:underline;">Keep getting signed out? Run the sign-in check</a>
       </p>
       <div id="forgotPasswordPanel" style="display:none;margin-top:12px;">
         <input class="form-input" type="email" id="forgotEmail" placeholder="Email address" autocomplete="email">
@@ -67,6 +73,34 @@
   // redeclare either identifier in this file.
 
   initFirebase();
+
+  // ── Warn when this browser is likely to lose the sign-in ───────────────────
+  // Two causes seen so far: pages opened inside another app's built-in
+  // browser (links from messaging or social apps), and browsers that block
+  // site storage (private mode or strict privacy settings). Both stop the
+  // site remembering who you are, so people get bounced to this page.
+  (function envCheck() {
+    var reasons = [];
+    var ua = navigator.userAgent || "";
+    if (/FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|LinkedInApp|Snapchat|Twitter|TikTok|GSA\/|Teams\//i.test(ua)) {
+      reasons.push("This page is open inside another app's built-in browser. Tap the menu (three dots or the share icon) and choose Open in Safari or Open in Chrome, then sign in there.");
+    }
+    try {
+      var k = "__rmd_probe__";
+      window.localStorage.setItem(k, "1");
+      window.localStorage.removeItem(k);
+    } catch (e) {
+      reasons.push("This browser is blocking the storage the site needs to remember you. Turn off private browsing, or allow cookies and site data for rmd.uk.com, then reload.");
+    }
+    if (reasons.length) {
+      var el = document.getElementById("envWarn");
+      if (el) {
+        el.innerHTML = "<strong>You may be signed out again straight away.</strong><br>" + reasons.join("<br>") +
+          ' <a href="auth-check.html" style="color:inherit;text-decoration:underline;">Run the sign-in check</a>';
+        el.style.display = "block";
+      }
+    }
+  })();
 
   // ── Candidate QR landing ───────────────────────────────────────────────────
   const params      = new URLSearchParams(window.location.search);

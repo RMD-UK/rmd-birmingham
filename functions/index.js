@@ -254,6 +254,20 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
       ok = role === "faculty" || role === "assessor-faculty";
     } catch (e) { ok = false; }
   }
+  if (!ok) {
+    // 2026-10-13: assessment night team (e.g. Senior Instructors) and named extra assessors,
+    // kept as email lists in config and edited from Night settings in phase1.html.
+    try {
+      const email = String(auth.token.email || "").toLowerCase();
+      if (email) {
+        const lists = await Promise.all([
+          db.collection("config").doc("stage1_assessors").get(),
+          db.collection("config").doc("stage1_named_assessors").get()
+        ]);
+        ok = lists.some(s => s.exists && (s.data().emails || []).map(x => String(x).toLowerCase()).includes(email));
+      }
+    } catch (e) { ok = false; }
+  }
   if (!ok) throw new HttpsError("permission-denied", "Assessment night access only.");
 
   const [candSnap, namedSnap, formSnap, datesSnap, roomsSnap] = await Promise.all([
@@ -2973,6 +2987,12 @@ async function stage1WriteFormats(fmt) {
   }
 }
 
+// Test candidates (created by admin-stage1-testcourse.html, flagged isTest:true,
+// emails always contain ".test@") must never reach the real Master sheet.
+function isStage1TestRecord(c) {
+  return !!c && (c.isTest === true || String(c.email || "").toLowerCase().includes(".test@"));
+}
+
 async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = {}) {
   const tab = encodeURIComponent(STAGE1_SHEET_TAB_Q);
   const [snap, removalsSnap, sheetData, headerData] = await Promise.all([
@@ -2986,6 +3006,7 @@ async function reconcileStage1Sheet({ dryRun = false, strikeMissing = false } = 
   const siteEmails = new Set();
   snap.docs.forEach(d => {
     const c = d.data();
+    if (isStage1TestRecord(c)) return; // never mirror test candidates to the real sheet
     const e = String(c.email || "").trim().toLowerCase();
     if (!e || siteEmails.has(e)) return;
     siteEmails.add(e);
@@ -3132,6 +3153,7 @@ exports.syncStage1CourseToSheet = onDocumentWritten(
     const before = event.data?.before?.exists ? event.data.before.data() : null;
     const after = event.data?.after?.exists ? event.data.after.data() : null;
     const emailOf = c => String(c?.email || "").trim().toLowerCase();
+    if (isStage1TestRecord(before) || isStage1TestRecord(after)) return; // test candidates never touch the real sheet
 
     try {
       // Removed from the website: record it durably, then try to strike the

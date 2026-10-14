@@ -370,6 +370,18 @@ auth.onAuthStateChanged(async user => {
     S.sen = sen; S.stu = stu;
     S.full = S.isDirector || stu || sen;
     S.night = S.full || S.role === "faculty" || S.role === "assessor-faculty";   // can use the assessment night views
+    if (!S.night) {
+      // Assessment night team (e.g. Senior Instructors) and named extra assessors: email lists in config.
+      try {
+        const em = String(user.email || "").toLowerCase();
+        const [tm, nm0] = await Promise.all([db.collection("config").doc("stage1_assessors").get(), db.collection("config").doc("stage1_named_assessors").get()]);
+        const has = d => d.exists && (d.data().emails || []).some(x => String(x).toLowerCase() === em);
+        if (em && (has(tm) || has(nm0))) S.night = true;
+      } catch (e) {}
+    }
+    if (S.isDirector) {
+      try { const tm2 = await db.collection("config").doc("stage1_assessors").get(); N.team = tm2.exists ? (tm2.data().emails || []) : []; } catch (e) {}
+    }
     S.myName = user.displayName || (user.email || "").split("@")[0];
     try {
       const me = await db.collection(COLLECTIONS.people).doc(user.uid).get();
@@ -698,13 +710,18 @@ async function allHere(n) {
   const now = londonNow();
   if (!S.editAny && now.hm > S.lateAfter) { toast("After " + S.lateAfter + " each person has to be marked one by one.", true); return; }
   try {
-    const batch = db.batch();
-    todo.forEach(c => {
-      const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
-      p["w" + n] = { status: "here", time: now.hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() };
-      batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
-    });
-    await batch.commit();
+    // Small batches on purpose: for a room instructor the security rules look up
+    // each candidate's room team, and Firestore allows only 20 such lookups in
+    // one batched write. Eight at a time stays well inside that limit.
+    for (let i = 0; i < todo.length; i += 8) {
+      const batch = db.batch();
+      todo.slice(i, i + 8).forEach(c => {
+        const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        p["w" + n] = { status: "here", time: now.hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() };
+        batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
+      });
+      await batch.commit();
+    }
     toast(todo.length + " marked as here.");
   } catch (err) { toast("Not saved: " + err.message, true); }
 }
@@ -1154,7 +1171,7 @@ document.addEventListener("DOMContentLoaded", () => { const s = document.getElem
 // ════════════════════════════════════════════════════════════════════════════
 const NIGHT_VIEWS = ["retest", "runner", "assessor"];
 const N = {
-  course: null, cands: [], results: {}, named: [], form: {}, err: "", resErr: "", usingFallback: false,
+  course: null, cands: [], results: {}, named: [], team: [], form: {}, err: "", resErr: "", usingFallback: false,
   room: null, open: new Set(), fullRoom: null, unsub: null, poll: null, formOpen: false, loadedAt: 0
 };
 
@@ -1638,6 +1655,35 @@ function staleAttempts() {
   // candidates whose recorded results imply a higher attempt than the number saved on them
   return N.cands.filter(c => !c.absent && derivedAttempt(c.id) > (c.attempt || 1));
 }
+// Attempts overview (2026-10-13, Jon): everyone on this course who has a result
+// or is on attempt 2 or above, in one collapsed list, so the team can see at a
+// glance where each person stands. Collapsed by default.
+function attemptStatus(c) {
+  const p = passedAtKey(c.id);
+  if (p) return { cls: "pass", text: "Passed at attempt " + p };
+  if (c.absent) return { cls: "bad", text: "Not there" };
+  if (inPool(c)) return { cls: "bad", text: "In the retest pool" };
+  const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+  const k = ks.length ? Math.max.apply(null, ks) : 0;
+  if (k === 1) return { cls: "bad", text: "Referred, due a retest tonight" };
+  if (k === 2) return { cls: "", text: "Awaiting retraining (attempt 3 on a later course)" };
+  if (k === 3) return { cls: "", text: "Back to degree leads" };
+  if (k >= 4) return { cls: "bad", text: "Not passed (final)" };
+  return { cls: "", text: "Not yet assessed" };
+}
+function attemptsOverview() {
+  const list = N.cands.filter(c => effAttempt(c) >= 2 || isDoneN(c))
+    .sort((a, b) => effAttempt(b) - effAttempt(a) || String(a.name).localeCompare(String(b.name)));
+  const body = list.length
+    ? list.map(c => {
+        const st = attemptStatus(c), a = nattempts(c.id);
+        const hist = Object.keys(a).sort((x, y) => x - y).map(k => "A" + k + " " + outcomeShort(a[k].outcome, Number(k))).join(" · ");
+        return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small>${esc(c.degree || "")}</small>` +
+          `<small style="flex-basis:100%">${hist ? esc(hist) + " · " : ""}<span class="nchip ${st.cls}">${esc(st.text)}</span></small></div>`;
+      }).join("")
+    : '<div class="hint">Nobody has a result or a retest yet.</div>';
+  return `<details class="card" id="attDetails"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All attempts on this course (${list.length})</summary><div style="margin-top:8px">${body}</div></details>`;
+}
 function renderRetest() {
   if (!S.course || !S.full) return;
   const d = assessDate(), pool = poolList(), stale = staleAttempts();
@@ -1665,10 +1711,14 @@ function renderRetest() {
       `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span></span></div>`;
   };
   h += `<div class="card"><h3><span class="stepno">1</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
+  h += attemptsOverview();
   h += teamCard(af);
   if (S.isDirector) {
     h += `<div class="card"><h3><span class="stepno">3</span>Night settings</h3>` +
-      `<div class="hint" style="margin:0 0 6px">Extra assessors for attempt 3 and above, on top of Senior Faculty. One per line: the name as it appears on their account, or their email.</div>` +
+      `<div class="hint" style="margin:0 0 6px"><b>Assessment night team.</b> People who may open the assessment night and record first sits, in addition to Directors, Student and Senior Faculty, Faculty and Assessor Faculty. Add Senior Instructors here. Email addresses only, one per line (the email they sign in with).</div>` +
+      `<textarea id="teamTxt" placeholder="Email, one per line">${esc((N.team || []).join("\n"))}</textarea>` +
+      `<div class="tools" style="margin:6px 0 14px"><button type="button" class="btn sm" id="pickAssessors">Add everyone whose role is Assessor</button><span class="hint" id="pickMsg"></span></div>` +
+      `<div class="hint" style="margin:0 0 6px"><b>Extra named assessors</b> for later retests (attempt 3 and above, on top of Senior Faculty). One per line. Use their email so they can also open the assessment night; a name alone only works if they already have access another way.</div>` +
       `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc((N.named || []).join("\n"))}</textarea>` +
       COMPS.map(x => `<div class="hint" style="margin:12px 0 4px"><b>${esc(x.label)}</b> mark sheet steps, one per line, in the order they should appear (the ERC / Resuscitation Council UK 2025 lay-rescuer sequence is the default). Start each line with its code (1a, 1b, 1c for BLS + AED; 2a for recovery position) to match the Google Form. Assessors tap the ones missed.</div><textarea id="steps_${x.k}" style="min-height:150px">${esc(stepsFor(x.k).join("\n"))}</textarea>`).join("") +
       `<div class="hint" style="margin:10px 0 4px">Google Form link (shown on the assessment form as a fallback; leave blank to hide).</div>` +
@@ -1676,7 +1726,9 @@ function renderRetest() {
       `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveNight">Save settings</button><span class="hint" id="nightMsg"></span></div>` +
       `<div class="hint">Saving needs a super-user account, the same as the other site settings.</div></div>`;
   }
+  const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
+  if (wasOpen && $("attDetails")) $("attDetails").open = true;
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {
@@ -1685,6 +1737,7 @@ function renderRetest() {
     setAttempt(c, effAttempt(n) + Number(b.dataset.d)).then(() => { n.attempt = attemptOf(c); renderRetest(); });
   });
   const sv = $("saveNight"); if (sv) sv.onclick = saveNightSettings;
+  const pk = $("pickAssessors"); if (pk) pk.onclick = pickAssessors;
   $("viewRetest").querySelectorAll("[data-copyone]").forEach(b => b.onclick = () => {
     const c = N.cands.find(x => x.id === b.dataset.copyone); if (!c) return;
     copyTxt(noteFor(c, Number(b.dataset.k))).then(() => toast("Note copied for " + c.name));
@@ -1710,8 +1763,24 @@ async function syncAttempts() {
   } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
   renderRetest();
 }
+async function pickAssessors() {
+  const box = $("teamTxt"), msg = $("pickMsg");
+  msg.textContent = "Looking…";
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("role", "==", "assessor").get();
+    const have = new Set(box.value.split(/\r?\n/).map(s => s.trim().toLowerCase()).filter(Boolean));
+    const add = [];
+    snap.forEach(d => { const e = String((d.data() || {}).email || "").trim().toLowerCase(); if (e && e.includes("@") && !have.has(e)) { have.add(e); add.push(e); } });
+    if (add.length) box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + add.join("\n");
+    msg.textContent = add.length ? "Added " + add.length + ". Remove anyone who should not assess, then press Save settings." : "Nobody new found.";
+  } catch (err) { msg.textContent = "Could not look: " + err.message; }
+}
 async function saveNightSettings() {
+  const team = $("teamTxt").value.split(/\r?\n/).map(s => s.trim().toLowerCase()).filter(Boolean);
+  const badTeam = team.filter(t => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(t));
+  if (badTeam.length) { $("nightMsg").textContent = "The assessment night team needs email addresses only. Check: " + badTeam.slice(0, 3).join(", "); return; }
   const names = $("namedTxt").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const namedEmails = names.filter(n => n.includes("@")).map(n => n.toLowerCase());
   const url = $("formUrl").value.trim();
   if (url && !/^https:\/\//i.test(url)) { $("nightMsg").textContent = "The form link must start with https://"; return; }
   const markSheet = {};
@@ -1721,9 +1790,10 @@ async function saveNightSettings() {
   });
   $("saveNight").disabled = true;
   try {
-    await db.collection("config").doc("stage1_named_assessors").set({ names }, { merge: true });
+    await db.collection("config").doc("stage1_named_assessors").set({ names, emails: namedEmails }, { merge: true });
+    await db.collection("config").doc("stage1_assessors").set({ emails: team }, { merge: true });
     await db.collection("config").doc("stage1_assessment_form").set({ formUrl: url, markSheet }, { merge: true });
-    N.named = names; N.form = Object.assign({}, N.form, { formUrl: url, markSheet });
+    N.named = names; N.team = team; N.form = Object.assign({}, N.form, { formUrl: url, markSheet });
     $("nightMsg").textContent = "Saved.";
   } catch (err) {
     $("nightMsg").textContent = "Not saved: " + (err.code === "permission-denied" ? "this needs a super-user account." : err.message);

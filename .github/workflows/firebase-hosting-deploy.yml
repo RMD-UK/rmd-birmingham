@@ -20,6 +20,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Stop the deploy if a merge conflict was left in a page or function file
+      # (raw <<<<<<< markers on a live page, as happened on 2026-10-10 and
+      # nearly again on 2026-10-13). The deploy only runs if this passes.
+      - name: Check for leftover merge conflict markers
+        run: |
+          if grep -rEn '^(<<<<<<<|>>>>>>>) ' --include='*.html' --include='*.js' --include='*.json' --include='*.rules' --include='*.yml' --exclude-dir=node_modules --exclude-dir=.git .; then
+            echo "Merge conflict markers found in the files above. Fix them and push again. Nothing was deployed."
+            exit 1
+          fi
+          echo "No conflict markers found."
+
+      # Writes version.json so version.html can show what is live and when.
+      - name: Write version stamp
+        run: |
+          printf '{"sha":"%s","message":%s,"builtAt":"%s","run":"%s"}\n' \
+            "${GITHUB_SHA}" \
+            "$(git log -1 --pretty=%s | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))')" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "${GITHUB_RUN_NUMBER}" > version.json
+          cat version.json
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'

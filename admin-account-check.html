@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Why Can't They - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 40px; color:#1f2540; }
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar a.back { color:rgba(255,255,255,.7); text-decoration:none; font-size:12px; }
+    .wrap { max-width:860px; margin:0 auto; padding:16px 14px; }
+    .card { background:#fff; border:1.5px solid #dde2ed; border-radius:12px; padding:16px; margin-bottom:14px; }
+    h2 { margin:0 0 6px; font-size:16px; color:var(--rmd-navy); }
+    h3 { margin:14px 0 6px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#5a6b8c; }
+    p { line-height:1.5; margin:6px 0; font-size:14px; }
+    .muted { color:#5a6b8c; font-size:13px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    input.in { flex:1; min-width:220px; padding:10px 12px; border:2px solid #dde2ed; border-radius:10px; font-size:16px; font-family:var(--font); }
+    button.pri { appearance:none; border:none; background:var(--rmd-navy); color:#fff; font-weight:700; font-size:14px; padding:10px 18px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    dl { display:grid; grid-template-columns:170px 1fr; gap:5px 10px; margin:6px 0; font-size:14px; }
+    dt { color:#5a6b8c; font-weight:700; }
+    dd { margin:0; word-break:break-word; }
+    .chk { display:flex; gap:10px; padding:6px 0; border-bottom:1px solid #eef1f8; font-size:14px; }
+    .chk:last-child { border-bottom:0; }
+    .chk .m { flex:0 0 52px; font-weight:800; font-size:12px; }
+    .m.ok { color:#1a6e31; } .m.no { color:#b3261e; } .m.maybe { color:#8a5200; }
+    .chk small { display:block; color:#5a6b8c; font-size:12.5px; }
+    .flag { background:#fff3cd; border:1.5px solid #f0b860; color:#7a5200; border-radius:10px; padding:9px 12px; font-size:13.5px; margin:8px 0; font-weight:600; }
+    .flag.bad { background:#fde8ea; border-color:#e8a4ab; color:#b3261e; }
+    .tag { display:inline-block; font-size:11px; font-weight:800; padding:1px 7px; border-radius:99px; background:#eef1f8; color:#35456b; margin-left:6px; }
+    .pick { border:2px solid #dde2ed; border-radius:10px; padding:8px 12px; margin:6px 0; cursor:pointer; background:#fff; }
+    .pick:hover { border-color:var(--rmd-navy); }
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+  </style>
+</head>
+<body>
+<div id="authOverlay" class="auth-overlay"><div id="authMsg">Checking access…</div></div>
+
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Why can't they?</div>
+  <a class="back" href="member-menu.html">← Menu</a>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Look up a person</h2>
+    <p>Type an email address or part of a name. This page reads what the site holds about them and says what it will let them do on assessment night. It changes nothing.</p>
+    <div class="row">
+      <input class="in" id="q" placeholder="Email or name" autocomplete="off">
+      <button class="pri" id="go" type="button">Check</button>
+    </div>
+    <div id="pickList"></div>
+  </div>
+  <div id="out"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+const norm = s => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+
+let ALL = null;      // every people doc, loaded once
+let PLATFORM = null; // config/platform
+let NAMED = null;    // config/stage1_named_assessors names
+
+async function loadBase() {
+  if (ALL) return;
+  const [pe, cfg, nm] = await Promise.all([
+    db.collection(COLLECTIONS.people).get(),
+    db.collection("config").doc("platform").get().catch(() => null),
+    db.collection("config").doc("stage1_named_assessors").get().catch(() => null)
+  ]);
+  ALL = pe.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  PLATFORM = cfg && cfg.exists ? cfg.data() : {};
+  NAMED = nm && nm.exists ? (nm.data().names || []).map(norm) : [];
+}
+
+function matches(q) {
+  const n = norm(q);
+  if (!n) return [];
+  const isEmail = n.indexOf("@") >= 0;
+  return ALL.filter(p => isEmail ? norm(p.email) === n : (norm(p.name).indexOf(n) >= 0 || norm(p.preferredName).indexOf(n) >= 0));
+}
+
+async function search() {
+  const q = $("q").value;
+  $("out").innerHTML = ""; $("pickList").innerHTML = "";
+  if (!norm(q)) return;
+  $("pickList").innerHTML = '<p class="muted">Looking…</p>';
+  try { await loadBase(); } catch (err) { $("pickList").innerHTML = `<div class="flag bad">Could not read the people list: ${esc(err.message)}</div>`; return; }
+  const list = matches(q);
+  const isEmail = q.indexOf("@") >= 0;
+  if (!list.length) {
+    $("pickList").innerHTML = "";
+    $("out").innerHTML = `<div class="card"><h2>No record found</h2><div class="flag bad">${isEmail ? "No people record has the email " + esc(q.trim()) : "No people record matches that name"}. The site cannot give them a role, so they will see "not signed in as a member" style messages.</div>` +
+      `<p class="muted">Things to try: a different spelling of the email, or the name instead. If they have a login but no record, run Sync to People on the registrations page.</p>` +
+      (isEmail ? await rosterOnly(q.trim().toLowerCase()) : "") + `</div>`;
+    return;
+  }
+  if (list.length === 1) { $("pickList").innerHTML = ""; await show(list[0], list); return; }
+  $("pickList").innerHTML = `<p class="muted">${list.length} records match. Pick one.</p>` + list.slice(0, 20).map(p =>
+    `<div class="pick" data-id="${esc(p.id)}"><b>${esc(p.name || "(no name)")}</b> <span class="muted">${esc(p.email || "no email")} · ${esc(p.role || "no role")}</span></div>`).join("");
+  $("pickList").querySelectorAll(".pick").forEach(el => el.onclick = () => { const p = ALL.find(x => x.id === el.dataset.id); show(p, list); });
+}
+
+async function rosterOnly(email) {
+  let g = null;
+  try { const r = await db.collection(COLLECTIONS.facultyRoster).doc(email).get(); g = r.exists ? r.data().group : null; } catch (e) {}
+  return g ? `<p>They are on the faculty roster as <b>${esc(g)}</b>, but have no people record.</p>` : "";
+}
+
+function line(mark, text, small) {
+  const cls = mark === "Yes" ? "ok" : mark === "No" ? "no" : "maybe";
+  return `<div class="chk"><span class="m ${cls}">${esc(mark)}</span><span>${esc(text)}${small ? `<small>${esc(small)}</small>` : ""}</span></div>`;
+}
+
+async function show(p, siblings) {
+  const email = norm(p.email);
+  const out = [];
+  // ---- what the site holds
+  const dirs = (PLATFORM.directors || []).map(norm), supers = (PLATFORM.superUsers || []).map(norm);
+  const isSuper = !!email && supers.indexOf(email) >= 0;
+  const isDir = isSuper || (!!email && dirs.indexOf(email) >= 0) || p.role === "director";
+  let rosterGroup = null, rosterErr = "";
+  if (email) { try { const r = await db.collection(COLLECTIONS.facultyRoster).doc(email).get(); rosterGroup = r.exists ? (r.data().group || null) : null; } catch (e) { rosterErr = e.message; } }
+  const isStu = rosterGroup === "student", isSen = rosterGroup === "senior";
+  let iwFn = null;
+  try { const a = await db.collection(COLLECTIONS.iwAssignments).doc(CURRENT_IW_YEAR + "_" + p.id).get(); iwFn = a.exists ? (a.data().function || a.data().role || "set") : null; } catch (e) {}
+  let teamRows = [];
+  try {
+    const t = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", p.id).get();
+    teamRows = t.docs.map(d => d.data());
+  } catch (e) {}
+  const teamCourses = {};
+  teamRows.forEach(c => { const k = (c.course || "no course") + " / " + (c.room || "no room"); teamCourses[k] = (teamCourses[k] || 0) + 1; });
+
+  // ---- problems found
+  const flags = [];
+  const same = ALL.filter(x => x.id !== p.id && email && norm(x.email) === email);
+  if (same.length) flags.push({ bad: true, t: `${same.length + 1} people records share this email (${[p.id].concat(same.map(x => x.id)).map(esc).join(", ")}). Role and room can sit on different ones. Use the dedupe page, and check the Doc ID first.` });
+  if (!email) flags.push({ bad: true, t: "This record has no email, so the director list, faculty roster and registration matching cannot find them." });
+  if (!p.role) flags.push({ bad: true, t: "This record has no role set." });
+  if (p.id.length !== 28) flags.push({ bad: false, t: `The record ID (${esc(p.id)}) is not the length of a sign-in ID (28 characters). It may have been created before they had a login, so their sign-in may not find it. Run Fix Instructor Access, then check again. [Likely]` });
+  if (p.notTeachingThisTerm || p.iwOutcome === "not-passed") flags.push({ bad: false, t: "Marked as not passed / not teaching this term." });
+  if (rosterErr) flags.push({ bad: false, t: "Could not read the faculty roster: " + rosterErr });
+
+  // ---- Phase 1 verdict
+  const role = isDir ? "director" : (p.role || "");
+  const faculty = role === "faculty" || role === "assessor-faculty";
+  const full = isDir || isStu || isSen;
+  const night = full || faculty;
+  const named = NAMED.indexOf(email) >= 0 || NAMED.indexOf(norm(p.name)) >= 0;
+  const checks = [];
+  checks.push(line(full ? "Yes" : teamRows.length ? "Yes" : "No", "Can open the Phase 1 hub",
+    full ? "Sees every room (Director, Student Faculty or Senior Faculty)." : teamRows.length ? `Sees only their own room: ${Object.keys(teamCourses).join("; ")}.` : "Not on any room team and not Director or Student/Senior Faculty, so the hub says they are not on a room team."));
+  checks.push(line(full || teamRows.length ? "Yes" : "No", "Can mark the register", full ? "Any room." : teamRows.length ? "Only candidates on their own team, and only on that week's date." : "No room."));
+  checks.push(line(night ? "Yes" : "No", "Can record an assessment (attempt 1)", night ? "" : "The assessment night is for Director, Student/Senior Faculty, Faculty and Assessor Faculty. Rules refuse anyone else."));
+  const a2 = night && (isStu || isSen || named);
+  checks.push(line(a2 ? "Yes" : "No", "Can record attempt 2 (second sit)", a2 ? "" : "Needs Student Faculty, Senior Faculty or the named assessors list, and a different person from the attempt 1 assessor."));
+  const a3 = night && (isSen || named);
+  checks.push(line(a3 ? "Yes" : "No", "Can record attempt 3 and above", a3 ? "" : "Needs Senior Faculty or the named assessors list (Night settings)."));
+  checks.push(line(isDir ? "Yes" : "No", "Is a Director", isSuper ? "Super-user: can also save site settings." : isDir ? "Cannot save Night settings or test course dates unless also a super-user." : ""));
+
+  $("pickList").innerHTML = "";
+  $("out").innerHTML = `<div class="card"><h2>${esc(p.name || "(no name)")}${isDir ? '<span class="tag">Director</span>' : ""}${isStu ? '<span class="tag">Student Faculty</span>' : ""}${isSen ? '<span class="tag">Senior Faculty</span>' : ""}</h2>` +
+    flags.map(f => `<div class="flag ${f.bad ? "bad" : ""}">${f.t}</div>`).join("") +
+    `<h3>What the site holds</h3><dl>` +
+    `<dt>Record ID</dt><dd>${esc(p.id)}</dd>` +
+    `<dt>Email</dt><dd>${esc(p.email || "(blank)")}</dd>` +
+    `<dt>Role on the record</dt><dd>${esc(p.role || "(blank)")}${p.roleLabel ? " / label: " + esc(p.roleLabel) : ""}</dd>` +
+    `<dt>Role the site resolves</dt><dd>${esc(role || "(none)")}</dd>` +
+    `<dt>Instructor weekend ${CURRENT_IW_YEAR} function</dt><dd>${esc(iwFn || "not set")}</dd>` +
+    `<dt>Faculty roster group</dt><dd>${esc(rosterGroup || "not on the roster")}</dd>` +
+    `<dt>Group / room</dt><dd>${esc(p.group || "(none)")}</dd>` +
+    `<dt>On a Stage 1 room team</dt><dd>${teamRows.length ? esc(Object.keys(teamCourses).map(k => k + " (" + teamCourses[k] + " candidates)").join("; ")) : "no"}</dd>` +
+    `</dl>` +
+    `<h3>What they can do on assessment night</h3>${checks.join("")}` +
+    `<p class="muted" style="margin-top:12px">This page cannot see whether they have a sign-in account. If everything above looks right and they still cannot get in, ask them to run the sign-in check (auth-check.html) and send you the result.</p></div>`;
+}
+
+requireDirector().then(() => {
+  $("authOverlay").style.display = "none";
+  $("go").onclick = search;
+  $("q").addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+  const pre = new URLSearchParams(location.search).get("q");
+  if (pre) { $("q").value = pre; search(); }
+});
+</script>
+</body>
+</html>
