@@ -96,6 +96,8 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .cb.late.on{background:var(--org);border-color:var(--org);color:#fff}
 .cb.abs.on{background:var(--bad);border-color:var(--bad);color:#fff}
 .cb:hover:not(.on){border-color:var(--pur);color:var(--pur)}
+.cb:disabled,.cb:disabled:hover{background:#EEF1F6;border-color:#E3E8F0;color:#B4BCC9;cursor:not-allowed}
+.row .nm .fac{display:block;color:var(--warn);font-size:12.5px;font-weight:800;margin-top:2px}
 .chip{display:inline-block;font-size:12.5px;font-weight:800;border-radius:8px;padding:5px 10px}
 .chip.here{background:var(--okbg);color:var(--ok)}
 .chip.late{background:var(--warnbg);color:var(--warn)}
@@ -532,6 +534,11 @@ function roomCands() {
   return S.cands.filter(c => (c.room || "") === (S.room || "")).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
 }
 function statusOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n].status : null; }
+// A candidate who was marked absent in week 1 and turns up in week 2 must be seen by
+// RMD faculty first. Room instructors cannot mark them (page rule, not a security rule);
+// Director, Student and Senior Faculty can.
+function needsFaculty(cid, n) { return n === 2 && !S.full && statusOf(cid, 1) === "absent"; }
+function w1AbsentOpen(cid, n) { return n === 2 && statusOf(cid, 1) === "absent" && !statusOf(cid, 2); }
 function entryOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n] : null; }
 function counts(list, n) {
   let here = 0, late = 0, absent = 0;
@@ -631,13 +638,15 @@ function render() {
       ? `<button class="btn sm" type="button" data-arrive="${n}" data-undo="1">Undo my arrival</button>`
       : `<button class="btn pri" type="button" data-arrive="${n}">I'm here</button>`;
     if (edit) {
-      const unmarked = list.filter(x => !statusOf(x.id, n)).length;
+      const unmarked = list.filter(x => !statusOf(x.id, n) && !w1AbsentOpen(x.id, n)).length;
+      const heldBack = list.filter(x => w1AbsentOpen(x.id, n)).length;
       const lateNow = !S.editAny && s === "today" && now.hm > S.lateAfter;
       acts += `<button class="btn" type="button" data-allhere="${n}"${unmarked && !lateNow ? "" : " disabled"}>Everyone not marked is here (${unmarked})</button>`;
     }
     let hint = "";
+    if (edit && n === 2 && list.some(x => w1AbsentOpen(x.id, 2))) hint = `${list.filter(x => w1AbsentOpen(x.id, 2)).length} absent in week 1 ${list.filter(x => w1AbsentOpen(x.id, 2)).length === 1 ? "is" : "are"} left out of "Everyone not marked is here". ${S.full ? "Mark them one by one." : "If they turn up, send them to RMD faculty."} `;
     if (!edit) hint = s === "future" ? `Opens on ${nice(d)}.` : `View only. This week was ${nice(d)}.`;
-    else if (!S.editAny && now.hm > S.lateAfter) hint = `It is after ${esc(S.lateAfter)}, so each person has to be marked one by one and you will be asked if they were late.`;
+    else if (!S.editAny && now.hm > S.lateAfter) hint += `It is after ${esc(S.lateAfter)}, so each person has to be marked one by one and you will be asked if they were late.`;
     return `<div class="wk"><h3>Week ${n} <span style="font-weight:600;color:var(--mut)">${nice(d)}</span><span class="when ${s}">${whenTxt(s)}</span></h3>` +
       `<div class="team">${chips}</div>` + (acts ? `<div class="acts">${acts}</div>` : "") + (hint ? `<div class="hint">${hint}</div>` : "") + `</div>`;
   };
@@ -650,11 +659,13 @@ function render() {
   $("h2").textContent = "Week 2 · " + nice(dates[1]);
   const cellHtml = (c, n) => {
     const d = dates[n - 1], s = weekState(d), edit = canEditWeek(n), cur = statusOf(c.id, n), en = entryOf(c.id, n);
-    if (edit) {
+    const lock = edit && needsFaculty(c.id, n);
+    if (edit && !(lock && cur)) {
+      const dis = lock ? " disabled" : "";
       return `<div class="cell" data-wk="Week ${n}">` +
-        `<button type="button" class="cb here${cur === "here" ? " on" : ""}" data-set="here" data-n="${n}" data-id="${esc(c.id)}">Here</button>` +
-        `<button type="button" class="cb late${cur === "late" ? " on" : ""}" data-set="late" data-n="${n}" data-id="${esc(c.id)}">Late</button>` +
-        `<button type="button" class="cb abs${cur === "absent" ? " on" : ""}" data-set="absent" data-n="${n}" data-id="${esc(c.id)}">Absent</button></div>`;
+        `<button type="button" class="cb here${cur === "here" ? " on" : ""}" data-set="here" data-n="${n}" data-id="${esc(c.id)}"${dis}>Here</button>` +
+        `<button type="button" class="cb late${cur === "late" ? " on" : ""}" data-set="late" data-n="${n}" data-id="${esc(c.id)}"${dis}>Late</button>` +
+        `<button type="button" class="cb abs${cur === "absent" ? " on" : ""}" data-set="absent" data-n="${n}" data-id="${esc(c.id)}"${dis}>Absent</button></div>`;
     }
     let chip;
     if (cur === "here") chip = `<span class="chip here">Here${en && en.time ? " " + esc(en.time) : ""}</span>`;
@@ -664,7 +675,7 @@ function render() {
     return `<div class="cell" data-wk="Week ${n}">${chip}</div>`;
   };
   $("rows").innerHTML = list.map(c =>
-    `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${S.full ? attBadge(attemptOf(c)) : ""}</b><small>${esc(c.degree || "")}</small></div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
+    `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${S.full ? attBadge(attemptOf(c)) : ""}</b><small>${esc(c.degree || "")}</small>${w1AbsentOpen(c.id, 2) && canEditWeek(2) ? `<span class="fac">${S.full ? "Absent in week 1. Check with them, then mark." : "Absent in week 1. Send to RMD faculty."}</span>` : ""}</div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
   ).join("") || '<div class="row"><div class="nm">No candidates in this room.</div></div>';
   $("schedWrap").classList.remove("hidden");
   $("rows").querySelectorAll("[data-set]").forEach(b => b.onclick = () => onTap(b.dataset.id, +b.dataset.n, b.dataset.set));
@@ -681,6 +692,7 @@ function onTap(cid, n, wanted) {
   const cur = statusOf(cid, n);
   const c = candById(cid); if (!c) return;
   if (!canEditWeek(n)) { toast("That week can only be changed on its own date.", true); return; }
+  if (needsFaculty(cid, n)) { toast("Absent in week 1. Send " + (c.name || "them") + " to RMD faculty.", true); return; }
   if (cur === wanted) { writeStatus(c, n, null); return; }          // tap the lit button again to clear it
   const now = londonNow();
   if (wanted === "here" && !S.editAny && weekState(weekDates(S.course)[n - 1]) === "today" && now.hm > S.lateAfter) {
@@ -711,7 +723,7 @@ async function writeStatus(c, n, status) {
 }
 async function allHere(n) {
   if (!canEditWeek(n)) return;
-  const todo = roomCands().filter(c => !statusOf(c.id, n));
+  const todo = roomCands().filter(c => !statusOf(c.id, n) && !w1AbsentOpen(c.id, n));
   if (!todo.length) return;
   const now = londonNow();
   if (!S.editAny && now.hm > S.lateAfter) { toast("After " + S.lateAfter + " each person has to be marked one by one.", true); return; }

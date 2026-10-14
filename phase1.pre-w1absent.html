@@ -1,0 +1,1836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Phase 1 Evening Management - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{
+  --ink:#1A2233; --mut:#6B7C93; --line:#E3E8EF; --bg:#F5F7FA; --card:#fff;
+  --pur:#44247C; --pur2:#2E1856; --purtint:#EFEAF8; --blu:#0067A4; --org:#F49001;
+  --ok:#1E8449; --okbg:#E3F3E8; --bad:#B3261E; --badbg:#FCE8E6; --warn:#8A5200; --warnbg:#FFF1D6;
+  --font:'Inter','Segoe UI',Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;min-height:100vh}
+button{font-family:inherit;font-size:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:16px;color:var(--ink)}
+.hidden{display:none!important}
+.gate{height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center;font-weight:700;color:var(--pur)}
+.top{background:var(--pur);color:#fff;display:flex;align-items:center;gap:14px;padding:10px 18px;flex-wrap:wrap;position:sticky;top:0;z-index:20}
+.top h1{font-size:18px;font-weight:800;letter-spacing:-.2px}
+.top .grow{flex:1}
+.seg{display:inline-flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:#fff;padding:7px 14px;border-radius:8px;font-weight:700;font-size:14px;opacity:.85}
+.seg button.on{background:#fff;color:var(--pur);opacity:1}
+.seg button .nowdot{display:inline-block;background:var(--ok);color:#fff;font-size:10px;font-weight:800;border-radius:6px;padding:1px 5px;margin-left:5px;vertical-align:1px}
+.tbtn{border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:8px 13px;font-weight:700;font-size:13px;text-decoration:none;display:inline-block}
+.tbtn:hover{background:rgba(255,255,255,.26)}
+.main{display:grid;grid-template-columns:330px minmax(0,1fr);align-items:start}
+.main>*{min-width:0}
+.steps{max-width:100%}
+.side{background:#fff;border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:10px;position:sticky;top:58px;min-height:calc(100vh - 58px)}
+.side .lab{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.steps{display:flex;flex-direction:column;gap:8px}
+.stepcard{display:flex;gap:12px;align-items:flex-start;text-align:left;padding:11px 12px;border-radius:12px;border:2px solid var(--line);background:#fff;color:var(--ink);text-decoration:none;line-height:1.25}
+.stepcard .no{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:#C9D1DE;color:#fff;font-size:14px;font-weight:800}
+.stepcard b{display:block;font-size:15px;font-weight:800}
+.stepcard small{display:block;font-size:12.5px;color:var(--mut);margin-top:2px;font-weight:500}
+.stepcard.on{border-color:var(--pur);background:var(--purtint)}
+.stepcard.on .no{background:var(--pur)}
+.stepcard.on b{color:var(--pur)}
+.stepcard.link:hover{border-color:var(--blu)}
+.stepcard.link .no{background:var(--blu)}
+.stepcard.soon{opacity:.55;cursor:default}
+.pane{padding:16px 20px 90px;min-width:0}
+.plain{background:#fff;border:1px solid var(--line);border-left:6px solid var(--pur);border-radius:14px;padding:14px 18px;margin-bottom:14px;font-size:17px;line-height:1.55}
+.plain .lbl{display:block;font-size:11px;font-weight:800;color:var(--pur);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.plain .mut{color:var(--mut)}
+.msg{border-radius:12px;padding:10px 14px;margin-bottom:12px;font-weight:600;font-size:14px}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.msg.warn{background:var(--warnbg);color:var(--warn)}
+.msg.err{background:var(--badbg);color:var(--bad)}
+.tools{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tools select{padding:9px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;font-weight:700}
+.btn{border:2px solid var(--pur);background:#fff;color:var(--pur);border-radius:10px;padding:8px 14px;font-weight:800;font-size:14px}
+.btn.pri{background:var(--pur);color:#fff}
+.btn.sm{padding:5px 10px;font-size:13px}
+.btn:disabled{opacity:.4;cursor:default}
+.tg{display:inline-flex;gap:8px;align-items:center;font-weight:700;font-size:14px}
+.tg input{width:18px;height:18px;accent-color:var(--pur)}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-bottom:14px}
+.rooms .r{background:#fff;border:2px solid var(--line);border-radius:10px;padding:7px 10px;text-align:left;color:var(--ink)}
+.rooms .r b{font-size:14px;display:block}
+.rooms .r small{display:block;color:var(--mut);font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
+.rooms .r.on{border-color:var(--pur);background:var(--purtint)}
+.rooms .r.mine{box-shadow:inset 4px 0 0 var(--org)}
+.sumstrip{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.tile{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-width:130px}
+.tile .n{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .l{font-size:12px;color:var(--mut);font-weight:600;margin-top:2px}
+.tile.warn .n{color:var(--bad)}
+.weeks{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.wk{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.wk h3{font-size:16px;font-weight:800;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.wk .when{font-size:12px;font-weight:800;border-radius:6px;padding:2px 8px}
+.when.today{background:var(--okbg);color:var(--ok)}
+.when.past{background:#EEF1F6;color:var(--mut)}
+.when.future{background:var(--purtint);color:var(--pur)}
+.team{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.tm{border:2px solid var(--line);background:#fff;border-radius:20px;padding:4px 11px;font-size:13px;font-weight:700;color:var(--mut)}
+.tm.in{border-color:var(--ok);background:var(--okbg);color:var(--ok)}
+.tm.me{box-shadow:0 0 0 2px var(--purtint)}
+.wk .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.wk .hint{font-size:12.5px;color:var(--mut);margin-top:6px}
+.sched{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.rowhead,.row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr);gap:10px;align-items:center;padding:9px 14px}
+.rowhead{background:#F8F9FC;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+.row{border-top:1px solid #F0F3F8}
+.row .nm b{display:flex;gap:6px;align-items:center;font-size:15px}
+.row .nm small{color:var(--mut);font-size:12.5px}
+.cell{display:flex;gap:5px;flex-wrap:wrap}
+.cb{border:2px solid var(--line);background:#fff;border-radius:9px;padding:7px 10px;font-weight:800;font-size:13px;color:var(--mut);min-width:48px}
+.cb.here.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.cb.late.on{background:var(--org);border-color:var(--org);color:#fff}
+.cb.abs.on{background:var(--bad);border-color:var(--bad);color:#fff}
+.cb:hover:not(.on){border-color:var(--pur);color:var(--pur)}
+.chip{display:inline-block;font-size:12.5px;font-weight:800;border-radius:8px;padding:5px 10px}
+.chip.here{background:var(--okbg);color:var(--ok)}
+.chip.late{background:var(--warnbg);color:var(--warn)}
+.chip.abs{background:var(--badbg);color:var(--bad)}
+.chip.none{background:#EEF1F6;color:var(--mut);font-weight:700}
+.chip.fut{background:#F6F2FC;color:#8E7BB5;font-weight:700}
+.rap{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#fde8ea;flex:none}
+.sheetbg{position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:520px;border-radius:18px 18px 0 0;padding:20px 20px 26px}
+.sheet h3{font-size:18px;font-weight:800;margin-bottom:6px}
+.sheet p{color:var(--mut);margin-bottom:14px}
+.sheet .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sheet .two button{padding:14px;border-radius:12px;font-weight:800;font-size:16px;border:2px solid var(--pur);background:#fff;color:var(--pur)}
+.sheet .two button.pri{background:var(--org);border-color:var(--org);color:#fff}
+.sheet .cancel{display:block;width:100%;margin-top:10px;border:0;background:none;color:var(--mut);font-weight:700;padding:8px}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;font-weight:600;z-index:80;max-width:90vw}
+.toast.err{background:var(--bad)}
+@media (max-width:900px){
+  .main{grid-template-columns:1fr}
+  .side{position:static;min-height:0;border-right:0;border-bottom:1px solid var(--line);padding:12px}
+  .steps{flex-direction:row;overflow-x:auto;padding-bottom:4px}
+  .stepcard{min-width:210px}
+  .weeks{grid-template-columns:1fr}
+  .pane{padding:12px 12px 90px}
+  .rowhead{display:none}
+  .row{grid-template-columns:1fr 1fr}
+  .row .nm{grid-column:1 / -1}
+  .row .cell::before{content:attr(data-wk);flex:0 0 100%;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+}
+.modal{background:#fff;width:min(760px,96vw);max-height:92vh;overflow:auto;border-radius:16px;padding:20px 22px;margin:auto}
+.modal h3{font-size:18px;font-weight:800;margin-bottom:4px}
+.modal .sub{color:var(--mut);font-size:13.5px;margin-bottom:12px}
+.modal textarea{width:100%;min-height:150px;border:2px solid var(--line);border-radius:10px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.modal .row2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.modal table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+.modal th{text-align:left;background:#F8F9FC;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut);padding:6px 8px}
+.modal td{border-top:1px solid #F0F3F8;padding:5px 8px}
+.modalbg{position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:60;display:flex;padding:10px}
+.att{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:12px;font-weight:800;color:#fff;background:#1E8449;flex:none}
+.att.a2{background:#F49001}.att.a3{background:#B3261E}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.card h3{font-size:16px;font-weight:800;display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.card .stepno{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:var(--pur);color:#fff;font-size:14px;font-weight:800}
+.card .hint{font-size:13px;color:var(--mut);margin-top:6px}
+.card input[type=search],.card textarea,.card input[type=text]{width:100%;border:2px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
+.card textarea{min-height:130px;font-size:14px}
+.pick{border:2px solid var(--line);border-radius:10px;max-height:190px;overflow:auto;margin:8px 0}
+.pick div{padding:7px 10px;border-top:1px solid #F0F3F8;cursor:pointer;font-size:14px}
+.pick div:first-child{border-top:0}.pick div:hover{background:#FAFAFE}.pick small{color:var(--mut)}
+.selbox{background:var(--purtint);border:2px solid var(--pur);border-radius:12px;padding:10px 12px;margin:8px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.selbox b{font-size:16px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.slotchip{border:2px solid var(--line);background:#fff;border-radius:10px;padding:7px 11px;font-weight:800;font-size:13px;font-variant-numeric:tabular-nums}
+.slotchip.on{border-color:var(--pur);background:var(--pur);color:#fff}
+.slotchip:hover:not(.on){border-color:var(--pur)}
+.grid{overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:8px;max-height:420px}
+.grid table{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.grid th{position:sticky;top:0;background:#F8F9FC;padding:5px 7px;font-size:11px;color:var(--mut)}
+.grid td{border:1px solid #F0F3F8;padding:2px;text-align:center;min-width:46px}
+.grid td.t{background:#F8F9FC;font-weight:800;position:sticky;left:0}
+.gc{border:0;background:var(--okbg);color:var(--ok);border-radius:6px;padding:4px 6px;font-weight:800;font-size:11px;width:100%}
+.gc.on{background:var(--pur);color:#fff}
+.gx{display:block;background:#EEF1F6;color:#9AA7BA;border-radius:6px;padding:4px 6px;font-size:11px;font-weight:700}
+details.lst{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:10px}
+details.lst summary{padding:10px 14px;font-weight:800;cursor:pointer}
+details.lst .in{padding:0 14px 12px}
+.lrow{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #F0F3F8;flex-wrap:wrap}
+.lrow .nm{flex:1;min-width:150px;font-weight:700;display:flex;gap:6px;align-items:center}
+.lrow small{color:var(--mut);font-weight:500}
+.stepper{display:inline-flex;align-items:center;gap:6px}
+.stepper button{width:30px;height:30px;border-radius:8px;border:2px solid var(--pur);background:#fff;color:var(--pur);font-weight:800;font-size:16px;line-height:1}
+.emailbox{background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:10px}
+.log{font-size:13px;color:var(--mut);margin-top:6px}
+
+.rcard{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:10px;overflow:hidden}
+.rhead{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;width:100%;text-align:left;border:0;background:#fff;padding:13px 16px;color:var(--ink)}
+.rhead b{font-size:18px;font-weight:800;min-width:54px}
+.rhead .rmeta{font-size:13.5px;color:var(--mut);font-weight:600}
+.rhead .rhint{margin-left:auto;font-size:12px;color:var(--pur);font-weight:700}
+.rcard.open{border-color:var(--pur)}
+.rcard.open .rhead{background:var(--purtint)}
+.rbody{padding:4px 8px 10px}
+.bad{color:var(--bad);font-weight:800}
+.rrow,.arow{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;text-align:left;border:0;border-top:1px solid #F0F3F8;background:#fff;padding:10px 8px;color:var(--ink)}
+.rrow:hover:not(:disabled),.arow:hover{background:#FAFAFE}
+.rrow.done,.arow.done{opacity:.5;background:#F6F7FA}
+.rrow.flag{background:var(--badbg)}
+.rrow.due{background:var(--warnbg)}
+.rrow.big{padding:16px 10px;font-size:20px}
+.rt{font-weight:800;font-variant-numeric:tabular-nums;color:var(--pur)}
+.rn{display:flex;gap:7px;align-items:center;flex-wrap:wrap;font-weight:700}
+.rn small{flex-basis:100%;color:var(--mut);font-weight:500;font-size:12.5px}
+.rs{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.rsep{font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;padding:10px 8px 2px;border-top:1px solid #F0F3F8}
+.nchip{display:inline-block;font-size:12px;font-weight:800;border-radius:8px;padding:3px 9px;background:#EEF1F6;color:var(--mut)}
+.nchip.pass{background:var(--okbg);color:var(--ok)}
+.nchip.exc-chip{background:#FFF3C4;color:#6B4E00}
+.exc{margin:0 0 10px}
+.fqb.exc-b.on{background:#FFE08A;border-color:#B8860B;color:#4A3500}
+.nchip.refer{background:var(--warnbg);color:var(--warn)}
+.nchip.bad{background:var(--badbg);color:var(--bad)}
+.nchip.due{background:var(--org);color:#fff}
+.nchip.claim{background:var(--purtint);color:var(--pur)}
+.rchips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.rchip{border:2px solid var(--line);background:#fff;border-radius:12px;padding:8px 14px;text-align:left;color:var(--ink)}
+.rchip b{display:block;font-size:15px}
+.rchip small{display:block;color:var(--mut);font-size:11.5px;font-weight:700}
+.rchip.on{border-color:var(--pur);background:var(--purtint)}
+.rchip.pool{border-style:dashed}
+.prow{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:10px 0;border-top:1px solid #F0F3F8}
+.pact{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.why{font-size:12.5px;color:var(--bad);font-weight:600;max-width:340px}
+.hist{font-size:13.5px;margin-bottom:4px;color:var(--ink)}
+.hist small{color:var(--mut)}
+.fq{margin:12px 0}
+.fq label{display:block;font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.fq input[type=text]{width:100%;border:2px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
+.fq textarea{width:100%;border:2px solid var(--line);border-radius:10px;padding:10px;font-size:15px}
+.fqo{display:flex;gap:8px;flex-wrap:wrap}
+.fqb{border:2px solid var(--line);background:#fff;border-radius:12px;padding:12px 18px;font-weight:800;font-size:15px;color:var(--ink)}
+.fqb.on{border-color:var(--pur);background:var(--purtint);color:var(--pur)}
+.fqb.out.pass.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.fqb.out.refer.on{background:var(--org);border-color:var(--org);color:#fff}
+.fqb:disabled{opacity:.4}
+.cmp{border:2px solid var(--line);border-radius:14px;padding:12px 14px;margin:12px 0}
+.cmp.off{background:#F6F8FB;border-style:dashed;color:var(--mut)}
+.stps{display:flex;flex-direction:column;gap:6px}
+.stp{display:flex;gap:10px;align-items:center;text-align:left;border:2px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font-weight:600;font-size:14px;color:var(--ink)}
+.stp .sn{flex:none;width:22px;height:22px;border-radius:50%;background:#EEF1F6;color:var(--mut);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.stp.on{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
+.stp.on .sn{background:var(--bad);color:#fff}
+.stphead{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 0}
+.stphead b{color:var(--pur)}
+.resline{font-weight:800;padding:10px 12px;border-radius:10px;background:#EEF1F6;color:var(--mut);margin:10px 0}
+.resline.pass{background:var(--okbg);color:var(--ok)}
+.resline.refer{background:var(--warnbg);color:var(--warn)}
+.tgroup{margin-top:12px}
+.tghead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.fullscr{position:fixed;inset:0;background:#fff;z-index:70;display:flex;flex-direction:column}
+.fullbar{display:flex;gap:14px;align-items:center;padding:12px 18px;background:var(--pur);color:#fff}
+.fullbar b{font-size:26px;font-weight:800}
+.fullbar span{flex:1;font-weight:600}
+.fullbar .btn{background:#fff}
+.fullbody{overflow:auto;padding:6px 14px 40px}
+@media (max-width:900px){.rrow,.arow{grid-template-columns:50px minmax(0,1fr)}.rrow .rs,.arow .rs{grid-column:2;justify-content:flex-start}}
+</style>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+
+<div class="hidden" id="app">
+  <div class="top">
+    <h1>Phase 1 Evening Management</h1>
+    <div class="seg" id="courseTabs" role="tablist" aria-label="Course"></div>
+    <div class="grow"></div>
+    <a class="tbtn dir-only" href="admin-stage1-candidates.html">Stage 1 Candidates</a>
+    <a class="tbtn dir-only" href="admin-comms.html">Comms</a>
+  </div>
+
+  <div class="main">
+    <aside class="side">
+      <div class="lab">Pick a job</div>
+      <div class="steps" id="steps"></div>
+    </aside>
+
+    <section class="pane" id="pane">
+      <div class="plain" id="plain"></div>
+      <div id="msgs"></div>
+      <div id="viewRegister">
+        <div class="tools" id="tools"></div>
+        <div class="rooms" id="rooms"></div>
+        <div class="sumstrip" id="sum"></div>
+        <div class="weeks" id="weeks"></div>
+        <div class="sched hidden" id="schedWrap">
+          <div class="rowhead"><div>Candidate</div><div id="h1"></div><div id="h2"></div></div>
+          <div id="rows"></div>
+        </div>
+      </div>
+      <div id="viewAlloc" class="hidden">
+        <div class="sumstrip" id="aTiles"></div>
+        <div class="card" id="aAuto"></div>
+        <div class="card" id="aMove">
+          <h3><span class="stepno">2</span>Move one person</h3>
+          <input type="search" id="aSearch" placeholder="Type a name or email to find someone on this course..." autocomplete="off">
+          <div class="pick hidden" id="aPick"></div>
+          <div id="aMoveBody"></div>
+        </div>
+        <div id="aLists"></div>
+      </div>
+      <div id="viewRetest" class="hidden"></div>
+      <div id="viewRunner" class="hidden"></div>
+      <div id="viewAssessor" class="hidden"></div>
+    </section>
+  </div>
+</div>
+<div id="overlay"></div>
+<div id="nightFull"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+// ────────────────────────────────────────────────────────────────────────────
+// Phase 1 Evening Management hub (2026-10-13, Jon).
+// One page for running a Stage 1 evening course. This first release holds the
+// WEEKLY REGISTER. Other jobs (people, assessment allocation, retest pool,
+// assessment night, comms) are listed on the left; those that already exist
+// open their current page, the rest are marked "coming" and move in here later.
+//
+// Register rules (Jon, 12 Oct 2026):
+//  - Instructors are always in the same room. They mark themselves as arrived
+//    and mark which of their candidates have arrived.
+//  - After 18:45 (London) a "Here" tap asks "was this person late?".
+//  - Week 1 and Week 2 sit side by side. Buttons only work on the date of that
+//    week. The other week is view only. A Director can switch on "edit any
+//    date" to correct or backfill a past week.
+//
+// Data: stage1_register/{candidateId} = {course, room, w1:{status,time,by,byName,at}, w2:{...}, updatedAt}
+//       stage1_register_staff/{course}__w{1|2}__{uid} = {course, week, room, uid, name, time, at}
+//       config/stage1_register = {lateAfter:"HH:MM"}  (optional, default 18:45)
+// status is "here" | "late" | "absent".
+// ────────────────────────────────────────────────────────────────────────────
+initFirebase();
+
+const ROOMS = STAGE1_TEACHING_ROOMS;
+const DEFAULT_LATE_AFTER = "18:45";
+const S = {
+  user: null, role: null, isDirector: false, full: false, myName: "",
+  courseDates: [],            // [{name,date}]
+  mine: [],                   // candidates whose room team includes me (any course)
+  course: null, room: null,
+  cands: [],                  // candidates of the selected course I can see
+  reg: {}, staff: {},         // live registers (by candidate id / by doc id)
+  lateAfter: DEFAULT_LATE_AFTER, editAny: false,
+  unsubs: [], view: "register"
+};
+const $ = id => document.getElementById(id);
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ── London date/time ────────────────────────────────────────────────────────
+function londonNow() {
+  const p = {};
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, hm: p.hour + ":" + p.minute };
+}
+function addDays(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function nice(iso) {
+  return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "");
+}
+// A course's three Mondays: week 1, week 2, assessment evening (the assessment date is the stored date)
+function weekDates(courseName) {
+  const c = S.courseDates.find(x => x.name === courseName);
+  if (!c || !c.date) return null;
+  return [addDays(c.date, -14), addDays(c.date, -7), c.date];
+}
+function weekState(iso) { const t = londonNow().date; return iso === t ? "today" : (iso < t ? "past" : "future"); }
+function canEditWeek(n) {
+  const d = weekDates(S.course); if (!d) return false;
+  return S.editAny || weekState(d[n - 1]) === "today";
+}
+
+// ── Access ──────────────────────────────────────────────────────────────────
+auth.onAuthStateChanged(async user => {
+  if (!user) { window.location.href = "signin.html"; return; }
+  try {
+    S.user = user;
+    S.role = await resolveRole(user.uid, user.email || "");
+    S.isDirector = S.role === ROLES.DIRECTOR;
+    const stu = await isStudentFaculty(user.email || "").catch(() => false);
+    const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+    S.sen = sen; S.stu = stu;
+    S.full = S.isDirector || stu || sen;
+    S.night = S.full || S.role === "faculty" || S.role === "assessor-faculty";   // can use the assessment night views
+    if (!S.night) {
+      // Assessment night team (e.g. Senior Instructors) and named extra assessors: email lists in config.
+      try {
+        const em = String(user.email || "").toLowerCase();
+        const [tm, nm0] = await Promise.all([db.collection("config").doc("stage1_assessors").get(), db.collection("config").doc("stage1_named_assessors").get()]);
+        const has = d => d.exists && (d.data().emails || []).some(x => String(x).toLowerCase() === em);
+        if (em && (has(tm) || has(nm0))) S.night = true;
+      } catch (e) {}
+    }
+    if (S.isDirector) {
+      try { const tm2 = await db.collection("config").doc("stage1_assessors").get(); N.team = tm2.exists ? (tm2.data().emails || []) : []; } catch (e) {}
+    }
+    S.myName = user.displayName || (user.email || "").split("@")[0];
+    try {
+      const me = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (me.exists && me.data().name) S.myName = me.data().preferredName ? me.data().name : me.data().name;
+    } catch (e) {}
+
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", user.uid).get();
+    S.mine = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+
+    if (!S.night && !S.mine.length) {
+      $("authMsg").textContent = "This page is for instructors with a room on a Phase 1 course. You are not on a room team yet. Ask the Course Director if this looks wrong.";
+      return;
+    }
+    if (!S.full && !S.mine.length) S.view = "runner";   // assessors with no room team land on the assessment night
+    const cfg = await db.collection("config").doc("stage1_course_dates").get();
+    S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
+    try {
+      const lc = await db.collection("config").doc("stage1_register").get();
+      if (lc.exists && lc.data().lateAfter) S.lateAfter = lc.data().lateAfter;
+    } catch (e) {}
+
+    document.querySelectorAll(".dir-only").forEach(el => { if (!S.full) el.classList.add("hidden"); });
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    showView();
+    renderSteps();
+    renderCourseTabs();
+    // default course: first whose assessment date is today or later, else the last
+    const today = londonNow().date;
+    let first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    if (!S.night) { // instructors: only courses where they have candidates
+      const mineCourses = new Set(S.mine.map(c => c.course));
+      first = S.courseDates.find(c => mineCourses.has(c.name) && c.date >= today) || S.courseDates.find(c => mineCourses.has(c.name)) || first;
+    }
+    if (first) selectCourse(first.name);
+    else $("plain").innerHTML = '<span class="lbl">Nothing set up yet</span>No course dates are set. A Director can add them on Stage 1 Settings.';
+  } catch (err) {
+    console.error(err);
+    $("authMsg").textContent = "Could not open this page: " + (err && err.message ? err.message : err);
+  }
+});
+
+// ── Left-hand list of jobs ──────────────────────────────────────────────────
+function renderSteps() {
+  const jobs = [
+    { no: 1, t: "People", s: "Add, remove, move, tags", href: "admin-stage1-candidates.html", who: "full" },
+    { no: 2, t: "Assessment allocation", s: "Slots for assessment night, move people", view: "alloc", who: "full" },
+    { no: 3, t: "Retest pool", s: "Attempt 2 and above, managed by the team", view: "retest", who: "full" },
+    { no: 4, t: "Runner view", s: "Assessment night: rooms, who is there", view: "runner", who: "night" },
+    { no: 5, t: "Assessor view", s: "Assessment night: pick a room, record results", view: "assessor", who: "night" },
+    { no: 6, t: "Register", s: "Who arrived in weeks 1 and 2", view: "register", who: "reg" },
+    { no: 7, t: "Comms", s: "Bulk emails, copy addresses, log", href: "admin-comms.html", who: "full" },
+    { no: 8, t: "Readiness check", s: "Is this course ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
+    { no: 9, t: "Register live screen", s: "Big-screen counts for the teaching evening", href: "register-live.html", who: "full" },
+    { no: 10, t: "Assessment night live screen", s: "Big-screen counts for assessment night", href: "assessment-live.html", who: "full" }
+  ];
+  const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
+  $("steps").innerHTML = jobs.filter(ok).map(j => {
+    const inner = `<span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}${j.href ? " (opens current page)" : ""}</small></span>`;
+    if (j.view) return `<button type="button" class="stepcard${S.view === j.view ? " on" : " link"}" data-view="${j.view}">${inner}</button>`;
+    return `<a class="stepcard link" href="${j.href}">${inner}</a>`;
+  }).join("");
+  $("steps").querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+}
+
+function renderCourseTabs() {
+  const today = londonNow().date;
+  let list = S.courseDates;
+  if (!S.night) { const set = new Set(S.mine.map(c => c.course)); list = list.filter(c => set.has(c.name)); }
+  const live = list.find(c => c.date >= today);
+  $("courseTabs").innerHTML = list.map(c =>
+    `<button type="button" data-course="${esc(c.name)}" class="${c.name === S.course ? "on" : ""}">${esc(c.name)}${live && live.name === c.name ? '<span class="nowdot">next</span>' : ""}</button>`
+  ).join("");
+  $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => selectCourse(b.dataset.course));
+}
+
+// ── Loading a course ────────────────────────────────────────────────────────
+function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
+async function selectCourse(name) {
+  detach();
+  S.course = name; S.reg = {}; S.staff = {}; S.cands = [];
+  renderCourseTabs();
+  $("plain").innerHTML = '<span class="lbl">Loading</span>Opening ' + esc(name) + '...';
+  try {
+    if (S.full) {
+      const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
+      S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    } else {
+      S.cands = S.mine.filter(c => c.course === name);
+    }
+  } catch (err) {
+    $("plain").innerHTML = '<span class="lbl">Could not load</span>' + esc(err.message || err);
+    return;
+  }
+  // pick a room: mine first
+  const myRooms = [...new Set(S.mine.filter(c => c.course === name).map(c => c.room).filter(Boolean))];
+  const present = roomList();
+  S.room = (S.room && present.includes(S.room) && (S.full || myRooms.includes(S.room))) ? S.room : (myRooms[0] || present[0] || null);
+  attachListeners();
+  A.sel = null; A.target = null;
+  N.cands = []; N.open = new Set(); N.fullRoom = null; N.room = null; N.err = "";
+  N.course = null;
+  if (NIGHT_VIEWS.includes(S.view)) { attachNight(); loadNight(); }
+  enterView();
+}
+async function enterView() {
+  showView();
+  if (["alloc", "runner", "assessor", "retest"].includes(S.view)) await ensureRooms();
+  if (S.view === "alloc") renderAlloc();
+  else if (["retest", "runner", "assessor"].includes(S.view)) renderNight();
+  else render();
+}
+function roomList() {
+  const set = new Set(S.cands.map(c => c.room).filter(Boolean));
+  return ROOMS.filter(r => set.has(r)).concat([...set].filter(r => !ROOMS.includes(r)).sort());
+}
+function attachListeners() {
+  const course = S.course;
+  // register entries
+  if (S.full) {
+    S.unsubs.push(db.collection("stage1_register").where("course", "==", course).onSnapshot(snap => {
+      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render();
+    }, err => onListenErr("register", err)));
+  } else {
+    S.cands.forEach(c => {
+      S.unsubs.push(db.collection("stage1_register").doc(c.id).onSnapshot(d => {
+        if (d.exists) S.reg[c.id] = d.data(); else delete S.reg[c.id];
+        render();
+      }, err => onListenErr("register", err)));
+    });
+  }
+  // instructor arrivals
+  S.unsubs.push(db.collection("stage1_register_staff").where("course", "==", course).onSnapshot(snap => {
+    S.staff = {}; snap.forEach(d => { S.staff[d.id] = d.data(); }); render();
+  }, err => onListenErr("instructor arrivals", err)));
+}
+let lastErr = "";
+function onListenErr(what, err) {
+  lastErr = "Could not read the " + what + ": " + (err && err.message ? err.message : err) + ". If this says permission denied, the new rules have not been deployed yet.";
+  render();
+}
+
+// ── Helpers on the data ─────────────────────────────────────────────────────
+function roomCands() {
+  return S.cands.filter(c => (c.room || "") === (S.room || "")).sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+}
+function statusOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n].status : null; }
+function entryOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n] : null; }
+function counts(list, n) {
+  let here = 0, late = 0, absent = 0;
+  list.forEach(c => { const s = statusOf(c.id, n); if (s === "here") here++; else if (s === "late") late++; else if (s === "absent") absent++; });
+  return { here, late, absent, marked: here + late + absent, total: list.length };
+}
+function teamOf(list) {
+  const map = new Map();
+  list.forEach(c => (c.instructorTeamUids || []).forEach((u, i) => { if (!map.has(u)) map.set(u, (c.instructorTeamNames || [])[i] || "Instructor"); }));
+  return [...map.entries()].map(([uid, name]) => ({ uid, name }));
+}
+function staffDoc(n, uid) { return S.staff[S.course + "__w" + n + "__" + uid]; }
+const RAPSVG = '<span class="rap" title="RMD Reasonable Adjustments Pathway" aria-label="RAP"><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="M3.4 0h3.2v3.4H10v3.2H6.6V10H3.4V6.6H0V3.4h3.4z" fill="#d11a2a"/></svg></span>';
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  if (!S.course) return;
+  if (S.view !== "register") return;
+  const dates = weekDates(S.course);
+  const list = roomCands();
+  const rooms = roomList();
+  const now = londonNow();
+
+  // messages
+  let msgs = "";
+  if (lastErr) msgs += `<div class="msg err">${esc(lastErr)}</div>`;
+  if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
+  if (!dates) msgs += `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
+  $("msgs").innerHTML = msgs;
+
+  // tools
+  let tools = "";
+  if (S.full && rooms.length) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
+  else if (!S.full && rooms.length > 1) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
+  if (S.isDirector) {
+    tools += `<label class="tg"><input type="checkbox" id="editAny"${S.editAny ? " checked" : ""}> Edit any date (Director)</label>`;
+    tools += `<label class="tg">Late after <input type="time" id="lateIn" value="${esc(S.lateAfter)}" style="padding:6px 8px;border:2px solid var(--line);border-radius:8px;width:120px"></label><button class="btn sm" id="lateSave" type="button">Save</button>`;
+    tools += `<button class="btn sm" id="backfillBtn" type="button">Backfill from spreadsheet</button>`;
+  } else {
+    tools += `<span class="tg" style="color:var(--mut)">Late after ${esc(S.lateAfter)}</span>`;
+  }
+  $("tools").innerHTML = tools;
+  if ($("roomSel")) $("roomSel").onchange = e => { S.room = e.target.value; render(); };
+  if ($("editAny")) $("editAny").onchange = e => { S.editAny = e.target.checked; render(); };
+  if ($("lateSave")) $("lateSave").onclick = saveLateAfter;
+  if ($("backfillBtn")) $("backfillBtn").onclick = openBackfill;
+
+  // room grid (full access only; instructors see their own room)
+  if (S.full && rooms.length) {
+    const myRooms = new Set(S.mine.filter(c => c.course === S.course).map(c => c.room));
+    $("rooms").innerHTML = rooms.map(r => {
+      const rc = S.cands.filter(c => c.room === r);
+      const a = counts(rc, 1), b = counts(rc, 2);
+      return `<button type="button" class="r${r === S.room ? " on" : ""}${myRooms.has(r) ? " mine" : ""}" data-room="${esc(r)}"><b>${esc(r)}</b><small>W1 ${a.here + a.late}/${rc.length} · W2 ${b.here + b.late}/${rc.length}</small></button>`;
+    }).join("");
+    $("rooms").querySelectorAll("button").forEach(b => b.onclick = () => { S.room = b.dataset.room; render(); });
+  } else $("rooms").innerHTML = "";
+
+  if (!dates || !S.room) {
+    $("sum").innerHTML = ""; $("weeks").innerHTML = ""; $("schedWrap").classList.add("hidden");
+    if (dates && !S.room) $("plain").innerHTML = '<span class="lbl">No room</span>Nobody in ' + esc(S.course) + ' has a room that you can see yet.';
+    return;
+  }
+
+  // plain English
+  const a1 = counts(list, 1), a2 = counts(list, 2);
+  const st1 = weekState(dates[0]), st2 = weekState(dates[1]);
+  const todayWk = st1 === "today" ? 1 : (st2 === "today" ? 2 : 0);
+  let plain;
+  if (todayWk) {
+    const c = todayWk === 1 ? a1 : a2;
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> Tonight is week ${todayWk}. <b>${c.here + c.late} of ${c.total}</b> have been marked as here${c.late ? ` (${c.late} late)` : ""}${c.absent ? `, ${c.absent} absent` : ""}. ${c.total - c.marked} not marked yet. Buttons work for tonight only.`;
+  } else {
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> There is no register night today. Week 1 was ${nice(dates[0])}, week 2 is ${nice(dates[1])}, assessment night is ${nice(dates[2])}. Buttons switch on for each week on its own date.`;
+  }
+  $("plain").innerHTML = '<span class="lbl">In plain English</span>' + plain;
+
+  // tiles
+  const tileSet = (c, n) => `<div class="tile"><div class="n">${c.here + c.late}/${c.total}</div><div class="l">Week ${n} here</div></div>` +
+    `<div class="tile"><div class="n">${c.late}</div><div class="l">Week ${n} late</div></div>` +
+    `<div class="tile${c.absent ? " warn" : ""}"><div class="n">${c.absent}</div><div class="l">Week ${n} absent</div></div>`;
+  $("sum").innerHTML = tileSet(a1, 1) + tileSet(a2, 2);
+
+  // week cards
+  const team = teamOf(list);
+  const whenTxt = s => s === "today" ? "Today" : (s === "past" ? "Past" : "Upcoming");
+  const weekCard = n => {
+    const d = dates[n - 1], s = weekState(d), c = n === 1 ? a1 : a2, edit = canEditWeek(n);
+    const chips = team.map(t => {
+      const sd = staffDoc(n, t.uid), me = t.uid === S.user.uid;
+      return `<span class="tm${sd ? " in" : ""}${me ? " me" : ""}" title="${sd ? "Arrived " + esc(sd.time || "") : "Not marked as arrived"}">${esc(t.name)}${me ? " (you)" : ""}${sd ? " " + esc(sd.time || "") : ""}</span>`;
+    }).join("") || '<span class="tm">No room team on record</span>';
+    const meIn = team.some(t => t.uid === S.user.uid);
+    const myDoc = staffDoc(n, S.user.uid);
+    let acts = "";
+    if (edit && meIn) acts += myDoc
+      ? `<button class="btn sm" type="button" data-arrive="${n}" data-undo="1">Undo my arrival</button>`
+      : `<button class="btn pri" type="button" data-arrive="${n}">I'm here</button>`;
+    if (edit) {
+      const unmarked = list.filter(x => !statusOf(x.id, n)).length;
+      const lateNow = !S.editAny && s === "today" && now.hm > S.lateAfter;
+      acts += `<button class="btn" type="button" data-allhere="${n}"${unmarked && !lateNow ? "" : " disabled"}>Everyone not marked is here (${unmarked})</button>`;
+    }
+    let hint = "";
+    if (!edit) hint = s === "future" ? `Opens on ${nice(d)}.` : `View only. This week was ${nice(d)}.`;
+    else if (!S.editAny && now.hm > S.lateAfter) hint = `It is after ${esc(S.lateAfter)}, so each person has to be marked one by one and you will be asked if they were late.`;
+    return `<div class="wk"><h3>Week ${n} <span style="font-weight:600;color:var(--mut)">${nice(d)}</span><span class="when ${s}">${whenTxt(s)}</span></h3>` +
+      `<div class="team">${chips}</div>` + (acts ? `<div class="acts">${acts}</div>` : "") + (hint ? `<div class="hint">${hint}</div>` : "") + `</div>`;
+  };
+  $("weeks").innerHTML = weekCard(1) + weekCard(2);
+  $("weeks").querySelectorAll("[data-arrive]").forEach(b => b.onclick = () => setArrival(+b.dataset.arrive, b.dataset.undo === "1"));
+  $("weeks").querySelectorAll("[data-allhere]").forEach(b => b.onclick = () => allHere(+b.dataset.allhere));
+
+  // candidate rows
+  $("h1").textContent = "Week 1 · " + nice(dates[0]);
+  $("h2").textContent = "Week 2 · " + nice(dates[1]);
+  const cellHtml = (c, n) => {
+    const d = dates[n - 1], s = weekState(d), edit = canEditWeek(n), cur = statusOf(c.id, n), en = entryOf(c.id, n);
+    if (edit) {
+      return `<div class="cell" data-wk="Week ${n}">` +
+        `<button type="button" class="cb here${cur === "here" ? " on" : ""}" data-set="here" data-n="${n}" data-id="${esc(c.id)}">Here</button>` +
+        `<button type="button" class="cb late${cur === "late" ? " on" : ""}" data-set="late" data-n="${n}" data-id="${esc(c.id)}">Late</button>` +
+        `<button type="button" class="cb abs${cur === "absent" ? " on" : ""}" data-set="absent" data-n="${n}" data-id="${esc(c.id)}">Absent</button></div>`;
+    }
+    let chip;
+    if (cur === "here") chip = `<span class="chip here">Here${en && en.time ? " " + esc(en.time) : ""}</span>`;
+    else if (cur === "late") chip = `<span class="chip late">Late${en && en.time ? " " + esc(en.time) : ""}</span>`;
+    else if (cur === "absent") chip = `<span class="chip abs">Absent</span>`;
+    else chip = s === "future" ? `<span class="chip fut">Opens ${nice(d)}</span>` : `<span class="chip none">Not marked</span>`;
+    return `<div class="cell" data-wk="Week ${n}">${chip}</div>`;
+  };
+  $("rows").innerHTML = list.map(c =>
+    `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${S.full ? attBadge(attemptOf(c)) : ""}</b><small>${esc(c.degree || "")}</small></div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
+  ).join("") || '<div class="row"><div class="nm">No candidates in this room.</div></div>';
+  $("schedWrap").classList.remove("hidden");
+  $("rows").querySelectorAll("[data-set]").forEach(b => b.onclick = () => onTap(b.dataset.id, +b.dataset.n, b.dataset.set));
+}
+
+// ── Actions ─────────────────────────────────────────────────────────────────
+function toast(text, isErr) {
+  const t = document.createElement("div"); t.className = "toast" + (isErr ? " err" : ""); t.textContent = text;
+  document.body.appendChild(t); setTimeout(() => t.remove(), isErr ? 6000 : 2200);
+}
+function candById(id) { return S.cands.find(c => c.id === id); }
+
+function onTap(cid, n, wanted) {
+  const cur = statusOf(cid, n);
+  const c = candById(cid); if (!c) return;
+  if (!canEditWeek(n)) { toast("That week can only be changed on its own date.", true); return; }
+  if (cur === wanted) { writeStatus(c, n, null); return; }          // tap the lit button again to clear it
+  const now = londonNow();
+  if (wanted === "here" && !S.editAny && weekState(weekDates(S.course)[n - 1]) === "today" && now.hm > S.lateAfter) {
+    askLate(c, n); return;
+  }
+  writeStatus(c, n, wanted);
+}
+function askLate(c, n) {
+  $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">` +
+    `<h3>Was ${esc(c.name)} late?</h3><p>It is after ${esc(S.lateAfter)}. Late arrivals are recorded so the course team can see them.</p>` +
+    `<div class="two"><button type="button" class="pri" id="lateYes">Yes, late</button><button type="button" id="lateNo">No, on time</button></div>` +
+    `<button type="button" class="cancel" id="lateCancel">Cancel</button></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("lateYes").onclick = () => { close(); writeStatus(c, n, "late"); };
+  $("lateNo").onclick = () => { close(); writeStatus(c, n, "here"); };
+  $("lateCancel").onclick = close;
+  $("sbg").onclick = e => { if (e.target.id === "sbg") close(); };
+}
+async function writeStatus(c, n, status) {
+  const ref = db.collection("stage1_register").doc(c.id);
+  const key = "w" + n;
+  const payload = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  payload[key] = status
+    ? { status, time: londonNow().hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() }
+    : firebase.firestore.FieldValue.delete();
+  try { await ref.set(payload, { merge: true }); }
+  catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+async function allHere(n) {
+  if (!canEditWeek(n)) return;
+  const todo = roomCands().filter(c => !statusOf(c.id, n));
+  if (!todo.length) return;
+  const now = londonNow();
+  if (!S.editAny && now.hm > S.lateAfter) { toast("After " + S.lateAfter + " each person has to be marked one by one.", true); return; }
+  try {
+    // Small batches on purpose: for a room instructor the security rules look up
+    // each candidate's room team, and Firestore allows only 20 such lookups in
+    // one batched write. Eight at a time stays well inside that limit.
+    for (let i = 0; i < todo.length; i += 8) {
+      const batch = db.batch();
+      todo.slice(i, i + 8).forEach(c => {
+        const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        p["w" + n] = { status: "here", time: now.hm, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp() };
+        batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
+      });
+      await batch.commit();
+    }
+    toast(todo.length + " marked as here.");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+}
+async function setArrival(n, undo) {
+  if (!canEditWeek(n)) return;
+  const id = S.course + "__w" + n + "__" + S.user.uid;
+  const ref = db.collection("stage1_register_staff").doc(id);
+  try {
+    if (undo) await ref.delete();
+    else await ref.set({ course: S.course, week: n, room: S.room || null, uid: S.user.uid, name: S.myName, time: londonNow().hm, at: firebase.firestore.FieldValue.serverTimestamp() });
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+async function saveLateAfter() {
+  const v = ($("lateIn") || {}).value;
+  if (!/^\d\d:\d\d$/.test(v || "")) { toast("Enter a time like 18:45.", true); return; }
+  S.lateAfter = v;
+  try { await db.collection("config").doc("stage1_register").set({ lateAfter: v }, { merge: true }); toast("Late cut-off saved: " + v); }
+  catch (err) { toast("Used for this visit only. Only a super-user can save it: " + (err.code || err.message), true); }
+  render();
+}
+
+// ── Backfill from a spreadsheet paste (Director, any course, week 1 or 2) ───
+// Paste rows copied from a spreadsheet. A row is matched to a candidate on this
+// course by email, or by name (first/last in either order, in one cell or two).
+// A status cell says Here / Late / Absent (also P, L, A, Y, N, tick, cross).
+// Rows with no status are left unmarked. Nothing is written until "Apply".
+let bf = { week: 1, plan: null };
+function normName(t) { return String(t || "").toLowerCase().replace(/[^a-z\u00c0-\u024f\s'-]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).sort().join(" "); }
+function statusToken(cell) {
+  const t = String(cell || "").trim().toLowerCase();
+  if (!t) return null;
+  if (/^(here|present|p|y|yes|1|\u2713|\u2714|attended|in|on time|ok)$/.test(t)) return "here";
+  if (/^(late|l)$/.test(t)) return "late";
+  if (/^(absent|a|n|no|0|\u2717|\u2718|x|dna|did not attend|missed)$/.test(t)) return "absent";
+  return null;
+}
+function parseBackfill(text) {
+  const byEmail = new Map(), byName = new Map();
+  S.cands.forEach(c => {
+    if (c.email) byEmail.set(String(c.email).trim().toLowerCase(), c);
+    const k = normName(c.name); if (!k) return;
+    byName.set(k, byName.has(k) ? "dup" : c);
+  });
+  const matched = new Map(), unmatched = [], noStatus = [], dups = [], conflicts = [];
+  let weekCol = -1;   // when the pasted header row has "Week 1" / "Week 2" columns, read only the chosen week's column
+  String(text || "").split(/\r?\n/).forEach(line => {
+    if (!line.trim()) return;
+    const cells = line.split(line.includes("\t") ? "\t" : ",").map(x => x.trim());
+    const wk = cells.findIndex(x => new RegExp("^week\\s*" + bf.week + "\\b", "i").test(x));
+    if (wk >= 0 && !cells.some(statusToken)) { weekCol = wk; return; }
+    if (cells.some(x => /^(surname|last name|first name|email|student email|e-mail|name|status|room|cm room\W*)$/i.test(x) || /^week\s*\d/i.test(x)) && !cells.some(statusToken)) return; // header row
+    let cand = null, ambiguous = false;
+    const em = cells.find(x => /@/.test(x));
+    if (em) cand = byEmail.get(em.toLowerCase()) || null;
+    if (!cand) {
+      const textCells = cells.filter(x => x && !/@/.test(x) && !statusToken(x) && !/^(cm|room)\s*\d+[a-z]?$/i.test(x) && !/^n\/?a$/i.test(x));
+      const tries = [];
+      if (textCells.length >= 2) { tries.push(textCells[0] + " " + textCells[1]); }
+      textCells.forEach(x => tries.push(x));
+      for (const t of tries) { const hit = byName.get(normName(t)); if (hit === "dup") ambiguous = true; else if (hit) { cand = hit; break; } }
+    }
+    const st = weekCol >= 0 ? statusToken(cells[weekCol]) : (cells.map(statusToken).filter(Boolean).pop() || null);
+    if (!cand) { (ambiguous ? dups : unmatched).push(line); return; }
+    if (!st) { noStatus.push(cand.name); return; }
+    if (matched.has(cand.id) && matched.get(cand.id).status !== st) conflicts.push(cand.name);
+    matched.set(cand.id, { cand, status: st });
+  });
+  return { matched: [...matched.values()], unmatched, noStatus, dups, conflicts };
+}
+function openBackfill() {
+  if (!S.isDirector) return;
+  bf.plan = null;
+  $("overlay").innerHTML = `<div class="modalbg" id="bfbg"><div class="modal" role="dialog" aria-modal="true">` +
+    `<h3>Backfill from a spreadsheet</h3>` +
+    `<div class="sub">${esc(S.course)}, every room. Copy the rows from your spreadsheet and paste them below. Each row needs the candidate's <b>email or name</b> and a status of <b>Here, Late or Absent</b> (P, L, A, Y, N, a tick or a cross also work). Rows with no status are left unmarked.</div>` +
+    `<div class="row2"><label class="tg">Week <select id="bfWeek"><option value="1">1 (${esc(nice((weekDates(S.course) || [])[0] || "2000-01-01"))})</option><option value="2">2 (${esc(nice((weekDates(S.course) || [])[1] || "2000-01-01"))})</option></select></label>` +
+    `<label class="tg"><input type="checkbox" id="bfOver"> Replace entries that are already marked</label></div>` +
+    `<textarea id="bfText" placeholder="Surname\tFirst name\temail\tstatus"></textarea>` +
+    `<div class="row2"><button class="btn" id="bfCheck" type="button">Check</button><button class="btn pri" id="bfApply" type="button" disabled>Apply</button><button class="btn" id="bfClose" type="button">Close</button></div>` +
+    `<div id="bfOut"></div></div></div>`;
+  $("bfWeek").value = String(bf.week);
+  $("bfClose").onclick = () => { $("overlay").innerHTML = ""; };
+  $("bfCheck").onclick = checkBackfill;
+  $("bfApply").onclick = applyBackfill;
+}
+function checkBackfill() {
+  bf.week = +$("bfWeek").value;
+  const over = $("bfOver").checked;
+  const plan = parseBackfill($("bfText").value);
+  const todo = plan.matched.filter(m => over || !statusOf(m.cand.id, bf.week));
+  const skipped = plan.matched.length - todo.length;
+  bf.plan = Object.assign({}, plan, { todo });
+  const tally = k => todo.filter(m => m.status === k).length;
+  let h = `<div class="msg ${todo.length ? "ok" : "warn"}">${todo.length} will be written: ${tally("here")} here, ${tally("late")} late, ${tally("absent")} absent.${skipped ? " " + skipped + " already marked, left as they are." : ""}</div>`;
+  if (plan.unmatched.length) h += `<div class="msg warn">${plan.unmatched.length} row(s) did not match anyone on ${esc(S.course)}:<br>${plan.unmatched.slice(0, 8).map(esc).join("<br>")}${plan.unmatched.length > 8 ? "<br>..." : ""}</div>`;
+  if (plan.dups.length) h += `<div class="msg warn">${plan.dups.length} row(s) matched two people with the same name. Use their email instead.</div>`;
+  if (plan.conflicts.length) h += `<div class="msg warn">Listed twice with different statuses (last one used): ${plan.conflicts.map(esc).join(", ")}</div>`;
+  if (plan.noStatus.length) h += `<div class="msg warn">${plan.noStatus.length} matched but had no status, so left unmarked.</div>`;
+  const missing = S.cands.filter(c => !plan.matched.some(m => m.cand.id === c.id) && !statusOf(c.id, bf.week)).length;
+  h += `<div class="hint" style="color:var(--mut);font-size:13px">${missing} people on ${esc(S.course)} will still be unmarked for week ${bf.week}.</div>`;
+  h += `<table><tr><th>Candidate</th><th>Room</th><th>Will be</th></tr>${todo.slice(0, 60).map(m => `<tr><td>${esc(m.cand.name)}</td><td>${esc(m.cand.room || "")}</td><td>${m.status === "here" ? "Here" : m.status === "late" ? "Late" : "Absent"}</td></tr>`).join("")}</table>` +
+    (todo.length > 60 ? `<div class="hint" style="font-size:13px;color:var(--mut)">...and ${todo.length - 60} more.</div>` : "");
+  $("bfOut").innerHTML = h;
+  $("bfApply").disabled = !todo.length;
+}
+async function applyBackfill() {
+  if (!bf.plan || !bf.plan.todo.length) return;
+  const n = bf.week, todo = bf.plan.todo;
+  $("bfApply").disabled = true; $("bfApply").textContent = "Writing...";
+  try {
+    for (let i = 0; i < todo.length; i += 400) {
+      const batch = db.batch();
+      todo.slice(i, i + 400).forEach(m => {
+        const p = { course: S.course, room: m.cand.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        p["w" + n] = { status: m.status, time: null, by: S.user.uid, byName: S.myName, at: firebase.firestore.FieldValue.serverTimestamp(), backfill: true };
+        batch.set(db.collection("stage1_register").doc(m.cand.id), p, { merge: true });
+      });
+      await batch.commit();
+    }
+    $("overlay").innerHTML = "";
+    toast(todo.length + " entries written to week " + n + ".");
+  } catch (err) {
+    $("bfApply").disabled = false; $("bfApply").textContent = "Apply";
+    $("bfOut").insertAdjacentHTML("afterbegin", `<div class="msg err">Not saved: ${esc(err.message || err)}</div>`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ASSESSMENT ALLOCATION view (2026-10-13, Jon) - job 2 in the hub.
+// Rules (Jon): the automatic allocation leaves out RAP candidates and anyone on
+// attempt 2 or above (they are managed by the organising team in the retest
+// pool and can be placed by hand). Slots are only ever on the assessment
+// evening, so moving someone is always "same evening". The email to a
+// candidate is optional everywhere (default off).
+// Attempt number: stage1_candidates.assessmentAttempt (1 if not set; a
+// candidate already marked "not first sit" counts as 2). The attempt circle
+// replaces the old two-plus lightbulb. Instructors never see it.
+// ════════════════════════════════════════════════════════════════════════════
+const BLS_ADMIN_EMAIL = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
+const ASSESS_SLOTS = (() => {
+  const out = []; let h = 18, m = 30;
+  while (h < 21 || (h === 21 && m <= 30)) { out.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0")); m += 15; if (m >= 60) { m -= 60; h++; } }
+  return out;
+})();
+const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
+const A = {
+  rooms: [], loaded: false, sel: null, target: null, showGrid: false, busy: false, log: [],
+  subject: "Your BLS assessment time - {{assessment_date}}",
+  body: "Dear {{first_name}},\n\nYour BLS assessment is on {{assessment_date}}. Your time is {{assessment_time}} in room {{assessment_room}}.\n\nPlease arrive a few minutes early. If you cannot attend, email us as soon as possible at " + BLS_ADMIN_EMAIL + ".\n\nThe RMD Birmingham team"
+};
+
+function attemptOf(c) { return Number.isFinite(c.assessmentAttempt) ? c.assessmentAttempt : (c.firstTimeAssessment === false || c.twoPlusAssessments === true ? 2 : 1); }
+function attBadge(n) { return '<span class="att ' + (n >= 3 ? "a3" : "a" + n) + '" title="Assessment attempt ' + n + '" aria-label="Attempt ' + n + '">' + n + "</span>"; }
+function assessDate() { const d = weekDates(S.course); return d ? d[2] : null; }
+function longDate(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }); }
+function shuffleArr(arr) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function hasSlot(c) { return !!(c.assessmentRoom && c.assessmentSlot); }
+
+async function ensureRooms() {
+  if (A.loaded) return;
+  try {
+    const snap = await db.collection("config").doc("stage1_assessment_rooms").get();
+    A.rooms = snap.exists ? (snap.data().rooms || []) : [];
+  } catch (e) { A.rooms = []; }
+  if (!A.rooms.length) A.rooms = DEFAULT_ASSESS_ROOMS;
+  A.loaded = true;
+}
+function showView() {
+  [["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"]]
+    .forEach(([id, v]) => $(id).classList.toggle("hidden", S.view !== v));
+}
+async function setView(v) {
+  if ((v === "alloc" || v === "retest") && !S.full) return;
+  if ((v === "runner" || v === "assessor") && !S.night) return;
+  S.view = v; renderSteps();
+  if (NIGHT_VIEWS.includes(v)) { if (N.course !== S.course) attachNight(); loadNight(); }
+  await enterView();
+}
+
+function stats() {
+  const c = S.cands;
+  const absent = c.filter(x => x.assessmentAbsent === true);
+  const live = c.filter(x => x.assessmentAbsent !== true);
+  const rap = live.filter(x => x.rap === true);
+  const retest = live.filter(x => attemptOf(x) >= 2);
+  const auto = live.filter(x => x.rap !== true && attemptOf(x) < 2);
+  const slotted = c.filter(hasSlot);
+  const toDo = auto.filter(x => !hasSlot(x));
+  return { absent, live, rap, retest, auto, slotted, toDo };
+}
+function takenSet(exceptId) {
+  const m = new Map();
+  S.cands.forEach(x => { if (x.id !== exceptId && hasSlot(x)) m.set(x.assessmentSlot + "|" + x.assessmentRoom, x.name || ""); });
+  return m;
+}
+function freePairs(taken) {
+  const out = [];
+  ASSESS_SLOTS.forEach(sl => A.rooms.forEach(r => { if (!taken.has(sl + "|" + r)) out.push({ slot: sl, room: r }); }));
+  return out;
+}
+function logAdd(t) { A.log.unshift(t); A.log = A.log.slice(0, 8); }
+
+function renderAlloc() {
+  if (!S.course || S.view !== "alloc") return;
+  const d = assessDate(), st = stats();
+  const cap = A.rooms.length * ASSESS_SLOTS.length;
+  $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set, so the assessment night cannot be worked out.</div>`;
+  $("plain").innerHTML = '<span class="lbl">In plain English</span>' +
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. ` +
+    `<b>${st.toDo.length}</b> ${st.toDo.length === 1 ? "person needs" : "people need"} a slot and will get one automatically. ` +
+    `<b>${st.rap.length}</b> with RAP and <b>${st.retest.length}</b> on attempt 2 or above are not allocated automatically: you place them by hand below.`;
+  const free = Math.max(0, cap - st.slotted.length);
+  const tile = (n, l, warn) => `<div class="tile${warn ? " warn" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  $("aTiles").innerHTML = tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
+    tile(st.toDo.length, "Still need a slot", st.toDo.length > 0 && st.toDo.length > free) + tile(st.rap.length, "RAP: place by hand") +
+    tile(st.retest.length, "Retest pool (attempt 2+)") + tile(st.absent.length, "Cannot attend") + tile(free, "Free slots (" + A.rooms.length + " rooms)");
+  renderAAuto(st); renderAMove(); renderALists(st);
+}
+
+// ── Step 1: automatic allocation ────────────────────────────────────────────
+function renderAAuto(st) {
+  const box = $("aAuto");
+  let h = `<h3><span class="stepno">1</span>Give everyone eligible a slot</h3>` +
+    `<div style="font-size:14px">Eligible means: on attempt 1, no RAP tag, not marked unable to attend. Slots fill earliest first, one person per room per 15 minutes from ${ASSESS_SLOTS[0]} to ${ASSESS_SLOTS[ASSESS_SLOTS.length - 1]}.</div>`;
+  if (!S.isDirector) {
+    box.innerHTML = h + `<div class="hint">A Director runs this step. You can move individual people in step 2.</div>`; return;
+  }
+  const taken = takenSet(null), free = freePairs(taken);
+  const n = st.toDo.length;
+  if (!n) h += `<div class="msg ok" style="margin:10px 0 0">Everyone eligible already has a slot.</div>`;
+  else {
+    const last = free[Math.min(n, free.length) - 1];
+    h += `<div class="msg ${n > free.length ? "warn" : "ok"}" style="margin:10px 0 0">${n} will be allocated across ${A.rooms.length} rooms, finishing at ${last ? last.slot : "-"}.${n > free.length ? ` ${n - free.length} will not fit and are left for you to place by hand.` : ""}</div>`;
+  }
+  h += `<label class="tg" style="margin-top:10px"><input type="checkbox" id="aEmailAuto"> Email each person their time after allocating</label>` +
+    `<details class="emailbox"><summary style="cursor:pointer;font-weight:700">Email wording (used by steps 1 and 2 when "email" is ticked)</summary>` +
+    `<div class="hint">Placeholders: {{first_name}}, {{assessment_date}}, {{assessment_time}}, {{assessment_room}}.</div>` +
+    `<input type="text" id="aSubject" value="${esc(A.subject)}" style="margin:8px 0"><textarea id="aBody">${esc(A.body)}</textarea></details>` +
+    `<div class="tools" style="margin:12px 0 0"><button class="btn pri" id="aGo" type="button"${n ? "" : " disabled"}>Allocate ${n || ""} now</button>` +
+    `<button class="btn" id="aClear" type="button"${st.slotted.length ? "" : " disabled"}>Clear all slots on ${esc(S.course)}</button></div>` +
+    `<div class="hint">Emails go through the same sender as Bulk Comms. Anything over the daily limit is queued and sent over the next days.</div>`;
+  box.innerHTML = h;
+  $("aSubject").oninput = e => { A.subject = e.target.value; };
+  $("aBody").oninput = e => { A.body = e.target.value; };
+  $("aGo").onclick = allocateAll;
+  $("aClear").onclick = clearAll;
+}
+function askSheet(title, text, yes) {
+  return new Promise(res => {
+    $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true"><h3>${esc(title)}</h3><p>${text}</p>` +
+      `<div class="two"><button type="button" class="pri" id="shYes">${esc(yes)}</button><button type="button" id="shNo">Cancel</button></div></div></div>`;
+    const done = v => { $("overlay").innerHTML = ""; res(v); };
+    $("shYes").onclick = () => done(true); $("shNo").onclick = () => done(false);
+    $("sbg").onclick = e => { if (e.target.id === "sbg") done(false); };
+  });
+}
+async function writeSlots(list, fields) {
+  for (let i = 0; i < list.length; i += 400) {
+    const batch = db.batch();
+    list.slice(i, i + 400).forEach(item => batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(item.id), fields(item)));
+    await batch.commit();
+  }
+}
+async function allocateAll() {
+  if (A.busy || !S.isDirector) return;
+  const st = stats(); if (!st.toDo.length) return;
+  const taken = takenSet(null), pairs = freePairs(taken);
+  const sh = shuffleArr(st.toDo);
+  const assign = sh.slice(0, pairs.length).map((c, i) => ({ id: c.id, c, pair: pairs[i] }));
+  const over = sh.length - assign.length;
+  const wantEmail = $("aEmailAuto") && $("aEmailAuto").checked;
+  const ok = await askSheet("Allocate " + assign.length + " people?", `One person per room per 15 minutes on ${esc(S.course)}, from ${ASSESS_SLOTS[0]}.${over ? ` ${over} will not fit.` : ""} ${wantEmail ? "Each person will also be emailed their time." : "Nobody will be emailed."}`, "Allocate");
+  if (!ok) return;
+  A.busy = true;
+  try {
+    await writeSlots(assign, x => ({ assessmentRoom: x.pair.room, assessmentSlot: x.pair.slot }));
+    assign.forEach(x => { x.c.assessmentRoom = x.pair.room; x.c.assessmentSlot = x.pair.slot; });
+    logAdd("Allocated " + assign.length + " people." + (over ? " " + over + " did not fit." : ""));
+    toast(assign.length + " allocated.");
+    if (wantEmail) await sendAssessmentEmails(assign.map(x => x.c));
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "no permission" : err.message), true); }
+  A.busy = false; renderAlloc();
+}
+async function clearAll() {
+  if (A.busy || !S.isDirector) return;
+  const list = S.cands.filter(hasSlot); if (!list.length) return;
+  const ok = await askSheet("Clear every slot?", `This removes the assessment room and time from ${list.length} people on ${esc(S.course)}. Their course and teaching room are not touched. Nobody is emailed.`, "Clear all");
+  if (!ok) return;
+  A.busy = true;
+  try {
+    await writeSlots(list, () => ({ assessmentRoom: null, assessmentSlot: null }));
+    list.forEach(c => { c.assessmentRoom = null; c.assessmentSlot = null; });
+    logAdd("Cleared " + list.length + " slots."); toast("Slots cleared.");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+  A.busy = false; A.target = null; renderAlloc();
+}
+
+// ── Step 2: move one person ─────────────────────────────────────────────────
+function selCand() { return A.sel ? S.cands.find(c => c.id === A.sel) : null; }
+function renderAMove() {
+  const body = $("aMoveBody"), c = selCand();
+  if (!c) { body.innerHTML = `<div class="hint">Search above, or press "Place / Move" beside a name in the lists below. Works for anyone on this course, including RAP and retest candidates.</div>${logHtml()}`; return; }
+  const taken = takenSet(c.id), free = freePairs(taken);
+  const now = hasSlot(c) ? `${esc(c.assessmentSlot)} in ${esc(c.assessmentRoom)}` : "no slot yet";
+  const tgt = A.target;
+  let h = `<div class="selbox"><b>${esc(c.name)}</b>${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}<span style="color:var(--mut);font-size:13px">${esc(c.degree || "")} · now: ${now}${c.assessmentAbsent === true ? " · marked unable to attend" : ""}</span></div>` +
+    `<div class="tools" style="margin:6px 0"><span class="tg">Attempt</span><span class="stepper"><button type="button" id="aDec"${attemptOf(c) <= 1 ? " disabled" : ""}>-</button><b>${attemptOf(c)}</b><button type="button" id="aInc"${attemptOf(c) >= 9 ? " disabled" : ""}>+</button></span><span class="hint" style="margin:0">Anyone on 2 or more is left out of the automatic allocation.</span></div>`;
+  if (!free.length) h += `<div class="msg warn">No free slots left on ${esc(S.course)}'s assessment night.</div>`;
+  else {
+    h += `<div class="fieldlab" style="font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">Earliest free slots (same evening, ${d8()})</div><div class="chips">` +
+      free.slice(0, 10).map(p => `<button type="button" class="slotchip${tgt && tgt.slot === p.slot && tgt.room === p.room ? " on" : ""}" data-slot="${p.slot}" data-room="${esc(p.room)}">${p.slot} · ${esc(p.room)}</button>`).join("") + `</div>` +
+      `<button type="button" class="btn sm" id="aGrid">${A.showGrid ? "Hide" : "Show"} every slot and room</button>`;
+    if (A.showGrid) {
+      h += `<div class="grid"><table><tr><th></th>${A.rooms.map(r => `<th>${esc(r)}</th>`).join("")}</tr>` +
+        ASSESS_SLOTS.map(sl => `<tr><td class="t">${sl}</td>${A.rooms.map(r => {
+          const who = taken.get(sl + "|" + r);
+          if (who !== undefined) return `<td><span class="gx" title="${esc(who)}">${esc((who || "?").split(" ").map(w => w[0]).join("").slice(0, 3))}</span></td>`;
+          return `<td><button type="button" class="gc${tgt && tgt.slot === sl && tgt.room === r ? " on" : ""}" data-slot="${sl}" data-room="${esc(r)}">free</button></td>`;
+        }).join("")}</tr>`).join("") + `</table></div>`;
+    }
+  }
+  h += `<label class="tg" style="display:flex;margin-top:12px"><input type="checkbox" id="aEmailOne"${c.email ? "" : " disabled"}> Email them the new time${c.email ? "" : " (no email address on record)"}</label>` +
+    `<div class="tools" style="margin:10px 0 0"><button class="btn pri" id="aMoveGo" type="button"${tgt ? "" : " disabled"}>${tgt ? "Move to " + tgt.slot + " in " + esc(tgt.room) : "Pick a slot first"}</button>` +
+    `<button class="btn" id="aOff" type="button"${hasSlot(c) ? "" : " disabled"}>Take them off their slot</button></div>` + logHtml();
+  body.innerHTML = h;
+  body.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => { A.target = { slot: b.dataset.slot, room: b.dataset.room }; renderAMove(); });
+  if ($("aGrid")) $("aGrid").onclick = () => { A.showGrid = !A.showGrid; renderAMove(); };
+  $("aMoveGo").onclick = moveOne; $("aOff").onclick = takeOff;
+  $("aDec").onclick = () => setAttempt(c, attemptOf(c) - 1); $("aInc").onclick = () => setAttempt(c, attemptOf(c) + 1);
+}
+function d8() { const d = assessDate(); return d ? nice(d) : ""; }
+function logHtml() { return A.log.length ? `<div class="log"><b>This visit:</b><br>${A.log.map(esc).join("<br>")}</div>` : ""; }
+async function moveOne() {
+  const c = selCand(), t = A.target; if (!c || !t || A.busy) return;
+  if (takenSet(c.id).has(t.slot + "|" + t.room)) { toast("That slot has just been taken. Pick another.", true); A.target = null; renderAMove(); return; }
+  const wantEmail = $("aEmailOne") && $("aEmailOne").checked && !!c.email;
+  A.busy = true;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentRoom: t.room, assessmentSlot: t.slot });
+    c.assessmentRoom = t.room; c.assessmentSlot = t.slot;
+    logAdd(c.name + " moved to " + t.slot + " in " + t.room + ".");
+    toast("Moved.");
+    A.target = null;
+    if (wantEmail) await sendAssessmentEmails([c]);
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission" : err.message), true); }
+  A.busy = false; renderAlloc();
+}
+async function takeOff() {
+  const c = selCand(); if (!c || !hasSlot(c) || A.busy) return;
+  A.busy = true;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentRoom: null, assessmentSlot: null });
+    logAdd(c.name + " taken off their slot (" + c.assessmentSlot + " in " + c.assessmentRoom + ")."); c.assessmentRoom = null; c.assessmentSlot = null; toast("Slot removed.");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+  A.busy = false; renderAlloc();
+}
+async function setAttempt(c, n) {
+  n = Math.max(1, Math.min(9, n)); if (A.busy || n === attemptOf(c)) return;
+  A.busy = true;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentAttempt: n, twoPlusAssessments: n >= 2 });
+    c.assessmentAttempt = n; c.twoPlusAssessments = n >= 2; logAdd(c.name + " set to attempt " + n + ".");
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+  A.busy = false; renderAlloc();
+}
+
+// ── Optional emails ─────────────────────────────────────────────────────────
+async function sendAssessmentEmails(people) {
+  const d = assessDate(); const dateTxt = d ? longDate(d) : "";
+  const withEmail = people.filter(c => c.email && hasSlot(c));
+  const skipped = people.length - withEmail.length;
+  if (!withEmail.length) { toast("Nobody to email (no address or no slot).", true); return; }
+  const call = firebase.functions().httpsCallable("sendBulkComms");
+  try {
+    const probe = await call({ recipients: [{ name: "x", email: "x@x.x" }], subject: A.subject, message: A.body, groupLabel: "probe", dryRun: true });
+    if (!probe.data || probe.data.varsSupported !== true) { toast("Emails not sent: the updated functions have not been deployed yet.", true); logAdd("Email NOT sent: functions need deploying first."); return; }
+    const res = await call({
+      recipients: withEmail.map(c => ({ name: c.name, email: c.email, vars: { assessment_date: dateTxt, assessment_time: c.assessmentSlot, assessment_room: c.assessmentRoom } })),
+      subject: A.subject, message: A.body, groupLabel: "Stage 1 assessment time - " + S.course, dryRun: false
+    });
+    const r = res.data || {};
+    logAdd("Emailed " + (r.sent || 0) + " of " + withEmail.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + (skipped ? ", " + skipped + " had no address" : "") + ".");
+    toast("Emailed " + (r.sent || 0) + " of " + withEmail.length + ".");
+  } catch (err) { toast("Email failed: " + (err.message || err), true); logAdd("Email failed: " + (err.message || err)); }
+}
+
+// ── Lists ───────────────────────────────────────────────────────────────────
+function rowHtml(c) {
+  return `<div class="lrow"><div class="nm">${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}<small>${esc(c.degree || "")}</small></div>` +
+    `<span style="font-size:13px;font-weight:700;color:${hasSlot(c) ? "var(--ok)" : "var(--mut)"}">${hasSlot(c) ? esc(c.assessmentSlot) + " · " + esc(c.assessmentRoom) : "no slot"}</span>` +
+    `<button class="btn sm" type="button" data-pick="${esc(c.id)}">Place / Move</button></div>`;
+}
+function group(title, list, open, note) {
+  if (!list.length) return "";
+  return `<details class="lst"${open ? " open" : ""}><summary>${esc(title)} (${list.length})</summary><div class="in">${note ? `<div class="hint" style="margin:0 0 6px">${note}</div>` : ""}${list.map(rowHtml).join("")}</div></details>`;
+}
+function renderALists(st) {
+  const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""));
+  const sched = st.slotted.slice().sort((a, b) => a.assessmentSlot === b.assessmentSlot ? String(a.assessmentRoom).localeCompare(String(b.assessmentRoom)) : a.assessmentSlot.localeCompare(b.assessmentSlot));
+  $("aLists").innerHTML =
+    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from step 2 when you are ready.") +
+    group("Retest pool: attempt 2 and above", st.retest.slice().sort(byName), true, "Managed by the organising team. Not allocated automatically. Set the attempt number in step 2.") +
+    group("Eligible but no slot yet", st.toDo.slice().sort(byName), true, "") +
+    group("Cannot attend", st.absent.slice().sort(byName), false, "") +
+    group("Assessment schedule", sched, false, "");
+  $("aLists").querySelectorAll("[data-pick]").forEach(b => b.onclick = () => { A.sel = b.dataset.pick; A.target = null; renderAMove(); $("aMove").scrollIntoView({ behavior: "smooth", block: "start" }); });
+}
+function renderAPick() {
+  const q = $("aSearch").value.trim().toLowerCase(), list = $("aPick");
+  if (q.length < 2) { list.classList.add("hidden"); return; }
+  const hits = S.cands.filter(c => String(c.name || "").toLowerCase().includes(q) || String(c.email || "").toLowerCase().includes(q)).slice(0, 8);
+  list.classList.remove("hidden");
+  list.innerHTML = hits.length ? hits.map(c => `<div data-id="${esc(c.id)}"><b>${esc(c.name)}</b> <small>${esc(c.degree || "")}${hasSlot(c) ? " · " + esc(c.assessmentSlot) + " " + esc(c.assessmentRoom) : ""}</small></div>`).join("") : `<div style="cursor:default;color:var(--mut)">Nobody found on ${esc(S.course)}.</div>`;
+  list.querySelectorAll("div[data-id]").forEach(d => d.onclick = () => { A.sel = d.dataset.id; A.target = null; $("aSearch").value = ""; list.classList.add("hidden"); renderAMove(); });
+}
+document.addEventListener("DOMContentLoaded", () => { const s = document.getElementById("aSearch"); if (s) s.oninput = renderAPick; });
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// ASSESSMENT NIGHT (2026-10-13, Jon): retest pool, runner view, assessor view
+// and the assessment form on the site.
+//
+// Who: Directors, Student and Senior Faculty, and people whose role is faculty
+// or assessor-faculty (S.night). Instructors on room teams never see this.
+// Data: the candidate list comes from the getAssessmentNight function (name,
+// RAP, room, slot, attempt - no email or date of birth). Directors / Student /
+// Senior Faculty fall back to their direct candidate read if the function is
+// not deployed yet. Results live in stage1_assessments/{candidateId}:
+//   {course, candidateName, notThere:{flag,by,byName,at}|null,
+//    claim:{uid,name,at}|null, attempts:{"1":{outcome,assessorUid,assessorName,
+//    room,slot,comment,answers,at}, "2":{...}}, updatedAt}
+// Attempt number: the number saved on the candidate, or 2 when attempt 1 was
+// referred tonight, whichever is higher. Only an attempt 1 referral creates a
+// same-night retest (the Retest pool); they are never given a slot automatically.
+// Each attempt records two parts separately - BLS + AED and recovery position -
+// plus the reasons for any part not passed. Overall Pass needs every part tested
+// at that attempt to pass. Outcomes by attempt (Course Director, Oct 2026):
+//   1: Pass / Refer for retest (same evening)
+//   2: Pass / Refer to attempt 3 (after retraining on a later course)
+//   3: Pass / Refer back to degree leads
+//   4: Pass / Not passed, refer back to degree leads and inform them (final)
+// Attempts 2+ never create a same-night attempt 3: those people are listed for the team.
+// Rules enforced here (not in the database rules):
+//   - attempt 2 must be assessed by Student Faculty or Senior Faculty (or an extra named assessor),
+//     and by someone other than the attempt 1 assessor
+//   - attempt 3 and above only by Senior Faculty or an extra named assessor
+// ════════════════════════════════════════════════════════════════════════════
+const NIGHT_VIEWS = ["retest", "runner", "assessor"];
+const N = {
+  course: null, cands: [], results: {}, named: [], team: [], form: {}, err: "", resErr: "", usingFallback: false,
+  room: null, open: new Set(), fullRoom: null, unsub: null, poll: null, formOpen: false, loadedAt: 0
+};
+
+function nres(id) { return N.results[id] || {}; }
+function nattempts(id) { return nres(id).attempts || {}; }
+function derivedAttempt(id) { const a = nattempts(id)["1"]; return a && a.outcome === "refer" ? 2 : 1; }
+function effAttempt(c) { return Math.max(c.attempt || 1, derivedAttempt(c.id)); }
+function passedAtKey(id) { const a = nattempts(id); return Object.keys(a).find(k => a[k] && a[k].outcome === "pass") || null; }
+function recordedAt(id, att) { return nattempts(id)[String(att)] || null; }
+function inPool(c) { if (c.absent || passedAtKey(c.id)) return false; const e = effAttempt(c); return e >= 2 && !recordedAt(c.id, e); }
+function isDoneN(c) { return Object.keys(nattempts(c.id)).length > 0; }
+function formAttemptOf(c) { const p = passedAtKey(c.id); return p ? Number(p) : effAttempt(c); }
+function firstNameOf(c) { return String(c.name || "").trim().split(/\s+/)[0] || "this candidate"; }
+function normId(t) { return String(t || "").toLowerCase().replace(/\s+/g, " ").trim(); }
+function amNamed() {
+  const me = [normId(S.myName), normId(S.user && S.user.email)].filter(Boolean);
+  return N.named.some(n => me.includes(normId(n)));
+}
+
+// Mark sheet. Steps follow the ERC / Resuscitation Council UK 2025 lay-rescuer sequence (single rescuer: safety, response, call 999 on speaker, airway and breathing check, compressions, 30:2, AED);
+// each step starts with the code used in the Google Form's Reasons for Failure section (1a, 1b, 1c, 2a);
+// a Director can edit them under Night settings (saved in config/stage1_assessment_form.markSheet).
+// "Excellent" is an internal note on a Pass (Jon, 14 Oct): never changes the result and is not shown to the candidate.
+const EXC_CRITERIA = [
+  "Compression rate held at 100 to 120 per minute throughout",
+  "Whole sequence completed in order with no prompting",
+  "Clear, confident communication with the 999 call and with helpers",
+  "Calm, safe and organised throughout"
+];
+const COMPS = [{ k: "bls", label: "BLS + AED" }, { k: "rec", label: "First aid (recovery position)" }];
+const CODE_NAMES = { "1a": "Chest compressions / BLS", "1b": "Rescue breaths", "1c": "AED", "2a": "Recovery position" };   // same codes as the Google Form's "Reasons for Failure" section
+const DEFAULT_STEPS = {
+  bls: [
+    "1a Checked for danger (self, casualty, bystanders)",
+    "1a Checked response (shook shoulders, asked loudly)",
+    "1a Called 999 on speaker without delay (or shouted for help) and asked for an AED",
+    "1a Opened airway (head tilt, chin lift)",
+    "1a Checked breathing (look, listen, feel; no more than 10 seconds)",
+    "1a Recognised not breathing normally (gasping, slow or noisy breaths) and started CPR",
+    "1a Compression position (heel of hand on lower half of sternum, other hand on top, arms straight)",
+    "1a Compression depth (5-6 cm)",
+    "1a Compression rate (100-120 per minute)",
+    "1a Full recoil, minimal interruptions",
+    "1b Gave 30 compressions then 2 breaths (30:2)",
+    "1b Breath technique (airway open, nose pinched, about 1 second, chest rises)",
+    "1b Pause for breaths no more than 10 seconds, compressions restarted",
+    "1c AED switched on as soon as it arrived and prompts followed",
+    "1c Pads placed correctly on bare chest",
+    "1c Nobody touching during analysis and shock",
+    "1c Shock delivered safely when advised",
+    "1c Compressions restarted immediately after the shock or no-shock prompt"
+  ],
+  rec: [
+    "2a Confirmed unresponsive but breathing normally, and 999 called",
+    "2a Near arm at right angle, far arm across chest with back of hand against cheek",
+    "2a Far knee pulled up with foot flat on the floor",
+    "2a Rolled casualty towards them onto their side in one controlled movement",
+    "2a Upper leg adjusted (hip and knee at right angles) so position is stable",
+    "2a Head tilted back and chin lifted so airway stays open",
+    "2a Stayed with casualty and monitored breathing; knew to roll back and restart CPR if breathing stopped"
+  ]
+};
+function stepsFor(k) { const m = N.form && N.form.markSheet; return m && Array.isArray(m[k]) && m[k].length ? m[k] : DEFAULT_STEPS[k]; }
+function compLabel(k) { return (COMPS.find(x => x.k === k) || {}).label || k; }
+function requiredComps(id, att) {
+  const all = COMPS.map(x => x.k);
+  if (att !== 2) return all;
+  const p1 = nattempts(id)["1"];
+  if (!p1 || !p1.components) return all;
+  const need = all.filter(k => p1.components[k] !== "pass");
+  return need.length ? need : all;
+}
+function outcomeFor(marks, req) {
+  // marks: {bls:"pass"|"fail"|"skip", rec:...}; returns "pass" | "refer" | null (incomplete)
+  if (req.some(k => !marks[k])) return null;
+  if (req.some(k => marks[k] === "fail")) return "refer";
+  return req.some(k => marks[k] === "pass") ? "pass" : null;
+}
+function outcomeLabel(o, att) {
+  if (o === "pass") return "Pass";
+  if (att <= 1) return "Refer for retest (same evening)";
+  if (att === 2) return "Refer to attempt 3 (after retraining on a later course)";
+  if (att === 3) return "Refer back to degree leads";
+  return "Not passed: refer back to degree leads and inform them (final attempt)";
+}
+function outcomeShort(o, att) {
+  if (o === "pass") return "Pass";
+  if (att <= 1) return "Retest tonight";
+  if (att === 2) return "Retraining";
+  if (att === 3) return "To degree leads";
+  return "Not passed";
+}
+function compsText(a) {
+  if (!a || !a.components) return "";
+  return COMPS.filter(x => a.components[x.k]).map(x => {
+    const m = a.components[x.k], rs = a.reasons && a.reasons[x.k] && a.reasons[x.k].length ? " (" + a.reasons[x.k].join("; ") + ")" : "";
+    return x.label + ": " + (m === "pass" ? "pass" : m === "fail" ? "not yet" + rs : "not retested");
+  }).join(". ");
+}
+
+function failCodes(id) {
+  // codes (1a, 1b, 1c, 2a) of the parts failed at the latest referred attempt, as the Google Form shows next to resit names
+  const a = nattempts(id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").sort((x, y) => y - x);
+  if (!ks.length) return "";
+  const set = new Set();
+  COMPS.forEach(x => (((a[ks[0]].reasons || {})[x.k]) || []).forEach(t => { const m = /^(\d[a-z])\b/.exec(t); if (m) set.add(m[1]); }));
+  return Array.from(set).sort().join(", ");
+}
+
+function canAssessCandidate(c, att) {
+  const mine = S.user.uid;
+  const cl = nres(c.id).claim;
+  if (cl && cl.uid && cl.uid !== mine) return { ok: false, why: (cl.name || "Another assessor") + " has taken " + firstNameOf(c) + " on." };
+  if (att === 2) {
+    const p = nattempts(c.id)["1"];
+    if (p && p.assessorUid && p.assessorUid === mine) return { ok: false, why: "You assessed " + firstNameOf(c) + " at attempt 1. A different assessor must do the retest." };
+  }
+  if (att === 2 && !(S.sen || S.stu || amNamed())) return { ok: false, why: "The second sit is assessed by Student Faculty or Senior Faculty (or a named extra assessor). You are not on those lists." };
+  if (att >= 3 && !(S.sen || amNamed())) return { ok: false, why: "Attempt " + att + " is assessed by Senior Faculty or the extra named assessors. You are on neither list." };
+  return { ok: true };
+}
+
+// ── Loading ─────────────────────────────────────────────────────────────────
+async function loadNight() {
+  if (!S.night || !S.course) return;
+  const course = S.course;
+  try {
+    const res = await firebase.functions().httpsCallable("getAssessmentNight")({ course });
+    if (course !== S.course) return;
+    const d = res.data || {};
+    N.cands = d.candidates || []; N.named = d.namedAssessors || []; N.form = d.form || {}; N.err = ""; N.usingFallback = false;
+  } catch (e) {
+    if (course !== S.course) return;
+    if (S.full) {
+      // Not deployed yet (or offline): use the candidates already loaded for full-access users.
+      N.cands = S.cands.map(c => ({ id: c.id, name: c.name || "", degree: c.degree || "", rap: c.rap === true, attempt: attemptOf(c), absent: c.assessmentAbsent === true, assessmentRoom: c.assessmentRoom || null, assessmentSlot: c.assessmentSlot || null }));
+      N.usingFallback = true; N.err = "";
+      try {
+        const [nm, fm] = await Promise.all([db.collection("config").doc("stage1_named_assessors").get(), db.collection("config").doc("stage1_assessment_form").get()]);
+        N.named = nm.exists ? (nm.data().names || []) : []; N.form = fm.exists ? fm.data() : {};
+      } catch (e2) {}
+    } else {
+      N.cands = [];
+      N.err = /not.?found|NOT_FOUND|unimplemented/i.test((e && (e.code + " " + e.message)) || "")
+        ? "The assessment night function is not live yet. Ask a Director to deploy it."
+        : "Could not load the candidates: " + ((e && e.message) || e);
+    }
+  }
+  N.loadedAt = Date.now();
+  renderNight();
+}
+function attachNight() {
+  N.course = S.course;
+  if (N.unsub) { try { N.unsub(); } catch (e) {} N.unsub = null; }
+  N.results = {}; N.resErr = "";
+  if (!S.night || !S.course) return;
+  N.unsub = db.collection("stage1_assessments").where("course", "==", S.course).onSnapshot(snap => {
+    N.results = {}; snap.forEach(d => { N.results[d.id] = d.data(); }); N.resErr = ""; renderNight();
+  }, err => {
+    N.resErr = "Could not read the results: " + ((err && err.message) || err) + ". If this says permission denied, the new rules have not been deployed yet.";
+    renderNight();
+  });
+  if (N.poll) clearInterval(N.poll);
+  N.poll = setInterval(() => { if (!N.formOpen && ["retest", "runner", "assessor"].includes(S.view)) loadNight(); }, 30000);
+}
+function renderNight() {
+  if (S.view === "retest") renderRetest();
+  else if (S.view === "runner") renderRunner();
+  else if (S.view === "assessor") renderAssessor();
+}
+function nightBanner() {
+  let h = "";
+  if (N.err) h += `<div class="msg err">${esc(N.err)}</div>`;
+  if (N.resErr) h += `<div class="msg err">${esc(N.resErr)}</div>`;
+  if (N.usingFallback) h += `<div class="msg warn">The assessment night function is not deployed yet, so this page is using the full candidate list instead. Everything still works for you.</div>`;
+  return h;
+}
+function nightTile(n, l, warn) { return `<div class="tile${warn ? " warn" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
+function nightTimeNow() { const n = londonNow(); return assessDate() === n.date ? n.hm : null; }
+
+function stateChips(c) {
+  const r = nres(c.id), out = [];
+  const a = nattempts(c.id);
+  const keys = Object.keys(a).sort((x, y) => Number(x) - Number(y));
+  keys.forEach(k => {
+    const o = a[k].outcome;
+    out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${esc(outcomeShort(o, Number(k)))}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
+  });
+  if (r.notThere && r.notThere.flag && !isDoneN(c)) out.push('<span class="nchip bad">Not there</span>');
+  if (r.claim && r.claim.name) out.push(`<span class="nchip claim">With ${esc(r.claim.name)}</span>`);
+  return out.join("");
+}
+
+// ── Runner view (view only; tap a name to flag "not there") ─────────────────
+function slottedByRoom() {
+  const by = {};
+  N.cands.filter(c => !c.absent && c.assessmentRoom && c.assessmentSlot).forEach(c => { (by[c.assessmentRoom] = by[c.assessmentRoom] || []).push(c); });
+  Object.keys(by).forEach(r => by[r].sort((x, y) => x.assessmentSlot < y.assessmentSlot ? -1 : x.assessmentSlot > y.assessmentSlot ? 1 : String(x.name).localeCompare(String(y.name))));
+  return by;
+}
+function roomOrder(keys) {
+  return keys.slice().sort((a, b) => { const ia = A.rooms.indexOf(a), ib = A.rooms.indexOf(b); if (ia >= 0 && ib >= 0) return ia - ib; if (ia >= 0) return -1; if (ib >= 0) return 1; return a.localeCompare(b, "en", { numeric: true }); });
+}
+function runnerRows(list, big) {
+  const now = nightTimeNow();
+  const open = list.filter(c => !isDoneN(c)), done = list.filter(isDoneN);
+  const row = c => {
+    const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneN(c);
+    const due = !d && !flagged && now && c.assessmentSlot <= now;
+    const att = effAttempt(c);
+    return `<button type="button" class="rrow${d ? " done" : ""}${flagged ? " flag" : ""}${due ? " due" : ""}${big ? " big" : ""}" data-flag="${esc(c.id)}"${d ? " disabled" : ""}>` +
+      `<span class="rt">${esc(c.assessmentSlot)}</span><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${S.full || S.night ? attBadge(att) : ""}</span>` +
+      `<span class="rs">${stateChips(c) || (due ? '<span class="nchip due">Due now</span>' : "")}</span></button>`;
+  };
+  return open.map(row).join("") + (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
+}
+function renderRunner() {
+  if (!S.course) return;
+  const d = assessDate();
+  const by = slottedByRoom(), rooms = roomOrder(Object.keys(by));
+  const all = rooms.reduce((a, r) => a.concat(by[r]), []);
+  const doneN = all.filter(isDoneN).length;
+  const flagged = all.filter(c => { const r = nres(c.id); return r.notThere && r.notThere.flag && !isDoneN(c); }).length;
+  $("msgs").innerHTML = nightBanner();
+  $("plain").innerHTML = '<span class="lbl">Runner view</span>' +
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${doneN}</b> of <b>${all.length}</b> assessed` +
+    (flagged ? `, <b>${flagged}</b> flagged as not there` : "") + `. Tap a room to open it, tap it again for full screen. Tap a name to flag that person as not there at their time; tap again to clear it.`;
+  const cards = rooms.map(r => {
+    const list = by[r], dn = list.filter(isDoneN).length;
+    const fl = list.filter(c => { const x = nres(c.id); return x.notThere && x.notThere.flag && !isDoneN(c); }).length;
+    const isOpen = N.open.has(r);
+    return `<div class="rcard${isOpen ? " open" : ""}"><button type="button" class="rhead" data-rroom="${esc(r)}"><b>${esc(r)}</b>` +
+      `<span class="rmeta">${list.length} candidate${list.length === 1 ? "" : "s"} · ${dn} assessed${fl ? ` · <span class="bad">${fl} not there</span>` : ""}</span>` +
+      `<span class="rhint">${isOpen ? "tap for full screen" : "tap to open"}</span></button>` +
+      (isOpen ? `<div class="rbody">${runnerRows(list, false)}</div>` : "") + `</div>`;
+  }).join("");
+  $("viewRunner").innerHTML = cards || `<div class="card"><div class="hint">Nobody has an assessment slot yet for ${esc(S.course)}. Slots are made on the Assessment allocation page.</div></div>`;
+  $("viewRunner").querySelectorAll("[data-rroom]").forEach(b => b.onclick = () => {
+    const r = b.dataset.rroom;
+    if (N.open.has(r)) { N.fullRoom = r; renderFull(); } else { N.open.add(r); renderRunner(); }
+  });
+  $("viewRunner").querySelectorAll("[data-flag]").forEach(b => b.onclick = () => toggleNotThere(b.dataset.flag));
+  if (N.fullRoom) renderFull();
+}
+function renderFull() {
+  const r = N.fullRoom; if (!r) { $("nightFull").innerHTML = ""; return; }
+  const list = slottedByRoom()[r] || [];
+  $("nightFull").innerHTML = `<div class="fullscr"><div class="fullbar"><b>${esc(r)}</b><span>${esc(S.course)} · ${list.filter(isDoneN).length} of ${list.length} assessed</span><button type="button" class="btn" id="fullClose">Close</button></div><div class="fullbody">${runnerRows(list, true)}</div></div>`;
+  $("fullClose").onclick = () => { N.fullRoom = null; renderFull(); };
+  $("nightFull").querySelectorAll("[data-flag]").forEach(b => b.onclick = () => toggleNotThere(b.dataset.flag));
+}
+async function toggleNotThere(id) {
+  const c = N.cands.find(x => x.id === id); if (!c || isDoneN(c)) return;
+  const on = !(nres(id).notThere && nres(id).notThere.flag);
+  try {
+    await db.collection("stage1_assessments").doc(id).set({
+      course: S.course, candidateName: c.name || "",
+      notThere: on ? { flag: true, by: S.user.uid, byName: S.myName, at: new Date().toISOString() } : null,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    toast(on ? c.name + " flagged as not there" : "Flag cleared for " + c.name);
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+
+// ── Assessor view (pick a room, tap a candidate, assessment form) ───────────
+function poolList() { return N.cands.filter(inPool).sort((a, b) => effAttempt(a) - effAttempt(b) || String(a.name).localeCompare(String(b.name))); }
+function renderAssessor() {
+  if (!S.course) return;
+  const d = assessDate();
+  const by = slottedByRoom(), rooms = roomOrder(Object.keys(by));
+  const pool = poolList();
+  if (!N.room || (N.room !== "__pool" && !by[N.room])) N.room = rooms[0] || (pool.length ? "__pool" : null);
+  $("msgs").innerHTML = nightBanner();
+  $("plain").innerHTML = '<span class="lbl">Assessor view</span>' +
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Pick your room, then tap a candidate to open the assessment form. ` +
+    `Anyone referred at attempt 1 goes straight to the <b>Retest pool</b>${pool.length ? ` (${pool.length} now)` : ""}, where an assessor can take them on the same evening.`;
+  const chips = rooms.map(r => {
+    const l = by[r], dn = l.filter(isDoneN).length;
+    return `<button type="button" class="rchip${N.room === r ? " on" : ""}" data-aroom="${esc(r)}"><b>${esc(r)}</b><small>${dn}/${l.length} done</small></button>`;
+  }).join("") + `<button type="button" class="rchip pool${N.room === "__pool" ? " on" : ""}" data-aroom="__pool"><b>Retest pool</b><small>${pool.length} waiting</small></button>`;
+  let body = "";
+  if (N.room === "__pool") body = poolBody(pool);
+  else if (N.room) body = roomBody(N.room, by[N.room] || []);
+  else body = '<div class="hint">Nobody has an assessment slot yet.</div>';
+  $("viewAssessor").innerHTML = `<div class="rchips">${chips}</div><div class="card">${body}</div>`;
+  $("viewAssessor").querySelectorAll("[data-aroom]").forEach(b => b.onclick = () => { N.room = b.dataset.aroom; renderAssessor(); });
+  $("viewAssessor").querySelectorAll("[data-aopen]").forEach(b => b.onclick = () => openForm(b.dataset.aopen));
+  $("viewAssessor").querySelectorAll("[data-claim]").forEach(b => b.onclick = e => { e.stopPropagation(); claimCand(b.dataset.claim); });
+  $("viewAssessor").querySelectorAll("[data-release]").forEach(b => b.onclick = e => { e.stopPropagation(); releaseCand(b.dataset.release); });
+}
+function roomBody(room, list) {
+  const open = list.filter(c => !isDoneN(c)), done = list.filter(isDoneN);
+  const row = c => `<button type="button" class="arow${isDoneN(c) ? " done" : ""}" data-aopen="${esc(c.id)}"><span class="rt">${esc(c.assessmentSlot)}</span>` +
+    `<span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}<small>${esc(c.degree || "")}</small></span><span class="rs">${stateChips(c)}</span></button>`;
+  return `<h3 style="margin-bottom:6px">${esc(room)}</h3>` + (open.map(row).join("") || '<div class="hint">Everyone in this room has been assessed.</div>') +
+    (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
+}
+function poolBody(pool) {
+  if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody is waiting for a retest. People appear here as soon as they are referred at attempt 1, or when their attempt number is 2 or more.</div>';
+  const row = c => {
+    const att = effAttempt(c), chk = canAssessCandidate(c, att), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
+    const prev = nattempts(c.id)["1"];
+    const needs = att === 2 && prev && prev.components ? "Retest: " + requiredComps(c.id, att).map(compLabel).join(" + ") + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : (att >= 3 ? "Both parts: BLS + AED, then first aid (recovery position)" : "");
+    const action = mine ? `<button type="button" class="btn sm pri" data-aopen="${esc(c.id)}">Open form</button><button type="button" class="btn sm" data-release="${esc(c.id)}">Release</button>`
+      : cl ? `<span class="nchip claim">With ${esc(cl.name || "an assessor")}</span>`
+      : chk.ok ? `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`
+      : `<span class="why">${esc(chk.why)}</span>`;
+    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
+  };
+  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1. Attempt 3 and above is Senior Faculty or the extra named assessors.</div>` + pool.map(row).join("");
+}
+async function claimCand(id) {
+  const c = N.cands.find(x => x.id === id); if (!c) return;
+  const chk = canAssessCandidate(c, effAttempt(c));
+  if (!chk.ok) { toast(chk.why, true); return; }
+  try {
+    await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: c.name || "", claim: { uid: S.user.uid, name: S.myName, at: new Date().toISOString() }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    toast("You have taken on " + c.name);
+  } catch (err) { toast("Not saved: " + err.message, true); }
+}
+async function releaseCand(id) {
+  const c = N.cands.find(x => x.id === id); if (!c) return;
+  try {
+    await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: c.name || "", claim: null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    toast(c.name + " is back in the pool");
+  } catch (err) { toast("Not saved: " + err.message, true); }
+}
+
+// ── Assessment form ─────────────────────────────────────────────────────────
+function openForm(id) {
+  const c = N.cands.find(x => x.id === id); if (!c) return;
+  const att = formAttemptOf(c), chk = canAssessCandidate(c, att);
+  const existing = nattempts(id)[att] || null;
+  const prevKeys = Object.keys(nattempts(id)).filter(k => Number(k) !== att).sort((a, b) => a - b);
+  const req = requiredComps(id, att);
+  const p1 = nattempts(id)["1"];
+  const noHistory = att === 2 && !(p1 && p1.components);    // attempt 1 was on an earlier course: let the assessor leave a part out
+  const qs = Array.isArray(N.form.questions) ? N.form.questions : [];
+  const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
+  N.formOpen = true;
+  const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
+  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), marks: {}, reasons: { bls: new Set(), rec: new Set() }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
+  if (existing && existing.components) {
+    req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
+    COMPS.forEach(x => ((existing.reasons || {})[x.k] || []).forEach(r => state.reasons[x.k].add(r)));
+  }
+  const cmpHtml = COMPS.map(x => {
+    if (!req.includes(x.k)) return `<div class="cmp off"><b>${esc(x.label)}</b> <span class="nchip pass">Passed at attempt 1</span></div>`;
+    let lastCode = "";
+    const steps = stepsFor(x.k).map((t, i) => {
+      const m = /^(\d[a-z])\s+(.*)$/.exec(t), code = m ? m[1] : "";
+      let head = "";
+      if (code && code !== lastCode) { head = `<div class="stphead"><b>${esc(code)}</b> ${esc(CODE_NAMES[code] || "")}</div>`; lastCode = code; }
+      return head + `<button type="button" class="stp" data-stp="${x.k}" data-i="${i}"><span class="sn">${i + 1}</span>${esc(m ? m[2] : t)}</button>`;
+    }).join("");
+    return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b><div class="fqo" style="margin-top:8px">` +
+      `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
+      `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
+      (noHistory ? `<button type="button" class="fqb" data-mk="${x.k}" data-m="skip"${chk.ok ? "" : " disabled"}>Not retested</button>` : "") +
+      `</div><div class="why2 hidden" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Tap what was missed or done wrongly, in the order of the sequence:</div><div class="stps">${steps}</div></div></div>`;
+  }).join("");
+  const qHtml = qs.map(q => {
+    const val = existing && existing.answers ? existing.answers[q.id] : "";
+    if (q.type === "choice" || q.type === "yesno") {
+      const opts = q.type === "yesno" ? ["Yes", "No"] : (q.options || []);
+      return `<div class="fq"><label>${esc(q.label)}</label><div class="fqo">${opts.map(o => `<button type="button" class="fqb${val === o ? " on" : ""}" data-q="${esc(q.id)}" data-v="${esc(o)}">${esc(o)}</button>`).join("")}</div></div>`;
+    }
+    return `<div class="fq"><label>${esc(q.label)}</label><input type="text" data-qt="${esc(q.id)}" value="${esc(val || "")}"></div>`;
+  }).join("");
+  $("overlay").innerHTML = `<div class="modalbg" id="fbg"><div class="modal" role="dialog" aria-modal="true">` +
+    `<h3>${esc(c.name)} ${c.rap ? RAPSVG : ""} ${attBadge(att)}</h3><div class="sub">${esc(S.course)} · ${esc(c.degree || "")}${c.assessmentRoom ? " · " + esc(c.assessmentRoom) + " at " + esc(c.assessmentSlot) : ""} · attempt ${att}</div>` +
+    `<div class="hint" style="margin:0 0 4px">Single-rescuer scenario. Assess BLS + AED first, then the recovery position.${att === 2 && req.length < COMPS.length ? " This is a retest of the part not passed at attempt 1." : ""}</div>` +
+    hist +
+    (chk.ok ? "" : `<div class="msg err">${esc(chk.why)}</div>`) +
+    (existing ? `<div class="msg warn">Already recorded: ${esc(outcomeLabel(existing.outcome, att))}${existing.assessorName ? " by " + esc(existing.assessorName) : ""}. Saving again will amend it.</div>` : "") +
+    cmpHtml + qHtml +
+    `<div class="fq"><label>Comments</label><textarea id="fComment" style="min-height:80px;font-family:inherit" ${chk.ok ? "" : "disabled"}>${esc(existing ? existing.comment || "" : "")}</textarea></div>` +
+    `<div class="resline" id="fRes">Mark each part to see the result.</div>` +
+    `<div class="exc hidden" id="fExc"><button type="button" class="fqb exc-b" id="fExcBtn" ${chk.ok ? "" : "disabled"}>Excellent</button><span class="hint" style="margin-left:8px">Optional note for the team only. It does not change the result and the candidate does not see it.</span>` +
+    `<div class="exc-c hidden" id="fExcCrit"><div class="hint" style="margin:8px 0 4px">Tap at least one that applies:</div>${EXC_CRITERIA.map((t, i) => `<button type="button" class="stp" data-exc="${i}"><span class="sn">${i + 1}</span>${esc(t)}</button>`).join("")}</div></div>` +
+    (url ? `<div class="hint" style="margin:6px 0"><a href="${esc(url)}" target="_blank" rel="noopener">Open the Google Form instead</a> (fallback if this page has a problem).</div>` : "") +
+    `<div class="row2"><button type="button" class="btn pri" id="fSave" disabled>Save result</button><button type="button" class="btn" id="fCancel">Cancel</button><span class="hint" id="fMsg"></span></div>` +
+    `</div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; N.formOpen = false; };
+  const refresh = () => {
+    req.forEach(k => {
+      $("overlay").querySelectorAll('[data-mk="' + k + '"]').forEach(b => b.classList.toggle("on", state.marks[k] === b.dataset.m));
+      const w = $("overlay").querySelector('[data-why="' + k + '"]'); if (w) w.classList.toggle("hidden", state.marks[k] !== "fail");
+      $("overlay").querySelectorAll('[data-stp="' + k + '"]').forEach(b => b.classList.toggle("on", state.reasons[k].has(stepsFor(k)[Number(b.dataset.i)])));
+    });
+    const o = outcomeFor(state.marks, req);
+    $("fRes").className = "resline" + (o === "pass" ? " pass" : o ? " refer" : "");
+    $("fRes").textContent = o ? "Result: " + outcomeLabel(o, att) : "Mark each part to see the result.";
+    const showExc = o === "pass";
+    $("fExc").classList.toggle("hidden", !showExc);
+    $("fExcBtn").classList.toggle("on", showExc && state.exc);
+    $("fExcCrit").classList.toggle("hidden", !(showExc && state.exc));
+    $("overlay").querySelectorAll("[data-exc]").forEach(b => b.classList.toggle("on", state.excCrit.has(EXC_CRITERIA[Number(b.dataset.exc)])));
+    $("fSave").textContent = o ? "Save: " + outcomeShort(o, att) : "Save result";
+    $("fSave").disabled = !o || !chk.ok;
+  };
+  $("fCancel").onclick = close;
+  $("fbg").onclick = e => { if (e.target.id === "fbg") close(); };
+  $("overlay").querySelectorAll("[data-mk]").forEach(b => b.onclick = () => { state.marks[b.dataset.mk] = b.dataset.m; refresh(); });
+  $("overlay").querySelectorAll("[data-stp]").forEach(b => b.onclick = () => {
+    const k = b.dataset.stp, t = stepsFor(k)[Number(b.dataset.i)];
+    if (state.reasons[k].has(t)) state.reasons[k].delete(t); else state.reasons[k].add(t);
+    refresh();
+  });
+  $("fExcBtn").onclick = () => { state.exc = !state.exc; refresh(); };
+  $("overlay").querySelectorAll("[data-exc]").forEach(b => b.onclick = () => {
+    const t = EXC_CRITERIA[Number(b.dataset.exc)];
+    if (state.excCrit.has(t)) state.excCrit.delete(t); else state.excCrit.add(t);
+    refresh();
+  });
+  $("overlay").querySelectorAll("[data-q]").forEach(b => b.onclick = () => {
+    state.answers[b.dataset.q] = b.dataset.v;
+    $("overlay").querySelectorAll('[data-q="' + b.dataset.q + '"]').forEach(x => x.classList.toggle("on", x === b));
+  });
+  refresh();
+  $("fSave").onclick = async () => {
+    const out = outcomeFor(state.marks, req); if (!out) return;
+    const comment = $("fComment").value.trim();
+    for (const k of req) { if (state.marks[k] === "fail" && !state.reasons[k].size && !comment) { $("fMsg").textContent = "Tap at least one reason for " + compLabel(k) + " (or add a comment)."; return; } }
+    for (const q of qs) { if (q.required && !(state.answers[q.id] || ($("overlay").querySelector('[data-qt="' + q.id + '"]') || {}).value)) { $("fMsg").textContent = "Please answer: " + q.label; return; } }
+    const wantExc = out === "pass" && state.exc;
+    if (wantExc && !state.excCrit.size) { $("fMsg").textContent = "Tap at least one reason for Excellent, or switch it off."; return; }
+    $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
+    const components = {}, reasons = {};
+    req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
+    $("fSave").disabled = true;
+    try {
+      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [] }, !!existing);
+      close();
+    } catch (err) {
+      $("fSave").disabled = false;
+      $("fMsg").textContent = "Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message);
+    }
+  };
+}
+async function saveResult(c, att, outcome, d, amend) {
+  const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
+  if (amend) entry.amended = true;
+  if (d.excellent) { entry.excellent = true; entry.excellentCriteria = d.excellentCriteria || []; }
+  await db.collection("stage1_assessments").doc(c.id).set({
+    course: S.course, candidateName: c.name || "", claim: null, notThere: null,
+    attempts: { [String(att)]: entry },
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  if (outcome === "pass") toast("Saved: " + c.name + " passed.");
+  else if (att <= 1) toast(c.name + " is referred and now in the retest pool (attempt 2).");
+  else toast("Saved: " + c.name + " - " + outcomeShort(outcome, att).toLowerCase() + ". Listed for the team on the Retest pool page.");
+}
+
+// ── Follow-up for the team (not passed at attempt 2 or above) ───────────────
+function afterTonight() {
+  const out = { retrain: [], leads: [], final: [] };
+  N.cands.forEach(c => {
+    if (passedAtKey(c.id)) return;
+    const a = nattempts(c.id), keys = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+    if (!keys.length) return;
+    const k = Math.max.apply(null, keys);
+    if (k === 2) out.retrain.push({ c, k });
+    else if (k === 3) out.leads.push({ c, k });
+    else if (k >= 4) out.final.push({ c, k });
+  });
+  Object.keys(out).forEach(g => out[g].sort((x, y) => String(x.c.name).localeCompare(String(y.c.name))));
+  return out;
+}
+const NEXT_STEPS = {
+  2: "Next steps: a member of Student Faculty meets the candidate to explain the next steps. They attend a further BLS course in full (all 3 evenings), in a different teaching room (different instructors) from their first course, then sit attempt 3 with Senior Faculty on both BLS/AED and first aid.",
+  3: "Next steps: a member of Senior Faculty meets the candidate to discuss progress, barriers to performance and any extra support. The programme lead is emailed so they know the additional requirements. The candidate attends a further course in full (all 3 evenings) and sits attempt 4 with Senior Faculty on both BLS/AED and first aid.",
+  4: "Final attempt not passed: the candidate has not completed the course and cannot gain the ERC qualification. Tell the programme lead. The effect on their degree programme is decided by the programme lead."
+};
+function noteFor(c, k) {
+  const a = nattempts(c.id), last = a[String(k)] || {};
+  const lines = Object.keys(a).sort((x, y) => x - y).map(n => `  Attempt ${n}${a[n].assessorName ? " (" + a[n].assessorName + ")" : ""}: ${outcomeShort(a[n].outcome, Number(n))}${compsText(a[n]) ? ". " + compsText(a[n]) : ""}${a[n].comment ? ". Comment: " + a[n].comment : ""}`);
+  return `${c.name} (${c.degree || "degree not recorded"}), ${S.course}\n${outcomeLabel(last.outcome, k)}\n` + lines.join("\n") + (NEXT_STEPS[k] ? "\n" + NEXT_STEPS[k] : "");
+}
+function copyTxt(t) {
+  const fb = () => { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} ta.remove(); };
+  try { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t).catch(fb) : Promise.resolve(fb()); } catch (e) { fb(); return Promise.resolve(); }
+}
+function teamCard(af) {
+  const groups = [
+    { key: "retrain", title: "Awaiting retraining (referred at attempt 2)", hint: "Not retested tonight. A Student Faculty member meets them, then they repeat all 3 evenings in a different room (different instructors) before attempt 3 with Senior Faculty." },
+    { key: "leads", title: "Referred back to degree leads (attempt 3)", hint: "A Senior Faculty member meets them to discuss progress and support, and the programme lead is told. Further course in full, then attempt 4." },
+    { key: "final", title: "Not passed - final attempt (attempt 4)", hint: "Course not completed. Refer back to the degree leads, inform the candidate they have not passed, and tell the programme lead." }
+  ];
+  const any = groups.some(g => af[g.key].length);
+  let h = `<div class="card"><h3><span class="stepno">2</span>For the team</h3><div class="hint" style="margin:0 0 8px">Nothing is emailed from here. Copy the note and send it yourself.</div>`;
+  if (!any) return h + '<div class="hint">Nobody yet. People who are not passed at attempt 2 or above are listed here with their reasons.</div></div>';
+  groups.forEach(g => {
+    const l = af[g.key]; if (!l.length) return;
+    h += `<div class="tgroup"><div class="tghead"><b>${esc(g.title)} (${l.length})</b><button type="button" class="btn sm" data-copygroup="${g.key}">Copy all</button></div><div class="hint" style="margin:2px 0 6px">${esc(g.hint)}</div>`;
+    h += l.map(x => `<div class="lrow"><span class="nm">${esc(x.c.name)}${attBadge(x.k)}</span><small>${esc(x.c.degree || "")}</small><small style="flex-basis:100%">${esc(compsText(nattempts(x.c.id)[String(x.k)]))}</small><span class="pact"><button type="button" class="btn sm" data-copyone="${esc(x.c.id)}" data-k="${x.k}">Copy note</button></span></div>`).join("");
+    h += `</div>`;
+  });
+  return h + `</div>`;
+}
+
+// ── Retest pool page (organising team) ──────────────────────────────────────
+function staleAttempts() {
+  // candidates whose recorded results imply a higher attempt than the number saved on them
+  return N.cands.filter(c => !c.absent && derivedAttempt(c.id) > (c.attempt || 1));
+}
+// Attempts overview (2026-10-13, Jon): everyone on this course who has a result
+// or is on attempt 2 or above, in one collapsed list, so the team can see at a
+// glance where each person stands. Collapsed by default.
+function attemptStatus(c) {
+  const p = passedAtKey(c.id);
+  if (p) return { cls: "pass", text: "Passed at attempt " + p };
+  if (c.absent) return { cls: "bad", text: "Not there" };
+  if (inPool(c)) return { cls: "bad", text: "In the retest pool" };
+  const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+  const k = ks.length ? Math.max.apply(null, ks) : 0;
+  if (k === 1) return { cls: "bad", text: "Referred, due a retest tonight" };
+  if (k === 2) return { cls: "", text: "Awaiting retraining (attempt 3 on a later course)" };
+  if (k === 3) return { cls: "", text: "Back to degree leads" };
+  if (k >= 4) return { cls: "bad", text: "Not passed (final)" };
+  return { cls: "", text: "Not yet assessed" };
+}
+function attemptsOverview() {
+  const list = N.cands.filter(c => effAttempt(c) >= 2 || isDoneN(c))
+    .sort((a, b) => effAttempt(b) - effAttempt(a) || String(a.name).localeCompare(String(b.name)));
+  const body = list.length
+    ? list.map(c => {
+        const st = attemptStatus(c), a = nattempts(c.id);
+        const hist = Object.keys(a).sort((x, y) => x - y).map(k => "A" + k + " " + outcomeShort(a[k].outcome, Number(k))).join(" · ");
+        const exc = Object.keys(a).some(k => a[k] && a[k].excellent);
+        return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small>${esc(c.degree || "")}</small>` +
+          `<small style="flex-basis:100%">${hist ? esc(hist) + " · " : ""}<span class="nchip ${st.cls}">${esc(st.text)}</span>${exc ? ' <span class="nchip exc-chip">Excellent</span>' : ""}</small></div>`;
+      }).join("")
+    : '<div class="hint">Nobody has a result or a retest yet.</div>';
+  return `<details class="card" id="attDetails"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All attempts on this course (${list.length})</summary><div style="margin-top:8px">${body}</div></details>`;
+}
+function renderRetest() {
+  if (!S.course || !S.full) return;
+  const d = assessDate(), pool = poolList(), stale = staleAttempts();
+  const waiting = pool.filter(c => !(nres(c.id).claim && nres(c.id).claim.uid));
+  const withA = pool.length - waiting.length;
+  const passedRetest = N.cands.filter(c => passedAtKey(c.id) && Number(passedAtKey(c.id)) >= 2).length;
+  $("msgs").innerHTML = nightBanner();
+  const af = afterTonight();
+  $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt tonight. ` +
+    `They are never given a slot automatically: an assessor takes each one on from the Assessor view. Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1; attempt 3 and above is Senior Faculty or the extra named assessors. ` +
+    `Anyone not passed at attempt 2 or above is not retested tonight: they appear under <b>For the team</b> below.`;
+  let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
+    `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}</div>`;
+  if (stale.length) {
+    h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> ${stale.length === 1 ? "candidate was" : "candidates were"} referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet column in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
+  }
+  const prow = c => {
+    const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
+    const hist = Object.keys(nattempts(c.id)).sort((a, b) => a - b).map(k => { const a = nattempts(c.id)[k]; return `Attempt ${esc(k)}: ${esc(outcomeLabel(a.outcome, Number(k)))}${a.assessorName ? " (" + esc(a.assessorName) + ")" : ""}${compsText(a) ? " - " + esc(compsText(a)) : ""}`; }).join(" · ");
+    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest " + requiredComps(c.id, 2).map(compLabel).join(" + ") + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : "") : "Senior Faculty or extra named assessor";
+    return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
+      `<small style="flex-basis:100%">${rule}${hist ? " · " + hist : " · no result recorded on the site yet"}</small>` +
+      `<span class="pact">${cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : '<span class="nchip bad">Waiting</span>'}` +
+      `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span></span></div>`;
+  };
+  h += `<div class="card"><h3><span class="stepno">1</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
+  h += attemptsOverview();
+  h += teamCard(af);
+  if (S.isDirector) {
+    h += `<div class="card"><h3><span class="stepno">3</span>Night settings</h3>` +
+      `<div class="hint" style="margin:0 0 6px"><b>Assessment night team.</b> People who may open the assessment night and record first sits, in addition to Directors, Student and Senior Faculty, Faculty and Assessor Faculty. Add Senior Instructors here. Email addresses only, one per line (the email they sign in with).</div>` +
+      `<textarea id="teamTxt" placeholder="Email, one per line">${esc((N.team || []).join("\n"))}</textarea>` +
+      `<div class="tools" style="margin:6px 0 14px"><button type="button" class="btn sm" id="pickAssessors">Add everyone whose role is Assessor</button><span class="hint" id="pickMsg"></span></div>` +
+      `<div class="hint" style="margin:0 0 6px"><b>Extra named assessors</b> for later retests (attempt 3 and above, on top of Senior Faculty). One per line. Use their email so they can also open the assessment night; a name alone only works if they already have access another way.</div>` +
+      `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc((N.named || []).join("\n"))}</textarea>` +
+      COMPS.map(x => `<div class="hint" style="margin:12px 0 4px"><b>${esc(x.label)}</b> mark sheet steps, one per line, in the order they should appear (the ERC / Resuscitation Council UK 2025 lay-rescuer sequence is the default). Start each line with its code (1a, 1b, 1c for BLS + AED; 2a for recovery position) to match the Google Form. Assessors tap the ones missed.</div><textarea id="steps_${x.k}" style="min-height:150px">${esc(stepsFor(x.k).join("\n"))}</textarea>`).join("") +
+      `<div class="hint" style="margin:10px 0 4px">Google Form link (shown on the assessment form as a fallback; leave blank to hide).</div>` +
+      `<input type="text" id="formUrl" placeholder="https://forms.gle/..." value="${esc(N.form.formUrl || "")}">` +
+      `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveNight">Save settings</button><span class="hint" id="nightMsg"></span></div>` +
+      `<div class="hint">Saving needs a super-user account, the same as the other site settings.</div></div>`;
+  }
+  const wasOpen = !!($("attDetails") && $("attDetails").open);
+  $("viewRetest").innerHTML = h;
+  if (wasOpen && $("attDetails")) $("attDetails").open = true;
+  const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
+  $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
+  $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {
+    const c = S.cands.find(x => x.id === b.dataset.patt), n = N.cands.find(x => x.id === b.dataset.patt);
+    if (!c || !n) { toast("Reload the page and try again.", true); return; }
+    setAttempt(c, effAttempt(n) + Number(b.dataset.d)).then(() => { n.attempt = attemptOf(c); renderRetest(); });
+  });
+  const sv = $("saveNight"); if (sv) sv.onclick = saveNightSettings;
+  const pk = $("pickAssessors"); if (pk) pk.onclick = pickAssessors;
+  $("viewRetest").querySelectorAll("[data-copyone]").forEach(b => b.onclick = () => {
+    const c = N.cands.find(x => x.id === b.dataset.copyone); if (!c) return;
+    copyTxt(noteFor(c, Number(b.dataset.k))).then(() => toast("Note copied for " + c.name));
+  });
+  $("viewRetest").querySelectorAll("[data-copygroup]").forEach(b => b.onclick = () => {
+    const l = af[b.dataset.copygroup] || [];
+    copyTxt(l.map(x => noteFor(x.c, x.k)).join("\n\n")).then(() => toast("Copied " + l.length + " note" + (l.length === 1 ? "" : "s")));
+  });
+}
+async function syncAttempts() {
+  const list = staleAttempts(); if (!list.length) return;
+  try {
+    for (let i = 0; i < list.length; i += 400) {
+      const batch = db.batch();
+      list.slice(i, i + 400).forEach(c => {
+        const n = derivedAttempt(c.id);
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), { assessmentAttempt: n, twoPlusAssessments: n >= 2 });
+      });
+      await batch.commit();
+    }
+    list.forEach(c => { const n = derivedAttempt(c.id); c.attempt = n; const sc = S.cands.find(x => x.id === c.id); if (sc) { sc.assessmentAttempt = n; sc.twoPlusAssessments = n >= 2; } });
+    toast("Updated " + list.length + " attempt number" + (list.length === 1 ? "" : "s") + ".");
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+  renderRetest();
+}
+async function pickAssessors() {
+  const box = $("teamTxt"), msg = $("pickMsg");
+  msg.textContent = "Looking…";
+  try {
+    const snap = await db.collection(COLLECTIONS.people).where("role", "==", "assessor").get();
+    const have = new Set(box.value.split(/\r?\n/).map(s => s.trim().toLowerCase()).filter(Boolean));
+    const add = [];
+    snap.forEach(d => { const e = String((d.data() || {}).email || "").trim().toLowerCase(); if (e && e.includes("@") && !have.has(e)) { have.add(e); add.push(e); } });
+    if (add.length) box.value = (box.value.trim() ? box.value.trim() + "\n" : "") + add.join("\n");
+    msg.textContent = add.length ? "Added " + add.length + ". Remove anyone who should not assess, then press Save settings." : "Nobody new found.";
+  } catch (err) { msg.textContent = "Could not look: " + err.message; }
+}
+async function saveNightSettings() {
+  const team = $("teamTxt").value.split(/\r?\n/).map(s => s.trim().toLowerCase()).filter(Boolean);
+  const badTeam = team.filter(t => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(t));
+  if (badTeam.length) { $("nightMsg").textContent = "The assessment night team needs email addresses only. Check: " + badTeam.slice(0, 3).join(", "); return; }
+  const names = $("namedTxt").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const namedEmails = names.filter(n => n.includes("@")).map(n => n.toLowerCase());
+  const url = $("formUrl").value.trim();
+  if (url && !/^https:\/\//i.test(url)) { $("nightMsg").textContent = "The form link must start with https://"; return; }
+  const markSheet = {};
+  COMPS.forEach(x => {
+    const lines = ($("steps_" + x.k).value || "").split(/\r?\n/).map(t => t.trim()).filter(Boolean);
+    markSheet[x.k] = JSON.stringify(lines) === JSON.stringify(DEFAULT_STEPS[x.k]) ? [] : lines;
+  });
+  $("saveNight").disabled = true;
+  try {
+    await db.collection("config").doc("stage1_named_assessors").set({ names, emails: namedEmails }, { merge: true });
+    await db.collection("config").doc("stage1_assessors").set({ emails: team }, { merge: true });
+    await db.collection("config").doc("stage1_assessment_form").set({ formUrl: url, markSheet }, { merge: true });
+    N.named = names; N.team = team; N.form = Object.assign({}, N.form, { formUrl: url, markSheet });
+    $("nightMsg").textContent = "Saved.";
+  } catch (err) {
+    $("nightMsg").textContent = "Not saved: " + (err.code === "permission-denied" ? "this needs a super-user account." : err.message);
+  }
+  $("saveNight").disabled = false;
+}
+
+</script>
+</body>
+</html>
