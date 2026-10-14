@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Assessment Night Readiness - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 40px; color:#1f2540; }
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar a.back { color:rgba(255,255,255,.7); text-decoration:none; font-size:12px; }
+    .wrap { max-width:860px; margin:0 auto; padding:16px 14px; }
+    .card { background:#fff; border:1.5px solid #dde2ed; border-radius:12px; padding:16px; margin-bottom:14px; }
+    h2 { margin:0 0 6px; font-size:16px; color:var(--rmd-navy); }
+    h3 { margin:0 0 4px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:#5a6b8c; }
+    p { line-height:1.5; margin:6px 0; font-size:14px; }
+    .muted { color:#5a6b8c; font-size:13px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    select.in { padding:9px 12px; border:2px solid #dde2ed; border-radius:10px; font-size:16px; font-family:var(--font); background:#fff; }
+    button.sec { appearance:none; border:1.5px solid #dde2ed; background:#fff; color:var(--rmd-navy); font-weight:700; font-size:13px; padding:8px 14px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    .sum { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0 2px; }
+    .pill { font-weight:800; font-size:13px; padding:6px 12px; border-radius:99px; background:#eef1f8; color:#35456b; }
+    .pill.bad { background:#fde8ea; color:#b3261e; } .pill.warn { background:#fff3cd; color:#7a5200; } .pill.ok { background:#e3f4e8; color:#1a6e31; }
+    .chk { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid #eef1f8; font-size:14px; }
+    .chk:last-child { border-bottom:0; }
+    .chk .m { flex:0 0 58px; font-weight:800; font-size:12px; padding-top:2px; letter-spacing:.04em; }
+    .m.ok { color:#1a6e31; } .m.bad { color:#b3261e; } .m.warn { color:#8a5200; } .m.info { color:#5a6b8c; }
+    .chk b { display:block; }
+    .chk small { display:block; color:#5a6b8c; font-size:12.5px; margin-top:2px; line-height:1.45; }
+    .chk a { font-size:12.5px; color:var(--rmd-navy); font-weight:700; }
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+  </style>
+</head>
+<body>
+<div id="authOverlay" class="auth-overlay"><div id="authMsg">Checking access…</div></div>
+
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Assessment night readiness</div>
+  <a class="back" href="phase1.html">← Phase 1 hub</a>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Is this course ready for assessment night?</h2>
+    <p>This page reads the course and checks the set-up for you. It changes nothing. Red items need fixing before the night; amber ones are worth a look.</p>
+    <div class="row">
+      <select class="in" id="course" aria-label="Course"></select>
+      <button class="sec" id="reload" type="button">Check again</button>
+      <button class="sec" id="copy" type="button">Copy as text</button>
+    </div>
+    <div class="sum" id="sum"></div>
+  </div>
+  <div class="card" id="out"><p class="muted">Loading…</p></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+const lc = s => String(s || "").trim().toLowerCase();
+const names = (list, n) => { const a = list.slice(0, n || 6).map(c => c.name || "(no name)"); return a.join(", ") + (list.length > (n || 6) ? " and " + (list.length - (n || 6)) + " more" : ""); };
+
+let COURSES = [];
+let LAST = [];
+
+function ukDate(iso) {
+  const d = new Date(iso + "T12:00:00Z");
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString("en-GB", { timeZone: "Europe/London", weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+function daysTo(iso) {
+  const d = new Date(iso + "T12:00:00Z");
+  if (isNaN(d)) return null;
+  return Math.round((d.getTime() - Date.now()) / 86400000);
+}
+
+async function getDoc(path) {
+  const [col, id] = path.split("/");
+  try { const s = await db.collection(col).doc(id).get(); return s.exists ? (s.data() || {}) : null; } catch (e) { return null; }
+}
+
+async function run() {
+  const name = $("course").value;
+  const out = $("out");
+  out.innerHTML = '<p class="muted">Checking…</p>';
+  const L = [];   // {lv, t, d, link:[href,label]}
+  const add = (lv, t, d, link) => L.push({ lv, t, d: d || "", link: link || null });
+
+  let cands = [];
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
+    cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  } catch (e) { out.innerHTML = '<p style="color:#b3261e;font-weight:700">Could not read the candidates: ' + esc(e.message) + '</p>'; return; }
+
+  const [night, team, named, form, rooms, reg] = await Promise.all([
+    getDoc("config/stage1_course_dates"), getDoc("config/stage1_assessors"), getDoc("config/stage1_named_assessors"),
+    getDoc("config/stage1_assessment_form"), getDoc("config/stage1_assessment_rooms"), getDoc("config/stage1_register")
+  ]);
+  const meta = ((night && night.courses) || []).find(c => c.name === name) || {};
+
+  // 1. Course date
+  if (!meta.date) add("bad", "No assessment date is set for " + name, "Set it in the course settings so the night views and register know which evening to use.", ["admin-stage1-settings.html", "Open course settings"]);
+  else {
+    const dt = daysTo(meta.date);
+    add("ok", "Assessment night: " + ukDate(meta.date), dt == null ? "" : dt > 0 ? dt + " day" + (dt === 1 ? "" : "s") + " away." : dt === 0 ? "Today." : "This date has passed.");
+  }
+
+  // 2. Candidates
+  if (!cands.length) { add("bad", "No candidates on " + name, "Nothing else can be checked until candidates are added.", ["admin-stage1-candidates.html", "Open candidates"]); return finish(L); }
+  add("ok", cands.length + " candidate" + (cands.length === 1 ? "" : "s") + " on the course", "");
+
+  // 3. Teaching rooms and instructors
+  const noRoom = cands.filter(c => !c.room);
+  if (noRoom.length) add("bad", noRoom.length + " candidate" + (noRoom.length === 1 ? " has" : "s have") + " no teaching room", names(noRoom), ["admin-course-room-allocation.html", "Open room allocation"]);
+  else add("ok", "Everyone has a teaching room", "");
+  const byRoom = {};
+  cands.filter(c => c.room).forEach(c => { (byRoom[c.room] = byRoom[c.room] || []).push(c); });
+  const emptyTeam = Object.keys(byRoom).sort().filter(r => byRoom[r].every(c => !(c.instructorTeamUids || []).length));
+  if (emptyTeam.length) add("bad", "No instructors in " + emptyTeam.join(", "), emptyTeam.map(r => r + " has " + byRoom[r].length + " candidate" + (byRoom[r].length === 1 ? "" : "s")).join("; ") + ". Instructors cannot mark the register for a room until they are on its team.", ["admin-course-room-allocation.html", "Open room allocation"]);
+  else if (Object.keys(byRoom).length) add("ok", "Every teaching room has an instructor team", Object.keys(byRoom).sort().map(r => r + " (" + byRoom[r].length + ")").join(", "));
+
+  // 4. Assessment slots
+  const active = cands.filter(c => c.assessmentAbsent !== true);
+  const slotted = active.filter(c => c.assessmentRoom && c.assessmentSlot);
+  const unslotted = active.filter(c => !(c.assessmentRoom && c.assessmentSlot));
+  if (!slotted.length) add("bad", "Assessment slots have not been allocated", "Nobody has a room and time for the assessment yet. Run the assessment allocation, then email candidates their slot.", ["admin-stage1-assessment-allocation.html", "Open assessment allocation"]);
+  else if (unslotted.length) add("bad", unslotted.length + " candidate" + (unslotted.length === 1 ? " has" : "s have") + " no assessment slot", names(unslotted) + ". If they cannot attend, mark them absent so the slot is freed.", ["phase1.html", "Open the hub"]);
+  else add("ok", "Everyone attending has an assessment slot", slotted.length + " booked.");
+
+  const seen = {}, clashes = [];
+  slotted.forEach(c => { const k = c.assessmentRoom + " " + c.assessmentSlot; (seen[k] = seen[k] || []).push(c); });
+  Object.keys(seen).forEach(k => { if (seen[k].length > 1) clashes.push(k + ": " + names(seen[k])); });
+  if (clashes.length) add("bad", "Two candidates share a slot", clashes.join("; "), ["phase1.html", "Open the hub"]);
+  else if (slotted.length) add("ok", "No two candidates share a slot", "");
+
+  const absentBooked = cands.filter(c => c.assessmentAbsent === true && (c.assessmentRoom || c.assessmentSlot));
+  if (absentBooked.length) add("warn", absentBooked.length + " absent candidate" + (absentBooked.length === 1 ? " still holds" : "s still hold") + " a slot", names(absentBooked) + ". Clearing it frees the slot for someone else.");
+  const absent = cands.filter(c => c.assessmentAbsent === true);
+  if (absent.length) add("info", absent.length + " marked unable to attend", names(absent));
+
+  const roomList = (rooms && rooms.rooms) || [];
+  if (roomList.length) {
+    const odd = Array.from(new Set(slotted.map(c => c.assessmentRoom).filter(r => !roomList.includes(r))));
+    if (odd.length) add("warn", "Slots use rooms that are not in the assessment room list", odd.join(", "), ["phase1.html", "Open the hub"]);
+  }
+
+  // 5. Repeats
+  const byId = {}; cands.forEach(c => { byId[c.id] = c; });
+  const repeats = cands.filter(c => (Number(c.assessmentAttempt) || 0) >= 2 || c.firstTimeAssessment === false || c.twoPlusAssessments === true);
+  if (repeats.length) {
+    const unlinked = repeats.filter(c => !c.linkedCandidateId);
+    add("info", repeats.length + " repeat candidate" + (repeats.length === 1 ? "" : "s") + " (second sit or later)", names(repeats));
+    if (unlinked.length) add("warn", unlinked.length + " repeat" + (unlinked.length === 1 ? " is" : "s are") + " not linked to the earlier record", names(unlinked) + ". Linking them fills in the attempt number and shows their earlier result.", ["admin-stage1-candidates.html", "Open candidates"]);
+    const overlap = repeats.filter(c => {
+      const o = c.linkedCandidateId && byId[c.linkedCandidateId];
+      if (!o) return false;
+      const a = c.instructorTeamUids || [], b = o.instructorTeamUids || [];
+      return a.some(u => b.includes(u));
+    });
+    if (overlap.length) add("warn", overlap.length + " repeat candidate" + (overlap.length === 1 ? " has" : "s have") + " the same instructors as before", names(overlap) + ". Where possible, place repeats with different instructors.", ["admin-course-room-allocation.html", "Open room allocation"]);
+  }
+
+  // 6. Contact details
+  const noEmail = cands.filter(c => !lc(c.email));
+  if (noEmail.length) add("bad", noEmail.length + " candidate" + (noEmail.length === 1 ? " has" : "s have") + " no email address", names(noEmail) + ". They cannot be emailed their slot.", ["admin-stage1-candidates.html", "Open candidates"]);
+  const em = {}; cands.forEach(c => { const e = lc(c.email); if (e) (em[e] = em[e] || []).push(c); });
+  const dups = Object.keys(em).filter(e => em[e].length > 1);
+  if (dups.length) add("warn", dups.length + " email address" + (dups.length === 1 ? " is" : "es are") + " used twice", dups.slice(0, 4).join(", "), ["admin-stage1-candidates.html", "Open candidates"]);
+
+  // 7. Emails sent
+  try {
+    const cl = await db.collection("comms_log").orderBy("sentAt", "desc").limit(80).get();
+    const sent = new Set();
+    cl.docs.forEach(d => (d.data().sentTo || []).forEach(e => sent.add(lc(e))));
+    const withMail = cands.filter(c => lc(c.email));
+    const reached = withMail.filter(c => sent.has(lc(c.email)));
+    const missing = withMail.filter(c => !sent.has(lc(c.email)));
+    const dt = meta.date ? daysTo(meta.date) : null;
+    if (!reached.length) add(dt != null && dt <= 14 ? "bad" : "warn", "No candidate has been emailed from the comms tool yet", "Allocation emails should start by about a week before. The email provider has a daily cap, so a full course takes more than one day.", ["admin-comms.html", "Open comms"]);
+    else if (missing.length) add("warn", reached.length + " of " + withMail.length + " candidates have been emailed", "Not yet emailed: " + names(missing) + ". If the daily cap stopped the send, finish the rest tomorrow. This only looks at the last 80 messages in the sent history.", ["admin-comms.html", "Open comms"]);
+    else add("ok", "Every candidate has been emailed", "Checked against the last 80 messages in the sent history.");
+  } catch (e) { add("info", "Could not read the sent-email history", e.message); }
+
+  // 8. Assessors
+  const teamN = ((team && team.emails) || []).length;
+  add(teamN ? "ok" : "info", teamN ? teamN + (teamN === 1 ? " person" : " people") + " on the assessment night team" : "Assessment night team list is empty", teamN ? "These are on top of Directors, Student and Senior Faculty, Faculty and Assessor Faculty." : "Add Senior Instructors in Night settings if they are assessing.", ["phase1.html", "Open Night settings"]);
+  const nm = (named && named.names) || [], nmE = (named && named.emails) || [];
+  if (!nm.length) add("warn", "No extra named assessors for later retests", "Attempt 3 and above can only be assessed by Senior Faculty or this list.", ["phase1.html", "Open Night settings"]);
+  else if (nm.length > nmE.length) add("warn", (nm.length - nmE.length) + " named assessor" + ((nm.length - nmE.length) === 1 ? " is" : "s are") + " a name only, not an email", "A name works for the attempt rule, but they can only open the night if they already have access another way. Use emails.", ["phase1.html", "Open Night settings"]);
+  else add("ok", nm.length + " extra named assessor" + (nm.length === 1 ? "" : "s") + " for later retests", "");
+
+  // 9. Form and settings
+  if (!(form && form.formUrl)) add("warn", "No Google Form link saved", "The link shows on the assessment form as a fallback. Paste it into Night settings.", ["phase1.html", "Open Night settings"]);
+  else add("ok", "Google Form fallback link saved", "");
+  const ms = (form && form.markSheet) || {};
+  add("info", (ms.bls && ms.bls.length) || (ms.rec && ms.rec.length) ? "Mark sheet steps have been edited" : "Mark sheet uses the default steps", "");
+  if (reg && reg.lateAfter) add("info", "Register counts people as late after " + reg.lateAfter, "");
+
+  // 10. Test data
+  let hasTest = ((night && night.courses) || []).some(c => c.test === true);
+  if (!hasTest) { try { const t = await db.collection(COLLECTIONS.stage1Candidates).where("isTest", "==", true).get(); hasTest = t.docs.length > 0; } catch (e) {} }
+  if (hasTest) add("warn", "Test course data is still on the site", "Remove it with the test course page once the rehearsal is finished. It never reaches the Master sheet.", ["admin-stage1-testcourse.html", "Open test course"]);
+  finish(L);
+}
+
+function finish(L) {
+  LAST = L;
+  const n = lv => L.filter(x => x.lv === lv).length;
+  $("sum").innerHTML =
+    (n("bad") ? `<span class="pill bad">${n("bad")} to fix</span>` : `<span class="pill ok">Nothing to fix</span>`) +
+    (n("warn") ? `<span class="pill warn">${n("warn")} to check</span>` : "") +
+    `<span class="pill">${n("ok")} fine</span>`;
+  const label = { ok: "OK", bad: "FIX", warn: "CHECK", info: "INFO" };
+  const order = { bad: 0, warn: 1, ok: 2, info: 3 };
+  const sorted = L.map((x, i) => [x, i]).sort((a, b) => order[a[0].lv] - order[b[0].lv] || a[1] - b[1]).map(p => p[0]);
+  $("out").innerHTML = sorted.map(x =>
+    `<div class="chk"><span class="m ${x.lv}">${label[x.lv]}</span><div><b>${esc(x.t)}</b>` +
+    (x.d ? `<small>${esc(x.d)}</small>` : "") +
+    (x.link ? `<small><a href="${esc(x.link[0])}">${esc(x.link[1])}</a></small>` : "") +
+    `</div></div>`).join("");
+}
+
+function copyText() {
+  const label = { ok: "OK", bad: "FIX", warn: "CHECK", info: "INFO" };
+  const t = "Assessment night readiness: " + $("course").value + "\n" + LAST.map(x => "[" + label[x.lv] + "] " + x.t + (x.d ? " - " + x.d : "")).join("\n");
+  (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => { $("copy").textContent = "Copied"; setTimeout(() => $("copy").textContent = "Copy as text", 1500); }).catch(() => { window.prompt("Copy this text:", t); });
+}
+
+async function boot() {
+  const cfg = await getDoc("config/stage1_course_dates");
+  COURSES = ((cfg && cfg.courses) || []).filter(c => c.name && !c.test).sort((a, b) => String(a.date || "9") < String(b.date || "9") ? -1 : 1);
+  if (!COURSES.length) { $("out").innerHTML = '<p class="muted">No courses are set up yet. Add them in the course settings.</p>'; return; }
+  $("course").innerHTML = COURSES.map(c => `<option value="${esc(c.name)}">${esc(c.name)}${c.date ? " (" + esc(c.date) + ")" : ""}</option>`).join("");
+  const today = new Date().toISOString().slice(0, 10);
+  const next = COURSES.find(c => c.date && c.date >= today) || COURSES[COURSES.length - 1];
+  $("course").value = next.name;
+  $("course").onchange = run; $("reload").onclick = run; $("copy").onclick = copyText;
+  run();
+}
+
+requireDirector().then(() => { $("authOverlay").style.display = "none"; boot(); });
+</script>
+</body>
+</html>

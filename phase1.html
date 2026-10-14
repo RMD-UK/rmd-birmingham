@@ -235,6 +235,26 @@ details.lst .in{padding:0 14px 12px}
 .resline.pass{background:var(--okbg);color:var(--ok)}
 .resline.refer{background:var(--warnbg);color:var(--warn)}
 .tgroup{margin-top:12px}
+.sutabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.sutabs button{border:2px solid var(--line);background:#fff;border-radius:10px;padding:8px 14px;font-weight:800;font-size:14px;color:var(--mut);cursor:pointer}
+.sutabs button.on{border-color:var(--pur);color:var(--pur);background:#EFE9FA}
+.suwho{width:100%;border-collapse:collapse;font-size:14px}
+.suwho th{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut);text-align:left;padding:4px 8px}
+.suwho td{border-top:1px solid #EEF1F6;padding:9px 8px;vertical-align:top}
+.names{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:4px 0}
+.names span{background:#F1F3F9;border-radius:99px;padding:2px 9px;font-size:13px}
+.names span.ed{background:#EFE9FA;color:var(--pur)}
+.names span.none{background:#FDF1DC;color:#9A5A00}
+.names em{font-style:normal;font-weight:800;font-size:12px;color:var(--mut);margin-right:2px}
+details.whocan{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 10px;background:#FBFCFE}
+details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size:14px}
+.whorow{margin-top:8px}.whorow small{color:var(--mut)}
+.spv{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13.5px;max-height:420px;overflow:auto}
+.spv .h{font-size:12px;font-weight:800;color:var(--mut);padding:6px 0 2px}
+.spv .st{padding:6px 8px;margin:3px 0;border-radius:8px;background:#EEF1F6}
+.sugrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:760px){.sugrid{grid-template-columns:1fr}}
+.sumsg{font-size:13px;color:var(--mut)}
 .tghead{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .fullscr{position:fixed;inset:0;background:#fff;z-index:70;display:flex;flex-direction:column}
 .fullbar{display:flex;gap:14px;align-items:center;padding:12px 18px;background:var(--pur);color:#fff}
@@ -288,6 +308,7 @@ details.lst .in{padding:0 14px 12px}
         <div id="aLists"></div>
       </div>
       <div id="viewRetest" class="hidden"></div>
+      <div id="viewSetup" class="hidden"></div>
       <div id="viewRunner" class="hidden"></div>
       <div id="viewAssessor" class="hidden"></div>
     </section>
@@ -401,6 +422,7 @@ auth.onAuthStateChanged(async user => {
       return;
     }
     if (!S.full && !S.mine.length) S.view = "runner";   // assessors with no room team land on the assessment night
+    if (S.isDirector && location.hash === "#setup") S.view = "setup";   // deep link from the Readiness check
     const cfg = await db.collection("config").doc("stage1_course_dates").get();
     S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
     try {
@@ -434,14 +456,15 @@ function renderSteps() {
   const jobs = [
     { no: 1, t: "People", s: "Add, remove, move, tags", href: "admin-stage1-candidates.html", who: "full" },
     { no: 2, t: "Assessment allocation", s: "Slots for assessment night, move people", view: "alloc", who: "full" },
-    { no: 3, t: "Retest pool", s: "Attempt 2 and above, managed by the team", view: "retest", who: "full" },
+    { no: 3, t: "Retest pool", s: "Who is waiting, and who needs a follow-up", view: "retest", who: "full" },
     { no: 4, t: "Runner view", s: "Assessment night: rooms, who is there", view: "runner", who: "night" },
     { no: 5, t: "Assessor view", s: "Assessment night: pick a room, record results", view: "assessor", who: "night" },
     { no: 6, t: "Register", s: "Who arrived in weeks 1 and 2", view: "register", who: "reg" },
     { no: 7, t: "Comms", s: "Bulk emails, copy addresses, log", href: "admin-comms.html", who: "full" },
-    { no: 8, t: "Readiness check", s: "Is this course ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
-    { no: 9, t: "Register live screen", s: "Big-screen counts for the teaching evening", href: "register-live.html", who: "full" },
-    { no: 10, t: "Assessment night live screen", s: "Big-screen counts for assessment night", href: "assessment-live.html", who: "full" }
+    { no: 8, t: "Assessment setup", s: "Who can assess, mark sheets, Google Form link", view: "setup", who: "director" },
+    { no: 9, t: "Readiness check", s: "Is this course ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
+    { no: 10, t: "Register live screen", s: "Big-screen counts for the teaching evening", href: "register-live.html", who: "full" },
+    { no: 11, t: "Assessment night live screen", s: "Big-screen counts for assessment night", href: "assessment-live.html", who: "full" }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
   $("steps").innerHTML = jobs.filter(ok).map(j => {
@@ -497,6 +520,7 @@ async function enterView() {
   if (["alloc", "runner", "assessor", "retest"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
   else if (["retest", "runner", "assessor"].includes(S.view)) renderNight();
+  else if (S.view === "setup") await enterSetup();
   else render();
 }
 function roomList() {
@@ -908,12 +932,13 @@ async function ensureRooms() {
   A.loaded = true;
 }
 function showView() {
-  [["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"]]
+  [["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewSetup", "setup"]]
     .forEach(([id, v]) => $(id).classList.toggle("hidden", S.view !== v));
 }
 async function setView(v) {
   if ((v === "alloc" || v === "retest") && !S.full) return;
   if ((v === "runner" || v === "assessor") && !S.night) return;
+  if (v === "setup" && !S.isDirector) return;
   S.view = v; renderSteps();
   if (NIGHT_VIEWS.includes(v)) { if (N.course !== S.course) attachNight(); loadNight(); }
   await enterView();
@@ -1211,7 +1236,7 @@ function amNamed() {
 
 // Mark sheet. Steps follow the ERC / Resuscitation Council UK 2025 lay-rescuer sequence (single rescuer: safety, response, call 999 on speaker, airway and breathing check, compressions, 30:2, AED);
 // each step starts with the code used in the Google Form's Reasons for Failure section (1a, 1b, 1c, 2a);
-// a Director can edit them under Night settings (saved in config/stage1_assessment_form.markSheet).
+// a Director can edit them under Assessment setup, Mark sheets tab (saved in config/stage1_assessment_form.markSheet).
 // "Excellent" is an internal note on a Pass (Jon, 14 Oct): never changes the result and is not shown to the candidate.
 const EXC_CRITERIA = [
   "Compression rate held at 100 to 120 per minute throughout",
@@ -1340,6 +1365,7 @@ async function loadNight() {
   }
   N.loadedAt = Date.now();
   renderNight();
+  loadDirectory();
 }
 function attachNight() {
   N.course = S.course;
@@ -1474,7 +1500,9 @@ function renderAssessor() {
   if (N.room === "__pool") body = poolBody(pool);
   else if (N.room) body = roomBody(N.room, by[N.room] || []);
   else body = '<div class="hint">Nobody has an assessment slot yet.</div>';
+  { const od = $("whoDetails"); if (od) N.whoOpen = od.open; }
   $("viewAssessor").innerHTML = `<div class="rchips">${chips}</div><div class="card">${body}</div>`;
+  const wd = $("whoDetails"); if (wd) wd.ontoggle = () => { N.whoOpen = wd.open; };
   $("viewAssessor").querySelectorAll("[data-aroom]").forEach(b => b.onclick = () => { N.room = b.dataset.aroom; renderAssessor(); });
   $("viewAssessor").querySelectorAll("[data-aopen]").forEach(b => b.onclick = () => openForm(b.dataset.aopen));
   $("viewAssessor").querySelectorAll("[data-claim]").forEach(b => b.onclick = e => { e.stopPropagation(); claimCand(b.dataset.claim); });
@@ -1499,7 +1527,7 @@ function poolBody(pool) {
       : `<span class="why">${esc(chk.why)}</span>`;
     return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
   };
-  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1. Attempt 3 and above is Senior Faculty or the extra named assessors.</div>` + pool.map(row).join("");
+  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1. Attempt 3 and above is Senior Faculty or the extra named assessors.</div>` + whoCanBox(pool) + pool.map(row).join("");
 }
 async function claimCand(id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
@@ -1680,8 +1708,8 @@ function teamCard(af) {
     { key: "final", title: "Not passed - final attempt (attempt 4)", hint: "Course not completed. Refer back to the degree leads, inform the candidate they have not passed, and tell the programme lead." }
   ];
   const any = groups.some(g => af[g.key].length);
-  let h = `<div class="card"><h3><span class="stepno">2</span>For the team</h3><div class="hint" style="margin:0 0 8px">Nothing is emailed from here. Copy the note and send it yourself.</div>`;
-  if (!any) return h + '<div class="hint">Nobody yet. People who are not passed at attempt 2 or above are listed here with their reasons.</div></div>';
+  let h = `<div class="card"><h3><span class="stepno">2</span>After the night: who needs a follow-up</h3><div class="hint" style="margin:0 0 8px">People who have not passed at attempt 2 or later are not retested tonight. Each group below needs a member of faculty to speak to them. Nothing is emailed from here: copy the note and send it yourself.</div>`;
+  if (!any) return h + '<div class="hint">Nobody yet. People appear here once they have not passed at attempt 2 or later, with their reasons.</div></div>';
   groups.forEach(g => {
     const l = af[g.key]; if (!l.length) return;
     h += `<div class="tgroup"><div class="tghead"><b>${esc(g.title)} (${l.length})</b><button type="button" class="btn sm" data-copygroup="${g.key}">Copy all</button></div><div class="hint" style="margin:2px 0 6px">${esc(g.hint)}</div>`;
@@ -1737,7 +1765,7 @@ function renderRetest() {
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt tonight. ` +
     `They are never given a slot automatically: an assessor takes each one on from the Assessor view. Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1; attempt 3 and above is Senior Faculty or the extra named assessors. ` +
-    `Anyone not passed at attempt 2 or above is not retested tonight: they appear under <b>For the team</b> below.`;
+    `Anyone not passed at attempt 2 or above is not retested tonight: they appear under <b>After the night: who needs a follow-up</b> below.`;
   let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
     `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}</div>`;
   if (stale.length) {
@@ -1755,19 +1783,7 @@ function renderRetest() {
   h += `<div class="card"><h3><span class="stepno">1</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
   h += attemptsOverview();
   h += teamCard(af);
-  if (S.isDirector) {
-    h += `<div class="card"><h3><span class="stepno">3</span>Night settings</h3>` +
-      `<div class="hint" style="margin:0 0 6px"><b>Assessment night team.</b> People who may open the assessment night and record first sits, in addition to Directors, Student and Senior Faculty, Faculty and Assessor Faculty. Add Senior Instructors here. Email addresses only, one per line (the email they sign in with).</div>` +
-      `<textarea id="teamTxt" placeholder="Email, one per line">${esc((N.team || []).join("\n"))}</textarea>` +
-      `<div class="tools" style="margin:6px 0 14px"><button type="button" class="btn sm" id="pickAssessors">Add everyone whose role is Assessor</button><span class="hint" id="pickMsg"></span></div>` +
-      `<div class="hint" style="margin:0 0 6px"><b>Extra named assessors</b> for later retests (attempt 3 and above, on top of Senior Faculty). One per line. Use their email so they can also open the assessment night; a name alone only works if they already have access another way.</div>` +
-      `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc((N.named || []).join("\n"))}</textarea>` +
-      COMPS.map(x => `<div class="hint" style="margin:12px 0 4px"><b>${esc(x.label)}</b> mark sheet steps, one per line, in the order they should appear (the ERC / Resuscitation Council UK 2025 lay-rescuer sequence is the default). Start each line with its code (1a, 1b, 1c for BLS + AED; 2a for recovery position) to match the Google Form. Assessors tap the ones missed.</div><textarea id="steps_${x.k}" style="min-height:150px">${esc(stepsFor(x.k).join("\n"))}</textarea>`).join("") +
-      `<div class="hint" style="margin:10px 0 4px">Google Form link (shown on the assessment form as a fallback; leave blank to hide).</div>` +
-      `<input type="text" id="formUrl" placeholder="https://forms.gle/..." value="${esc(N.form.formUrl || "")}">` +
-      `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveNight">Save settings</button><span class="hint" id="nightMsg"></span></div>` +
-      `<div class="hint">Saving needs a super-user account, the same as the other site settings.</div></div>`;
-  }
+  if (S.isDirector) h += `<div class="card"><div class="hint" style="margin:0">Who can assess, the mark sheets and the Google Form link are under <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>`;
   const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
   if (wasOpen && $("attDetails")) $("attDetails").open = true;
@@ -1778,8 +1794,7 @@ function renderRetest() {
     if (!c || !n) { toast("Reload the page and try again.", true); return; }
     setAttempt(c, effAttempt(n) + Number(b.dataset.d)).then(() => { n.attempt = attemptOf(c); renderRetest(); });
   });
-  const sv = $("saveNight"); if (sv) sv.onclick = saveNightSettings;
-  const pk = $("pickAssessors"); if (pk) pk.onclick = pickAssessors;
+  $("viewRetest").querySelectorAll("[data-gosetup]").forEach(b => b.onclick = () => setView("setup"));
   $("viewRetest").querySelectorAll("[data-copyone]").forEach(b => b.onclick = () => {
     const c = N.cands.find(x => x.id === b.dataset.copyone); if (!c) return;
     copyTxt(noteFor(c, Number(b.dataset.k))).then(() => toast("Note copied for " + c.name));
@@ -1817,30 +1832,182 @@ async function pickAssessors() {
     msg.textContent = add.length ? "Added " + add.length + ". Remove anyone who should not assess, then press Save settings." : "Nobody new found.";
   } catch (err) { msg.textContent = "Could not look: " + err.message; }
 }
-async function saveNightSettings() {
+// ── Who can take an attempt (read-only, shown on the Assessor view) ──────────
+async function loadDirectory() {
+  if (N.dir || N.dirLoading) return;
+  N.dirLoading = true;
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyDirectory || "faculty_directory").get();
+    N.dir = snap.docs.map(d => d.data()).sort((x, y) => (Number(x.order) || 0) - (Number(y.order) || 0));
+  } catch (e) { N.dir = []; }
+  N.dirLoading = false;
+  if (S.view === "assessor") renderAssessor();
+  if (S.view === "setup") renderSetup();
+}
+function dirNames(group) { return (N.dir || []).filter(x => x.group === group).map(x => x.name).filter(Boolean); }
+function whoCanTake(att) {
+  const g = [];
+  if (att < 3) g.push({ label: "Student Faculty", names: dirNames("student") });
+  g.push({ label: "Senior Faculty", names: dirNames("senior") });
+  g.push({ label: "Extra named assessors", names: N.named || [], ed: true });
+  return g;
+}
+function whoCanBox(pool) {
+  const atts = [...new Set(pool.map(c => effAttempt(c) >= 3 ? 3 : 2))].sort();
+  if (!atts.length) return "";
+  const block = a => `<div class="whorow"><b>${a === 3 ? "Attempt 3 or later" : "Attempt 2"}</b>${a === 2 ? " <small>(not the same assessor as attempt 1)</small>" : ""}` +
+    whoCanTake(a).map(g => `<div class="names"><em>${esc(g.label)}</em>${g.names.length ? g.names.map(n => `<span${g.ed ? ' class="ed"' : ""}>${esc(n)}</span>`).join("") : '<span class="none">nobody listed</span>'}</div>`).join("") + `</div>`;
+  return `<details class="whocan" id="whoDetails"${N.whoOpen ? " open" : ""}><summary>Who can take these attempts?</summary>${atts.map(block).join("")}</details>`;
+}
+
+// ── Assessment setup (Directors only) ───────────────────────────────────────
+// Moved here from the Retest pool page (Jon, 14 Oct 2026). Three tabs: who can assess, mark sheets, Google Form link.
+// Not re-rendered by the 30 second refresh, so nothing typed here is lost.
+const SU = { tab: "who", part: "bls", draft: null, people: null, directors: null, loaded: false, teamDraft: null, namedDraft: null, urlDraft: null };
+async function enterSetup() {
+  $("msgs").innerHTML = "";
+  if (N.course !== S.course) attachNight();
+  if (!SU.loaded) {
+    await Promise.all([
+      loadDirectory(),
+      Promise.all([db.collection(COLLECTIONS.people).where("role", "==", "faculty").get(), db.collection(COLLECTIONS.people).where("role", "==", "assessor-faculty").get()])
+        .then(r => { SU.people = [].concat(r[0].docs, r[1].docs).map(d => d.data()); }).catch(() => { SU.people = null; }),
+      db.collection("config").doc("platform").get().then(d => { SU.directors = d.exists && Array.isArray(d.data().directors) ? d.data().directors : []; }).catch(() => { SU.directors = []; })
+    ]);
+    SU.loaded = true;
+  }
+  await loadNight();
+  renderSetup();
+}
+function suCapture() {
+  if ($("teamTxt")) SU.teamDraft = $("teamTxt").value;
+  if ($("namedTxt")) SU.namedDraft = $("namedTxt").value;
+  if ($("formUrl")) SU.urlDraft = $("formUrl").value;
+}
+function suGroups() {
+  const fac = (SU.people || []).map(p => p.name || p.email || "").filter(Boolean).sort((a, b) => a.localeCompare(b));
+  return {
+    dir: { label: "Directors", names: (SU.directors || []).map(String) },
+    stu: { label: "Student Faculty", names: dirNames("student") },
+    sen: { label: "Senior Faculty", names: dirNames("senior") },
+    fac: { label: "Faculty and Assessor Faculty (job roles)", names: fac },
+    team: { label: "Senior Instructors and others on the night list", names: N.team || [], ed: true },
+    named: { label: "Extra named assessors", names: N.named || [], ed: true }
+  };
+}
+function renderSetup() {
+  if (S.view !== "setup") return;
+  suCapture();
+  $("plain").innerHTML = '<span class="lbl">Assessment setup</span>Who can assess, the mark sheets assessors tap through, and the Google Form link. These apply to every course, not only ' + esc(S.course || "this one") + '. Changes reach the assessor form straight away.';
+  const tabs = [["who", "Who can assess"], ["marks", "Mark sheets"], ["form", "Google Form"]];
+  let h = `<div class="sutabs">${tabs.map(t => `<button type="button" data-sutab="${t[0]}" class="${SU.tab === t[0] ? "on" : ""}">${t[1]}</button>`).join("")}</div>`;
+  h += SU.tab === "who" ? suWho() : SU.tab === "marks" ? suMarks() : suForm();
+  $("viewSetup").innerHTML = h;
+  $("viewSetup").querySelectorAll("[data-sutab]").forEach(b => b.onclick = () => { SU.tab = b.dataset.sutab; renderSetup(); });
+  const pk = $("pickAssessors"); if (pk) pk.onclick = pickAssessors;
+  const sw = $("saveWho"); if (sw) sw.onclick = saveWho;
+  const sm = $("saveMarks"); if (sm) sm.onclick = saveMarks;
+  const sf = $("saveFormUrl"); if (sf) sf.onclick = saveFormUrl;
+  const st = $("suSteps"); if (st) st.oninput = () => { SU.draft[SU.part] = st.value; $("suPrev").innerHTML = stepsPreview(st.value); };
+  const rs = $("suReset"); if (rs) rs.onclick = () => { SU.draft[SU.part] = DEFAULT_STEPS[SU.part].join("\n"); renderSetup(); };
+  $("viewSetup").querySelectorAll("[data-supart]").forEach(b => b.onclick = () => { SU.part = b.dataset.supart; renderSetup(); });
+}
+function suWho() {
+  const G = suGroups();
+  const chip = g => `<span${g.ed ? ' class="ed"' : ""}>${esc(g.label.replace(" (job roles)", ""))} (${g.names.length})</span>`;
+  const rows = [
+    ["1st sit", "", [G.dir, G.stu, G.sen, G.fac, G.team, G.named]],
+    ["2nd sit", "not the same assessor as the 1st sit", [G.stu, G.sen, G.named]],
+    ["3rd sit and later", "", [G.sen, G.named]]
+  ];
+  let h = `<div class="card"><h3>Who can assess what</h3><div class="hint" style="margin:0 0 8px">Grey groups come from the site's lists and are changed elsewhere (Student and Senior Faculty on the <a href="admin-faculty-roster.html">faculty roster</a>). Purple groups are edited below.</div>` +
+    `<table class="suwho"><tr><th>Sit</th><th>Who can assess</th></tr>` +
+    rows.map(r => `<tr><td><b>${r[0]}</b>${r[1] ? `<br><small style="color:var(--mut)">${r[1]}</small>` : ""}</td><td><div class="names">${r[2].map(chip).join("")}</div></td></tr>`).join("") +
+    `</table><div class="hint" style="margin:8px 0 0">Directors can take a 2nd or later sit only if they are also on the Student or Senior Faculty roster, or are named below. Senior Instructors on the night list can record first sits only.</div>`;
+  h += `<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;color:var(--pur)">Show the names in each group</summary>` +
+    Object.keys(G).map(k => { const g = G[k]; return `<div class="whorow"><b>${esc(g.label)} (${g.names.length})</b><div class="names">${g.names.length ? g.names.map(n => `<span${g.ed ? ' class="ed"' : ""}>${esc(n)}</span>`).join("") : '<span class="none">nobody listed</span>'}</div></div>`; }).join("") + `</details></div>`;
+  const teamV = SU.teamDraft !== null ? SU.teamDraft : (N.team || []).join("\n");
+  const namedV = SU.namedDraft !== null ? SU.namedDraft : (N.named || []).join("\n");
+  h += `<div class="card"><h3>Senior Instructors who can open assessment night</h3><div class="hint" style="margin:0 0 6px">They can open assessment night and record first sits. They are in addition to Directors, Student and Senior Faculty, Faculty and Assessor Faculty. Email addresses only, one per line (the email they sign in with).</div>` +
+    `<textarea id="teamTxt" placeholder="Email, one per line">${esc(teamV)}</textarea>` +
+    `<div class="tools" style="margin:6px 0 0"><button type="button" class="btn sm" id="pickAssessors">Add everyone whose role is Assessor</button><span class="hint" id="pickMsg"></span></div></div>`;
+  h += `<div class="card"><h3>Extra named assessors for retests</h3><div class="hint" style="margin:0 0 6px">They can take 2nd and later sits as well as first sits, on top of the groups above. One per line. Use their email so they can also open assessment night; a name alone only works if they already have access another way.</div>` +
+    `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc(namedV)}</textarea>` +
+    `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveWho">Save both lists</button><span class="sumsg" id="whoMsg"></span></div><div class="hint">Saving needs a super-user account, the same as the other site settings.</div></div>`;
+  return h;
+}
+function stepsPreview(text) {
+  const lines = String(text || "").split(/\r?\n/).map(t => t.trim()).filter(Boolean);
+  if (!lines.length) return '<div class="hint">No steps. The default sheet will be used.</div>';
+  let last = "", n = 0, out = "";
+  lines.forEach((t, i) => {
+    const m = /^(\d[a-z])\s+(.*)$/.exec(t), code = m ? m[1] : "";
+    if (!m) n++;
+    if (code && code !== last) { out += `<div class="h">${esc(code)} ${esc(CODE_NAMES[code] || "")}</div>`; last = code; }
+    out += `<div class="st">${i + 1}. ${esc(m ? m[2] : t)}</div>`;
+  });
+  return (n ? `<div class="msg warn" style="margin:0 0 6px">${n} line${n === 1 ? " has" : "s have"} no code at the start (1a, 1b, 1c, 2a). ${n === 1 ? "It" : "They"} still show${n === 1 ? "s" : ""} to assessors, without a heading, and will not count in the "failed" codes.</div>` : "") + out;
+}
+function suMarks() {
+  if (!SU.draft) SU.draft = { bls: stepsFor("bls").join("\n"), rec: stepsFor("rec").join("\n") };
+  const x = COMPS.find(c => c.k === SU.part) || COMPS[0];
+  const recorded = Object.values(N.results || {}).reduce((n, r) => n + Object.keys((r && r.attempts) || {}).length, 0);
+  let h = `<div class="card"><h3>Mark sheets</h3><div class="hint" style="margin:0 0 8px">One line per step, in the order assessors see them. Each line starts with its code (1a, 1b, 1c for BLS + AED; 2a for recovery position), which groups the steps and gives the "failed 1a, 2a" text. The two parts themselves are fixed. The Resuscitation Council UK 2025 lay-rescuer sequence is the default.</div>`;
+  if (recorded) h += `<div class="msg warn">${recorded} result${recorded === 1 ? " has" : "s have"} already been recorded on ${esc(S.course || "this course")}. Old results still read correctly after a reword, but amending an old result will not highlight a step you have reworded. Edit between nights where you can.</div>`;
+  h += `<div class="sutabs">${COMPS.map(c => `<button type="button" data-supart="${c.k}" class="${SU.part === c.k ? "on" : ""}">${esc(c.label)}</button>`).join("")}</div>` +
+    `<div class="sugrid"><div><div class="hint" style="margin:0 0 4px"><b>Edit: ${esc(x.label)}</b></div><textarea id="suSteps" style="min-height:300px">${esc(SU.draft[SU.part])}</textarea>` +
+    `<div class="tools" style="margin:8px 0 0"><button type="button" class="btn pri" id="saveMarks">Save both mark sheets</button><button type="button" class="btn sm" id="suReset">Reset this part to default</button><span class="sumsg" id="marksMsg"></span></div><div class="hint">Saving needs a super-user account.</div></div>` +
+    `<div><div class="hint" style="margin:0 0 4px"><b>Assessors will see</b> (updates as you type)</div><div class="spv" id="suPrev">${stepsPreview(SU.draft[SU.part])}</div></div></div></div>`;
+  return h;
+}
+function suForm() {
+  const v = SU.urlDraft !== null ? SU.urlDraft : (N.form.formUrl || "");
+  return `<div class="card"><h3>Google Form link</h3><div class="hint" style="margin:0 0 6px">Shown on the assessment form as a fallback if the site is not working on the night. Leave blank to hide it.</div>` +
+    `<input type="text" id="formUrl" placeholder="https://forms.gle/..." value="${esc(v)}"><div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveFormUrl">Save link</button><span class="sumsg" id="formMsg"></span></div><div class="hint">Saving needs a super-user account.</div></div>`;
+}
+function saveErr(err) { return "Not saved: " + (err && err.code === "permission-denied" ? "this needs a super-user account." : (err && err.message) || err); }
+async function saveWho() {
   const team = $("teamTxt").value.split(/\r?\n/).map(s => s.trim().toLowerCase()).filter(Boolean);
   const badTeam = team.filter(t => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(t));
-  if (badTeam.length) { $("nightMsg").textContent = "The assessment night team needs email addresses only. Check: " + badTeam.slice(0, 3).join(", "); return; }
+  const msg = $("whoMsg");
+  if (badTeam.length) { msg.textContent = "The night list needs email addresses only. Check: " + badTeam.slice(0, 3).join(", "); return; }
   const names = $("namedTxt").value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const namedEmails = names.filter(n => n.includes("@")).map(n => n.toLowerCase());
-  const url = $("formUrl").value.trim();
-  if (url && !/^https:\/\//i.test(url)) { $("nightMsg").textContent = "The form link must start with https://"; return; }
-  const markSheet = {};
-  COMPS.forEach(x => {
-    const lines = ($("steps_" + x.k).value || "").split(/\r?\n/).map(t => t.trim()).filter(Boolean);
-    markSheet[x.k] = JSON.stringify(lines) === JSON.stringify(DEFAULT_STEPS[x.k]) ? [] : lines;
-  });
-  $("saveNight").disabled = true;
+  $("saveWho").disabled = true;
   try {
     await db.collection("config").doc("stage1_named_assessors").set({ names, emails: namedEmails }, { merge: true });
     await db.collection("config").doc("stage1_assessors").set({ emails: team }, { merge: true });
-    await db.collection("config").doc("stage1_assessment_form").set({ formUrl: url, markSheet }, { merge: true });
-    N.named = names; N.team = team; N.form = Object.assign({}, N.form, { formUrl: url, markSheet });
-    $("nightMsg").textContent = "Saved.";
-  } catch (err) {
-    $("nightMsg").textContent = "Not saved: " + (err.code === "permission-denied" ? "this needs a super-user account." : err.message);
-  }
-  $("saveNight").disabled = false;
+    N.named = names; N.team = team; SU.teamDraft = null; SU.namedDraft = null;
+    renderSetup();
+    $("whoMsg").textContent = "Saved.";
+    return;
+  } catch (err) { msg.textContent = saveErr(err); }
+  $("saveWho").disabled = false;
+}
+async function saveMarks() {
+  const markSheet = {};
+  COMPS.forEach(x => {
+    const lines = String(SU.draft[x.k] || "").split(/\r?\n/).map(t => t.trim()).filter(Boolean);
+    markSheet[x.k] = JSON.stringify(lines) === JSON.stringify(DEFAULT_STEPS[x.k]) ? [] : lines;
+  });
+  $("saveMarks").disabled = true;
+  try {
+    await db.collection("config").doc("stage1_assessment_form").set({ markSheet }, { merge: true });
+    N.form = Object.assign({}, N.form, { markSheet });
+    $("marksMsg").textContent = "Saved. Assessors get the new steps the next time they open a candidate.";
+  } catch (err) { $("marksMsg").textContent = saveErr(err); }
+  $("saveMarks").disabled = false;
+}
+async function saveFormUrl() {
+  const url = $("formUrl").value.trim();
+  if (url && !/^https:\/\//i.test(url)) { $("formMsg").textContent = "The form link must start with https://"; return; }
+  $("saveFormUrl").disabled = true;
+  try {
+    await db.collection("config").doc("stage1_assessment_form").set({ formUrl: url }, { merge: true });
+    N.form = Object.assign({}, N.form, { formUrl: url }); SU.urlDraft = null;
+    $("formMsg").textContent = "Saved.";
+  } catch (err) { $("formMsg").textContent = saveErr(err); }
+  $("saveFormUrl").disabled = false;
 }
 
 </script>
