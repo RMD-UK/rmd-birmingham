@@ -229,6 +229,23 @@ details.lst .in{padding:0 14px 12px}
 .stp .sn{flex:none;width:22px;height:22px;border-radius:50%;background:#EEF1F6;color:var(--mut);font-size:12px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
 .stp.on{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
 .stp.on .sn{background:var(--bad);color:#fff}
+.stp.live{border-color:#BFE3CD;background:#E8F6EE;color:#14532D}
+.stp.live .sn{background:#CBEBD8;color:#14532D}
+.stp.live.on{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
+.stp.live.on .sn{background:var(--bad);color:#fff}
+.stp:disabled{opacity:.6}
+.exc-c .stp.on{border-color:#B8860B;background:#FFF3C4;color:#4A3500}
+.exc-c .stp.on .sn{background:#B8860B;color:#fff}
+.cpr{border:2px dashed var(--line);border-radius:14px;padding:12px;margin:10px 0;background:#FAFBFE}
+.cprrow{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0}
+.cprnum{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums}
+.cprrate{font-size:15px;font-weight:800;color:var(--mut)}
+.cprrate.ok{color:var(--ok)}.cprrate.bad{color:var(--bad)}
+.cprbtn{width:100%;min-height:96px;font-size:28px;font-weight:900;border-radius:16px;border:3px solid var(--pur);background:var(--purtint);color:var(--pur);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.cprbtn:active{background:var(--pur);color:#fff}
+.cpcyc{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.cpcyc span{font-size:13px;font-weight:800;border-radius:8px;padding:4px 9px;background:#EEF1F6;color:var(--mut)}
+.cpcyc span.ok{background:var(--okbg);color:var(--ok)}.cpcyc span.bad{background:var(--badbg);color:var(--bad)}.cpcyc span.short{background:#FDF1DC;color:#9A5A00}
 .stphead{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 0}
 .stphead b{color:var(--pur)}
 .resline{font-weight:800;padding:10px 12px;border-radius:10px;background:#EEF1F6;color:var(--mut);margin:10px 0}
@@ -1319,6 +1336,10 @@ function compsText(a) {
   }).join(". ");
 }
 
+function cprText(a) {
+  const cy = a && a.cpr && a.cpr.cycles || [];
+  return cy.length ? ". Compression counter: " + cy.map(x => (x.rate === null ? "-" : x.rate) + "/min (" + x.n + ")").join(", ") : "";
+}
 function failCodes(id) {
   // codes (1a, 1b, 1c, 2a) of the parts failed at the latest referred attempt, as the Google Form shows next to resit names
   const a = nattempts(id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").sort((x, y) => y - x);
@@ -1569,11 +1590,15 @@ function openForm(id) {
   const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
   N.formOpen = true;
   const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
-  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), marks: {}, reasons: { bls: new Set(), rec: new Set() }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
+  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
   if (existing && existing.components) {
     req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
     COMPS.forEach(x => ((existing.reasons || {})[x.k] || []).forEach(r => state.reasons[x.k].add(r)));
   }
+  const cprHtml = `<div class="cpr" id="cpr"><div class="hint" style="margin:0"><b>Compression counter (optional).</b> Tap once for every compression. It works out the rate for each cycle of 30. Target 100 to 120 per minute. It does not change the result by itself.</div>` +
+    `<div class="cprrow"><div class="cprnum" id="cprN">0 / 30</div><div class="cprrate" id="cprRate">Tap to start</div></div>` +
+    `<button type="button" class="cprbtn" id="cprTap">TAP</button>` +
+    `<div class="tools" style="margin:8px 0 0"><button type="button" class="btn sm" id="cprUndo">Undo last tap</button><button type="button" class="btn sm" id="cprNext">End cycle</button><button type="button" class="btn sm" id="cprClear">Clear counter</button></div><div class="cpcyc" id="cprCycles"></div></div>`;
   const cmpHtml = COMPS.map(x => {
     if (!req.includes(x.k)) return `<div class="cmp off"><b>${esc(x.label)}</b> <span class="nchip pass">Passed at attempt 1</span></div>`;
     let lastCode = "";
@@ -1581,13 +1606,13 @@ function openForm(id) {
       const m = /^(\d[a-z])\s+(.*)$/.exec(t), code = m ? m[1] : "";
       let head = "";
       if (code && code !== lastCode) { head = `<div class="stphead"><b>${esc(code)}</b> ${esc(CODE_NAMES[code] || "")}</div>`; lastCode = code; }
-      return head + `<button type="button" class="stp" data-stp="${x.k}" data-i="${i}"><span class="sn">${i + 1}</span>${esc(m ? m[2] : t)}</button>`;
+      return head + `<button type="button" class="stp live" data-stp="${x.k}" data-i="${i}"${chk.ok ? "" : " disabled"}><span class="sn">${i + 1}</span>${esc(m ? m[2] : t)}</button>`;
     }).join("");
     return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b><div class="fqo" style="margin-top:8px">` +
       `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
       `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
       (noHistory ? `<button type="button" class="fqb" data-mk="${x.k}" data-m="skip"${chk.ok ? "" : " disabled"}>Not retested</button>` : "") +
-      `</div><div class="why2 hidden" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Tap what was missed or done wrongly, in the order of the sequence:</div><div class="stps">${steps}</div></div></div>`;
+      `</div>${x.k === "bls" && chk.ok ? cprHtml : ""}<div class="why2" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Steps start green (done correctly). Tap any step that was missed or done wrongly and it turns red. Any red step makes this part Not yet.</div><div class="stps">${steps}</div></div></div>`;
   }).join("");
   const qHtml = qs.map(q => {
     const val = existing && existing.answers ? existing.answers[q.id] : "";
@@ -1615,7 +1640,8 @@ function openForm(id) {
   const refresh = () => {
     req.forEach(k => {
       $("overlay").querySelectorAll('[data-mk="' + k + '"]').forEach(b => b.classList.toggle("on", state.marks[k] === b.dataset.m));
-      const w = $("overlay").querySelector('[data-why="' + k + '"]'); if (w) w.classList.toggle("hidden", state.marks[k] !== "fail");
+      const w = $("overlay").querySelector('[data-why="' + k + '"]'); if (w) w.classList.toggle("hidden", state.marks[k] === "skip");
+      const pb = $("overlay").querySelector('[data-mk="' + k + '"][data-m="pass"]'); if (pb) pb.disabled = !chk.ok || state.reasons[k].size > 0;
       $("overlay").querySelectorAll('[data-stp="' + k + '"]').forEach(b => b.classList.toggle("on", state.reasons[k].has(stepsFor(k)[Number(b.dataset.i)])));
     });
     const o = outcomeFor(state.marks, req);
@@ -1635,8 +1661,34 @@ function openForm(id) {
   $("overlay").querySelectorAll("[data-stp]").forEach(b => b.onclick = () => {
     const k = b.dataset.stp, t = stepsFor(k)[Number(b.dataset.i)];
     if (state.reasons[k].has(t)) state.reasons[k].delete(t); else state.reasons[k].add(t);
+    if (state.reasons[k].size) state.marks[k] = "fail";
+    else if (state.marks[k] === "fail") delete state.marks[k];
     refresh();
   });
+  // Compression counter: one tap per compression, rate worked out per cycle of 30
+  const cprCycle = (taps, short) => { const sec = (taps[taps.length - 1] - taps[0]) / 1000; return { n: taps.length, seconds: Math.round(sec * 10) / 10, rate: taps.length >= 2 && sec > 0 ? Math.round((taps.length - 1) / sec * 60) : null, short: !!short }; };
+  const cprOk = r => r !== null && r >= 100 && r <= 120;
+  const cprDraw = () => {
+    if (!$("cpr")) return;
+    const cur = state.cpr.cur, cy = state.cpr.cycles, last = cy[cy.length - 1];
+    let live = null;
+    if (cur.length >= 4) live = cprCycle(cur).rate;
+    $("cprN").textContent = cur.length ? cur.length + " / 30" : (last ? "Cycle " + cy.length + " done" : "0 / 30");
+    const r = $("cprRate");
+    if (cur.length) { r.className = "cprrate" + (live === null ? "" : cprOk(live) ? " ok" : " bad"); r.textContent = live === null ? "Keep going" : live + " per minute so far"; }
+    else if (last) { r.className = "cprrate" + (cprOk(last.rate) ? " ok" : " bad"); r.textContent = last.n + " compressions in " + last.seconds + " s: " + last.rate + " per minute" + (cprOk(last.rate) ? "" : (last.rate > 120 ? " (too fast)" : " (too slow)")); }
+    else { r.className = "cprrate"; r.textContent = "Tap to start"; }
+    $("cprCycles").innerHTML = cy.map((x, i) => `<span class="${x.short ? "short" : cprOk(x.rate) ? "ok" : "bad"}">${i + 1}: ${x.n}${x.n === 30 ? "" : " (short)"} at ${x.rate === null ? "-" : x.rate}/min</span>`).join("");
+    $("cprUndo").disabled = !cur.length; $("cprNext").disabled = cur.length < 2;
+  };
+  const cprFinish = short => { const cur = state.cpr.cur; if (cur.length >= 2) state.cpr.cycles.push(cprCycle(cur, short)); state.cpr.cur = []; };
+  if ($("cprTap")) {
+    $("cprTap").onclick = () => { state.cpr.cur.push(performance.now()); if (state.cpr.cur.length >= 30) cprFinish(false); cprDraw(); };
+    $("cprUndo").onclick = () => { state.cpr.cur.pop(); cprDraw(); };
+    $("cprNext").onclick = () => { cprFinish(true); cprDraw(); };
+    $("cprClear").onclick = () => { state.cpr = { cycles: [], cur: [] }; cprDraw(); };
+    cprDraw();
+  }
   $("fExcBtn").onclick = () => { state.exc = !state.exc; refresh(); };
   $("overlay").querySelectorAll("[data-exc]").forEach(b => b.onclick = () => {
     const t = EXC_CRITERIA[Number(b.dataset.exc)];
@@ -1656,11 +1708,13 @@ function openForm(id) {
     const wantExc = out === "pass" && state.exc;
     if (wantExc && !state.excCrit.size) { $("fMsg").textContent = "Tap at least one reason for Excellent, or switch it off."; return; }
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
+    if (state.cpr.cur.length >= 2) cprFinish(true);
+    const cprOut = (state.cpr.cycles.length || (existing && existing.cpr)) ? { cycles: state.cpr.cycles.map(x => ({ n: x.n, seconds: x.seconds, rate: x.rate, short: !!x.short })) } : null;
     const components = {}, reasons = {};
     req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
     $("fSave").disabled = true;
     try {
-      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [] }, !!existing);
+      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [], cpr: cprOut }, !!existing);
       close();
     } catch (err) {
       $("fSave").disabled = false;
@@ -1671,6 +1725,7 @@ function openForm(id) {
 async function saveResult(c, att, outcome, d, amend) {
   const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
   if (amend) entry.amended = true;
+  if (d.cpr) entry.cpr = d.cpr;
   if (d.excellent) { entry.excellent = true; entry.excellentCriteria = d.excellentCriteria || []; }
   await db.collection("stage1_assessments").doc(c.id).set({
     course: S.course, candidateName: c.name || "", claim: null, notThere: null,
@@ -1704,7 +1759,7 @@ const NEXT_STEPS = {
 };
 function noteFor(c, k) {
   const a = nattempts(c.id), last = a[String(k)] || {};
-  const lines = Object.keys(a).sort((x, y) => x - y).map(n => `  Attempt ${n}${a[n].assessorName ? " (" + a[n].assessorName + ")" : ""}: ${outcomeShort(a[n].outcome, Number(n))}${compsText(a[n]) ? ". " + compsText(a[n]) : ""}${a[n].comment ? ". Comment: " + a[n].comment : ""}`);
+  const lines = Object.keys(a).sort((x, y) => x - y).map(n => `  Attempt ${n}${a[n].assessorName ? " (" + a[n].assessorName + ")" : ""}: ${outcomeShort(a[n].outcome, Number(n))}${compsText(a[n]) ? ". " + compsText(a[n]) : ""}${cprText(a[n])}${a[n].comment ? ". Comment: " + a[n].comment : ""}`);
   return `${c.name} (${c.degree || "degree not recorded"}), ${S.course}\n${outcomeLabel(last.outcome, k)}\n` + lines.join("\n") + (NEXT_STEPS[k] ? "\n" + NEXT_STEPS[k] : "");
 }
 function copyTxt(t) {
