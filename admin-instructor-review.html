@@ -30,6 +30,7 @@
     .pill-unknown { background:#eef2f6; color:var(--rmd-muted); }
     .pill-attempts { background:#fff3cd; color:#856404; }
     .pill-count { background:#e8f0fe; color:var(--rmd-blue); }
+    .pill-exc { background:#FFE08A; color:#4A3500; }
     .candidate-arrow { margin-left:auto; color:var(--rmd-muted); font-size:14px; transition:transform 0.15s; }
     .candidate-card.open .candidate-arrow { transform:rotate(90deg); }
     .candidate-detail { display:none; border-top:1px solid #eef2f6; padding:16px; }
@@ -68,6 +69,7 @@
       <option value="unrated">No OPIS ratings yet</option>
       <option value="fail">Failed assessment</option>
       <option value="attempts">Needed &gt;2 attempts</option>
+      <option value="excellent">Excellent pass (assessor note)</option>
     </select>
   </div>
 
@@ -120,6 +122,8 @@ function fmtDate(v) {
 let eoiList = [];
 let candidatesByEmail = {}; // email -> [stage1_candidates records]
 let ratingsByEmail = {};    // email -> [opis_ratings]
+let excellentByEmail = {};  // email -> [{course, attempt, assessor, at, criteria}] from stage1_assessments (assessor form, Excellent pass note)
+let excellentErr = "";
 
 async function init() {
   const [eoiSnap, candSnap, ratingSnap] = await Promise.all([
@@ -138,6 +142,24 @@ async function init() {
     if (!email) return;
     (candidatesByEmail[email] = candidatesByEmail[email] || []).push(c);
   });
+
+  // Excellent pass notes recorded on the Phase 1 assessor form. Internal note: only read here, never shown to candidates.
+  excellentByEmail = {}; excellentErr = "";
+  try {
+    const asSnap = await db.collection("stage1_assessments").get();
+    const idToEmail = {};
+    Object.keys(candidatesByEmail).forEach(em => candidatesByEmail[em].forEach(c => { idToEmail[c.id] = em; }));
+    asSnap.docs.forEach(d => {
+      const em = idToEmail[d.id]; if (!em) return;
+      const a = d.data(), att = a.attempts || {};
+      Object.keys(att).sort((x, y) => x - y).forEach(k => {
+        const e = att[k];
+        if (e && e.excellent === true && e.outcome === "pass") {
+          (excellentByEmail[em] = excellentByEmail[em] || []).push({ course: a.course || "", attempt: k, assessor: e.assessorName || "", at: e.at || "", criteria: e.excellentCriteria || [] });
+        }
+      });
+    });
+  } catch (err) { excellentErr = err && err.message ? err.message : String(err); }
 
   const allRatings = ratingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   OPIS_UTIL.markSuperseded(allRatings);
@@ -179,13 +201,14 @@ function render() {
     const records = candidatesByEmail[email] || [];
     const ratings = ratingsByEmail[email] || [];
     const outcome = combinedOutcome(records);
-    return { eoi, email, records, ratings, outcome };
+    return { eoi, email, records, ratings, outcome, excellent: excellentByEmail[email] || [] };
   });
 
   if (q) rows = rows.filter(r => RMD_FUZZY.score(q, [r.eoi.name, r.email]) > 0);
   if (filter === "unrated") rows = rows.filter(r => !r.ratings.some(x => !x._superseded));
   if (filter === "fail") rows = rows.filter(r => r.outcome.outcome === "Failed");
   if (filter === "attempts") rows = rows.filter(r => r.outcome.neededMoreThanTwoAttempts === true);
+  if (filter === "excellent") rows = rows.filter(r => r.excellent.length > 0);
 
   document.getElementById("summaryLine").textContent = `${rows.length} of ${eoiList.length} expression${eoiList.length === 1 ? "" : "s"} of interest`;
 
@@ -245,7 +268,7 @@ function candidateCardHtml(r, i) {
     <div class="candidate-card" id="card-${i}">
       <div class="candidate-head" onclick="toggleCard(${i})">
         <div style="flex:1;">
-          <div class="candidate-name">${esc(eoi.name)}${outcomePill(r.outcome)}${r.outcome.neededMoreThanTwoAttempts === true ? `<span class="pill pill-attempts">&gt;2 attempts</span>` : ""}${ratingCount ? `<span class="pill pill-count">${ratingCount} OPIS rating${ratingCount === 1 ? "" : "s"} · avg ${avgTotal}/15</span>` : `<span class="pill pill-unknown">No ratings yet</span>`}</div>
+          <div class="candidate-name">${esc(eoi.name)}${outcomePill(r.outcome)}${r.excellent && r.excellent.length ? `<span class="pill pill-exc">Excellent pass</span>` : ""}${r.outcome.neededMoreThanTwoAttempts === true ? `<span class="pill pill-attempts">&gt;2 attempts</span>` : ""}${ratingCount ? `<span class="pill pill-count">${ratingCount} OPIS rating${ratingCount === 1 ? "" : "s"} · avg ${avgTotal}/15</span>` : `<span class="pill pill-unknown">No ratings yet</span>`}</div>
           <div class="candidate-sub">${esc(eoi.email)} · ${esc(eoi.degree) || "no degree on EOI"}</div>
         </div>
         <div class="candidate-arrow">▶</div>
@@ -263,6 +286,12 @@ function candidateCardHtml(r, i) {
         <div class="detail-section">
           <div class="detail-label">Stage 1 record${r.records.length === 1 ? "" : "s"}</div>
           ${recordsHtml}
+        </div>
+        <div class="detail-section">
+          <div class="detail-label">Assessment notes (Phase 1 assessor form)</div>
+          ${excellentErr ? `<div class="no-ratings">Could not read assessment notes: ${esc(excellentErr)}</div>` : (r.excellent && r.excellent.length
+            ? r.excellent.map(x => `<div style="margin-bottom:6px;"><span class="pill pill-exc" style="margin-left:0;">Excellent pass</span> <span style="color:var(--rmd-muted);">${esc(x.course)} · attempt ${esc(x.attempt)}${x.assessor ? " · assessor " + esc(x.assessor) : ""}${x.at ? " · " + esc(String(x.at).slice(0, 10)) : ""}</span><ul style="margin:4px 0 0 18px;font-size:13px;">${x.criteria.map(c => `<li>${esc(c)}</li>`).join("")}</ul></div>`).join("")
+            : `<div class="no-ratings">No Excellent pass note recorded. This only exists for assessments recorded on the site's assessor form, so earlier courses will not have one.</div>`)}
         </div>
         <div class="detail-section">
           <div class="detail-label">OPIS ratings</div>
