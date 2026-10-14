@@ -76,6 +76,13 @@
     <div id="removeMsg"></div>
   </div>
 
+  <div class="card" id="clearRegCard">
+    <h2>Clear the test register only</h2>
+    <p>Deletes the register marks (weeks 1 and 2) and the instructor arrival times for the test courses. The test candidates, their assessment results and the courses stay, so you can run the register again. Only the two test courses are touched.</p>
+    <div class="btns"><button class="dng" id="clearRegBtn" type="button">Clear test register entries</button></div>
+    <div id="clearRegMsg"></div>
+  </div>
+
   <div class="card" id="listCard" style="display:none">
     <h2>Test candidates</h2>
     <div class="tbl-wrap"><table id="listTbl"></table></div>
@@ -228,6 +235,33 @@ async function createTest() {
   await refresh();
 }
 
+async function clearTestRegister() {
+  if (!confirm("Clear every register mark and instructor arrival for the test courses?\n\nThe test candidates and assessment results stay.")) return;
+  $("clearRegBtn").disabled = true; $("clearRegMsg").innerHTML = '<div class="msg warn">Clearing…</div>';
+  try {
+    const ops = [];
+    const seen = new Set();
+    const add = ref => { if (!seen.has(ref.path)) { seen.add(ref.path); ops.push(ref); } };
+    const list = await findTest();
+    list.forEach(c => add(db.collection("stage1_register").doc(c.id)));
+    for (const nm of [TEST_COURSE, TEST_EARLIER]) {
+      const s = await db.collection("stage1_register_staff").where("course", "==", nm).get();
+      s.docs.forEach(d => add(d.ref));
+      const r = await db.collection("stage1_register").where("course", "==", nm).get();
+      r.docs.forEach(d => add(d.ref));
+    }
+    for (let i = 0; i < ops.length; i += CHUNK) {
+      const batch = db.batch();
+      ops.slice(i, i + CHUNK).forEach(r => batch.delete(r));
+      await batch.commit();
+    }
+    $("clearRegMsg").innerHTML = `<div class="msg ok">Cleared. ${ops.length} register record${ops.length === 1 ? "" : "s"} checked and removed (records that did not exist are skipped silently).</div>`;
+  } catch (err) {
+    $("clearRegMsg").innerHTML = `<div class="msg err">Clear failed: ${esc(err.message)}</div>`;
+  }
+  $("clearRegBtn").disabled = false;
+}
+
 async function removeTest() {
   if (!confirm("Remove the test course and every test record?\n\nOnly records flagged as test records are touched.")) return;
   $("removeBtn").disabled = true; $("removeMsg").innerHTML = '<div class="msg warn">Removing…</div>';
@@ -271,6 +305,7 @@ requireDirector().then(async () => {
   $("authOverlay").style.display = "none";
   $("createBtn").addEventListener("click", createTest);
   $("removeBtn").addEventListener("click", removeTest);
+  $("clearRegBtn").addEventListener("click", clearTestRegister);
   await refresh();
 });
 </script>
