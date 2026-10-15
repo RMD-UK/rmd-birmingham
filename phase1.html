@@ -103,6 +103,15 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .chip.late{background:var(--warnbg);color:var(--warn)}
 .chip.abs{background:var(--badbg);color:var(--bad)}
 .chip.none{background:#EEF1F6;color:var(--mut);font-weight:700}
+.row .nm .lw{display:inline-block;margin:3px 0 0 6px;font-size:11.5px;padding:3px 8px}
+.sentc .srow{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid #F0F3F8;padding:8px 0}
+.sentc .snm small{color:var(--mut);font-size:12.5px}
+.sentc .spanel{background:#F7F4FC;border:2px solid #E3DAF3;border-radius:12px;padding:10px 12px;margin:4px 0 8px;display:flex;flex-direction:column;gap:6px}
+.sentc .sopt{text-align:left;border:2px solid var(--line);background:#fff;border-radius:10px;padding:8px 10px;color:var(--ink)}
+.sentc .sopt b{display:block;font-size:14px}.sentc .sopt small{display:block;color:var(--mut);font-size:12.5px}
+.sentc .sopt.on{border-color:var(--pur);background:#EFEAF8}
+.sentc .ropt.on{border-color:var(--pur);background:#EFEAF8;color:var(--pur)}
+.sentc .lb{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px}
 .chip.fut{background:#F6F2FC;color:#8E7BB5;font-weight:700}
 .rap{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:#fde8ea;flex:none}
 .sheetbg{position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
@@ -339,6 +348,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
       <div id="viewRegister">
         <div class="tools" id="tools"></div>
         <div class="rooms" id="rooms"></div>
+        <div id="sentWrap"></div>
         <div class="sumstrip" id="sum"></div>
         <div class="weeks" id="weeks"></div>
         <div class="sched hidden" id="schedWrap">
@@ -613,6 +623,118 @@ function statusOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w"
 // Director, Student and Senior Faculty can.
 function needsFaculty(cid, n) { return n === 2 && !S.full && statusOf(cid, 1) === "absent"; }
 function w1AbsentOpen(cid, n) { return n === 2 && statusOf(cid, 1) === "absent" && !statusOf(cid, 2); }
+// ── Sent to RMD faculty (v11, 2026-10-15) ───────────────────────────────────
+// Saved inside the existing register doc (w1 / w2 sub-fields), so no rules change is needed.
+// "Move to a new course" is a flag: faculty cannot change a candidate's course, a Director does that.
+function outcomeOf(cid) { const r = S.reg[cid]; return r && r.w2 && r.w2.outcome ? r.w2.outcome : null; }
+const SENT_OUTS = [["pres", "Present last week as well", "Corrects week 1 and marks tonight"], ["realloc", "Absent last week: move to a new course", "Cannot sit this assessment. A Director moves them"], ["home", "Not able to stay tonight", "Marks them absent tonight"], ["dir", "Refer to a Director", "For anything else"]];
+const SENT_LABEL = { pres: "Present last week as well", realloc: "To move to a new course", home: "Not able to stay tonight", dir: "Referred to a Director" };
+const PRES_WHY = ["Register mistake", "Was there, not marked", "Other"], W1_WHY = ["Unwell", "Authorised by the university", "No reason given", "Other"], LATE_WHY = ["Transport", "Clinical or work", "Unwell", "Other"];
+const SENT = { cid: null, type: null, why: null, tonight: null };
+function sChips(attr, list, cur) { return list.map(o => `<button type="button" class="ropt${cur === o ? " on" : ""}" ${attr} data-v="${esc(o)}">${esc(o)}</button>`).join(""); }
+function lastWeekChip(c) {
+  const e = entryOf(c.id, 1), st = e ? e.status : null;
+  const cls = st === "here" ? "here" : st === "late" ? "late" : st === "absent" ? "abs" : "none";
+  const txt = st === "here" ? "Here" : st === "late" ? "Late" + (e.time ? " " + e.time : "") : st === "absent" ? "Absent" : "not marked";
+  return `<span class="lw chip ${cls}">Last week: ${esc(txt)}${e && e.corrected ? " (corrected)" : ""}</span>`;
+}
+function renderSent() {
+  const el = $("sentWrap"); if (!el) return;
+  if (!el._bound) { el._bound = true; el.addEventListener("click", onSentClick); }
+  const dates = S.full && S.course ? weekDates(S.course) : null;
+  if (!dates) { el.innerHTML = ""; return; }
+  const can = canEditWeek(2);
+  const open = S.cands.filter(c => w1AbsentOpen(c.id, 2) && !outcomeOf(c.id));
+  const done = S.cands.filter(c => outcomeOf(c.id));
+  const realloc = done.filter(c => outcomeOf(c.id).type === "realloc");
+  const lateNo = [];
+  S.cands.forEach(c => [1, 2].forEach(n => { const e = entryOf(c.id, n); if (e && e.status === "late" && !e.lateReason) lateNo.push({ c, n }); }));
+  if (!open.length && !done.length && !lateNo.length) { el.innerHTML = ""; return; }
+  let h = '<div class="card sentc"><h3>Sent to you</h3>';
+  if (open.length) {
+    h += `<div class="hint" style="margin:0 0 8px">${open.length} absent in week 1 ${open.length === 1 ? "is" : "are"} waiting. ${can ? "Pick what happens for each." : "This opens on the week 2 date (" + nice(dates[1]) + ")."}</div>`;
+    h += open.map(c => {
+      const on = SENT.cid === c.id;
+      let r = `<div class="srow"><div class="snm"><b>${esc(c.name || "(no name)")}</b> <small>${esc(c.room || "no room")} · ${esc(c.degree || "")}</small></div>${can ? `<button type="button" class="btn sm" data-s="pick" data-id="${esc(c.id)}">${on ? "Close" : "Choose"}</button>` : ""}</div>`;
+      if (on && can) {
+        r += '<div class="spanel">' + SENT_OUTS.map(o => `<button type="button" class="sopt${SENT.type === o[0] ? " on" : ""}" data-s="out" data-v="${o[0]}"><b>${esc(o[1])}</b><small>${esc(o[2])}</small></button>`).join("");
+        let ok = false;
+        if (SENT.type === "pres") { r += '<div class="lb">Why was week 1 wrong</div>' + sChips('data-s="why"', PRES_WHY, SENT.why) + '<div class="lb">Tonight</div>' + sChips('data-s="tonight"', ["Here", "Late"], SENT.tonight); ok = !!(SENT.why && SENT.tonight); }
+        else if (SENT.type === "realloc" || SENT.type === "home") { r += '<div class="lb">Week 1 absence reason</div>' + sChips('data-s="why"', W1_WHY, SENT.why); ok = !!SENT.why; }
+        else if (SENT.type === "dir") ok = true;
+        if (SENT.type) r += `<div style="margin-top:10px"><button type="button" class="btn pri" data-s="save"${ok ? "" : " disabled"}>Save and log</button> <button type="button" class="btn" data-s="cancel">Cancel</button></div>`;
+        r += "</div>";
+      }
+      return r;
+    }).join("");
+  }
+  if (done.length) {
+    h += '<div class="lb" style="margin-top:12px">Dealt with</div>' + done.map(c => {
+      const o = outcomeOf(c.id);
+      return `<div class="srow"><div class="snm"><b>${esc(c.name || "")}</b> <small>${esc(SENT_LABEL[o.type] || o.type)}${o.why ? " · " + esc(o.why) : ""} · ${esc(o.byName || "")}${o.at ? " " + esc(String(o.at).replace("T", " ").slice(11, 16)) : ""}</small></div><button type="button" class="btn sm" data-s="undo" data-id="${esc(c.id)}">Undo</button></div>`;
+    }).join("");
+  }
+  if (realloc.length) {
+    h += `<div class="lb" style="margin-top:12px">To move to a new course (${realloc.length})</div><div class="hint" style="margin:0 0 6px">A Director moves them in Course Allocation, then emails them. ${realloc.map(c => esc(c.name)).join(", ")}</div><button type="button" class="btn sm" data-s="copy">Copy ${realloc.length} address${realloc.length === 1 ? "" : "es"}</button>`;
+  }
+  if (lateNo.length) {
+    h += `<div class="lb" style="margin-top:12px">Late, no reason recorded (${lateNo.length})</div>` + lateNo.map(x => `<div class="srow" style="display:block"><div class="snm"><b>${esc(x.c.name || "")}</b> <small>week ${x.n} · ${esc(x.c.room || "")}</small></div><div style="margin:4px 0 8px">${sChips('data-s="late" data-id="' + esc(x.c.id) + '" data-wk="' + x.n + '"', LATE_WHY, null)}</div></div>`).join("");
+  }
+  el.innerHTML = h + "</div>";
+}
+function onSentClick(e) {
+  const b = e.target.closest("[data-s]"); if (!b) return;
+  const a = b.dataset.s, v = b.dataset.v;
+  if (a === "pick") { SENT.cid = SENT.cid === b.dataset.id ? null : b.dataset.id; SENT.type = SENT.why = SENT.tonight = null; renderSent(); }
+  else if (a === "out") { SENT.type = v; SENT.why = SENT.tonight = null; renderSent(); }
+  else if (a === "why") { SENT.why = v; renderSent(); }
+  else if (a === "tonight") { SENT.tonight = v; renderSent(); }
+  else if (a === "cancel") { SENT.cid = SENT.type = SENT.why = SENT.tonight = null; renderSent(); }
+  else if (a === "save") saveOutcome();
+  else if (a === "undo") undoOutcome(b.dataset.id);
+  else if (a === "copy") copyReallocAddresses();
+  else if (a === "late") saveLateReason(b.dataset.id, +b.dataset.wk, v);
+}
+async function saveOutcome() {
+  const c = candById(SENT.cid); if (!c || !SENT.type || !canEditWeek(2)) return;
+  const t = SENT.type, hm = londonNow().hm, at = new Date().toISOString();
+  const who = { by: S.user.uid, byName: S.myName, at };
+  const oc = Object.assign({ type: t, why: SENT.why || "" }, who);
+  const w1 = Object.assign({}, entryOf(c.id, 1) || {}), w2 = Object.assign({}, entryOf(c.id, 2) || {});
+  const ts = () => firebase.firestore.FieldValue.serverTimestamp();
+  let nw1 = null, nw2 = null;
+  if (t === "pres") { if (!SENT.why || !SENT.tonight) return; nw1 = Object.assign(w1, { status: "here", corrected: Object.assign({ from: "absent", reason: SENT.why }, who) }); nw2 = { status: SENT.tonight === "Late" ? "late" : "here", time: hm, by: S.user.uid, byName: S.myName, at: ts(), outcome: oc }; }
+  else if (t === "realloc") { if (!SENT.why) return; nw1 = Object.assign(w1, { absentReason: SENT.why }); nw2 = Object.assign(w2, { outcome: oc }); }
+  else if (t === "home") { if (!SENT.why) return; nw1 = Object.assign(w1, { absentReason: SENT.why }); nw2 = { status: "absent", time: hm, by: S.user.uid, byName: S.myName, at: ts(), outcome: oc }; }
+  else if (t === "dir") { nw2 = Object.assign(w2, { outcome: oc }); }
+  const payload = { course: S.course, room: c.room || null, updatedAt: ts(), w2: nw2 };
+  if (nw1) payload.w1 = nw1;
+  try { await db.collection("stage1_register").doc(c.id).set(payload, { merge: true }); toast(c.name + ": " + SENT_LABEL[t].toLowerCase() + " saved."); SENT.cid = SENT.type = SENT.why = SENT.tonight = null; }
+  catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+async function undoOutcome(cid) {
+  const c = candById(cid), o = outcomeOf(cid); if (!c || !o || !canEditWeek(2)) return;
+  const ts = () => firebase.firestore.FieldValue.serverTimestamp();
+  const payload = { course: S.course, room: c.room || null, updatedAt: ts(), w2: firebase.firestore.FieldValue.delete() };
+  if (o.type === "pres") payload.w1 = Object.assign({}, entryOf(cid, 1) || {}, { status: "absent", corrected: null });
+  else if (o.type === "realloc" || o.type === "home") payload.w1 = Object.assign({}, entryOf(cid, 1) || {}, { absentReason: null });
+  try { await db.collection("stage1_register").doc(cid).set(payload, { merge: true }); toast("Undone for " + c.name + "."); }
+  catch (err) { toast("Not saved: " + err.message, true); }
+}
+async function saveLateReason(cid, n, why) {
+  const c = candById(cid), e = entryOf(cid, n); if (!c || !e) return;
+  const payload = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  payload["w" + n] = Object.assign({}, e, { lateReason: why, lateBy: S.myName, lateAt: new Date().toISOString() });
+  try { await db.collection("stage1_register").doc(cid).set(payload, { merge: true }); toast("Late reason saved for " + c.name + "."); }
+  catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+function copyReallocAddresses() {
+  const list = S.cands.filter(c => outcomeOf(c.id) && outcomeOf(c.id).type === "realloc" && c.email).map(c => c.email);
+  if (!list.length) { toast("No email addresses on those records.", true); return; }
+  const txt = list.join("; ");
+  const done = () => toast("Copied " + list.length + " address" + (list.length === 1 ? "" : "es") + ".");
+  try { navigator.clipboard.writeText(txt).then(done, () => { window.prompt("Copy these addresses:", txt); }); } catch (x) { window.prompt("Copy these addresses:", txt); }
+}
 function entryOf(cid, n) { const r = S.reg[cid]; return r && r["w" + n] ? r["w" + n] : null; }
 function counts(list, n) {
   let here = 0, late = 0, absent = 0;
@@ -642,6 +764,7 @@ function render() {
   if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
   if (!dates) msgs += `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
   $("msgs").innerHTML = msgs;
+  renderSent();
 
   // tools
   let tools = "";
@@ -749,7 +872,7 @@ function render() {
     return `<div class="cell" data-wk="Week ${n}">${chip}</div>`;
   };
   $("rows").innerHTML = list.map(c =>
-    `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${S.full ? attBadge(attemptOf(c)) : ""}</b><small>${esc(c.degree || "")}</small>${w1AbsentOpen(c.id, 2) && canEditWeek(2) ? `<span class="fac">${S.full ? "Absent in week 1. Check with them, then mark." : "Absent in week 1. Send to RMD faculty."}</span>` : ""}</div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
+    `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${S.full ? attBadge(attemptOf(c)) : ""}</b><small>${esc(c.degree || "")}</small>${todayWk === 2 ? lastWeekChip(c) : ""}${w1AbsentOpen(c.id, 2) && canEditWeek(2) ? (outcomeOf(c.id) ? `<span class="fac">${esc(SENT_LABEL[outcomeOf(c.id).type] || "")}</span>` : `<span class="fac">${S.full ? "Absent in week 1. Check with them, then mark." : "Absent in week 1. Send to RMD faculty."}</span>`) : ""}</div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
   ).join("") || '<div class="row"><div class="nm">No candidates in this room.</div></div>';
   $("schedWrap").classList.remove("hidden");
   $("rows").querySelectorAll("[data-set]").forEach(b => b.onclick = () => onTap(b.dataset.id, +b.dataset.n, b.dataset.set));
