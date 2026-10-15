@@ -846,6 +846,34 @@ function attemptNo(c) {
   return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1;
 }
 
+// ── Old-course records (2026-10-16, Jon) ────────────────────────────────────
+// Register marks (stage1_register/{id}) and "not there" flags (stage1_assessments/{id}) are keyed by the
+// candidate, not by the course. If someone is moved or taken off a course, the old marks would otherwise
+// carry over (for example an old "absent" showing in week 1 or 2 of the new course). So when the course
+// changes we clear the old register marks, clear an assessment record that has no results in it (a result is never
+// deleted), and keep a short summary on the candidate as previousCourses so the reason for the move is not lost.
+async function clearOldCourseRecords(id, oldCourse) {
+  const out = { course: oldCourse, at: now() };
+  const regRef = db.collection("stage1_register").doc(id);
+  const rs = await regRef.get();
+  if (rs.exists && rs.data().course === oldCourse) {
+    const r = rs.data();
+    out.w1 = (r.w1 && r.w1.status) || null;
+    out.w2 = (r.w2 && r.w2.status) || null;
+    out.w1reason = (r.w1 && r.w1.absentReason) || null;
+    out.outcome = (r.w2 && r.w2.outcome && r.w2.outcome.type) || null;
+    await regRef.delete();
+  }
+  const asRef = db.collection("stage1_assessments").doc(id);
+  const as = await asRef.get();
+  if (as.exists && as.data().course === oldCourse) {
+    const a = as.data();
+    if (a.notThere && a.notThere.flag) out.notThere = true;
+    if (Object.keys(a.attempts || {}).length) out.keptAssessment = true; else await asRef.delete();
+  }
+  return (out.w1 || out.w2 || out.outcome || out.notThere || out.keptAssessment) ? out : null;
+}
+
 async function applyNow() {
   const c = sel && byId(sel.id), pl = plan();
   if (!c || !pl || !pl.ok) return;
@@ -868,7 +896,14 @@ async function applyNow() {
   }
   $("apply").disabled = true;
   try {
+    const oldCourse = c.course;
     await ref.update(upd);
+    if ((sel.mode === "course" || sel.mode === "off") && oldCourse && oldCourse !== upd.course) {
+      try {
+        const moved = await clearOldCourseRecords(c.id, oldCourse);
+        if (moved) { await ref.update({ previousCourses: firebase.firestore.FieldValue.arrayUnion(moved) }); addLog(`${c.name}: old register marks from ${oldCourse} cleared and summarised on the record.`); }
+      } catch (e2) { addLog(`${c.name}: moved, but the old ${oldCourse} register marks could not be cleared (${e2.message}). Tell Jon.`); }
+    }
     Object.assign(c, upd);
     touched.add(c.id);
     addLog(logText);

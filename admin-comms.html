@@ -215,9 +215,31 @@ async function loadGroups() {
     ...Object.keys(courseDatesConfig),
     ...stage1.filter(c => c.course).map(c => c.course),
   ])).sort(courseSort);
+  // 2026-10-16 (Jon): groups for people who were absent. Register marks are read once, then each course gets
+  //  - "Absent in a teaching week, not yet moved": still on this course with an absent mark (first sits, no Director override).
+  //    Move them in Course Allocation first (that page clears their old marks and keeps a summary on the person).
+  //  - "Moved here after missing teaching" / "Moved here after missing the assessment night": now on this course, with the
+  //    summary of the move on the record (previousCourses) and not yet emailed from here (reallocEmailedCourse).
+  let regByCand = {};
+  try { const rsnap = await db.collection("stage1_register").get(); rsnap.docs.forEach(d => { regByCand[d.id] = d.data(); }); } catch (err) { regByCand = {}; }
+  const attemptNo = c => (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1) ? Math.floor(c.assessmentAttempt) : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1);
+  const wkSt = (r, n) => (r && r["w" + n] && r["w" + n].status) || null;
   courses.forEach(course => {
     const people = stage1.filter(c => c.course === course && c.email).map(c => ({ name: c.name, email: c.email }));
     groups.push({ id: "stage1_" + course, label: `${course} (${people.length})`, people, category: "stage1", courseName: course });
+    const here = stage1.filter(c => c.course === course && c.email);
+    const mk = (id, label, list, extra) => {
+      const ppl = list.map(c => ({ name: c.name, email: c.email }));
+      const ids = {}; list.forEach(c => { ids[String(c.email).toLowerCase()] = c.id; });
+      groups.push(Object.assign({ id: id + course, label: `${label} (${ppl.length})`, people: ppl, ids, category: "sit", courseName: course, sitFor: course }, extra || {}));
+    };
+    mk("absent_", "Absent in a teaching week, not yet moved", here.filter(c => attemptNo(c) === 1 && !c.eligibilityOverride && regByCand[c.id] && regByCand[c.id].course === course && (wkSt(regByCand[c.id], 1) === "absent" || wkSt(regByCand[c.id], 2) === "absent")));
+    const lastMove = c => Array.isArray(c.previousCourses) && c.previousCourses.length ? c.previousCourses[c.previousCourses.length - 1] : null;
+    const teach = c => { const m = lastMove(c); return !!m && (m.w1 === "absent" || m.w2 === "absent"); };
+    const night = c => { const m = lastMove(c); return !!m && m.notThere === true && !teach(c); };
+    const open = c => c.reallocEmailedCourse !== course;
+    mk("movedteach_", "Moved here after missing teaching", here.filter(c => teach(c) && open(c)), { stamp: true });
+    mk("movednight_", "Moved here after missing the assessment night", here.filter(c => night(c) && open(c)), { stamp: true });
   });
 
   const rosterSnap = await db.collection(COLLECTIONS.mouRoster).get();
@@ -284,7 +306,8 @@ function renderGroupList() {
   // types inside), RMD staff groups, Instructor weekend.
   let s1 = "";
   courseGroups.forEach(g => {
-    s1 += `<details class="group-subcat"><summary>${esc(g.courseName)}</summary>${groupRowHtml(g)}${templateActionsHtml(g)}</details>`;
+    const sit = groups.filter(x => x.category === "sit" && x.sitFor === g.courseName).map(groupRowHtml).join("");
+    s1 += `<details class="group-subcat"><summary>${esc(g.courseName)}</summary>${groupRowHtml(g)}${sit}${templateActionsHtml(g)}</details>`;
   });
   let html = categorySection("\uD83D\uDCCB Stage 1 (Monday evening) courses", s1, true);
   html += categorySection("\uD83D\uDC65 RMD staff groups", staff.map(groupRowHtml).join(""), true);
@@ -326,7 +349,9 @@ function templateActionsHtml(g) {
     ? `<button type="button" class="tmpl-btn" onclick="applyCourseTemplate('${t.key}','${esc(g.id)}','${esc(g.courseName)}')">${t.label}</button>`
     : `<button type="button" class="tmpl-btn" disabled title="Not built yet">${t.label} (soon)</button>`
   ).join("");
-  return `<div class="template-actions">${buttons}</div>`;
+  const sitBtn = (key, label, gid) => { const sg = groups.find(x => x.id === gid + g.courseName); const n = sg ? sg.people.length : 0;
+    return `<button type="button" class="tmpl-btn"${n ? "" : " disabled"} onclick="applyCourseTemplate('${key}','${esc(gid + g.courseName)}','${esc(g.courseName)}')" title="${n ? "" : "Nobody in this group yet"}">${label} (${n})</button>`; };
+  return `<div class="template-actions">${buttons}${sitBtn("newcourse_teach", "\uD83D\uDD01 New course after missing teaching", "movedteach_")}${sitBtn("newcourse_night", "\uD83D\uDD01 New course after missing the night", "movednight_")}</div>`;
 }
 
 // Ticks this course's recipient checkbox and fills in the message —
@@ -383,6 +408,35 @@ const COURSE_EMAIL_BUILDERS = {
     ].join("\n\n"),
   }),
 };
+
+// 2026-10-16 (Jon): someone who missed a teaching week, or the assessment night itself, cannot sit on that course and
+// is moved to an entire new course with the assessment in its week 3. One email per situation, both built from the same
+// shared opening, dates, logistics and sign-off. No health detail and no reason is mentioned. The course name and dates
+// are those of the course they are NOW on (the ticked group), written in when the template is loaded.
+function newCourseEmail(why, courseName, dates, accessCode) {
+  const lead = why === "night"
+    ? `Our records show you were not able to attend your assessment evening. We cannot offer the assessment on its own on another night, so you have been moved to a complete new course: ${courseName}.`
+    : `Our records show you were not able to attend all of your teaching evenings on your earlier BLS course. To sit the BLS assessment you need to have attended both teaching evenings, so you could not be entered for that assessment. You have been moved to a complete new course: ${courseName}.`;
+  return {
+    subject: `Your BLS Course — moved to ${courseName}`,
+    body: [
+      emailOpening(),
+      lead,
+      `You will attend all three evenings, and your assessment will be on the third.`,
+      `Course Dates
+- ${dates.session1}
+- ${dates.session2}
+- ${dates.exam} = Exam Night`,
+      `All teaching will be in the evening and will be held on-campus, in the Medical School building. Please arrive at 18:15 in the ATH (lecture theatre on the top floor) to receive your introductory lecture on session 1 and 2. You will then go on for small group teaching. The session will end at 21:00.`,
+      `Instructions for your examination night (session 3) will be sent in the week before.`,
+      `Your room will be confirmed before you attend, and definitely by the time the course starts on the first Monday. You can check it any time at ${CANDIDATE_RESOURCES_URL} — the access code is ${accessCode}, then "Find your course and room" with your degree, full name and email address.`,
+      `If our records are wrong (for example you did attend), or you cannot make these dates, please email us (${BLS_ADMIN_EMAIL}) as soon as possible and we will put it right.`,
+      emailSignoff(),
+    ].join("\n\n"),
+  };
+}
+COURSE_EMAIL_BUILDERS.newcourse_teach = (courseName, dates, accessCode) => newCourseEmail("teach", courseName, dates, accessCode);
+COURSE_EMAIL_BUILDERS.newcourse_night = (courseName, dates, accessCode) => newCourseEmail("night", courseName, dates, accessCode);
 
 function applyCourseTemplate(kind, groupId, courseName) {
   const builder = COURSE_EMAIL_BUILDERS[kind];
@@ -530,6 +584,25 @@ async function sendNow() {
       queuedLine.className = "log-line ok";
       queuedLine.textContent = `⏳ ${queued} more queued — Resend's free plan caps sending at a safe daily batch, so these will go out automatically over the next few days, no further action needed.`;
       log.appendChild(queuedLine);
+    }
+    // 2026-10-16: people emailed from a "Moved here after ..." group are stamped so they drop out of that group.
+    // Only a Director can write candidate records; if that is refused the email has still gone, and the line says so.
+    const stampGroups = selectedNow.filter(g => g.stamp && g.ids);
+    if (stampGroups.length) {
+      const failedSet = new Set((failedEmails || []).map(e => String(e).toLowerCase()));
+      let stamped = 0, stampErr = "";
+      for (const g of stampGroups) {
+        for (const em of g.people.map(p => String(p.email).toLowerCase())) {
+          if (failedSet.has(em) || !g.ids[em]) continue;
+          try { await db.collection(COLLECTIONS.stage1Candidates).doc(g.ids[em]).update({ reallocEmailedCourse: g.courseName, reallocEmailedAt: new Date().toISOString() }); stamped++; }
+          catch (err) { stampErr = err.message || String(err); }
+        }
+      }
+      const sl = document.createElement("div");
+      sl.className = "log-line " + (stampErr ? "err" : "ok");
+      sl.textContent = stampErr ? `⚠ The email went, but ${stampErr}. They will still appear in the group.` : `✅ ${stamped} marked as emailed, so they drop out of the group.`;
+      log.appendChild(sl);
+      try { await loadGroups(); } catch (err) { /* list refreshes on reload */ }
     }
     if (failed) {
       const errLine = document.createElement("div");

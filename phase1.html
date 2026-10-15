@@ -103,6 +103,7 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .chip.late{background:var(--warnbg);color:var(--warn)}
 .chip.abs{background:var(--badbg);color:var(--bad)}
 .chip.none{background:#EEF1F6;color:var(--mut);font-weight:700}
+#elOv .lb{font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.4px;margin:6px 0 4px}
 .row .nm .lw{display:inline-block;margin:3px 0 0 6px;font-size:11.5px;padding:3px 8px}
 .sentc .srow{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid #F0F3F8;padding:8px 0}
 .sentc .snm small{color:var(--mut);font-size:12.5px}
@@ -1518,6 +1519,10 @@ function canAssessCandidate(c, att) {
   const mine = S.user.uid;
   const cl = nres(c.id).claim;
   if (cl && cl.uid && cl.uid !== mine) return { ok: false, why: (cl.name || "Another assessor") + " has taken " + firstNameOf(c) + " on." };
+  if (att === 1 && !recordedAt(c.id, 1)) {
+    const e = eligOf(c);
+    if (e && e.state === "absent" && !e.ov) return { ok: false, elig: true, why: "Not eligible tonight: " + e.why.join(" and ").toLowerCase() + ". The rule is present in both teaching weeks. " + (S.isDirector ? "As a Director you can override below." : "Only a Director can override this.") };
+  }
   if (att === 2) {
     const p = nattempts(c.id)["1"];
     if (p && p.assessorUid && p.assessorUid === mine) return { ok: false, why: "You assessed " + firstNameOf(c) + " at attempt 1. A different assessor must do the retest." };
@@ -1525,6 +1530,37 @@ function canAssessCandidate(c, att) {
   if (att === 2 && !(S.sen || S.stu || amNamed())) return { ok: false, why: "The second sit is assessed by Student Faculty or Senior Faculty (or a named extra assessor). You are not on those lists." };
   if (att >= 3 && !(S.sen || amNamed())) return { ok: false, why: "Attempt " + att + " is assessed by Senior Faculty or the extra named assessors. You are on neither list." };
   return { ok: true };
+}
+
+// ── Eligibility on the night (v12, 2026-10-16) ──────────────────────────────
+// Rule (Jon): a first sit needs "here" or "late" in BOTH teaching weeks. Absent in either week = not eligible
+// and the result form is locked unless a Director overrides. A week with no register mark is only a warning
+// (a gap in the data is not proof of absence). Only attempt 1 is checked: the third and fourth sit rule is not agreed yet.
+// The assessment night function (getAssessmentNight) sends c.elig = { state: "ok"|"absent"|"unmarked", why: [], ov: {...}|null }.
+// If the function is not deployed, full-access users get the same answer worked out here from the register.
+const ELIG_WHY = ["Authorised by a Director", "Register mistake", "Clinical or work", "Unwell", "Other"];
+const ELIG_HOW = ["In person tonight", "Replied by email", "Other"];
+function eligLocal(c) {
+  if (!S.full) return null;
+  const cc = candById(c.id); if (!cc || attemptOf(cc) !== 1) return null;
+  if (!Object.keys(S.reg).length) return null;
+  const ab = [], um = [];
+  [1, 2].forEach(n => { const s = statusOf(c.id, n); if (s === "absent") ab.push("Absent in week " + n); else if (s !== "here" && s !== "late") um.push("No register mark for week " + n); });
+  const ov = cc.eligibilityOverride && cc.eligibilityOverride.by ? cc.eligibilityOverride : null;
+  return { state: ab.length ? "absent" : (um.length ? "unmarked" : "ok"), why: ab.concat(um), ov };
+}
+function eligOf(c) { if (c.elig) return c.elig; if (N.usingFallback) return eligLocal(c); return null; }
+function eligCounts() {
+  let bad = 0, ovr = 0, gap = 0;
+  N.cands.forEach(c => { if (isDoneN(c) || c.absent || effAttempt(c) !== 1) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
+  return { bad, ovr, gap };
+}
+async function saveEligOverride(c, d) {
+  const rec = Object.assign({ course: S.course, by: S.user.uid, byName: S.myName, at: new Date().toISOString() }, d);
+  await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).set({ eligibilityOverride: rec }, { merge: true });
+  const cc = candById(c.id); if (cc) cc.eligibilityOverride = rec;
+  const e = eligOf(c) || { state: "absent", why: [] };
+  c.elig = Object.assign({}, e, { ov: rec });
 }
 
 // ── Loading ─────────────────────────────────────────────────────────────────
@@ -1611,6 +1647,10 @@ function overridesCard() {
 function nightBanner() {
   let h = "";
   if (S.full) { const ev = overrideEvents(); if (ev.length) { const as = new Set(ev.map(e => e.assessor)).size; h += `<div class="msg warn"><b>${ev.length} pass${ev.length === 1 ? "" : "es"} with a red step</b> from ${as} assessor${as === 1 ? "" : "s"} on ${esc(S.course || "this course")}. Details are on the Retest pool page.</div>`; } }
+  { const q = eligCounts();
+    if (q.bad) h += `<div class="msg err"><b>${q.bad} candidate${q.bad === 1 ? " is" : "s are"} not eligible tonight</b> (absent in a teaching week). Their result form is locked. ${S.isDirector ? "A Director can override from the candidate's form." : "Ask a Director."}</div>`;
+    if (S.full && q.ovr) h += `<div class="msg warn"><b>${q.ovr} Director override${q.ovr === 1 ? "" : "s"}</b> for someone who was absent in a teaching week. The reason and how they agreed are saved on the candidate.</div>`;
+    if (S.full && q.gap) h += `<div class="msg warn">${q.gap} candidate${q.gap === 1 ? " has" : "s have"} a missing register mark in week 1 or 2 ("Register gap" chip). Not blocked, but worth a look.</div>`; }
   if (N.err) h += `<div class="msg err">${esc(N.err)}</div>`;
   if (N.resErr) h += `<div class="msg err">${esc(N.resErr)}</div>`;
   if (N.usingFallback) h += `<div class="msg warn">The assessment night function is not deployed yet, so this page is using the full candidate list instead. Everything still works for you.</div>`;
@@ -1628,6 +1668,11 @@ function stateChips(c) {
     out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${esc(outcomeShort(o, Number(k)))}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
   });
   if (r.notThere && r.notThere.flag && !isDoneN(c)) out.push('<span class="nchip bad">Not there</span>');
+  if (!isDoneN(c) && effAttempt(c) === 1) {
+    const e = eligOf(c);
+    if (e && e.state === "absent") out.push(e.ov ? '<span class="nchip claim">Director override</span>' : '<span class="nchip bad">Not eligible</span>');
+    else if (e && e.state === "unmarked") out.push('<span class="nchip claim" title="' + esc(e.why.join(", ")) + '">Register gap</span>');
+  }
   if (r.claim && r.claim.name) out.push(`<span class="nchip claim">With ${esc(r.claim.name)}</span>`);
   return out.join("");
 }
@@ -1839,6 +1884,11 @@ function openForm(id) {
     `<div class="hint" style="margin:0 0 4px">Single-rescuer scenario. Assess BLS + AED first, then the recovery position.${att >= 2 ? " This retest includes: " + retestIncludes(req) + "." : ""}</div>` +
     hist +
     (chk.ok ? "" : `<div class="msg err">${esc(chk.why)}</div>`) +
+    (chk.elig && S.isDirector ? `<div class="card" id="elOv" style="margin:8px 0"><h3 style="margin:0 0 4px">Director override</h3><div class="hint" style="margin:0 0 8px">Only override if the candidate has understood that sitting without the missed training raises the risk of not passing. This is saved on their record.</div>` +
+      `<div class="lb">Why allow it</div><div class="rsnc">${ELIG_WHY.map(o => `<button type="button" class="ropt" data-elw="${esc(o)}">${esc(o)}</button>`).join("")}</div>` +
+      `<div class="lb" style="margin-top:8px">How they agreed</div><div class="rsnc">${ELIG_HOW.map(o => `<button type="button" class="ropt" data-elh="${esc(o)}">${esc(o)}</button>`).join("")}</div>` +
+      `<input type="text" id="elPresent" placeholder="Who was present (names)" style="margin-top:8px"><input type="text" id="elNote" placeholder="Short note (optional, no health detail)" style="margin-top:6px">` +
+      `<div style="margin-top:10px"><button type="button" class="btn pri" id="elGo" disabled>Override and allow assessment</button> <span class="hint" id="elMsg"></span></div></div>` : "") +
     (existing ? `<div class="msg warn">Already recorded: ${esc(outcomeLabel(existing.outcome, att))}${existing.assessorName ? " by " + esc(existing.assessorName) : ""}. Saving again will amend it.</div>` : "") +
     cmpHtml + qHtml +
     `<div class="fq"><label>Comments</label><textarea id="fComment" style="min-height:80px;font-family:inherit" ${chk.ok ? "" : "disabled"}>${esc(existing ? existing.comment || "" : "")}</textarea></div>` +
@@ -1849,6 +1899,23 @@ function openForm(id) {
     `<div class="row2"><button type="button" class="btn pri" id="fSave" disabled>Save result</button><button type="button" class="btn" id="fCancel">Cancel</button><span class="hint" id="fMsg"></span></div>` +
     `</div></div>`;
   const close = () => { $("overlay").innerHTML = ""; N.formOpen = false; };
+  { const elp = $("overlay").querySelector("#elOv");
+    if (elp) {
+      const es = { why: null, how: null };
+      const upd = () => {
+        elp.querySelectorAll("[data-elw]").forEach(b => b.classList.toggle("on", es.why === b.dataset.elw));
+        elp.querySelectorAll("[data-elh]").forEach(b => b.classList.toggle("on", es.how === b.dataset.elh));
+        $("elGo").disabled = !(es.why && es.how && $("elPresent").value.trim() && (es.why !== "Other" || $("elNote").value.trim()));
+      };
+      elp.querySelectorAll("[data-elw]").forEach(b => b.onclick = () => { es.why = b.dataset.elw; upd(); });
+      elp.querySelectorAll("[data-elh]").forEach(b => b.onclick = () => { es.how = b.dataset.elh; upd(); });
+      $("elPresent").oninput = upd; $("elNote").oninput = upd;
+      $("elGo").onclick = async () => {
+        $("elGo").disabled = true;
+        try { await saveEligOverride(c, { reason: es.why, how: es.how, present: $("elPresent").value.trim(), note: $("elNote").value.trim() }); close(); renderNight(); openForm(id); toast("Override saved for " + c.name + "."); }
+        catch (err) { $("elGo").disabled = false; $("elMsg").textContent = "Not saved: " + (err.code === "permission-denied" ? "only a Director can do this" : err.message); }
+      };
+    } }
   const refresh = () => {
     req.forEach(k => {
       $("overlay").querySelectorAll('[data-mk="' + k + '"]').forEach(b => b.classList.toggle("on", state.marks[k] === b.dataset.m));

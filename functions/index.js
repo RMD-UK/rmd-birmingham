@@ -278,6 +278,15 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
     db.collection("config").doc("stage1_assessment_rooms").get()
   ]);
 
+  // 2026-10-16 (Jon): eligibility on the night. A first sit needs "here" or "late" in BOTH teaching weeks
+  // (stage1_register w1 and w2). Absent in either = state "absent" (the page locks the result form unless a
+  // Director has overridden, saved as stage1_candidates.eligibilityOverride). A week with no mark = "unmarked"
+  // (warning only). If the course has no register records at all, nothing is checked. Attempt 2 and above are not checked.
+  let regDocs = null;
+  try { const rs = await db.collection("stage1_register").where("course", "==", course).get(); regDocs = {}; rs.forEach(x => { regDocs[x.id] = x.data(); }); } catch (e) { regDocs = null; }
+  const regAny = !!regDocs && Object.keys(regDocs).length > 0;
+  const wkStatus = (r, n) => (r && r["w" + n] && r["w" + n].status) || null;
+  const cleanStr = (v) => (typeof v === "string" ? v.slice(0, 300) : "");
   const candidates = candSnap.docs.map(d => {
     const c = d.data();
     const attempt = (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1)
@@ -291,13 +300,22 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
       attempt,
       absent: c.assessmentAbsent === true,
       assessmentRoom: c.assessmentRoom || null,
-      assessmentSlot: c.assessmentSlot || null
+      assessmentSlot: c.assessmentSlot || null,
+      ...(regAny && attempt === 1 ? { elig: (() => {
+        const r = regDocs[d.id];
+        const ab = [], um = [];
+        [1, 2].forEach(n => { const s = wkStatus(r, n); if (s === "absent") ab.push("Absent in week " + n); else if (s !== "here" && s !== "late") um.push("No register mark for week " + n); });
+        const o = c.eligibilityOverride;
+        const ov = o && typeof o === "object" && o.by ? { by: cleanStr(o.by), byName: cleanStr(o.byName), reason: cleanStr(o.reason), how: cleanStr(o.how), present: cleanStr(o.present), note: cleanStr(o.note), at: cleanStr(o.at) } : null;
+        return { state: ab.length ? "absent" : (um.length ? "unmarked" : "ok"), why: ab.concat(um), ov };
+      })() } : {})
     };
   });
   const dates = (datesSnap.exists && datesSnap.data().courses) || [];
   const found = dates.find(x => x && x.name === course);
   return {
     course,
+    eligChecked: regAny,
     date: found ? found.date : null,
     candidates,
     rooms: (roomsSnap.exists && roomsSnap.data().rooms) || [],
