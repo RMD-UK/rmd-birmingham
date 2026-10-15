@@ -228,6 +228,13 @@ details.lst .in{padding:0 14px 12px}
 .fqb.out.pass.on{background:var(--ok);border-color:var(--ok);color:#fff}
 .fqb.out.refer.on{background:var(--org);border-color:var(--org);color:#fff}
 .fqb:disabled{opacity:.4}
+.rsn{margin:6px 0 10px;padding:10px 12px;border:2px solid #F3C9C5;background:#FFF6F5;border-radius:10px}
+.rsn .rsnh{font-weight:800;font-size:13px;color:var(--bad);margin-bottom:6px}.rsn .rsnh span{font-weight:600;color:var(--mut)}
+.rsn .rsnc{display:flex;flex-wrap:wrap;gap:6px}
+.ropt{border:2px solid var(--line);background:#fff;color:var(--ink);border-radius:99px;padding:7px 12px;font-weight:700;font-size:13.5px;text-align:left}
+.ropt.on{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
+.ropt:disabled{opacity:.5}
+.rsn input.rsnother{width:100%;margin-top:8px;border:2px solid var(--bad);border-radius:8px;padding:8px 10px;font:inherit}
 .resbox{margin-top:14px;padding-top:10px;border-top:2px solid var(--line)}
 .resbox .rlab{font-weight:800;font-size:13px;color:var(--mut);margin-bottom:6px}
 .cfbar{margin-top:10px;padding:10px 12px;border:2px solid var(--org);background:#FFF4E5;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink)}
@@ -1289,6 +1296,13 @@ const EXC_CRITERIA = [
 ];
 const COMPS = [{ k: "bls", label: "BLS + AED" }, { k: "rec", label: "First aid (recovery position)" }];
 const CODE_NAMES = { "1a": "Chest compressions / BLS", "1b": "Rescue breaths", "1c": "AED", "2a": "Recovery position" };   // same codes as the Google Form's "Reasons for Failure" section
+// Shortlist of "what was wrong", shown under a code when its steps are red (or the part is Not yet). Tick all that apply. "Other" needs a typed comment.
+const REASON_OPTS = {
+  "1a": ["Too shallow", "Too deep", "Too fast", "Too slow", "Hand position wrong", "Incomplete recoil (leaning on the chest)", "Pauses in compressions too long (breaths, pads, AED)", "Compressions not started promptly"],
+  "1b": ["No visible chest rise", "Too forceful or too fast", "Breaths too long", "Airway not opened (head tilt and chin lift)", "Mask seal poor", "Wrong compression to breath ratio"],
+  "1c": ["Pads in the wrong place", "Delay in applying the AED", "Not clear of the patient for analysis", "Not clear of the patient for the shock", "Did not follow the AED prompts", "Compressions not restarted immediately after the shock"],
+  "2a": ["Position unstable (rolls back or forward)", "Airway not open", "Arm or leg placed wrongly", "Rolled roughly or in several movements", "Did not check breathing afterwards", "Did not call 999 or ask for help"]
+};
 const DEFAULT_STEPS = {
   bls: [
     "1a Checked for danger (self, casualty, bystanders)",
@@ -1321,6 +1335,8 @@ const DEFAULT_STEPS = {
   ]
 };
 function stepsFor(k) { const m = N.form && N.form.markSheet; return m && Array.isArray(m[k]) && m[k].length ? m[k] : DEFAULT_STEPS[k]; }
+// What a retest includes, in words: BLS/AED, First aid, or BLS/AED & first aid
+function retestIncludes(keys) { const b = keys.includes("bls"), r = keys.includes("rec"); return b && r ? "BLS/AED & first aid" : b ? "BLS/AED" : r ? "First aid" : ""; }
 function compLabel(k) { return (COMPS.find(x => x.k === k) || {}).label || k; }
 function requiredComps(id, att) {
   const all = COMPS.map(x => x.k);
@@ -1353,7 +1369,7 @@ function outcomeShort(o, att) {
 function compsText(a) {
   if (!a || !a.components) return "";
   return COMPS.filter(x => a.components[x.k]).map(x => {
-    const m = a.components[x.k], rs = a.reasons && a.reasons[x.k] && a.reasons[x.k].length ? " (" + a.reasons[x.k].join("; ") + ")" : "";
+    const m = a.components[x.k], rl = ((a.reasons && a.reasons[x.k]) || []).concat((a.reasonOptions && a.reasonOptions[x.k]) || []).map(r => / Other$/.test(r) ? r + ": " + (((a.reasonOther || {})[r.split(" ")[0]]) || "") : r), rs = rl.length ? " (" + rl.join("; ") + ")" : "";
     const ov = a.overrides && a.overrides[x.k] && a.overrides[x.k].length ? " (passed with red steps: " + a.overrides[x.k].join("; ") + ")" : "";
     return x.label + ": " + (m === "pass" ? "pass" + ov : m === "fail" ? "not yet" + rs : "not retested");
   }).join(". ");
@@ -1368,7 +1384,7 @@ function failCodes(id) {
   const a = nattempts(id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").sort((x, y) => y - x);
   if (!ks.length) return "";
   const set = new Set();
-  COMPS.forEach(x => (((a[ks[0]].reasons || {})[x.k]) || []).forEach(t => { const m = /^(\d[a-z])\b/.exec(t); if (m) set.add(m[1]); }));
+  COMPS.forEach(x => (((a[ks[0]].reasons || {})[x.k]) || []).concat(((a[ks[0]].reasonOptions || {})[x.k]) || []).forEach(t => { const m = /^(\d[a-z])\b/.exec(t); if (m) set.add(m[1]); }));
   return Array.from(set).sort().join(", ");
 }
 
@@ -1581,7 +1597,7 @@ function poolBody(pool) {
   const row = c => {
     const att = effAttempt(c), chk = canAssessCandidate(c, att), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
     const prev = nattempts(c.id)["1"];
-    const needs = att === 2 && prev && prev.components ? "Retest: " + requiredComps(c.id, att).map(compLabel).join(" + ") + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : (att >= 3 ? "Both parts: BLS + AED, then first aid (recovery position)" : "");
+    const needs = att === 2 && prev && prev.components ? "Retest includes: " + retestIncludes(requiredComps(c.id, att)) + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : (att >= 3 ? "Retest includes: BLS/AED & first aid" : "");
     const action = mine ? `<button type="button" class="btn sm pri" data-aopen="${esc(c.id)}">Open form</button><button type="button" class="btn sm" data-release="${esc(c.id)}">Release</button>`
       : cl ? `<span class="nchip claim">With ${esc(cl.name || "an assessor")}</span>`
       : chk.ok ? `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`
@@ -1620,10 +1636,12 @@ function openForm(id) {
   const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
   N.formOpen = true;
   const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
-  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, override: { bls: false, rec: false }, confirm: { bls: false, rec: false }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
+  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, opts: { bls: new Set(), rec: new Set() }, other: {}, override: { bls: false, rec: false }, confirm: { bls: false, rec: false }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
   if (existing && existing.components) {
     req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
     COMPS.forEach(x => ((existing.reasons || {})[x.k] || []).forEach(r => state.reasons[x.k].add(r)));
+    COMPS.forEach(x => ((existing.reasonOptions || {})[x.k] || []).forEach(r => state.opts[x.k].add(r)));
+    Object.assign(state.other, existing.reasonOther || {});
     COMPS.forEach(x => { const ov = (existing.overrides || {})[x.k]; if (ov && ov.length && state.marks[x.k] === "pass") { ov.forEach(r => state.reasons[x.k].add(r)); state.override[x.k] = true; } });
   }
   const cprHtml = `<div class="cpr" id="cpr"><div class="hint" style="margin:0"><b>Compression counter (optional).</b> Tap once for every compression. Keep tapping past 30 if they carry on. When they move to breaths, hold the TAP button down for a moment to end the cycle (the End cycle button does the same). A cycle of 28 to 32 is fine and goes red outside that. Target rate 100 to 120 per minute. It does not change the result by itself.</div>` +
@@ -1633,14 +1651,18 @@ function openForm(id) {
   const cmpHtml = COMPS.map(x => {
     if (!req.includes(x.k)) return `<div class="cmp off"><b>${esc(x.label)}</b> <span class="nchip pass">Passed at attempt 1</span></div>`;
     let lastCode = "";
-    const steps = stepsFor(x.k).map((t, i) => {
+    const rsnPanel = code => `<div class="rsn hidden" data-rsn="${x.k}" data-code="${esc(code)}"><div class="rsnh">What was wrong? <span>${esc(code)} ${esc(CODE_NAMES[code] || "")}. Tick all that apply.</span></div><div class="rsnc">` +
+      (REASON_OPTS[code] || []).concat(["Other"]).map(o => `<button type="button" class="ropt" data-ropt="${x.k}" data-code="${esc(code)}" data-o="${esc(o)}"${chk.ok ? "" : " disabled"}>${esc(o)}</button>`).join("") +
+      `</div><input type="text" class="rsnother hidden" data-other="${esc(code)}" placeholder="Describe what was wrong (needed for Other)"></div>`;
+    let steps = stepsFor(x.k).map((t, i) => {
       const m = /^(\d[a-z])\s+(.*)$/.exec(t), code = m ? m[1] : "";
       let head = "";
-      if (code && code !== lastCode) { head = `<div class="stphead"><b>${esc(code)}</b> ${esc(CODE_NAMES[code] || "")}</div>`; lastCode = code; }
+      if (code && code !== lastCode) { head = (lastCode ? rsnPanel(lastCode) : "") + `<div class="stphead"><b>${esc(code)}</b> ${esc(CODE_NAMES[code] || "")}</div>`; lastCode = code; }
       return head + `<button type="button" class="stp live" data-stp="${x.k}" data-i="${i}"${chk.ok ? "" : " disabled"}><span class="sn">${i + 1}</span>${esc(m ? m[2] : t)}</button>`;
     }).join("");
+    if (lastCode) steps += rsnPanel(lastCode);
     return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b>${x.k === "bls" && chk.ok ? cprHtml : ""}` +
-      `<div class="why2" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Steps start green (done correctly). Tap any step that was missed or done wrongly and it turns red, and the result below switches to Not yet.</div><div class="stps">${steps}</div></div>` +
+      `<div class="why2" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Steps start green (done correctly). Tap any step that was missed or done wrongly and it turns red, the result below switches to Not yet, and a list of reasons appears for you to tick.</div><div class="stps">${steps}</div></div>` +
       `<div class="resbox"><div class="rlab">Result for ${esc(x.label)}</div><div class="fqo">` +
       `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
       `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
@@ -1658,7 +1680,7 @@ function openForm(id) {
   }).join("");
   $("overlay").innerHTML = `<div class="modalbg" id="fbg"><div class="modal" role="dialog" aria-modal="true">` +
     `<h3>${esc(c.name)} ${c.rap ? RAPSVG : ""} ${attBadge(att)}</h3><div class="sub">${esc(S.course)} · ${esc(c.degree || "")}${c.assessmentRoom ? " · " + esc(c.assessmentRoom) + " at " + esc(c.assessmentSlot) : ""} · attempt ${att}</div>` +
-    `<div class="hint" style="margin:0 0 4px">Single-rescuer scenario. Assess BLS + AED first, then the recovery position.${att === 2 && req.length < COMPS.length ? " This is a retest of the part not passed at attempt 1." : ""}</div>` +
+    `<div class="hint" style="margin:0 0 4px">Single-rescuer scenario. Assess BLS + AED first, then the recovery position.${att >= 2 ? " This retest includes: " + retestIncludes(req) + "." : ""}</div>` +
     hist +
     (chk.ok ? "" : `<div class="msg err">${esc(chk.why)}</div>`) +
     (existing ? `<div class="msg warn">Already recorded: ${esc(outcomeLabel(existing.outcome, att))}${existing.assessorName ? " by " + esc(existing.assessorName) : ""}. Saving again will amend it.</div>` : "") +
@@ -1677,6 +1699,14 @@ function openForm(id) {
       const w = $("overlay").querySelector('[data-why="' + k + '"]'); if (w) w.classList.toggle("hidden", state.marks[k] === "skip");
       const cf = $("overlay").querySelector('[data-cf="' + k + '"]'), n = state.reasons[k].size;
       if (cf) { cf.classList.toggle("hidden", !state.confirm[k]); $("overlay").querySelector('[data-cft="' + k + '"]').textContent = "Are you sure? " + n + " step" + (n === 1 ? " is" : "s are") + " marked red for " + compLabel(k) + ". Mark it as Pass anyway?"; }
+      const anyRed = state.reasons[k].size > 0;
+      $("overlay").querySelectorAll('[data-rsn="' + k + '"]').forEach(pn => {
+        const code = pn.dataset.code, hasRed = stepsFor(k).some(t => state.reasons[k].has(t) && (/^(\d[a-z])\s/.exec(t) || [])[1] === code);
+        pn.classList.toggle("hidden", !(state.marks[k] === "fail" && (hasRed || !anyRed)));
+        pn.querySelectorAll("[data-ropt]").forEach(b => b.classList.toggle("on", state.opts[k].has(code + " " + b.dataset.o)));
+        const oi = pn.querySelector("[data-other]"), on = state.opts[k].has(code + " Other");
+        oi.classList.toggle("hidden", !on); if (on && oi.value !== (state.other[code] || "")) oi.value = state.other[code] || "";
+      });
       const ov = $("overlay").querySelector('[data-ovn="' + k + '"]');
       if (ov) { const on = state.override[k] && state.marks[k] === "pass" && n > 0; ov.classList.toggle("hidden", !on); ov.textContent = on ? "Passed with " + n + " red step" + (n === 1 ? "" : "s") + ". The red steps are saved on the record." : ""; }
       $("overlay").querySelectorAll('[data-stp="' + k + '"]').forEach(b => b.classList.toggle("on", state.reasons[k].has(stepsFor(k)[Number(b.dataset.i)])));
@@ -1701,6 +1731,12 @@ function openForm(id) {
     if (m !== "pass") state.override[k] = false;
     state.marks[k] = m; refresh();
   });
+  $("overlay").querySelectorAll("[data-ropt]").forEach(b => b.onclick = () => {
+    const k = b.dataset.ropt, key = b.dataset.code + " " + b.dataset.o;
+    if (state.opts[k].has(key)) state.opts[k].delete(key); else state.opts[k].add(key);
+    refresh();
+  });
+  $("overlay").querySelectorAll("[data-other]").forEach(i => i.oninput = () => { state.other[i.dataset.other] = i.value; });
   $("overlay").querySelectorAll("[data-cfy]").forEach(b => b.onclick = () => { const k = b.dataset.cfy; state.confirm[k] = false; state.override[k] = true; state.marks[k] = "pass"; refresh(); });
   $("overlay").querySelectorAll("[data-cfn]").forEach(b => b.onclick = () => { const k = b.dataset.cfn; state.confirm[k] = false; refresh(); });
   $("overlay").querySelectorAll("[data-stp]").forEach(b => b.onclick = () => {
@@ -1774,18 +1810,22 @@ function openForm(id) {
   $("fSave").onclick = async () => {
     const out = outcomeFor(state.marks, req); if (!out) return;
     const comment = $("fComment").value.trim();
-    for (const k of req) { if (state.marks[k] === "fail" && !state.reasons[k].size && !comment) { $("fMsg").textContent = "Tap at least one reason for " + compLabel(k) + " (or add a comment)."; return; } }
+    for (const k of req) {
+      if (state.marks[k] !== "fail") continue;
+      for (const key of state.opts[k]) { if (/ Other$/.test(key)) { const c = key.split(" ")[0]; if (!(state.other[c] || "").trim()) { $("fMsg").textContent = "Describe what was wrong for " + c + " (you chose Other)."; return; } } }
+    }
+    for (const k of req) { if (state.marks[k] === "fail" && !state.reasons[k].size && !state.opts[k].size && !comment) { $("fMsg").textContent = "Tap at least one red step or reason for " + compLabel(k) + " (or add a comment)."; return; } }
     for (const q of qs) { if (q.required && !(state.answers[q.id] || ($("overlay").querySelector('[data-qt="' + q.id + '"]') || {}).value)) { $("fMsg").textContent = "Please answer: " + q.label; return; } }
     const wantExc = out === "pass" && state.exc;
     if (wantExc && !state.excCrit.size) { $("fMsg").textContent = "Tap at least one reason for Excellent, or switch it off."; return; }
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
     if (state.cpr.cur.length >= 1) cprFinish();
     const cprOut = (state.cpr.cycles.length || (existing && existing.cpr)) ? { cycles: state.cpr.cycles.map(x => ({ n: x.n, seconds: x.seconds, rate: x.rate, short: x.n < 28, over: x.n > 32 })) } : null;
-    const components = {}, reasons = {}, overrides = {};
-    req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); else if (state.marks[k] === "pass" && state.override[k] && state.reasons[k].size) overrides[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
+    const components = {}, reasons = {}, overrides = {}, reasonOptions = {}, reasonOther = {};
+    req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") { reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); if (state.opts[k].size) { reasonOptions[k] = Array.from(state.opts[k]); reasonOptions[k].forEach(key => { if (/ Other$/.test(key)) { const c = key.split(" ")[0]; reasonOther[c] = (state.other[c] || "").trim(); } }); } } else if (state.marks[k] === "pass" && state.override[k] && state.reasons[k].size) overrides[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
     $("fSave").disabled = true;
     try {
-      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, overrides, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [], cpr: cprOut }, !!existing);
+      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, overrides, reasonOptions, reasonOther, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [], cpr: cprOut }, !!existing);
       close();
     } catch (err) {
       $("fSave").disabled = false;
@@ -1797,6 +1837,8 @@ async function saveResult(c, att, outcome, d, amend) {
   const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
   if (amend) entry.amended = true;
   if (d.overrides && Object.keys(d.overrides).length) entry.overrides = d.overrides;
+  if (d.reasonOptions && Object.keys(d.reasonOptions).length) entry.reasonOptions = d.reasonOptions;
+  if (d.reasonOther && Object.keys(d.reasonOther).length) entry.reasonOther = d.reasonOther;
   if (d.cpr) entry.cpr = d.cpr;
   if (d.excellent) { entry.excellent = true; entry.excellentCriteria = d.excellentCriteria || []; }
   await db.collection("stage1_assessments").doc(c.id).set({
@@ -1911,7 +1953,7 @@ function renderRetest() {
   const prow = c => {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
     const hist = Object.keys(nattempts(c.id)).sort((a, b) => a - b).map(k => { const a = nattempts(c.id)[k]; return `Attempt ${esc(k)}: ${esc(outcomeLabel(a.outcome, Number(k)))}${a.assessorName ? " (" + esc(a.assessorName) + ")" : ""}${compsText(a) ? " - " + esc(compsText(a)) : ""}`; }).join(" · ");
-    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest " + requiredComps(c.id, 2).map(compLabel).join(" + ") + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : "") : "Senior Faculty or extra named assessor";
+    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest includes " + retestIncludes(requiredComps(c.id, 2)) + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : "") : "Senior Faculty or extra named assessor";
     return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
       `<small style="flex-basis:100%">${rule}${hist ? " · " + hist : " · no result recorded on the site yet"}</small>` +
       `<span class="pact">${cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : '<span class="nchip bad">Waiting</span>'}` +
