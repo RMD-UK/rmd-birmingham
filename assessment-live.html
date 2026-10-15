@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Assessment Night Live Screen - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{--ink:#1A2233;--mut:#6B7C93;--line:#E3E8EF;--bg:#F5F7FA;--pur:#44247C;--pur2:#2E1856;--purtint:#EFEAF8;--org:#F49001;--font:'Inter','Segoe UI',Arial,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;min-height:100vh}
+button,select{font-family:inherit;font-size:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+.gate{max-width:560px;margin:80px auto;padding:20px;font-weight:600;color:var(--ink)}
+.top{background:var(--pur2);color:#fff;padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.top h1{font-size:18px;font-weight:800;margin-right:auto}
+.top a{color:#D9CFF0;font-size:13px;font-weight:700}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 18px;background:#fff;border-bottom:1px solid var(--line)}
+.bar label{font-weight:700;font-size:13px;color:var(--mut);display:flex;gap:6px;align-items:center}
+.bar select{padding:7px 10px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-size:15px}
+.seg{display:flex;gap:0;border:2px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:#fff;padding:8px 14px;font-weight:700;color:var(--ink)}
+.seg button.on{background:var(--purtint);color:var(--pur)}
+.btn{border:2px solid var(--line);background:#fff;border-radius:10px;padding:8px 14px;font-weight:700;color:var(--ink)}
+.btn.pri{background:var(--pur);border-color:var(--pur);color:#fff}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.msg{background:#FCE8E6;color:#B3261E;border-radius:10px;padding:9px 12px;font-weight:600;margin-bottom:12px}
+.hint{font-size:13px;color:var(--mut);margin-top:8px}
+.screen{background:var(--pur2);color:#fff;border-radius:16px;padding:22px}
+.screen .head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+.screen h2{font-size:22px;font-weight:800}
+.screen .clock{font-size:14px;color:#D9CFF0;font-variant-numeric:tabular-nums}
+.big{display:flex;align-items:baseline;gap:14px;margin:14px 0 6px;flex-wrap:wrap}
+.big .n{font-size:96px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.big .of{font-size:24px;color:#D9CFF0;font-weight:700}
+.sbar{height:22px;border-radius:11px;background:rgba(255,255,255,.15);overflow:hidden;display:flex;margin-bottom:6px}
+.sbar i{display:block;height:100%;transition:width .6s}
+.sbar .p{background:#58C07F}.sbar .r{background:var(--org)}
+.legend{font-size:13px;color:#D9CFF0;margin-bottom:14px;display:flex;gap:14px;flex-wrap:wrap}
+.dotk{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:-1px;margin-right:5px}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.sroom{background:rgba(255,255,255,.1);border-radius:12px;padding:12px;min-height:122px}
+.sroom b{font-size:16px}
+.sroom .v{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums}
+.sroom small{display:block;color:#D9CFF0;font-size:12px}
+.sroom.done{background:rgba(88,192,127,.25)}
+.dots{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;min-height:14px}
+.dots i{display:block;width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 2px rgba(255,255,255,.2)}
+.d-p{background:#58C07F}.d-r{background:var(--org)}.d-n{background:rgba(255,255,255,.28)}.d-a{background:transparent;box-shadow:inset 0 0 0 2px #9AA7B8 !important}
+.dots span{font-size:12px;font-weight:800;color:#FFD9A0}
+.screen.full{position:fixed;inset:0;border-radius:0;z-index:50;overflow:auto;padding:28px}
+.screen.full .big .n{font-size:min(22vw,200px)}
+#exitFull{position:fixed;right:16px;bottom:16px;z-index:60}
+@media(max-width:600px){.big .n{font-size:68px}.big .of{font-size:20px}.sgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.sroom{padding:10px;min-height:0}.sroom .v{font-size:26px}.sroom b{font-size:15px}.dots{gap:4px}.dots i{width:12px;height:12px}.screen{padding:16px}.screen h2{font-size:18px}main{padding:12px}.bar{padding:10px 12px}}
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+
+<div id="app" class="hidden">
+  <div class="top"><h1>Assessment night live screen</h1><a href="phase1.html">Back to Phase 1 hub</a></div>
+  <div class="bar" id="bar">
+    <label>Course <select id="courseSel"></select></label>
+    <button type="button" class="btn pri" id="fullBtn">Full screen</button>
+  </div>
+  <main>
+    <div id="msgs"></div>
+    <div class="screen" id="screen"></div>
+    <div class="hint" id="hint">Counts only, no names. Updates by itself as results are saved. Each dot is one candidate with an assessment slot. Dots are grouped by outcome, not by slot time, so they show how many, not who. The Excellent note is never shown here.</div>
+  </main>
+</div>
+
+<script>
+initFirebase();
+const ROOMS = STAGE1_TEACHING_ROOMS;
+const S = { user: null, courseDates: [], course: null, rooms: [], cands: [], res: {}, unsubs: [], err: "", tick: null, wake: null };
+const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
+const $ = id => document.getElementById(id);
+const esc = v => (v == null ? "" : String(v)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function londonNow() {
+  const p = {};
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, hm: p.hour + ":" + p.minute };
+}
+function addDays(iso, n) { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function nice(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", ""); }
+function assessDate(name) { const c = S.courseDates.find(x => x.name === name); return c ? c.date : null; }
+const nres = id => S.res[id] || {};
+const nattempts = id => nres(id).attempts || {};
+const passedAtKey = id => { const a = nattempts(id); return Object.keys(a).find(k => a[k] && a[k].outcome === "pass") || null; };
+const attemptOf = c => Number.isFinite(c.assessmentAttempt) ? c.assessmentAttempt : (c.firstTimeAssessment === false || c.twoPlusAssessments === true ? 2 : 1);
+const derivedAttempt = id => { const a = nattempts(id)["1"]; return a && a.outcome === "refer" ? 2 : 1; };
+const effAttempt = c => Math.max(attemptOf(c), derivedAttempt(c.id));
+const isAbsent = c => c.assessmentAbsent === true;
+const inPool = c => { if (isAbsent(c) || passedAtKey(c.id)) return false; const e = effAttempt(c); return e >= 2 && !nattempts(c.id)[String(e)]; };
+// One state per candidate with a slot: pass | refer | absent | todo
+function stateOf(c) {
+  if (passedAtKey(c.id)) return "pass";
+  const a = nattempts(c.id), ks = Object.keys(a);
+  if (ks.length) { const last = a[ks.sort((x, y) => x - y)[ks.length - 1]]; return last && last.outcome === "refer" ? "refer" : "todo"; }
+  const nt = nres(c.id).notThere;
+  return nt && nt.flag ? "absent" : "todo";
+}
+function tally(list) {
+  const o = { pass: 0, refer: 0, absent: 0, todo: 0, total: list.length };
+  list.forEach(c => { o[stateOf(c)]++; });
+  return o;
+}
+const pct = (n, t) => t ? Math.round(n * 1000 / t) / 10 : 0;
+
+auth.onAuthStateChanged(async user => {
+  if (!user) { window.location.href = "signin.html"; return; }
+  try {
+    S.user = user;
+    const role = await resolveRole(user.uid, user.email || "");
+    const stu = await isStudentFaculty(user.email || "").catch(() => false);
+    const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+    if (!(role === ROLES.DIRECTOR || stu || sen)) {
+      $("authMsg").textContent = "This screen is for Directors, Student Faculty and Senior Faculty. If you should have access, ask the Course Director.";
+      return;
+    }
+    const cfg = await db.collection("config").doc("stage1_course_dates").get();
+    S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    if (!S.courseDates.length) { $("screen").innerHTML = '<h2>No courses set up yet</h2>'; return; }
+    $("courseSel").innerHTML = S.courseDates.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(nice(c.date))})</option>`).join("");
+    const today = londonNow().date;
+    const first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    $("courseSel").value = first.name;
+    $("courseSel").onchange = () => selectCourse($("courseSel").value);
+    $("fullBtn").onclick = () => setFull(!$("screen").classList.contains("full"));
+    selectCourse(first.name);
+    S.tick = setInterval(render, 30000);          // keeps the clock and the Auto week fresh
+    setInterval(reloadCands, 5 * 60 * 1000);      // picks up added or moved candidates
+  } catch (err) {
+    console.error(err);
+    $("authMsg").textContent = "Could not open this page: " + (err.message || err);
+  }
+});
+
+function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
+async function loadCands(name) {
+  const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
+  S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+}
+async function reloadCands() {
+  if (!S.course) return;
+  try { await loadCands(S.course); render(); } catch (e) {}
+}
+async function selectCourse(name) {
+  detach();
+  S.course = name; S.res = {}; S.cands = []; S.err = "";
+  $("screen").innerHTML = '<h2>Opening ' + esc(name) + '...</h2>';
+  try {
+    const rs = await db.collection("config").doc("stage1_assessment_rooms").get();
+    S.rooms = (rs.exists && Array.isArray(rs.data().rooms) && rs.data().rooms.length) ? rs.data().rooms : DEFAULT_ASSESS_ROOMS;
+  } catch (e) { S.rooms = DEFAULT_ASSESS_ROOMS; }
+  try { await loadCands(name); }
+  catch (err) { S.err = "Could not load the candidates: " + (err.message || err); render(); return; }
+  S.unsubs.push(db.collection("stage1_assessments").where("course", "==", name).onSnapshot(snap => {
+    S.res = {}; snap.forEach(d => { S.res[d.id] = d.data(); });
+    S.err = ""; render();
+  }, err => { S.err = "Could not read the results: " + (err.message || err) + ". If this says permission denied, check you are Student Faculty, Senior Faculty or a Director, and that the latest rules are deployed."; render(); }));
+  render();
+}
+
+function roomOrder(keys) {
+  return keys.slice().sort((a, b) => { const ia = S.rooms.indexOf(a), ib = S.rooms.indexOf(b); if (ia >= 0 && ib >= 0) return ia - ib; if (ia >= 0) return -1; if (ib >= 0) return 1; return a.localeCompare(b, "en", { numeric: true }); });
+}
+function dotsFor(l) {
+  const o = tally(l);
+  return "<i class='d-p'></i>".repeat(o.pass) + "<i class='d-r'></i>".repeat(o.refer) + "<i class='d-a'></i>".repeat(o.absent) + "<i class='d-n'></i>".repeat(o.todo);
+}
+function render() {
+  if (!S.course) return;
+  $("msgs").innerHTML = S.err ? `<div class="msg">${esc(S.err)}</div>` : "";
+  const slotted = S.cands.filter(c => !isAbsent(c) && c.assessmentRoom && c.assessmentSlot);
+  const by = {};
+  slotted.forEach(c => { (by[c.assessmentRoom] = by[c.assessmentRoom] || []).push(c); });
+  const rooms = roomOrder(Object.keys(by));
+  const t = tally(slotted), dealt = t.pass + t.refer + t.absent;
+  const pool = S.cands.filter(inPool);
+  const passedRetest = S.cands.filter(c => { const k = passedAtKey(c.id); return k && Number(k) >= 2; }).length;
+  const d = assessDate(S.course), now = londonNow();
+  const tiles = rooms.map(r => {
+    const l = by[r], x = tally(l), done = x.pass + x.refer + x.absent;
+    return `<div class="sroom ${x.total && done === x.total ? "done" : ""}"><b>${esc(r)}</b><div class="v">${done}/${x.total}</div><small>${x.total && done === x.total ? "Room finished" : (x.total - done) + " to go"}</small><div class="dots">${dotsFor(l)}</div></div>`;
+  }).join("") + `<div class="sroom"><b>Retest pool</b><div class="v">${pool.length}</div><small>waiting${passedRetest ? " &middot; " + passedRetest + " passed a retest" : ""}</small><div class="dots"></div></div>`;
+  $("screen").innerHTML =
+    `<div class="head"><h2>${esc(S.course)} &middot; Assessment night${d ? " &middot; " + esc(nice(d)) : ""}</h2><span class="clock">${esc(now.hm)} &middot; live</span></div>` +
+    `<div class="big"><span class="n">${dealt}</span><span class="of">of ${t.total} dealt with &middot; ${t.pass} passed &middot; ${t.refer} referred${t.absent ? " &middot; " + t.absent + " not there" : ""}</span></div>` +
+    `<div class="sbar"><i class="p" style="width:${pct(t.pass, t.total)}%"></i><i class="r" style="width:${pct(t.refer, t.total)}%"></i></div>` +
+    `<div class="legend"><span><span class="dotk d-p"></span>passed</span><span><span class="dotk d-r"></span>referred</span><span><span class="dotk d-a" style="border:2px solid #9AA7B8"></span>not there</span><span><span class="dotk d-n"></span>still to assess</span></div>` +
+    `<div class="sgrid">${rooms.length ? tiles : '<div class="sroom"><b>Nobody has an assessment slot yet</b><small>Slots are made on the Assessment allocation page.</small></div>' + tiles}</div>`;
+  if ($("screen").classList.contains("full")) ensureExit(true);
+}
+
+function ensureExit(on) {
+  let x = $("exitFull");
+  if (on && !x) { x = document.createElement("button"); x.id = "exitFull"; x.className = "btn"; x.textContent = "Close full screen"; x.onclick = () => setFull(false); document.body.appendChild(x); }
+  if (!on && x) x.remove();
+}
+async function setFull(on) {
+  $("screen").classList.toggle("full", on);
+  $("fullBtn").textContent = on ? "Close full screen" : "Full screen";
+  ensureExit(on);
+  try {
+    if (on) {
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) await document.documentElement.requestFullscreen().catch(() => {});
+      if (navigator.wakeLock) S.wake = await navigator.wakeLock.request("screen").catch(() => null);
+    } else {
+      if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen().catch(() => {});
+      if (S.wake) { S.wake.release().catch(() => {}); S.wake = null; }
+    }
+  } catch (e) {}
+}
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && $("screen").classList.contains("full")) setFull(false); });
+</script>
+</body>
+</html>

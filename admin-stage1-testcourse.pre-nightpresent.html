@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Course - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 40px; color:#1f2540; }
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar a.back { color:rgba(255,255,255,.7); text-decoration:none; font-size:12px; }
+    .wrap { max-width:860px; margin:0 auto; padding:16px 14px; }
+    .card { background:#fff; border:1.5px solid #dde2ed; border-radius:12px; padding:16px; margin-bottom:14px; }
+    h2 { margin:0 0 6px; font-size:16px; color:var(--rmd-navy); }
+    p, li { line-height:1.5; font-size:14px; }
+    p { margin:6px 0; }
+    ul { margin:6px 0; padding-left:20px; }
+    .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+    button.pri { appearance:none; border:none; background:var(--rmd-navy); color:#fff; font-weight:700; font-size:14px; padding:10px 18px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    button.pri:disabled { opacity:.4; cursor:not-allowed; }
+    button.dng { appearance:none; border:1.5px solid #b3261e; background:#fff; color:#b3261e; font-weight:700; font-size:14px; padding:9px 16px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    button.dng:disabled { opacity:.4; cursor:not-allowed; }
+    label.opt { display:flex; gap:8px; align-items:flex-start; font-size:14px; margin:8px 0; cursor:pointer; }
+    label.opt input { margin-top:3px; }
+    .msg { padding:10px 12px; border-radius:9px; font-size:14px; font-weight:600; margin-top:10px; }
+    .msg.ok { background:#e6f4ea; color:#1a6e31; } .msg.warn { background:#fff3cd; color:#7a5200; } .msg.err { background:#fde8ea; color:#b3261e; }
+    .muted { color:#5a6b8c; font-size:13px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+    th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:#5a6b8c; padding:6px 8px; border-bottom:2px solid #e0e4ee; }
+    td { padding:6px 8px; border-bottom:1px solid #eef1f8; vertical-align:top; }
+    .tbl-wrap { overflow-x:auto; }
+    .tag { display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:99px; background:#eef1f8; color:#35456b; }
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+  </style>
+</head>
+<body>
+<div id="authOverlay" class="auth-overlay"><div id="authMsg">Checking access…</div></div>
+
+<div class="top-bar">
+  <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Test Course</div>
+  <a class="back" href="member-menu.html">← Menu</a>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>What this does</h2>
+    <p>Creates a practice course called <b>TEST Course</b> with 15 made-up candidates, plus an earlier course (<b>TEST Earlier</b>) holding the previous attempts of two repeat candidates. Use it to rehearse registers, assessment allocation, the assessment form, the retest pool and the repeat-instructor warning before the real assessment night. Remove it when you have finished.</p>
+    <ul>
+      <li>All test emails end in <code>.test@rmd-test.invalid</code>. They cannot reach a real inbox, and the site does not copy them to the Master Google Sheet.</li>
+      <li>Both test courses are set to capacity 0, so the global allocation never places real candidates on them.</li>
+      <li>Nothing here touches real candidates, courses or sign-ins.</li>
+    </ul>
+    <div id="state" class="muted">Looking for an existing test course…</div>
+  </div>
+
+  <div class="card" id="createCard">
+    <h2>Create the test course</h2>
+    <p>Which evening should today be? The register only lets instructors tick on the evening itself, so pick the one you want to rehearse.</p>
+    <label class="opt"><input type="radio" name="when" value="14"> <span><b>Week 1</b> teaching evening is today (assessment night is in 14 days)</span></label>
+    <label class="opt"><input type="radio" name="when" value="7"> <span><b>Week 2</b> teaching evening is today (assessment night is in 7 days)</span></label>
+    <label class="opt"><input type="radio" name="when" value="0" checked> <span><b>Assessment night</b> is today (weeks 1 and 2 are already in the past)</span></label>
+    <label class="opt"><input type="checkbox" id="putMe" checked> <span>Put me on the teaching team for room CM01, so I can test the instructor view of the register</span></label>
+    <label class="opt"><input type="checkbox" id="preSlot" checked> <span>Pre-fill assessment rooms and time slots for 10 candidates (untick to test the allocation itself)</span></label>
+    <div class="btns"><button class="pri" id="createBtn" type="button" disabled>Create test course</button></div>
+    <div id="createMsg"></div>
+  </div>
+
+  <div class="card" id="removeCard">
+    <h2>Remove the test course</h2>
+    <p>Deletes every test candidate, their assessment results and register entries, and the two test courses from the course dates. Real data is never matched: it only removes records flagged as test records.</p>
+    <div class="btns"><button class="dng" id="removeBtn" type="button" disabled>Remove everything test</button></div>
+    <div id="removeMsg"></div>
+  </div>
+
+  <div class="card" id="clearRegCard">
+    <h2>Clear the test register only</h2>
+    <p>Deletes the register marks (weeks 1 and 2) and the instructor arrival times for the test courses. The test candidates, their assessment results and the courses stay, so you can run the register again. Only the two test courses are touched.</p>
+    <div class="btns"><button class="dng" id="clearRegBtn" type="button">Clear test register entries</button></div>
+    <div id="clearRegMsg"></div>
+  </div>
+
+  <div class="card" id="listCard" style="display:none">
+    <h2>Test candidates</h2>
+    <div class="tbl-wrap"><table id="listTbl"></table></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const $ = id => document.getElementById(id);
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
+
+const TEST_COURSE = "TEST Course";
+const TEST_EARLIER = "TEST Earlier";
+const EMAIL_SUFFIX = ".test@rmd-test.invalid";
+const DEGREES = ["Medicine MBChB", "Nursing BNurs", "Midwifery BSc", "Dentistry BDS", "Pharmacy MPharm", "Physio Y1 MSc", "CEP MSc", "Nursing MSc", "Physio Y2 MSci"];
+const FIRST = ["Ada","Ben","Cara","Dev","Elin","Finn","Gia","Hal","Ivy","Jai","Kit","Lena","Milo","Nia","Otis"];
+const SLOTS = ["18:30", "18:45", "19:00", "19:15"];
+const CHUNK = 400;
+
+let me = null;
+
+function isoPlus(days) {
+  const d = new Date();
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d)
+    .reduce((o, x) => (o[x.type] = x.value, o), {});
+  const t = new Date(Date.UTC(+p.year, +p.month - 1, +p.day + days));
+  return t.toISOString().slice(0, 10);
+}
+
+async function findTest() {
+  const snap = await db.collection(COLLECTIONS.stage1Candidates).where("isTest", "==", true).get();
+  return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+}
+
+async function refresh() {
+  try {
+    const list = await findTest();
+    const has = list.length > 0;
+    $("state").innerHTML = has
+      ? `<b>A test course exists</b> (${list.length} test records). Remove it before creating a new one.`
+      : "No test course exists yet.";
+    $("createBtn").disabled = has;
+    $("removeBtn").disabled = !has;
+    $("listCard").style.display = has ? "" : "none";
+    if (has) {
+      const rows = list.filter(c => c.course === TEST_COURSE).sort((a, b) => (a.room || "").localeCompare(b.room || "") || (a.name || "").localeCompare(b.name || ""));
+      $("listTbl").innerHTML = "<tr><th>Name</th><th>Teaching room</th><th>Assessment</th><th>Notes</th></tr>" + rows.map(c => {
+        const n = [];
+        if (c.rap) n.push('<span class="tag">RAP</span>');
+        if (c.linkedCandidateId) n.push('<span class="tag">repeat (linked)</span>');
+        if ((c.assessmentAttempt || 1) >= 3) n.push('<span class="tag">attempt 3</span>');
+        else if ((c.assessmentAttempt || 1) === 2) n.push('<span class="tag">attempt 2</span>');
+        return `<tr><td>${esc(c.name)}</td><td>${esc(c.room || "")}</td><td>${c.assessmentRoom ? esc(c.assessmentRoom + " " + c.assessmentSlot) : "not slotted"}</td><td>${n.join(" ")}</td></tr>`;
+      }).join("");
+    }
+  } catch (err) {
+    $("state").innerHTML = `<span style="color:#b3261e">Could not check: ${esc(err.message)}</span>`;
+  }
+}
+
+function build(offsetDays, putMe, preSlot) {
+  const uid = me.uid, myName = me.displayName || me.email || "Me";
+  const teams = {
+    CM01: { uids: ["test-instr-a1", "test-instr-a2"].concat(putMe ? [uid] : []), names: ["Test Instructor A1", "Test Instructor A2"].concat(putMe ? [myName] : []) },
+    CM02: { uids: ["test-instr-b1", "test-instr-b2"], names: ["Test Instructor B1", "Test Instructor B2"] },
+    CM03: { uids: ["test-instr-c1", "test-instr-c2"], names: ["Test Instructor C1", "Test Instructor C2"] }
+  };
+  const earlierTeams = {
+    CM01: { uids: ["test-instr-a1", "test-instr-a2"], names: ["Test Instructor A1", "Test Instructor A2"] },
+    CM02: { uids: ["test-instr-x1", "test-instr-x2"], names: ["Test Instructor X1", "Test Instructor X2"] }
+  };
+  const date = isoPlus(offsetDays);
+  const earlierDate = isoPlus(offsetDays - 35);
+  const ts = firebase.firestore.FieldValue.serverTimestamp();
+  const mk = (first, i, course, room, team, extra) => Object.assign({
+    name: first + " Tester", firstName: first, surname: "Tester",
+    email: (first + ".tester" + (course === TEST_EARLIER ? "e" : "") + EMAIL_SUFFIX).toLowerCase(),
+    degree: DEGREES[i % DEGREES.length], studentId: "", yearOfStudy: "",
+    placementChecked: true, placementBlocks: [], promotedToUid: null, promotedAt: null,
+    course, room,
+    instructorTeamUids: team.uids.slice(), instructorTeamNames: team.names.slice(),
+    isTest: true, createdAt: ts
+  }, extra || {});
+
+  const docs = []; // [{key, data}]
+  const rooms = ["CM01", "CM02", "CM03"];
+  // 0-9 ordinary candidates, 5 more specials 10-14
+  FIRST.forEach((first, i) => {
+    const room = rooms[i % 3];
+    const extra = {};
+    if (i < 10 && preSlot) {
+      const ar = i < 4 ? "CM11" : i < 8 ? "CM12" : "CM13";
+      extra.assessmentRoom = ar; extra.assessmentSlot = SLOTS[i % 4];
+    }
+    if (i === 10) extra.rap = true;                                   // RAP: hand-placed only
+    if (i === 11) { extra.assessmentAttempt = 3; extra.twoPlusAssessments = true; extra.firstTimeAssessment = false; } // attempt 3: Senior Faculty only
+    if (i === 14) { extra.firstTimeAssessment = true; }
+    docs.push({ key: "c" + i, data: mk(first, i, TEST_COURSE, room, teams[room], extra) });
+  });
+  // repeat candidates: indexes 12 (CM01, same instructors as before = warning) and 13 (CM02 -> but earlier had CM02 with different instructors = no warning)
+  // Override rooms so the two pairs behave as described.
+  docs[12].data.room = "CM01"; docs[12].data.instructorTeamUids = teams.CM01.uids.slice(); docs[12].data.instructorTeamNames = teams.CM01.names.slice();
+  docs[13].data.room = "CM03"; docs[13].data.instructorTeamUids = teams.CM03.uids.slice(); docs[13].data.instructorTeamNames = teams.CM03.names.slice();
+  const linkedAt = firebase.firestore.Timestamp.now();
+  docs.push({ key: "e12", data: mk(FIRST[12], 12, TEST_EARLIER, "CM01", earlierTeams.CM01, { outcome: "Failed", assessmentAttempt: 1, linkedCandidateId: "__c12", linkedAt }) });
+  docs.push({ key: "e13", data: mk(FIRST[13], 13, TEST_EARLIER, "CM02", earlierTeams.CM02, { outcome: "Failed", assessmentAttempt: 1, linkedCandidateId: "__c13", linkedAt }) });
+  [12, 13].forEach(i => Object.assign(docs[i].data, { linkedCandidateId: "__e" + i, linkedAt, firstTimeAssessment: false, assessmentAttempt: 2, twoPlusAssessments: true }));
+  return { docs, date, earlierDate };
+}
+
+async function createTest() {
+  const offset = +document.querySelector('input[name="when"]:checked').value;
+  const putMe = $("putMe").checked, preSlot = $("preSlot").checked;
+  const { docs, date, earlierDate } = build(offset, putMe, preSlot);
+  if (!confirm(`Create "${TEST_COURSE}" with assessment night on ${date}?\n\n15 test candidates, plus 2 earlier-attempt records on "${TEST_EARLIER}" (${earlierDate}).\nEvery record is flagged as a test record and can be removed with one button.`)) return;
+  $("createBtn").disabled = true; $("createMsg").innerHTML = '<div class="msg warn">Creating…</div>';
+  try {
+    // Course dates first: only a super-user may write config/*, so if this account
+    // cannot, stop here before any test candidate exists.
+    const cref = db.collection("config").doc("stage1_course_dates");
+    const cur = await cref.get();
+    const courses = ((cur.exists && cur.data().courses) || []).filter(c => c.name !== TEST_COURSE && c.name !== TEST_EARLIER);
+    courses.push({ name: TEST_EARLIER, date: earlierDate, capacity: 0, test: true });
+    courses.push({ name: TEST_COURSE, date, capacity: 0, test: true });
+    try { await cref.set({ courses }, { merge: true }); }
+    catch (e) {
+      $("createMsg").innerHTML = `<div class="msg err">Not created: adding the test course dates needs a super-user account${e.code === "permission-denied" ? "" : " (" + esc(e.message) + ")"}. Nothing was written.</div>`;
+      await refresh(); return;
+    }
+    // ids first, so the repeat pairs can point at each other
+    const refs = {};
+    docs.forEach(d => { refs[d.key] = db.collection(COLLECTIONS.stage1Candidates).doc(); });
+    docs.forEach(d => {
+      const l = d.data.linkedCandidateId;
+      if (typeof l === "string" && l.indexOf("__") === 0) d.data.linkedCandidateId = refs[l.slice(2)].id;
+    });
+    const batch = db.batch();
+    docs.forEach(d => batch.set(refs[d.key], d.data));
+    await batch.commit();
+    $("createMsg").innerHTML = `<div class="msg ok">Test course created. Assessment night is ${esc(date)}. Open the Phase 1 hub and choose "${TEST_COURSE}".</div>`;
+  } catch (err) {
+    $("createMsg").innerHTML = `<div class="msg err">Not created: ${esc(err.message)}${err.code === "permission-denied" ? " (permission denied: check the rules deploy)" : ""}. Use "Remove everything test" to clear any partial records.</div>`;
+  }
+  await refresh();
+}
+
+async function clearTestRegister() {
+  if (!confirm("Clear every register mark and instructor arrival for the test courses?\n\nThe test candidates and assessment results stay.")) return;
+  $("clearRegBtn").disabled = true; $("clearRegMsg").innerHTML = '<div class="msg warn">Clearing…</div>';
+  try {
+    const ops = [];
+    const seen = new Set();
+    const add = ref => { if (!seen.has(ref.path)) { seen.add(ref.path); ops.push(ref); } };
+    const list = await findTest();
+    list.forEach(c => add(db.collection("stage1_register").doc(c.id)));
+    for (const nm of [TEST_COURSE, TEST_EARLIER]) {
+      const s = await db.collection("stage1_register_staff").where("course", "==", nm).get();
+      s.docs.forEach(d => add(d.ref));
+      const r = await db.collection("stage1_register").where("course", "==", nm).get();
+      r.docs.forEach(d => add(d.ref));
+    }
+    for (let i = 0; i < ops.length; i += CHUNK) {
+      const batch = db.batch();
+      ops.slice(i, i + CHUNK).forEach(r => batch.delete(r));
+      await batch.commit();
+    }
+    $("clearRegMsg").innerHTML = `<div class="msg ok">Cleared. ${ops.length} register record${ops.length === 1 ? "" : "s"} checked and removed (records that did not exist are skipped silently).</div>`;
+  } catch (err) {
+    $("clearRegMsg").innerHTML = `<div class="msg err">Clear failed: ${esc(err.message)}</div>`;
+  }
+  $("clearRegBtn").disabled = false;
+}
+
+async function removeTest() {
+  if (!confirm("Remove the test course and every test record?\n\nOnly records flagged as test records are touched.")) return;
+  $("removeBtn").disabled = true; $("removeMsg").innerHTML = '<div class="msg warn">Removing…</div>';
+  try {
+    const list = await findTest();
+    const ids = list.map(c => c.id);
+    let n = 0;
+    const ops = [];
+    ids.forEach(id => {
+      ops.push(db.collection(COLLECTIONS.stage1Candidates).doc(id));
+      ops.push(db.collection("stage1_assessments").doc(id));
+      ops.push(db.collection("stage1_register").doc(id));
+    });
+    for (const nm of [TEST_COURSE, TEST_EARLIER]) {
+      const s = await db.collection("stage1_register_staff").where("course", "==", nm).get();
+      s.docs.forEach(d => ops.push(d.ref));
+      const r = await db.collection("stage1_register").where("course", "==", nm).get();
+      r.docs.forEach(d => ops.push(d.ref));
+    }
+    for (let i = 0; i < ops.length; i += CHUNK) {
+      const batch = db.batch();
+      ops.slice(i, i + CHUNK).forEach(r => batch.delete(r));
+      await batch.commit();
+    }
+    n = ids.length;
+    const ref = db.collection("config").doc("stage1_course_dates");
+    const cur = await ref.get();
+    if (cur.exists) {
+      const courses = (cur.data().courses || []).filter(c => c.name !== TEST_COURSE && c.name !== TEST_EARLIER);
+      await ref.set({ courses }, { merge: true });
+    }
+    $("removeMsg").innerHTML = `<div class="msg ok">Removed ${n} test candidate record${n === 1 ? "" : "s"} and the two test courses.</div>`;
+  } catch (err) {
+    $("removeMsg").innerHTML = `<div class="msg err">Remove failed: ${esc(err.message)}</div>`;
+  }
+  await refresh();
+}
+
+requireDirector().then(async () => {
+  me = auth.currentUser;
+  $("authOverlay").style.display = "none";
+  $("createBtn").addEventListener("click", createTest);
+  $("removeBtn").addEventListener("click", removeTest);
+  $("clearRegBtn").addEventListener("click", clearTestRegister);
+  await refresh();
+});
+</script>
+</body>
+</html>
