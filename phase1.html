@@ -228,6 +228,11 @@ details.lst .in{padding:0 14px 12px}
 .fqb.out.pass.on{background:var(--ok);border-color:var(--ok);color:#fff}
 .fqb.out.refer.on{background:var(--org);border-color:var(--org);color:#fff}
 .fqb:disabled{opacity:.4}
+.resbox{margin-top:14px;padding-top:10px;border-top:2px solid var(--line)}
+.resbox .rlab{font-weight:800;font-size:13px;color:var(--mut);margin-bottom:6px}
+.cfbar{margin-top:10px;padding:10px 12px;border:2px solid var(--org);background:#FFF4E5;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink)}
+.cfbar .row2{margin-top:8px}
+.ovnote{margin-top:8px;font-size:13px;font-weight:700;color:var(--org)}
 .cmp{border:2px solid var(--line);border-radius:14px;padding:12px 14px;margin:12px 0}
 .cmp.off{background:#F6F8FB;border-style:dashed;color:var(--mut)}
 .stps{display:flex;flex-direction:column;gap:6px}
@@ -249,6 +254,16 @@ details.lst .in{padding:0 14px 12px}
 .cprrate.ok{color:var(--ok)}.cprrate.bad{color:var(--bad)}
 .cprbtn{width:100%;min-height:96px;font-size:28px;font-weight:900;border-radius:16px;border:3px solid var(--pur);background:var(--purtint);color:var(--pur);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
 .cprbtn:active{background:var(--pur);color:#fff}
+.cprbtn{-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;position:relative;overflow:hidden}
+.cprbtn::after{content:"";position:absolute;left:0;bottom:0;height:8px;width:0;background:currentColor;opacity:.55}
+.cprbtn.hold::after{width:100%;transition:width .7s linear}
+.cpr.cbad{border:2px solid var(--bad);background:var(--badbg)}
+.cpr.cbad .cprbtn{border-color:var(--bad);background:var(--bad);color:#fff}
+.cpr.cgood .cprnum{color:var(--ok)}.cpr.cbad .cprnum{color:var(--bad)}
+.cprnum small{font-size:13px;font-weight:700;color:var(--mut)}
+.cprcnt{font-size:14px;font-weight:800;color:var(--mut);margin:2px 0 4px}
+.cpr.cbad .cprcnt{color:var(--bad)}.cpr.cgood .cprcnt{color:var(--ok)}
+.cprtot{font-size:13px;font-weight:700;color:var(--mut);margin-top:8px}
 .cpcyc{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .cpcyc span{font-size:13px;font-weight:800;border-radius:8px;padding:4px 9px;background:#EEF1F6;color:var(--mut)}
 .cpcyc span.ok{background:var(--okbg);color:var(--ok)}.cpcyc span.bad{background:var(--badbg);color:var(--bad)}.cpcyc span.short{background:#FDF1DC;color:#9A5A00}
@@ -1339,13 +1354,14 @@ function compsText(a) {
   if (!a || !a.components) return "";
   return COMPS.filter(x => a.components[x.k]).map(x => {
     const m = a.components[x.k], rs = a.reasons && a.reasons[x.k] && a.reasons[x.k].length ? " (" + a.reasons[x.k].join("; ") + ")" : "";
-    return x.label + ": " + (m === "pass" ? "pass" : m === "fail" ? "not yet" + rs : "not retested");
+    const ov = a.overrides && a.overrides[x.k] && a.overrides[x.k].length ? " (passed with red steps: " + a.overrides[x.k].join("; ") + ")" : "";
+    return x.label + ": " + (m === "pass" ? "pass" + ov : m === "fail" ? "not yet" + rs : "not retested");
   }).join(". ");
 }
 
 function cprText(a) {
   const cy = a && a.cpr && a.cpr.cycles || [];
-  return cy.length ? ". Compression counter: " + cy.map(x => (x.rate === null ? "-" : x.rate) + "/min (" + x.n + ")").join(", ") : "";
+  return cy.length ? ". Compression counter: " + cy.map(x => x.n + (x.n < 28 ? " (too few)" : x.n > 32 ? " (too many)" : "") + " at " + (x.rate === null ? "-" : x.rate) + "/min").join(", ") : "";
 }
 function failCodes(id) {
   // codes (1a, 1b, 1c, 2a) of the parts failed at the latest referred attempt, as the Google Form shows next to resit names
@@ -1604,15 +1620,16 @@ function openForm(id) {
   const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
   N.formOpen = true;
   const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
-  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
+  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, override: { bls: false, rec: false }, confirm: { bls: false, rec: false }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
   if (existing && existing.components) {
     req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
     COMPS.forEach(x => ((existing.reasons || {})[x.k] || []).forEach(r => state.reasons[x.k].add(r)));
+    COMPS.forEach(x => { const ov = (existing.overrides || {})[x.k]; if (ov && ov.length && state.marks[x.k] === "pass") { ov.forEach(r => state.reasons[x.k].add(r)); state.override[x.k] = true; } });
   }
-  const cprHtml = `<div class="cpr" id="cpr"><div class="hint" style="margin:0"><b>Compression counter (optional).</b> Tap once for every compression. It works out the rate for each cycle of 30. Target 100 to 120 per minute. It does not change the result by itself.</div>` +
-    `<div class="cprrow"><div class="cprnum" id="cprN">0 / 30</div><div class="cprrate" id="cprRate">Tap to start</div></div>` +
+  const cprHtml = `<div class="cpr" id="cpr"><div class="hint" style="margin:0"><b>Compression counter (optional).</b> Tap once for every compression. Keep tapping past 30 if they carry on. When they move to breaths, hold the TAP button down for a moment to end the cycle (the End cycle button does the same). A cycle of 28 to 32 is fine and goes red outside that. Target rate 100 to 120 per minute. It does not change the result by itself.</div>` +
+    `<div class="cprrow"><div class="cprnum" id="cprN">0</div><div class="cprrate" id="cprRate">Tap to start</div></div><div class="cprcnt" id="cprCnt"></div>` +
     `<button type="button" class="cprbtn" id="cprTap">TAP</button>` +
-    `<div class="tools" style="margin:8px 0 0"><button type="button" class="btn sm" id="cprUndo">Undo last tap</button><button type="button" class="btn sm" id="cprNext">End cycle</button><button type="button" class="btn sm" id="cprClear">Clear counter</button></div><div class="cpcyc" id="cprCycles"></div></div>`;
+    `<div class="tools" style="margin:8px 0 0"><button type="button" class="btn sm" id="cprUndo">Undo last tap</button><button type="button" class="btn sm" id="cprNext">End cycle</button><button type="button" class="btn sm" id="cprClear">Clear counter</button></div><div class="cpcyc" id="cprCycles"></div><div class="cprtot" id="cprTot"></div></div>`;
   const cmpHtml = COMPS.map(x => {
     if (!req.includes(x.k)) return `<div class="cmp off"><b>${esc(x.label)}</b> <span class="nchip pass">Passed at attempt 1</span></div>`;
     let lastCode = "";
@@ -1622,11 +1639,14 @@ function openForm(id) {
       if (code && code !== lastCode) { head = `<div class="stphead"><b>${esc(code)}</b> ${esc(CODE_NAMES[code] || "")}</div>`; lastCode = code; }
       return head + `<button type="button" class="stp live" data-stp="${x.k}" data-i="${i}"${chk.ok ? "" : " disabled"}><span class="sn">${i + 1}</span>${esc(m ? m[2] : t)}</button>`;
     }).join("");
-    return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b><div class="fqo" style="margin-top:8px">` +
+    return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b>${x.k === "bls" && chk.ok ? cprHtml : ""}` +
+      `<div class="why2" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Steps start green (done correctly). Tap any step that was missed or done wrongly and it turns red, and the result below switches to Not yet.</div><div class="stps">${steps}</div></div>` +
+      `<div class="resbox"><div class="rlab">Result for ${esc(x.label)}</div><div class="fqo">` +
       `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
       `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
       (noHistory ? `<button type="button" class="fqb" data-mk="${x.k}" data-m="skip"${chk.ok ? "" : " disabled"}>Not retested</button>` : "") +
-      `</div>${x.k === "bls" && chk.ok ? cprHtml : ""}<div class="why2" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Steps start green (done correctly). Tap any step that was missed or done wrongly and it turns red. Any red step makes this part Not yet.</div><div class="stps">${steps}</div></div></div>`;
+      `</div><div class="cfbar hidden" data-cf="${x.k}"><span data-cft="${x.k}"></span><div class="row2"><button type="button" class="btn pri" data-cfy="${x.k}">Yes, mark as Pass</button><button type="button" class="btn" data-cfn="${x.k}">No, keep Not yet</button></div></div>` +
+      `<div class="ovnote hidden" data-ovn="${x.k}"></div></div></div>`;
   }).join("");
   const qHtml = qs.map(q => {
     const val = existing && existing.answers ? existing.answers[q.id] : "";
@@ -1655,7 +1675,10 @@ function openForm(id) {
     req.forEach(k => {
       $("overlay").querySelectorAll('[data-mk="' + k + '"]').forEach(b => b.classList.toggle("on", state.marks[k] === b.dataset.m));
       const w = $("overlay").querySelector('[data-why="' + k + '"]'); if (w) w.classList.toggle("hidden", state.marks[k] === "skip");
-      const pb = $("overlay").querySelector('[data-mk="' + k + '"][data-m="pass"]'); if (pb) pb.disabled = !chk.ok || state.reasons[k].size > 0;
+      const cf = $("overlay").querySelector('[data-cf="' + k + '"]'), n = state.reasons[k].size;
+      if (cf) { cf.classList.toggle("hidden", !state.confirm[k]); $("overlay").querySelector('[data-cft="' + k + '"]').textContent = "Are you sure? " + n + " step" + (n === 1 ? " is" : "s are") + " marked red for " + compLabel(k) + ". Mark it as Pass anyway?"; }
+      const ov = $("overlay").querySelector('[data-ovn="' + k + '"]');
+      if (ov) { const on = state.override[k] && state.marks[k] === "pass" && n > 0; ov.classList.toggle("hidden", !on); ov.textContent = on ? "Passed with " + n + " red step" + (n === 1 ? "" : "s") + ". The red steps are saved on the record." : ""; }
       $("overlay").querySelectorAll('[data-stp="' + k + '"]').forEach(b => b.classList.toggle("on", state.reasons[k].has(stepsFor(k)[Number(b.dataset.i)])));
     });
     const o = outcomeFor(state.marks, req);
@@ -1671,35 +1694,69 @@ function openForm(id) {
   };
   $("fCancel").onclick = close;
   $("fbg").onclick = e => { if (e.target.id === "fbg") close(); };
-  $("overlay").querySelectorAll("[data-mk]").forEach(b => b.onclick = () => { state.marks[b.dataset.mk] = b.dataset.m; refresh(); });
+  $("overlay").querySelectorAll("[data-mk]").forEach(b => b.onclick = () => {
+    const k = b.dataset.mk, m = b.dataset.m;
+    if (m === "pass" && state.reasons[k].size && !state.override[k]) { state.confirm[k] = true; refresh(); return; }   // red steps present: ask first
+    state.confirm[k] = false;
+    if (m !== "pass") state.override[k] = false;
+    state.marks[k] = m; refresh();
+  });
+  $("overlay").querySelectorAll("[data-cfy]").forEach(b => b.onclick = () => { const k = b.dataset.cfy; state.confirm[k] = false; state.override[k] = true; state.marks[k] = "pass"; refresh(); });
+  $("overlay").querySelectorAll("[data-cfn]").forEach(b => b.onclick = () => { const k = b.dataset.cfn; state.confirm[k] = false; refresh(); });
   $("overlay").querySelectorAll("[data-stp]").forEach(b => b.onclick = () => {
     const k = b.dataset.stp, t = stepsFor(k)[Number(b.dataset.i)];
     if (state.reasons[k].has(t)) state.reasons[k].delete(t); else state.reasons[k].add(t);
+    state.confirm[k] = false; state.override[k] = false;
     if (state.reasons[k].size) state.marks[k] = "fail";
     else if (state.marks[k] === "fail") delete state.marks[k];
     refresh();
   });
-  // Compression counter: one tap per compression, rate worked out per cycle of 30
-  const cprCycle = (taps, short) => { const sec = (taps[taps.length - 1] - taps[0]) / 1000; return { n: taps.length, seconds: Math.round(sec * 10) / 10, rate: taps.length >= 2 && sec > 0 ? Math.round((taps.length - 1) / sec * 60) : null, short: !!short }; };
+  // Compression counter: one press per compression, no cap at 30. End cycle closes a cycle (when breaths start).
+  // 28 to 32 compressions in a cycle is acceptable; fewer or more goes red. Rate worked out per cycle.
+  const cprCycle = taps => { const sec = (taps[taps.length - 1] - taps[0]) / 1000, n = taps.length; return { n, seconds: Math.round(sec * 10) / 10, rate: n >= 2 && sec > 0 ? Math.round((n - 1) / sec * 60) : null, short: n < 28, over: n > 32 }; };
   const cprOk = r => r !== null && r >= 100 && r <= 120;
+  const cntState = n => n < 28 ? "few" : n > 32 ? "many" : "ok";
   const cprDraw = () => {
     if (!$("cpr")) return;
     const cur = state.cpr.cur, cy = state.cpr.cycles, last = cy[cy.length - 1];
     let live = null;
     if (cur.length >= 4) live = cprCycle(cur).rate;
-    $("cprN").textContent = cur.length ? cur.length + " / 30" : (last ? "Cycle " + cy.length + " done" : "0 / 30");
+    const shown = cur.length ? cur.length : (last ? last.n : 0), st = cur.length ? (cur.length > 32 ? "many" : cur.length >= 28 ? "ok" : "pending") : (last ? cntState(last.n) : "none");
+    $("cpr").classList.toggle("cbad", st === "few" || st === "many");
+    $("cpr").classList.toggle("cgood", st === "ok");
+    $("cprN").innerHTML = shown + ' <small>' + (cur.length ? "compressions this cycle" : last ? "in cycle " + cy.length + " (ended)" : "compressions") + "</small>";
+    $("cprCnt").textContent = st === "many" ? (cur.length ? "Too many: over 32 in this cycle" : "Cycle " + cy.length + ": too many (over 32)") : st === "few" ? "Cycle " + cy.length + ": too few (under 28)" : st === "ok" ? (cur.length ? "In range (28 to 32). Press End cycle when breaths start." : "Cycle " + cy.length + ": in range (28 to 32)") : st === "pending" ? "Under 28 so far" : "";
     const r = $("cprRate");
     if (cur.length) { r.className = "cprrate" + (live === null ? "" : cprOk(live) ? " ok" : " bad"); r.textContent = live === null ? "Keep going" : live + " per minute so far"; }
-    else if (last) { r.className = "cprrate" + (cprOk(last.rate) ? " ok" : " bad"); r.textContent = last.n + " compressions in " + last.seconds + " s: " + last.rate + " per minute" + (cprOk(last.rate) ? "" : (last.rate > 120 ? " (too fast)" : " (too slow)")); }
+    else if (last) { r.className = "cprrate" + (cprOk(last.rate) ? " ok" : " bad"); r.textContent = last.n + " compressions in " + last.seconds + " s: " + (last.rate === null ? "-" : last.rate) + " per minute" + (last.rate === null || cprOk(last.rate) ? "" : (last.rate > 120 ? " (too fast)" : " (too slow)")); }
     else { r.className = "cprrate"; r.textContent = "Tap to start"; }
-    $("cprCycles").innerHTML = cy.map((x, i) => `<span class="${x.short ? "short" : cprOk(x.rate) ? "ok" : "bad"}">${i + 1}: ${x.n}${x.n === 30 ? "" : " (short)"} at ${x.rate === null ? "-" : x.rate}/min</span>`).join("");
-    $("cprUndo").disabled = !cur.length; $("cprNext").disabled = cur.length < 2;
+    $("cprCycles").innerHTML = cy.map((x, i) => { const cs = cntState(x.n); return `<span class="${cs !== "ok" || !cprOk(x.rate) ? "bad" : "ok"}">${i + 1}: ${x.n}${cs === "few" ? " (too few)" : cs === "many" ? " (too many)" : ""} at ${x.rate === null ? "-" : x.rate}/min</span>`; }).join("");
+    const tot = cy.reduce((a, x) => a + x.n, 0) + cur.length;
+    $("cprTot").textContent = tot ? "Total: " + tot + " compressions in " + (cy.length + (cur.length ? 1 : 0)) + " cycle" + (cy.length + (cur.length ? 1 : 0) === 1 ? "" : "s") : "";
+    $("cprUndo").disabled = !cur.length; $("cprNext").disabled = !cur.length;
   };
-  const cprFinish = short => { const cur = state.cpr.cur; if (cur.length >= 2) state.cpr.cycles.push(cprCycle(cur, short)); state.cpr.cur = []; };
+  const cprFinish = () => { const cur = state.cpr.cur; if (cur.length >= 1) state.cpr.cycles.push(cprCycle(cur)); state.cpr.cur = []; };
   if ($("cprTap")) {
-    $("cprTap").onclick = () => { state.cpr.cur.push(performance.now()); if (state.cpr.cur.length >= 30) cprFinish(false); cprDraw(); };
+    const tap = () => { state.cpr.cur.push(performance.now()); cprDraw(); };
+    // A press counts straight away. If it is held for 0.7 s it is a long press instead: that press is not a compression, it ends the cycle.
+    let holdT = null;
+    const holdStop = () => { if (holdT) { clearTimeout(holdT); holdT = null; } $("cprTap").classList.remove("hold"); };
+    $("cprTap").addEventListener("pointerdown", e => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault(); holdStop(); tap();
+      const btn = $("cprTap"); void btn.offsetWidth; btn.classList.add("hold");
+      holdT = setTimeout(() => {
+        holdT = null; btn.classList.remove("hold");
+        state.cpr.cur.pop();                       // the press that started the hold was not a compression
+        if (state.cpr.cur.length) { cprFinish(); try { if (navigator.vibrate) navigator.vibrate(60); } catch (_) {} }
+        cprDraw();
+      }, 700);
+    });
+    ["pointerup", "pointercancel"].forEach(ev => $("cprTap").addEventListener(ev, holdStop));
+    $("cprTap").addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); tap(); } });
+    $("cprTap").addEventListener("contextmenu", e => e.preventDefault());
     $("cprUndo").onclick = () => { state.cpr.cur.pop(); cprDraw(); };
-    $("cprNext").onclick = () => { cprFinish(true); cprDraw(); };
+    $("cprNext").onclick = () => { cprFinish(); cprDraw(); };
     $("cprClear").onclick = () => { state.cpr = { cycles: [], cur: [] }; cprDraw(); };
     cprDraw();
   }
@@ -1722,13 +1779,13 @@ function openForm(id) {
     const wantExc = out === "pass" && state.exc;
     if (wantExc && !state.excCrit.size) { $("fMsg").textContent = "Tap at least one reason for Excellent, or switch it off."; return; }
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
-    if (state.cpr.cur.length >= 2) cprFinish(true);
-    const cprOut = (state.cpr.cycles.length || (existing && existing.cpr)) ? { cycles: state.cpr.cycles.map(x => ({ n: x.n, seconds: x.seconds, rate: x.rate, short: !!x.short })) } : null;
-    const components = {}, reasons = {};
-    req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
+    if (state.cpr.cur.length >= 1) cprFinish();
+    const cprOut = (state.cpr.cycles.length || (existing && existing.cpr)) ? { cycles: state.cpr.cycles.map(x => ({ n: x.n, seconds: x.seconds, rate: x.rate, short: x.n < 28, over: x.n > 32 })) } : null;
+    const components = {}, reasons = {}, overrides = {};
+    req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); else if (state.marks[k] === "pass" && state.override[k] && state.reasons[k].size) overrides[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
     $("fSave").disabled = true;
     try {
-      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [], cpr: cprOut }, !!existing);
+      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, overrides, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [], cpr: cprOut }, !!existing);
       close();
     } catch (err) {
       $("fSave").disabled = false;
@@ -1739,6 +1796,7 @@ function openForm(id) {
 async function saveResult(c, att, outcome, d, amend) {
   const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
   if (amend) entry.amended = true;
+  if (d.overrides && Object.keys(d.overrides).length) entry.overrides = d.overrides;
   if (d.cpr) entry.cpr = d.cpr;
   if (d.excellent) { entry.excellent = true; entry.excellentCriteria = d.excellentCriteria || []; }
   await db.collection("stage1_assessments").doc(c.id).set({
