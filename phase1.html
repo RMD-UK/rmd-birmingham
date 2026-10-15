@@ -235,6 +235,7 @@ details.lst .in{padding:0 14px 12px}
 .ropt.on{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
 .ropt:disabled{opacity:.5}
 .rsn input.rsnother{width:100%;margin-top:8px;border:2px solid var(--bad);border-radius:8px;padding:8px 10px;font:inherit}
+.rsn.ovwhy{border-color:#F4C98A;background:#FFF8EC}.rsn.ovwhy .rsnh{color:#8A5200}.rsn.ovwhy .ropt.on{border-color:#F49001;background:#FFF1D6;color:#8A5200}.rsn.ovwhy input.rsnother{border-color:#F49001}
 .resbox{margin-top:14px;padding-top:10px;border-top:2px solid var(--line)}
 .resbox .rlab{font-weight:800;font-size:13px;color:var(--mut);margin-bottom:6px}
 .cfbar{margin-top:10px;padding:10px 12px;border:2px solid var(--org);background:#FFF4E5;border-radius:10px;font-size:14px;font-weight:600;color:var(--ink)}
@@ -1366,11 +1367,13 @@ function outcomeShort(o, att) {
   if (att === 3) return "To degree leads";
   return "Not passed";
 }
+const OV_WHY = ["Red step tapped by mistake", "Candidate corrected it straight away", "Does not affect safety or the pass standard", "Other"];
 function compsText(a) {
   if (!a || !a.components) return "";
   return COMPS.filter(x => a.components[x.k]).map(x => {
     const m = a.components[x.k], rl = ((a.reasons && a.reasons[x.k]) || []).concat((a.reasonOptions && a.reasonOptions[x.k]) || []).map(r => / Other$/.test(r) ? r + ": " + (((a.reasonOther || {})[r.split(" ")[0]]) || "") : r), rs = rl.length ? " (" + rl.join("; ") + ")" : "";
-    const ov = a.overrides && a.overrides[x.k] && a.overrides[x.k].length ? " (passed with red steps: " + a.overrides[x.k].join("; ") + ")" : "";
+    const ow = a.overrideWhy && a.overrideWhy[x.k], owt = ow ? "; why: " + (ow.options || []).map(o => o === "Other" ? "Other - " + (ow.other || "") : o).join(", ") : "";
+    const ov = a.overrides && a.overrides[x.k] && a.overrides[x.k].length ? " (passed with red steps: " + a.overrides[x.k].join("; ") + owt + ")" : "";
     return x.label + ": " + (m === "pass" ? "pass" + ov : m === "fail" ? "not yet" + rs : "not retested");
   }).join(". ");
 }
@@ -1456,8 +1459,35 @@ function renderNight() {
   else if (S.view === "runner") renderRunner();
   else if (S.view === "assessor") renderAssessor();
 }
+// Passed with red steps (2026-10-15, Jon): every time an assessor marks a part Pass although a step was red.
+// Read from the saved results, so it needs no extra collection and survives a reload.
+function overrideEvents() {
+  const ev = [];
+  Object.keys(N.results || {}).forEach(id => {
+    const r = N.results[id] || {}, c = (N.cands || []).find(x => x.id === id), name = (c && c.name) || r.candidateName || id;
+    Object.keys(r.attempts || {}).forEach(k => {
+      const a = r.attempts[k] || {};
+      Object.keys(a.overrides || {}).forEach(ck => {
+        if (!(a.overrides[ck] || []).length) return;
+        const w = (a.overrideWhy || {})[ck] || {};
+        ev.push({ id, name, att: Number(k), part: compLabel(ck), steps: a.overrides[ck], why: w.options || [], other: w.other || "", assessor: a.assessorName || "Unknown assessor", at: a.at || "" });
+      });
+    });
+  });
+  return ev.sort((x, y) => String(y.at).localeCompare(String(x.at)));
+}
+function tally(list, f) { const m = {}; list.forEach(e => (f(e) || []).forEach(v => { m[v] = (m[v] || 0) + 1; })); return Object.keys(m).map(k => [k, m[k]]).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]))); }
+function overridesCard() {
+  const ev = overrideEvents();
+  if (!ev.length) return '<div class="card"><h3>Passed with a red step</h3><div class="hint">None so far. Every time an assessor passes a part with a red step marked, it is listed here with the reason and the assessor.</div></div>';
+  const who = tally(ev, e => [e.assessor]).map(x => `<span class="nchip bad">${esc(x[0])}: ${x[1]}</span>`).join(" ");
+  const why = tally(ev, e => e.why.length ? e.why : ["No reason recorded"]).map(x => `<span class="nchip">${esc(x[0])}: ${x[1]}</span>`).join(" ");
+  const rows = ev.map(e => `<div class="lrow"><span class="nm">${esc(e.name)}</span><small>${esc(e.part)}, attempt ${e.att}</small><small style="flex-basis:100%">Red: ${esc(e.steps.join("; "))} · Why: ${esc(e.why.length ? e.why.map(o => o === "Other" ? "Other - " + e.other : o).join(", ") : "not recorded")} · Assessor: ${esc(e.assessor)}${e.at ? " · " + esc(String(e.at).replace("T", " ").slice(0, 16)) : ""}</small></div>`).join("");
+  return `<div class="card" style="border-color:var(--org)"><h3>Passed with a red step (${ev.length})</h3><div class="hint" style="margin:0 0 8px">An assessor marked a part Pass although a step was red. Check these are reasonable. Each one is saved on the candidate's record.</div><div style="margin:0 0 6px"><b>By assessor:</b> ${who}</div><div style="margin:0 0 10px"><b>Reasons:</b> ${why}</div>${rows}</div>`;
+}
 function nightBanner() {
   let h = "";
+  if (S.full) { const ev = overrideEvents(); if (ev.length) { const as = new Set(ev.map(e => e.assessor)).size; h += `<div class="msg warn"><b>${ev.length} pass${ev.length === 1 ? "" : "es"} with a red step</b> from ${as} assessor${as === 1 ? "" : "s"} on ${esc(S.course || "this course")}. Details are on the Retest pool page.</div>`; } }
   if (N.err) h += `<div class="msg err">${esc(N.err)}</div>`;
   if (N.resErr) h += `<div class="msg err">${esc(N.resErr)}</div>`;
   if (N.usingFallback) h += `<div class="msg warn">The assessment night function is not deployed yet, so this page is using the full candidate list instead. Everything still works for you.</div>`;
@@ -1636,13 +1666,13 @@ function openForm(id) {
   const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
   N.formOpen = true;
   const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
-  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, opts: { bls: new Set(), rec: new Set() }, other: {}, override: { bls: false, rec: false }, confirm: { bls: false, rec: false }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
+  const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, opts: { bls: new Set(), rec: new Set() }, other: {}, override: { bls: false, rec: false }, ovwhy: { bls: new Set(), rec: new Set() }, ovother: {}, confirm: { bls: false, rec: false }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
   if (existing && existing.components) {
     req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
     COMPS.forEach(x => ((existing.reasons || {})[x.k] || []).forEach(r => state.reasons[x.k].add(r)));
     COMPS.forEach(x => ((existing.reasonOptions || {})[x.k] || []).forEach(r => state.opts[x.k].add(r)));
     Object.assign(state.other, existing.reasonOther || {});
-    COMPS.forEach(x => { const ov = (existing.overrides || {})[x.k]; if (ov && ov.length && state.marks[x.k] === "pass") { ov.forEach(r => state.reasons[x.k].add(r)); state.override[x.k] = true; } });
+    COMPS.forEach(x => { const ov = (existing.overrides || {})[x.k]; if (ov && ov.length && state.marks[x.k] === "pass") { ov.forEach(r => state.reasons[x.k].add(r)); state.override[x.k] = true; const w = (existing.overrideWhy || {})[x.k]; if (w) { (w.options || []).forEach(o => state.ovwhy[x.k].add(o)); state.ovother[x.k] = w.other || ""; } } });
   }
   const cprHtml = `<div class="cpr" id="cpr"><div class="hint" style="margin:0"><b>Compression counter (optional).</b> Tap once for every compression. Keep tapping past 30 if they carry on. When they move to breaths, hold the TAP button down for a moment to end the cycle (the End cycle button does the same). A cycle of 28 to 32 is fine and goes red outside that. Target rate 100 to 120 per minute. It does not change the result by itself.</div>` +
     `<div class="cprrow"><div class="cprnum" id="cprN">0</div><div class="cprrate" id="cprRate">Tap to start</div></div><div class="cprcnt" id="cprCnt"></div>` +
@@ -1668,6 +1698,9 @@ function openForm(id) {
       `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
       (noHistory ? `<button type="button" class="fqb" data-mk="${x.k}" data-m="skip"${chk.ok ? "" : " disabled"}>Not retested</button>` : "") +
       `</div><div class="cfbar hidden" data-cf="${x.k}"><span data-cft="${x.k}"></span><div class="row2"><button type="button" class="btn pri" data-cfy="${x.k}">Yes, mark as Pass</button><button type="button" class="btn" data-cfn="${x.k}">No, keep Not yet</button></div></div>` +
+      `<div class="rsn ovwhy hidden" data-ovw="${x.k}"><div class="rsnh">Why pass with a red step? <span>RMD faculty are told about this. Tick all that apply.</span></div><div class="rsnc">` +
+      OV_WHY.map(o => `<button type="button" class="ropt" data-ovo="${x.k}" data-o="${esc(o)}">${esc(o)}</button>`).join("") +
+      `</div><input type="text" class="rsnother hidden" data-ovother="${x.k}" placeholder="Describe why (needed for Other)"></div>` +
       `<div class="ovnote hidden" data-ovn="${x.k}"></div></div></div>`;
   }).join("");
   const qHtml = qs.map(q => {
@@ -1707,6 +1740,14 @@ function openForm(id) {
         const oi = pn.querySelector("[data-other]"), on = state.opts[k].has(code + " Other");
         oi.classList.toggle("hidden", !on); if (on && oi.value !== (state.other[code] || "")) oi.value = state.other[code] || "";
       });
+      const ow = $("overlay").querySelector('[data-ovw="' + k + '"]');
+      if (ow) {
+        const onw = state.override[k] && state.marks[k] === "pass" && n > 0;
+        ow.classList.toggle("hidden", !onw);
+        ow.querySelectorAll("[data-ovo]").forEach(b => b.classList.toggle("on", state.ovwhy[k].has(b.dataset.o)));
+        const oo = ow.querySelector("[data-ovother]"), hasO = state.ovwhy[k].has("Other");
+        oo.classList.toggle("hidden", !hasO); if (hasO && oo.value !== (state.ovother[k] || "")) oo.value = state.ovother[k] || "";
+      }
       const ov = $("overlay").querySelector('[data-ovn="' + k + '"]');
       if (ov) { const on = state.override[k] && state.marks[k] === "pass" && n > 0; ov.classList.toggle("hidden", !on); ov.textContent = on ? "Passed with " + n + " red step" + (n === 1 ? "" : "s") + ". The red steps are saved on the record." : ""; }
       $("overlay").querySelectorAll('[data-stp="' + k + '"]').forEach(b => b.classList.toggle("on", state.reasons[k].has(stepsFor(k)[Number(b.dataset.i)])));
@@ -1738,6 +1779,8 @@ function openForm(id) {
   });
   $("overlay").querySelectorAll("[data-other]").forEach(i => i.oninput = () => { state.other[i.dataset.other] = i.value; });
   $("overlay").querySelectorAll("[data-cfy]").forEach(b => b.onclick = () => { const k = b.dataset.cfy; state.confirm[k] = false; state.override[k] = true; state.marks[k] = "pass"; refresh(); });
+  $("overlay").querySelectorAll("[data-ovo]").forEach(b => b.onclick = () => { const k = b.dataset.ovo, o = b.dataset.o; if (state.ovwhy[k].has(o)) state.ovwhy[k].delete(o); else state.ovwhy[k].add(o); refresh(); });
+  $("overlay").querySelectorAll("[data-ovother]").forEach(i => i.oninput = () => { state.ovother[i.dataset.ovother] = i.value; });
   $("overlay").querySelectorAll("[data-cfn]").forEach(b => b.onclick = () => { const k = b.dataset.cfn; state.confirm[k] = false; refresh(); });
   $("overlay").querySelectorAll("[data-stp]").forEach(b => b.onclick = () => {
     const k = b.dataset.stp, t = stepsFor(k)[Number(b.dataset.i)];
@@ -1821,11 +1864,20 @@ function openForm(id) {
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
     if (state.cpr.cur.length >= 1) cprFinish();
     const cprOut = (state.cpr.cycles.length || (existing && existing.cpr)) ? { cycles: state.cpr.cycles.map(x => ({ n: x.n, seconds: x.seconds, rate: x.rate, short: x.n < 28, over: x.n > 32 })) } : null;
+    const overrideWhy = {};
+    for (const k of req) {
+      if (state.marks[k] === "pass" && state.override[k] && state.reasons[k].size) {
+        const opts = OV_WHY.filter(o => state.ovwhy[k].has(o)), other = (state.ovother[k] || "").trim();
+        if (!opts.length) { $("fMsg").textContent = "Say why " + compLabel(k) + " was passed with a red step (tick at least one reason)."; return; }
+        if (opts.includes("Other") && !other) { $("fMsg").textContent = "Describe the other reason for passing " + compLabel(k) + " with a red step."; return; }
+        overrideWhy[k] = { options: opts, other: opts.includes("Other") ? other : "" };
+      }
+    }
     const components = {}, reasons = {}, overrides = {}, reasonOptions = {}, reasonOther = {};
     req.forEach(k => { components[k] = state.marks[k]; if (state.marks[k] === "fail") { reasons[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); if (state.opts[k].size) { reasonOptions[k] = Array.from(state.opts[k]); reasonOptions[k].forEach(key => { if (/ Other$/.test(key)) { const c = key.split(" ")[0]; reasonOther[c] = (state.other[c] || "").trim(); } }); } } else if (state.marks[k] === "pass" && state.override[k] && state.reasons[k].size) overrides[k] = stepsFor(k).filter(t => state.reasons[k].has(t)); });
     $("fSave").disabled = true;
     try {
-      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, overrides, reasonOptions, reasonOther, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [], cpr: cprOut }, !!existing);
+      await saveResult(c, att, out, { comment, answers: state.answers, components, reasons, overrides, overrideWhy, reasonOptions, reasonOther, excellent: wantExc, excellentCriteria: wantExc ? EXC_CRITERIA.filter(t => state.excCrit.has(t)) : [], cpr: cprOut }, !!existing);
       close();
     } catch (err) {
       $("fSave").disabled = false;
@@ -1837,6 +1889,7 @@ async function saveResult(c, att, outcome, d, amend) {
   const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
   if (amend) entry.amended = true;
   if (d.overrides && Object.keys(d.overrides).length) entry.overrides = d.overrides;
+  if (d.overrideWhy && Object.keys(d.overrideWhy).length) entry.overrideWhy = d.overrideWhy;
   if (d.reasonOptions && Object.keys(d.reasonOptions).length) entry.reasonOptions = d.reasonOptions;
   if (d.reasonOther && Object.keys(d.reasonOther).length) entry.reasonOther = d.reasonOther;
   if (d.cpr) entry.cpr = d.cpr;
@@ -1946,7 +1999,8 @@ function renderRetest() {
     `They are never given a slot automatically: an assessor takes each one on from the Assessor view. Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1; attempt 3 and above is Senior Faculty or the extra named assessors. ` +
     `Anyone not passed at attempt 2 or above is not retested tonight: they appear under <b>After the night: who needs a follow-up</b> below.`;
   let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}${nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0 && pool.some(c => effAttempt(c) >= 3))}` +
-    `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}</div>`;
+    `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}${nightTile(overrideEvents().length, "Passed with a red step", overrideEvents().length > 0)}</div>`;
+  h += overridesCard();
   if (stale.length) {
     h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> ${stale.length === 1 ? "candidate was" : "candidates were"} referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet column in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
   }
