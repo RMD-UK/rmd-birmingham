@@ -281,7 +281,7 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
   // 2026-10-16 (Jon): eligibility on the night. A first sit needs "here" or "late" in BOTH teaching weeks
   // (stage1_register w1 and w2). Absent in either = state "absent" (the page locks the result form unless a
   // Director has overridden, saved as stage1_candidates.eligibilityOverride). A week with no mark = "unmarked"
-  // (warning only). If the course has no register records at all, nothing is checked. Attempt 2 and above are not checked.
+  // (warning only). If the course has no register records at all, nothing is checked. The third and fourth sit follow the same rule (Jon, 16 Oct). Attempt 2 (same-night retest) is not checked.
   let regDocs = null;
   try { const rs = await db.collection("stage1_register").where("course", "==", course).get(); regDocs = {}; rs.forEach(x => { regDocs[x.id] = x.data(); }); } catch (e) { regDocs = null; }
   const regAny = !!regDocs && Object.keys(regDocs).length > 0;
@@ -301,7 +301,7 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
       absent: c.assessmentAbsent === true,
       assessmentRoom: c.assessmentRoom || null,
       assessmentSlot: c.assessmentSlot || null,
-      ...(regAny && attempt === 1 ? { elig: (() => {
+      ...(regAny && (attempt === 1 || attempt >= 3) ? { elig: (() => {
         const r = regDocs[d.id];
         const ab = [], um = [];
         [1, 2].forEach(n => { const s = wkStatus(r, n); if (s === "absent") ab.push("Absent in week " + n); else if (s !== "here" && s !== "late") um.push("No register mark for week " + n); });
