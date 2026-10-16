@@ -135,7 +135,14 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
   .rowhead{display:none}
   .row{grid-template-columns:1fr 1fr}
   .row .nm{grid-column:1 / -1}
-  .row .cell::before{content:attr(data-wk);flex:0 0 100%;font-size:11px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px}
+  .row{gap:8px;align-items:stretch}
+  .row .cell{align-content:flex-start;gap:3px;padding:8px 6px 9px;border-radius:12px;border:1px solid var(--line)}
+  .row .cell .cb{min-width:0;padding:8px 5px;font-size:12px;flex:0 0 auto}
+  .row .cell::before{content:attr(data-wk);flex:0 0 100%;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;padding-bottom:5px;border-bottom:2px solid currentColor}
+  .row .cell[data-wk^="Week 1"]{background:#EAF1FB;border-color:#C9DAF2}
+  .row .cell[data-wk^="Week 1"]::before{color:#1F5AA6}
+  .row .cell[data-wk^="Week 2"]{background:#F1EBFB;border-color:#D8C9F1}
+  .row .cell[data-wk^="Week 2"]::before{color:#5B2A9E}
 }
 .modal{background:#fff;width:min(760px,96vw);max-height:92vh;overflow:auto;border-radius:16px;padding:20px 22px;margin:auto}
 .modal h3{font-size:18px;font-weight:800;margin-bottom:4px}
@@ -860,7 +867,7 @@ function render() {
     const lock = edit && needsFaculty(c.id, n);
     if (edit && !(lock && cur)) {
       const dis = lock ? " disabled" : "";
-      return `<div class="cell" data-wk="Week ${n}">` +
+      return `<div class="cell" data-wk="Week ${n} · ${nice(d)}">` +
         `<button type="button" class="cb here${cur === "here" ? " on" : ""}" data-set="here" data-n="${n}" data-id="${esc(c.id)}"${dis}>Here</button>` +
         `<button type="button" class="cb late${cur === "late" ? " on" : ""}" data-set="late" data-n="${n}" data-id="${esc(c.id)}"${dis}>Late</button>` +
         `<button type="button" class="cb abs${cur === "absent" ? " on" : ""}" data-set="absent" data-n="${n}" data-id="${esc(c.id)}"${dis}>Absent</button></div>`;
@@ -870,7 +877,7 @@ function render() {
     else if (cur === "late") chip = `<span class="chip late">Late${en && en.time ? " " + esc(en.time) : ""}</span>`;
     else if (cur === "absent") chip = `<span class="chip abs">Absent</span>`;
     else chip = s === "future" ? `<span class="chip fut">Opens ${nice(d)}</span>` : `<span class="chip none">Not marked</span>`;
-    return `<div class="cell" data-wk="Week ${n}">${chip}</div>`;
+    return `<div class="cell" data-wk="Week ${n} · ${nice(d)}">${chip}</div>`;
   };
   $("rows").innerHTML = list.map(c =>
     `<div class="row"><div class="nm"><b>${esc(c.name || "(no name)")}${c.rap === true ? RAPSVG : ""}${S.full ? attBadge(attemptOf(c)) : ""}</b><small>${esc(c.degree || "")}</small>${todayWk === 2 ? lastWeekChip(c) : ""}${w1AbsentOpen(c.id, 2) && canEditWeek(2) ? (outcomeOf(c.id) ? `<span class="fac">${esc(SENT_LABEL[outcomeOf(c.id).type] || "")}</span>` : `<span class="fac">${S.full ? "Absent in week 1. Check with them, then mark." : "Absent in week 1. Send to RMD faculty."}</span>`) : ""}</div>${cellHtml(c, 1)}${cellHtml(c, 2)}</div>`
