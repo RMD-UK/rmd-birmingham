@@ -246,7 +246,10 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
   if (!course) throw new HttpsError("invalid-argument", "Course is required.");
 
   let ok = await callerIsDirector(auth);
-  if (!ok) ok = !!(await callerFacultyRosterGroup(auth));
+  // 2026-10-16 safety review: only RMD faculty (Director, Student, Senior Faculty) see WHY a Director overrode
+  // eligibility (reason, note, who was present). Everyone else on the night only sees that an override exists.
+  let seeWhy = ok;
+  if (!ok) { seeWhy = !!(await callerFacultyRosterGroup(auth)); ok = seeWhy; }
   if (!ok) {
     try {
       const me = await db.collection("people").doc(auth.uid).get();
@@ -306,7 +309,7 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
         const ab = [], um = [];
         [1, 2].forEach(n => { const s = wkStatus(r, n); if (s === "absent") ab.push("Absent in week " + n); else if (s !== "here" && s !== "late") um.push("No register mark for week " + n); });
         const o = c.eligibilityOverride;
-        const ov = o && typeof o === "object" && o.by ? { by: cleanStr(o.by), byName: cleanStr(o.byName), reason: cleanStr(o.reason), how: cleanStr(o.how), present: cleanStr(o.present), note: cleanStr(o.note), at: cleanStr(o.at) } : null;
+        const ov = o && typeof o === "object" && o.by ? (seeWhy ? { by: cleanStr(o.by), byName: cleanStr(o.byName), reason: cleanStr(o.reason), how: cleanStr(o.how), present: cleanStr(o.present), note: cleanStr(o.note), at: cleanStr(o.at) } : { by: cleanStr(o.by), byName: cleanStr(o.byName), at: cleanStr(o.at) }) : null;
         return { state: ab.length ? "absent" : (um.length ? "unmarked" : "ok"), why: ab.concat(um), ov };
       })() } : {})
     };
