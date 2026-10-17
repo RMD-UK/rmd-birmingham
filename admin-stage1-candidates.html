@@ -88,6 +88,40 @@
     .dangerzone .card-header { color:#a8321f; }
     .more { margin:2px 0 8px; } .more summary { cursor:pointer; color:var(--pur); font-weight:700; font-size:12px; list-style:none; } .more summary::-webkit-details-marker{display:none} .more summary::before{content:'+ '} .more[open] summary::before{content:'– '} .director-note .more{display:inline}
     @media (max-width:700px) { body { padding:8px; } }
+
+    /* ---- candidate rows 17 Oct: one actions group, bigger buttons, tags under the name, stacked cards on phones. Layout only. ---- */
+    table.data-table { border-collapse:separate; border-spacing:0; background:#fff; border:1.5px solid var(--line2); border-radius:14px; overflow:hidden; font-size:14px; }
+    table.data-table th { background:#f4f6fb; padding:10px 14px; font-size:11.5px; letter-spacing:.5px; color:var(--mut2); border-bottom:1.5px solid var(--line2); }
+    table.data-table td { padding:12px 14px; border-top:1px solid #edf0f6; vertical-align:top; line-height:1.4; }
+    table.data-table tbody tr:first-child td { border-top:0; }
+    table.data-table tbody tr:hover td { background:#fafbfe; }
+    .name-cell .nm { font-size:15px; font-weight:800; color:var(--ink); }
+    .name-cell .tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; align-items:center; }
+    .name-cell .tags:empty { display:none; }
+    .tags .btn-link-sm { padding:3px 10px !important; font-size:12px !important; font-weight:600; background:#fff; color:var(--mut2); border:1.5px solid var(--line2); border-radius:99px; }
+    .tags .btn-link-sm:hover { border-color:var(--pur); color:var(--pur); background:#f4effb; }
+    .tags .dup-warning { margin:0; display:inline-flex !important; align-items:center; gap:6px; border-radius:99px; padding:3px 10px; font-size:12px; }
+    .tags .link-badge, .tags .promoted-badge { margin:0; font-size:12px; padding:3px 10px; }
+    td.acts { width:270px; }
+    .rowacts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .rowacts button { white-space:nowrap; }
+    .rowacts .btn-link-sm, .rowacts .btn-danger-sm, .rowacts .btn-promote { min-height:38px; padding:8px 14px; font-size:13.5px; font-weight:700; border-radius:10px; border:1.5px solid var(--line2); background:#fff; color:var(--pur); cursor:pointer; }
+    .rowacts .btn-link-sm:hover { border-color:var(--pur); background:#f4effb; }
+    .rowacts .btn-danger-sm { color:#a8321f; border-color:#f0c9c3; }
+    .rowacts .btn-danger-sm:hover { background:#fdecea; border-color:#a8321f; }
+    .rowacts .btn-promote { background:var(--pur); color:#fff; border-color:var(--pur); }
+    .rowacts button:focus-visible { outline:3px solid var(--ora); outline-offset:2px; }
+    table.data-table td .hint { color:var(--mut2); font-size:12.5px; }
+    @media (max-width:820px) {
+      table.data-table thead { display:none; }
+      table.data-table, table.data-table tbody, table.data-table tr, table.data-table td { display:block; width:100%; }
+      table.data-table tr { padding:10px 2px; border-top:1px solid #edf0f6; }
+      table.data-table tbody tr:first-child { border-top:0; }
+      table.data-table td { border:0 !important; padding:4px 14px; }
+      table.data-table td[data-l]::before { content:attr(data-l); display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--mut2); }
+      td.acts { width:100%; padding-top:8px; }
+      .rowacts .btn-danger-sm { margin-left:0; }
+    }
   </style>
 </head>
 <body>
@@ -1114,20 +1148,20 @@ function renderCandidates() {
 
   document.getElementById("candidatesWrap").innerHTML = filtered.length
     ? `<table class="data-table">
-        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Email</th><th>Degree</th><th>Course</th><th>Room</th><th></th></tr></thead>
         <tbody>${filtered.map(c => c.id === editCandidateId ? editRowHtml(c) : `
           <tr>
-            <td class="name-cell">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}${c.promotedToUid ? ` <span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${eligibilityOverrideBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}${possibleRepeatBadgeHtml(c)}</td>
-            <td>${esc(c.email) || "–"}</td>
-            <td>${esc(c.degree) || "–"}</td>
-            <td>${esc(RMD_CAND_LOOKUP.courseText(c, cdates).replace("Not on a course yet", "–"))}${!c.course && (c.preferredCourse || c.avoidCourse) ? `<br><span class="hint" style="margin:0;color:#b25e00;font-weight:700;">${c.preferredCourse ? "Prefers " + esc(c.preferredCourse) : "Not " + esc(c.avoidCourse)}</span>` : ""}</td>
-            <td>${esc(c.room) || "–"}${c.course ? `<br><span class="hint" style="margin:0;">${esc(RMD_CAND_LOOKUP.assessmentText(c))}</span>` : ""}</td>
-            <td><button class="btn-link-sm" onclick="startEditCandidate('${c.id}')">✎ Edit</button></td>
-            <td>${c.linkedCandidateId
+            <td class="name-cell"><div class="nm">${c._dupColor ? `<span class="dup-dot" style="background:${c._dupColor}" title="Possible match — same surname and course as: ${esc((c._dupPeers || []).join("; "))}"></span>` : ""}${esc(c.name)}</div><div class="tags">${c.promotedToUid ? `<span class="promoted-badge">Promoted → Instructor</span>` : ""}${linkedBadgeHtml(c)}${placementClashBadgeHtml(c)}${eligibilityOverrideBadgeHtml(c)}${placementCheckBadgeHtml(c)}${overCapacityBadgeHtml(c)}${assessmentRepeatBadgeHtml(c)}${possibleRepeatBadgeHtml(c)}</div></td>
+            <td data-l="Email">${esc(c.email) || "–"}</td>
+            <td data-l="Degree">${esc(c.degree) || "–"}</td>
+            <td data-l="Course">${esc(RMD_CAND_LOOKUP.courseText(c, cdates).replace("Not on a course yet", "–"))}${!c.course && (c.preferredCourse || c.avoidCourse) ? `<br><span class="hint" style="margin:0;color:#b25e00;font-weight:700;">${c.preferredCourse ? "Prefers " + esc(c.preferredCourse) : "Not " + esc(c.avoidCourse)}</span>` : ""}</td>
+            <td data-l="Room">${esc(c.room) || "–"}${c.course ? `<br><span class="hint" style="margin:0;">${esc(RMD_CAND_LOOKUP.assessmentText(c))}</span>` : ""}</td>
+            <td class="acts"><div class="rowacts"><button class="btn-link-sm" onclick="startEditCandidate('${c.id}')">Edit</button>
+              ${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
-              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">🔗 Link repeat</button>`}
-              ${c.course ? `<button class="btn-link-sm" title="Clear this one person's course and room so the next Allocate now run places them again" onclick="reallocateCandidate('${c.id}')">↻ Re-allocate</button>` : `<button class="btn-link-sm" title="Choose a course for this person, including one that auto-fit would rule out (voluntary override)" onclick="reallocateCandidate('${c.id}')">➜ Place on course</button>`}
-              <button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></td>
+              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">Link repeat</button>`}
+              ${c.course ? `<button class="btn-link-sm" title="Clear this one person's course and room so the next Allocate now run places them again" onclick="reallocateCandidate('${c.id}')">Re-allocate</button>` : `<button class="btn-link-sm" title="Choose a course for this person, including one that auto-fit would rule out (voluntary override)" onclick="reallocateCandidate('${c.id}')">Place on course</button>`}
+              <button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></div></td>
           </tr>`).join("")}</tbody>
       </table>`
     : `<div class="empty-state">No candidates match.</div>`;
@@ -1148,17 +1182,17 @@ function editRowHtml(c) {
     <td><input type="text" id="editDegree_${c.id}" value="${esc(c.degree)}" style="width:100%;padding:6px;font-size:13px;"></td>
     <td>${esc(c.course) || "–"}</td>
     <td>${esc(c.room) || "–"}</td>
-    <td colspan="2">
+    <td class="acts"><div class="rowacts">
       <button class="btn-promote" onclick="saveEditCandidate('${c.id}')">Save</button>
       <button class="btn-link-sm" onclick="cancelEditCandidate()">Cancel</button>
-    </td>
+    </div></td>
   </tr>
-  <tr><td colspan="7" style="background:#f7fafd;font-size:12px;padding:8px 10px;">
+  <tr><td colspan="6" style="background:#f7fafd;font-size:12px;padding:8px 10px;">
     <strong>Placement dates on file:</strong>
     ${(c.placementBlocks || []).length
       ? (c.placementBlocks || []).map((b, i) => `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:10px;background:#eef2f6;">${esc(b.start)} to ${esc(b.end)} <a href="#" title="Remove these dates" style="color:#b7410e;text-decoration:none;font-weight:700;" onclick="removePlacementBlock('${c.id}', ${i}); return false;">✕</a></span>`).join("")
       : `<span style="color:#667;">none</span>`}
-    <span style="color:#667;"> Dates changed? Pasting the new dates in Step 2 only <em>adds</em> them, so ✕ the old ones here, paste the new ones, then use ↻ Re-allocate on their row.</span>
+    <span style="color:#667;"> Dates changed? Pasting the new dates in Step 2 only <em>adds</em> them, so ✕ the old ones here, paste the new ones, then use Re-allocate on their row.</span>
   </td></tr>`;
 }
 
@@ -1167,7 +1201,7 @@ async function removePlacementBlock(id, index) {
   const c = allCandidates.find(x => x.id === id);
   if (!c || !c.placementBlocks || !c.placementBlocks[index]) return;
   const b = c.placementBlocks[index];
-  if (!confirm(`Remove the placement dates ${b.start} to ${b.end} for ${c.name}?\n\nThis doesn't move them. If they are already on a course, use ↻ Re-allocate afterwards.`)) return;
+  if (!confirm(`Remove the placement dates ${b.start} to ${b.end} for ${c.name}?\n\nThis doesn't move them. If they are already on a course, use Re-allocate afterwards.`)) return;
   try {
     const next = c.placementBlocks.filter((_, i) => i !== index);
     await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ placementBlocks: next });
@@ -1400,7 +1434,7 @@ function overCapacityBadgeHtml(c) {
 // managed manually and separately by RMD faculty, per Jon.
 function assessmentRepeatBadgeHtml(c) {
   if (c.firstTimeAssessment === false) {
-    return ` <span class="dup-warning" style="display:inline;background:#e8f0fe;border-color:#b8d4f5;color:var(--rmd-blue);" title="Excluded from Step 5's assessment-room auto-allocation">🔁 repeat assessment <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="toggleFirstTimeAssessment('${c.id}', true)">Mark first-time</button></span>`;
+    return ` <span class="dup-warning" style="display:inline;background:#e8f0fe;border-color:#b8d4f5;color:var(--rmd-blue);" title="Excluded from Step 5's assessment-room auto-allocation">Repeat assessment <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="toggleFirstTimeAssessment('${c.id}', true)">Mark first-time</button></span>`;
   }
   return ` <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="toggleFirstTimeAssessment('${c.id}', false)" title="Exclude from Step 5's assessment-room auto-allocation — RMD faculty manage repeat assessments separately">Mark repeat assessment</button>`;
 }
