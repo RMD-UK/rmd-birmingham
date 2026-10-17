@@ -202,7 +202,7 @@
 
       <div class="oneform" id="oneForm">
         <h3>Add one person</h3>
-        <div class="hint" style="margin:0;">Fill in the boxes and press Add to list. The email ending is checked against the degree.</div>
+        <div class="hint" style="margin:0;">Fill in the boxes and press Add to list. The email ending is checked against the degree (Dentistry and Physio must be @student.bham.ac.uk).</div>
         <div class="fgrid">
           <div class="f c3"><label for="oneSurname">Last name</label><input type="text" id="oneSurname" autocomplete="off" oninput="oneCheck()"></div>
           <div class="f c3"><label for="oneFirst">First name</label><input type="text" id="oneFirst" autocomplete="off" oninput="oneCheck()"></div>
@@ -491,16 +491,28 @@ function computeDuplicateColors() {
 // (last name, first name, email, degree, student ID, year) and appends it
 // to #pasteBox, so everything after that (Parse & preview, flags, import)
 // is unchanged. Nothing is saved here.
-// Email ending expected for each degree. Dentistry and Physio are confirmed
-// (Jon, 15 Oct: must be @student.bham.ac.uk, not @bham.ac.uk). The other
-// programmes are assumed to match until Jon says otherwise: change the
-// entries below if any degree needs a different ending. A mismatch is a
-// warning with a one-click fix, never a block.
+// Email ending expected for each degree. Checked against the master sheet on
+// 2026-10-17: every Medicine, Nursing (both), Pharmacy, Midwifery and CEP
+// candidate (1,020 people) is @student.bham.ac.uk, so that is expected for all
+// nine degrees. Dentistry and Physio are CONFIRMED by Jon (15 Oct: must be
+// @student.bham.ac.uk, not @bham.ac.uk; about 190 had to be corrected on
+// 12 Oct), so a wrong ending there blocks "Add to list" and is flagged in the
+// preview. For the other degrees a different ending only warns.
+// Change the entries below if any degree ever needs a different ending.
 const STAGE1_EMAIL_SUFFIX_DEFAULT = "@student.bham.ac.uk";
 const STAGE1_EMAIL_SUFFIX = {
   // "Degree name": "@ending"   (leave empty to use the default)
 };
+const STAGE1_EMAIL_STRICT = ["Dentistry BDS", "Physio Y1 MSc", "Physio Y2 MSci"];
 function expectedSuffixFor(degree) { return (STAGE1_EMAIL_SUFFIX[degree] || STAGE1_EMAIL_SUFFIX_DEFAULT).toLowerCase(); }
+function suffixIsStrict(degree) { return STAGE1_EMAIL_STRICT.indexOf(degree) > -1; }
+// For the preview and import: null if fine (or nothing to check), else what is wrong.
+function suffixProblem(email, degree) {
+  const e = String(email || "").trim(), at = e.lastIndexOf("@");
+  if (!degree || at < 1) return null;
+  const exp = expectedSuffixFor(degree), dom = e.slice(at).toLowerCase();
+  return dom === exp ? null : { exp, dom, local: e.slice(0, at), strict: suffixIsStrict(degree) };
+}
 function oneFillDegrees() {
   const sel = document.getElementById("oneDegree");
   if (!sel || sel.options.length) return;
@@ -545,14 +557,14 @@ function oneCheck() {
   emailBox.classList.toggle("bad", st.kind === "bad" || st.kind === "wrong");
   let cls = "", html = "";
   if (st.kind === "ok") { cls = "ok"; html = `Email ending ${esc(st.dom)} is right for ${esc(degree)}.`; }
-  else if (st.kind === "wrong") { cls = "warn"; html = `${esc(degree)} emails should end ${esc(st.exp)}, this one ends ${esc(st.dom)}. <button type="button" onclick="oneFixSuffix()">Change to ${esc(st.exp)}</button>`; }
+  else if (st.kind === "wrong") { cls = suffixIsStrict(degree) ? "err" : "warn"; html = `${esc(degree)} emails must end ${esc(st.exp)}, this one ends ${esc(st.dom)}.${suffixIsStrict(degree) ? " It cannot be added until this is fixed." : ""} <button type="button" onclick="oneFixSuffix()">Change to ${esc(st.exp)}</button>`; }
   else if (st.kind === "bad") { cls = "err"; html = "That does not look like an email address."; }
   else if (st.kind === "noat") { cls = ""; html = `Type the whole address, or just the part before the @ and press Tab: the ending ${esc(st.exp)} is added for you.`; }
   else if (st.kind === "needdeg") { cls = "warn"; html = "Choose the degree to check the email ending."; }
   const dupe = (st.kind === "ok" || st.kind === "wrong") ? oneExisting(st.raw) : null;
   if (dupe) { cls = "warn"; html += `${html ? "<br>" : ""}Already in the system: ${esc(dupe.name || "")}${dupe.course ? " (" + esc(dupe.course) + ")" : ""}. Adding again will be flagged as a duplicate.`; }
   note.className = "emailnote " + cls; note.innerHTML = html;
-  const need = oneClean(document.getElementById("oneSurname").value) && oneClean(document.getElementById("oneFirst").value) && degree && (st.kind === "ok" || st.kind === "wrong");
+  const need = oneClean(document.getElementById("oneSurname").value) && oneClean(document.getElementById("oneFirst").value) && degree && (st.kind === "ok" || (st.kind === "wrong" && !suffixIsStrict(degree)));
   document.getElementById("oneAddBtn").disabled = !need;
   document.getElementById("oneMsg").textContent = "";
 }
@@ -684,9 +696,16 @@ function renderParsedPreview(errors) {
     r._missing = missing;
     r._missingFlagged = missing.length > 0;
 
-    r._flagged = r._dupFlagged || r._missingFlagged;
+    // Email ending vs degree (2026-10-17, Jon: about 190 emails had the wrong
+    // ending and had to be corrected by hand). Uses the degree as it will be
+    // saved (override, else the matched standard name).
+    r._sfx = suffixProblem(r.email, r.degreeOverride || (r.degreeMatch && r.degreeMatch.exact) || "");
+    r._sfxFlagged = !!r._sfx;
+
+    r._flagged = r._dupFlagged || r._missingFlagged || r._sfxFlagged;
     r._warn = [
       r._missingFlagged ? `<span class="dup-warning dup-exact" style="display:inline;">⚠ missing: ${esc(missing.join(", "))}</span>` : "",
+      r._sfxFlagged ? `<span class="dup-warning ${r._sfx.strict ? "dup-exact" : ""}" style="display:inline;">⚠ email should end ${esc(r._sfx.exp)}</span> <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:11px;margin-left:4px;" onclick="fixEmailEnding(${r._pid})">Fix ending</button>` : "",
       r._dupWarn
     ].filter(Boolean).join("<br>");
   });
@@ -722,7 +741,7 @@ function renderParsedPreview(errors) {
     cluster.forEach(r => { r._dupColor = color; });
     groupedFlagged.push(...cluster);
   });
-  const missingOnlyRows = rows.filter(r => r._missingFlagged && !r._dupFlagged);
+  const missingOnlyRows = rows.filter(r => (r._missingFlagged || r._sfxFlagged) && !r._dupFlagged);
   const allFlagged = [...groupedFlagged, ...missingOnlyRows];
   const clear = rows.filter(r => !r._flagged);
 
@@ -774,6 +793,7 @@ function renderParsedPreview(errors) {
   const flaggedSection = allFlagged.length
     ? `<details data-section="flagged" ${("flagged" in existingOpen ? existingOpen.flagged : true) ? "open" : ""} style="margin-top:14px;">
          <summary style="cursor:pointer;font-weight:700;color:var(--rmd-navy);padding:4px 0;">${allFlagged.length} row${allFlagged.length === 1 ? "" : "s"} need a check</summary>
+         ${rows.filter(r => r._sfxFlagged).length ? `<div style="margin:6px 0;"><button type="button" class="btn-secondary" onclick="fixAllEmailEndings()">Fix all ${rows.filter(r => r._sfxFlagged).length} email ending${rows.filter(r => r._sfxFlagged).length === 1 ? "" : "s"}</button> <span class="hint">Changes only the part after the @, to the ending that degree needs.</span></div>` : ""}
          <div class="hint" style="margin:4px 0 8px;">Matched duplicate pairs/sets are grouped and coloured together so you can compare course and email directly — found a genuine duplicate? Remove whichever row you don't want before importing. Rows missing a first name, surname, email or degree are listed here too, with no colour dot (there's nothing to compare them against) — fix the source and re-paste, or remove the row.</div>
          <table class="preview-table">${tableHead}<tbody>${allFlagged.map(renderRow).join("")}</tbody></table>
        </details>`
@@ -794,6 +814,21 @@ function renderParsedPreview(errors) {
     <div style="margin-top:12px;">
       <button class="btn-primary" onclick="confirmImport()">Import ${rows.length} candidate${rows.length === 1 ? "" : "s"}</button>
     </div>`;
+}
+
+function fixEmailEnding(pid) {
+  const row = (parsedRows || []).find(r => r._pid === pid);
+  const p = row && suffixProblem(row.email, row.degreeOverride || (row.degreeMatch && row.degreeMatch.exact) || "");
+  if (!p) return;
+  row.email = p.local + p.exp;
+  renderParsedPreview([]);
+}
+function fixAllEmailEndings() {
+  (parsedRows || []).forEach(row => {
+    const p = suffixProblem(row.email, row.degreeOverride || (row.degreeMatch && row.degreeMatch.exact) || "");
+    if (p) row.email = p.local + p.exp;
+  });
+  renderParsedPreview([]);
 }
 
 function removePreviewRow(pid) {
@@ -834,6 +869,12 @@ async function confirmImport() {
   if (incomplete.length) {
     const list = incomplete.map(r => `"${r.name || "(no name)"}" — missing: ${r._missing.join(", ")}`).join("\n");
     if (!confirm(`${incomplete.length} candidate${incomplete.length === 1 ? "" : "s"} ${incomplete.length === 1 ? "is" : "are"} missing a required field:\n\n${list}\n\nImport anyway? You can fix these up afterwards on the All candidates list below.`)) return;
+  }
+
+  const badEnd = parsedRows.filter(r => r._sfx && r._sfx.strict);
+  if (badEnd.length) {
+    const list = badEnd.slice(0, 15).map(r => `"${r.name}": ${r.email}`).join("\n") + (badEnd.length > 15 ? `\n...and ${badEnd.length - 15} more` : "");
+    if (!confirm(`${badEnd.length} Dentistry or Physio email${badEnd.length === 1 ? "" : "s"} do not end @student.bham.ac.uk:\n\n${list}\n\nCancel and use Fix ending in the preview, or press OK to import them as they are?`)) return;
   }
 
   const unrecognized = parsedRows.filter(r => r.degree && !r.degreeMatch && !r.degreeOverride);
