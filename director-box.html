@@ -112,7 +112,7 @@ function attemptOf(c) {
 const hasSlot = c => !!(c.assessmentRoom && c.assessmentSlot);
 const wk = (r, n) => (r && r["w" + n] && r["w" + n].status) || null;
 
-function figures(cands, regs, ass) {
+function figures(cands, regs, ass, d, today) {
   const F = { total: cands.length };
   F.noRoom = cands.filter(c => !c.room).length;
   F.noTeam = cands.filter(c => c.room && !(c.instructorTeamUids || []).length).length;
@@ -120,10 +120,26 @@ function figures(cands, regs, ass) {
   F.cannotAttend = cands.length - live.length;
   F.rap = live.filter(c => c.rap === true).length;
   F.retest = live.filter(c => attemptOf(c) >= 2).length;
-  const auto = live.filter(c => c.rap !== true && attemptOf(c) < 2);
+  const auto0 = live.filter(c => c.rap !== true && attemptOf(c) < 2);
+  // absent in a teaching week (and not overridden) = moves to a new course, so no slot is given
+  const rmapA = {}; (regs || []).forEach(r => { rmapA[r.id] = r; });
+  const blocked = c => (regs || []).length > 0 && (wk(rmapA[c.id], 1) === "absent" || wk(rmapA[c.id], 2) === "absent") && !(c.eligibilityOverride && c.eligibilityOverride.by);
+  const auto = auto0.filter(c => !blocked(c));
   F.auto = auto.length;
   F.needSlot = auto.filter(c => !hasSlot(c)).length;
   F.slotted = cands.filter(hasSlot).length;
+  // the same four checks the hub uses before it lets a Director allocate
+  const clashes = auto0.filter(c => d && (c.placementBlocks || []).some(b => b.start && b.end && d.some(m => m >= b.start && m <= b.end)));
+  F.clash = clashes.length;
+  const MK = ["here", "late", "absent"];
+  F.unmarked = auto0.filter(c => !MK.includes(wk(rmapA[c.id], 1)) || !MK.includes(wk(rmapA[c.id], 2))).length;
+  F.teachDone = !!d && today >= d[1];
+  F.blockers = [];
+  if (!d) F.blockers.push("no assessment date");
+  if (F.clash) F.blockers.push(F.clash + " with a placement clash");
+  if (d && !F.teachDone) F.blockers.push("teaching night 2 not done");
+  else if (d && !(regs || []).length) F.blockers.push("no register marks");
+  else if (d && F.unmarked) F.blockers.push(F.unmarked + " with no register mark");
   F.regKnown = regs !== null;
   const rmap = {}; (regs || []).forEach(r => { rmap[r.id] = r; });
   F.regDocs = (regs || []).length;
@@ -131,10 +147,12 @@ function figures(cands, regs, ass) {
     F["w" + n + "marked"] = cands.filter(c => ["here", "late", "absent"].includes(wk(rmap[c.id], n))).length;
     F["w" + n + "absent"] = cands.filter(c => wk(rmap[c.id], n) === "absent").length;
   });
-  const first = live.filter(c => attemptOf(c) === 1);
+  const first = live.filter(c => attemptOf(c) === 1 || attemptOf(c) >= 3);   // third and fourth sits follow the same attendance rule (Jon, 16 Oct)
   const abs = F.regDocs ? first.filter(c => wk(rmap[c.id], 1) === "absent" || wk(rmap[c.id], 2) === "absent") : [];
   F.notElig = abs.filter(c => !(c.eligibilityOverride && c.eligibilityOverride.by)).length;
   F.overridden = abs.length - F.notElig;
+  if (F.notElig) F.blockers.push(F.notElig + " absent and not moved");
+  F.emailPending = cands.filter(c => c.email && hasSlot(c) && c.assessmentEmailedSlot !== ((d ? d[2] : "") + "|" + c.assessmentRoom + "|" + c.assessmentSlot) && !blocked(c)).length;
   F.assKnown = ass !== null;
   const done = new Set();
   (ass || []).forEach(a => { const at = a.attempts || {}; if (Object.keys(at).some(k => at[k] && at[k].outcome)) done.add(a.id); });
@@ -178,9 +196,11 @@ function build(course, F, ph, d) {
   D.push({ id: "regscreen", g: "teach", t: "Register live screen", href: "register-live.html",
     st: "Big-screen counts for the teaching evening", ds: "Open on the room screen", chip: teachTonight ? live : ["na", "Not tonight"] });
 
+  const slotLocked = F.blockers.length > 0 && F.needSlot > 0;
   D.push({ id: "slots", g: "night", t: "Assessment allocation (hub)", href: hub(course, "alloc"),
-    st: F.needSlot ? plural(F.needSlot, "person", "people") + " still need a slot" : (F.auto ? "All " + F.auto + " first sits have a slot" : "No first sits to place"),
-    ds: "Slots for assessment night; " + F.rap + " RAP placed by hand", chip: F.auto ? (F.needSlot ? todo : ok) : na });
+    st: slotLocked ? "Locked: " + F.blockers.join(", ") : (F.needSlot ? plural(F.needSlot, "person", "people") + " still need a slot" : (F.auto ? (F.emailPending ? F.emailPending + " not emailed their time yet" : "All " + F.auto + " first sits have a slot" + (F.slotted ? " and an email" : "")) : "No first sits to place")),
+    ds: "Four steps: check the course, allocate, check the schedule, email. " + F.rap + " RAP placed by hand",
+    chip: slotLocked ? ["bad", "Locked"] : (F.auto ? ((F.needSlot || F.emailPending) ? todo : ok) : na) });
   D.push({ id: "elig", g: "night", t: "Who is not eligible (hub)", href: hub(course, "assessor"),
     st: !F.regDocs ? "No register marks yet" : (F.notElig ? plural(F.notElig, "person", "people") + " absent in a teaching week" : "Nobody blocked") + (F.overridden ? ", " + F.overridden + " overridden" : ""),
     ds: "Absent in week 1 or 2 means a new course unless a Director overrides", chip: !F.regDocs ? na : (F.notElig ? bad : ok) });
@@ -223,9 +243,12 @@ function pickNext(D, F, ph) {
       if (F.w1absent) return mk("comms", "Do this next", plural(F.w1absent, "person was", "people were") + " absent in week 1. Move them to a new course and email them.");
       return mk("register", "Next", "Week 2 is the next teaching night.");
     case "between2":
-      if (F.notElig) return mk("comms", "Do this next", plural(F.notElig, "person", "people") + " absent in a teaching week: move them to a new course and email them.");
-      if (F.needSlot) return mk("slots", "Do this next", plural(F.needSlot, "person still needs", "people still need") + " an assessment slot (" + ph.days + " days to go).");
-      return mk("ready", "Do this next", "Slots are placed. Run the readiness check (" + ph.days + " days to go).");
+      if (F.clash) return mk("alloc", "Do this next", plural(F.clash, "person has", "people have") + " a placement that overlaps this course. Confirm or move them.");
+      if (F.unmarked || !F.regDocs) return mk("register", "Do this next", F.regDocs ? plural(F.unmarked, "person has", "people have") + " no register mark for a teaching week." : "There are no register marks for this course.");
+      if (F.notElig) return mk("comms", "Do this next", plural(F.notElig, "person", "people") + " absent in a teaching week: move them to a new course and email them, then allocate.");
+      if (F.needSlot) return mk("slots", "Do this next", "The course is ready. Allocate slots (" + plural(F.needSlot, "person needs", "people need") + " one, " + ph.days + " days to go).");
+      if (F.emailPending) return mk("slots", "Do this next", "Check the schedule, then email " + plural(F.emailPending, "person", "people") + " their time.");
+      return mk("ready", "Do this next", "Slots are placed and emailed. Run the readiness check (" + ph.days + " days to go).");
     default:
       return mk("retest", "Do this next", "Assessment night is over. Check the retest pool and follow up.");
   }
@@ -246,7 +269,7 @@ async function show(name) {
   const [cands, regs, ass] = await Promise.all([getCol("stage1_candidates", name), getCol("stage1_register", name), getCol("stage1_assessments", name)]);
   if (my !== SEQ) return;   // a newer pick has taken over
   if (cands === null) { $("doors").innerHTML = '<div class="empty">Could not read the candidates for ' + esc(name) + '. Check you are signed in as a Director.</div>'; return; }
-  const today = todayLondon(), ph = phaseOf(d, today), F = figures(cands, regs, ass), D = build(name, F, ph, d);
+  const today = todayLondon(), ph = phaseOf(d, today), F = figures(cands, regs, ass, d, today), D = build(name, F, ph, d);
   // three Mondays
   if (d) {
     const lab = ["Teaching night 1", "Teaching night 2", "Assessment night"];

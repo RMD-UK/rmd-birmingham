@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OPIS Candidate Rating — RMD Birmingham</title>
+  <title>Rate candidates (OPIS) — RMD Birmingham</title>
   <link rel="stylesheet" href="css/rmd.css">
   <style>
     * { box-sizing: border-box; }
@@ -131,6 +131,17 @@
       .btn-reset { padding:6px 10px; font-size:12px; }
       .btn-submit, .btn-next { padding:8px 14px; }
     }
+
+    /* ---- tidy 16 Oct: matches the Phase 1 hub ---- */
+    .top-bar { background:#44247C; padding:10px 14px; }
+    .top-bar-title { font-size:16px; font-weight:800; }
+    .top-bar-back { color:#fff; background:rgba(255,255,255,.14); border-radius:10px; padding:7px 12px; font-size:13px; font-weight:700; }
+    .top-bar-back:hover { background:rgba(255,255,255,.26); }
+    .picker-bar { padding:10px 14px; border-bottom:1.5px solid #dde2ed; }
+    .room-chip.active { background:#44247C; border-color:#44247C; }
+    .detail-head { background:#44247C; }
+    section.detail { border:1.5px solid #dde2ed; border-radius:14px; }
+    .room-chip:focus-visible, .cand-chip:focus-visible, .m-cell:focus-visible, select:focus-visible, input:focus-visible, .btn-submit:focus-visible { outline:3px solid #f49001; outline-offset:2px; }
   </style>
 </head>
 <body>
@@ -142,8 +153,8 @@
 
 <div class="top-bar">
   <a href="member-menu.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
-  <div class="top-bar-title">OPIS Candidate Rating<span class="top-bar-sub">RMD Birmingham, Stage 1 Provider Courses</span></div>
-  <a class="top-bar-back" href="member-menu.html">← Menu</a>
+  <div class="top-bar-title">Rate candidates (OPIS)</div>
+  <a class="top-bar-back" href="phase1.html">← Phase 1 hub</a>
 </div>
 
 <div class="picker-bar">
@@ -162,7 +173,7 @@
 </div>
 
 <div class="wrap">
-  <div id="noCourse" class="no-course">Choose a course, then your teaching room, to see the candidates you can rate.</div>
+  <div id="noCourse" class="no-course">Pick a course, then your room.</div>
   <div id="rosterWrap" style="display:none;"><div class="cand-strip" id="rosterGrid"></div></div>
   <section class="detail" id="detail" style="display:none;"></section>
 </div>
@@ -305,6 +316,7 @@ window.addEventListener("load", () => {
     document.getElementById("authOverlay").style.display = "none";
     await loadData();
     populateCourseDropdown();
+    applyContext();
   });
 });
 
@@ -357,6 +369,18 @@ function populateCourseDropdown() {
   if (!courses.length) {
     document.getElementById("noCourse").textContent = "No Stage 1 courses have candidates imported yet.";
   }
+}
+
+// Opened from the Phase 1 hub: ?course=...&room=... picks the course and room for you.
+function applyContext() {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const c = q.get("course"), r = q.get("room");
+    if (!c || courseList().indexOf(c) < 0) return;
+    document.getElementById("courseSelect").value = c;
+    selectCourse(c);
+    if (r && document.querySelector('.room-chip[data-room="' + r + '"]')) selectRoom(r);
+  } catch (e) { console.warn("context:", e.message); }
 }
 
 function instructorName(uid) {

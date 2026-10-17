@@ -266,11 +266,13 @@ const INSTAGRAM_URL = "https://www.instagram.com/rmdbirmingham/";
 function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
 function courseMondays(assessmentDate) {
-  const d = new Date(assessmentDate + "T00:00:00");
+  // 2026-10-16: worked out in UTC. The old version used local midnight then toISOString(), which in UK summer time
+  // moved the two teaching Mondays back one day (so a placement starting on a teaching Monday could be missed).
+  const d = new Date(assessmentDate + "T12:00:00Z");
   const mondays = [];
   for (let weeksBack = 2; weeksBack >= 0; weeksBack--) {
     const m = new Date(d);
-    m.setDate(m.getDate() - weeksBack * 7);
+    m.setUTCDate(m.getUTCDate() - weeksBack * 7);
     mondays.push(m.toISOString().slice(0, 10));
   }
   return mondays; // [first session, second session, assessment evening]
@@ -897,6 +899,8 @@ async function applyNow() {
   $("apply").disabled = true;
   try {
     const oldCourse = c.course;
+    // 2026-10-16: an assessment slot belongs to the old course's assessment night, so clear it (and the "emailed" stamp) when the course changes.
+    if ((sel.mode === "course" || sel.mode === "off") && oldCourse !== upd.course) Object.assign(upd, { assessmentRoom: null, assessmentSlot: null, assessmentEmailedSlot: null });
     await ref.update(upd);
     if ((sel.mode === "course" || sel.mode === "off") && oldCourse && oldCourse !== upd.course) {
       try {

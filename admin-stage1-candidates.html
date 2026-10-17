@@ -58,6 +58,36 @@
     summary.card-header::-webkit-details-marker { display:none; }
     summary.card-header::after { content:"▸ show"; font-size:10px; opacity:0.85; letter-spacing:0.5px; }
     details[open] > summary.card-header::after { content:"▾ hide"; }
+
+    /* ---- layout tidy 16 Oct: matches Assessment Results page. Layout only. ---- */
+    :root { --pur:#44247C; --ora:#f49001; --ink:#1f2540; --mut2:#5f6f96; --line2:#dde2ed; }
+    body { background:#f0f3f6; color:var(--ink); padding:14px; }
+    .page { max-width:1120px; }
+    .top-bar { background:var(--pur); border-radius:14px; flex-wrap:wrap; }
+    .top-bar-link { padding:7px 11px; }
+    .top-bar-link { border:1.5px solid rgba(255,255,255,.4); }
+    .card { border:1.5px solid var(--line2); border-radius:14px; box-shadow:none; }
+    .card-header { background:#fff; color:var(--ink); text-transform:none; letter-spacing:0; font-size:15.5px; font-weight:800; border-bottom:1.5px solid var(--line2); padding:13px 16px; }
+    summary.card-header::after { color:var(--mut2); font-weight:700; }
+    .btn-primary { background:var(--pur); border-radius:10px; }
+    .btn-primary:hover:not(:disabled) { background:#2e1856; }
+    .btn-secondary { border:1.5px solid var(--line2); border-radius:10px; }
+    .tilesrow { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-bottom:14px; }
+    .tile2 { background:#fff; border:1.5px solid var(--line2); border-radius:14px; padding:12px 14px; }
+    .tile2 b { display:block; font-size:32px; line-height:1.05; font-variant-numeric:tabular-nums; }
+    .tile2 span { display:block; font-size:12.5px; color:var(--mut2); margin-top:4px; line-height:1.35; }
+    .tile2.act b { color:#a8321f; } .tile2.ok b { color:#1a6e31; }
+    .tabs2 { display:flex; gap:2px; border-bottom:2px solid var(--line2); margin:2px 0 14px; overflow-x:auto; }
+    .tab2 { appearance:none; background:none; border:0; border-bottom:3px solid transparent; margin-bottom:-2px; padding:9px 13px; font:inherit; font-size:14px; font-weight:700; color:var(--mut2); cursor:pointer; white-space:nowrap; }
+    .tab2.on { color:var(--pur); border-bottom-color:var(--ora); }
+    .tab2:focus-visible, .btn-primary:focus-visible, .btn-secondary:focus-visible { outline:3px solid var(--ora); outline-offset:2px; }
+    .pane2 { display:none; } .pane2.on { display:block; }
+    .secthead { font-size:12px; font-weight:700; color:var(--mut2); text-transform:uppercase; letter-spacing:.6px; margin:6px 0 10px; }
+    .director-note { border-radius:12px; }
+    .dangerzone { border-color:#f5b8b0; }
+    .dangerzone .card-header { color:#a8321f; }
+    .more { margin:2px 0 8px; } .more summary { cursor:pointer; color:var(--pur); font-weight:700; font-size:12px; list-style:none; } .more summary::-webkit-details-marker{display:none} .more summary::before{content:'+ '} .more[open] summary::before{content:'– '} .director-note .more{display:inline}
+    @media (max-width:700px) { body { padding:8px; } }
   </style>
 </head>
 <body>
@@ -73,10 +103,64 @@
     <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation</a>
   </div>
 
-  <div class="director-note">
-    Add candidates in Steps 1 and 2 below, then use the two tools below to allocate them: <strong>Course allocation</strong> gives each checked candidate a course and a teaching room; <strong>Assessment allocation</strong> gives each first-time candidate an assessment room and time slot once their course is set. Use <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation</a> afterwards to review room placements or assign instructor teams.
+
+  <div class="tilesrow" id="tilesRow">
+    <div class="tile2"><b id="tTotal">–</b><span>candidates</span></div>
+    <div class="tile2 ok"><b id="tOn">–</b><span>on a course</span></div>
+    <div class="tile2"><b id="tOff">–</b><span>not on a course</span></div>
+    <div class="tile2 act"><b id="tChk">–</b><span>placement dates to check</span></div>
+    <div class="tile2"><b id="tDup">–</b><span>possible duplicates</span></div>
+  </div>
+  <div class="tabs2" id="tabs2" role="tablist">
+    <button class="tab2 on" data-k="list" role="tab">Candidates</button>
+    <button class="tab2" data-k="add" role="tab">Add and allocate</button>
+    <button class="tab2" data-k="rep" role="tab">Repeat takers and outcomes</button>
+    <button class="tab2" data-k="set" role="tab">Settings and clean-up</button>
   </div>
 
+  <div class="pane2 on" id="pane-list">
+  <div class="card">
+    <details id="allCandidatesDetails" open>
+    <summary class="card-header">All candidates</summary>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">A coloured dot marks candidates who share a surname and course. Hover to see who.</p>
+      <div class="filters">
+        <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
+        <input type="text" id="searchBox" placeholder="Search by name, email, degree or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
+      </div>
+      <p class="hint" style="margin-top:0;">Repeating? Add them as a new record, then use <strong>Link repeat</strong> on either row.</p>
+      <div class="summary-line" id="summaryLine"></div>
+      <div id="candidatesWrap"></div>
+    </div>
+    </details>
+  </div>
+  </div>
+
+  <div class="pane2" id="pane-add">
+  <div class="director-note">Add candidates (Steps 1 and 2), then allocate: Course allocation, then Assessment allocation. Then <a href="admin-course-room-allocation.html">Room and instructor allocation</a>.</div>
+  <div class="card">
+    <div class="card-header">Step 1 — Add candidates</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">One per line: <strong>last name, first name, email, degree, student ID, year</strong>. Student ID and year are optional. Rows missing a required field are flagged before import.</p>
+      <p class="hint" style="margin-top:0;"><strong>Nobody gets a course here.</strong> Allocate on the Course allocation page after Step 2.</p>
+      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, , 1"></textarea>
+      <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
+      <div id="previewWrap"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Step 2 — Check placement dates (Pharmacy only)</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Pharmacy only; other degrees are checked automatically. Paste <strong>student ID, last name, first name, email, start, end</strong> (dates DD/MM/YYYY). Matched by email. Clashes with the course's 3 Mondays are flagged. Nothing is saved until you confirm.</p>
+      <textarea id="placementPasteBox" placeholder="Dave, Smith, abc123@student.bham.ac.uk, 02/11/2026, 02/11/2026&#10;Dave, Smith, abc123@student.bham.ac.uk, 15/03/2027, 19/03/2027"></textarea>
+      <button class="btn-primary" id="placementParseBtn" onclick="parsePlacementPreview()">Parse &amp; preview</button>
+      <div id="placementPreviewWrap"></div>
+      <div style="margin-top:14px;border-top:1px solid #f0f3f6;padding-top:12px;">
+        <button class="btn-secondary" onclick="markAllNoPlacementDates()">Mark all unchecked as "no placement dates" (excludes Pharmacy)</button>
+      </div>
+    </div>
+  </div>
+  <div class="secthead">Next: allocate</div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
     <a href="course-allocation.html" style="flex:1;min-width:220px;background:white;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.1);padding:16px;text-decoration:none;display:block;">
       <div style="font-size:14px;font-weight:700;color:var(--rmd-navy);margin-bottom:4px;">📋 Course allocation →</div>
@@ -87,89 +171,51 @@
       <div style="font-size:12px;color:var(--rmd-muted);">Give first-time candidates an assessment room and time slot.</div>
     </a>
   </div>
-
-  <div style="margin:4px 0 10px;padding-top:4px;">
-    <div style="font-size:12px;font-weight:700;color:var(--rmd-muted);text-transform:uppercase;letter-spacing:0.6px;">Before assessment allocation</div>
   </div>
+
+  <div class="pane2" id="pane-rep">
+    <div class="secthead">Before assessment allocation</div>
   <div class="card">
     <div class="card-header">Mark repeat assessment-takers (not first sit)</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste the candidates who are <strong>not</strong> sitting the assessment for the first time, <strong>one email per line</strong> (a spreadsheet column pasted straight in works; anything after the email on a line is ignored, and a header row is skipped). They are excluded from Step 5's assessment-room auto-allocation; RMD faculty manage their assessment separately. Matched by email against the candidates already added. Nothing is saved until you confirm. You can also tick people individually with <strong>Mark repeat assessment</strong> in the list below, or Faculty can do it on the course roster page.</p>
+      <p class="hint" style="margin-top:0;">One email per line. These people are left out of assessment-room allocation. Nothing is saved until you confirm.</p>
       <textarea id="repeatPasteBox" placeholder="j.smith@bham.ac.uk&#10;t.jones@bham.ac.uk"></textarea>
       <button class="btn-primary" id="repeatParseBtn" onclick="parseRepeatPreview()">Parse &amp; preview</button>
       <div id="repeatPreviewWrap"></div>
     </div>
   </div>
-
-  <div style="margin:4px 0 10px;padding-top:4px;">
-    <div style="font-size:12px;font-weight:700;color:var(--rmd-muted);text-transform:uppercase;letter-spacing:0.6px;">Later — once a course has actually run</div>
-  </div>
+    <div class="secthead">Later: once a course has actually run</div>
   <div class="card">
     <div class="card-header">Import assessment outcomes (after the course has run)</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">A separate, later task — not part of adding, checking or allocating candidates above. Once a course has actually run, paste rows from your outcomes sheet: <strong>email, pass/fail, more than 2 attempts</strong>. Matched by email against the candidates already added above. Pass/fail accepts "pass", "fail", "passed", "failed", "exempt" (case doesn't matter) — anything else is flagged so it's not silently guessed. Attempts accepts a number (e.g. <code>3</code>) or yes/no. Nothing is saved until you confirm.</p>
+      <p class="hint" style="margin-top:0;">After the course has run. One row per person: <strong>email, pass/fail, attempts</strong> (pass, fail or exempt; attempts as a number or yes/no). Nothing is saved until you confirm.</p>
       <textarea id="outcomesPasteBox" placeholder="j.smith@bham.ac.uk, pass, no&#10;t.jones@bham.ac.uk, fail, 3"></textarea>
       <button class="btn-primary" id="outcomesParseBtn" onclick="parseOutcomesPreview()">Parse &amp; preview</button>
       <div id="outcomesPreviewWrap"></div>
     </div>
   </div>
+  </div>
 
-
+  <div class="pane2" id="pane-set">
   <div class="card">
     <div class="card-header">Candidate resource access code</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">A single shared code that gets candidates into <code>candidate-resources.html</code> — not a personal login, just enough of a barrier that it isn't wide open to the public. Hand it out at the intro session; it's the same code for every candidate on every course until you change it.</p>
+      <p class="hint" style="margin-top:0;">One shared code for candidate resources. Hand it out at the intro session.</p>
       <div id="accessCodeDisplay" style="font-size:20px;font-weight:800;color:var(--rmd-navy);font-family:monospace;margin-bottom:12px;">Loading…</div>
       <button class="btn-secondary" onclick="changeAccessCode()">Set / change code</button>
     </div>
   </div>
-
-  <div class="card">
-    <div class="card-header">Step 1 — Add candidates</div>
-    <div class="card-body">
-      <p class="hint" style="margin-top:0;">Paste one candidate per line: <strong>last name, first name, email, degree, student ID, year of study</strong> — matches copying columns straight out of a spreadsheet. Last name, first name, email and degree are all expected — a row missing any of them is flagged below for you to check before importing (you can still import anyway, e.g. if an email genuinely isn't known yet). Student ID and year of study stay optional — most students won't have a student ID on file, so leave that column empty rather than holding a row back. Tab or comma separated. Room isn't collected here — it's assigned automatically alongside the course in Steps 3 and 4 below. Visit <a href="admin-course-room-allocation.html">Course Room &amp; Instructor Allocation</a> afterwards to review or adjust room placements and assign instructor teams.</p>
-      <p class="hint" style="margin-top:0;"><strong>Nobody gets a course here.</strong> Everyone pasted in starts unallocated — that only happens deliberately, in Step 3 below, once placement dates have been checked for everyone (Step 2).</p>
-      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, , 1"></textarea>
-      <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
-      <div id="previewWrap"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-header">Step 2 — Check placement dates (Pharmacy only)</div>
-    <div class="card-body">
-      <p class="hint" style="margin-top:0;">Pharmacy MPharm is the only programme that actually has placement dates, so this step only matters for them, since every other programme is checked automatically the moment they're added in Step 1. Paste rows straight from a placement lead's sheet — accepts either <strong>Student ID, last name, first name, email, start date, end date</strong> (the real Pharmacy export) or the older <strong>first name, last name, email, start date, end date</strong>, dates as DD/MM/YYYY. A pasted header row is dropped automatically. Matched to candidates already added in Step 1 by email — this also clears them for allocation in Step 3. A student can have several rows (several separate placement blocks); each one is added to their file, so re-pasting the same sheet again won't create duplicates. A course runs on 3 consecutive Mondays (worked out from the date set on <a href="admin-stage1-settings.html">Stage 1 Settings</a>) — if any of those 3 Mondays falls inside one of a candidate's placement blocks, that's a clash, flagged here and in All candidates below. Nothing is saved until you confirm.</p>
-      <textarea id="placementPasteBox" placeholder="Dave, Smith, abc123@student.bham.ac.uk, 02/11/2026, 02/11/2026&#10;Dave, Smith, abc123@student.bham.ac.uk, 15/03/2027, 19/03/2027"></textarea>
-      <button class="btn-primary" id="placementParseBtn" onclick="parsePlacementPreview()">Parse &amp; preview</button>
-      <div id="placementPreviewWrap"></div>
-      <div style="margin-top:14px;border-top:1px solid #f0f3f6;padding-top:12px;">
-        <button class="btn-secondary" onclick="markAllNoPlacementDates()">Mark all unchecked as "no placement dates" (excludes Pharmacy)</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <details id="allCandidatesDetails">
-    <summary class="card-header">All candidates</summary>
-    <div class="card-body">
-      <p class="hint" style="margin-top:0;">A coloured dot before a name means that candidate shares a surname and course with at least one other candidate below — matching colours mark the same group. Hover a dot to see who it matches. Same soft "check, don't auto-exclude" flag as the Add candidates preview above, just kept visible once records are saved.</p>
-      <div class="filters">
-        <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
-        <input type="text" id="searchBox" placeholder="Search by name, email, degree or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
-      </div>
-      <p class="hint" style="margin-top:0;">Someone repeating (absence, need to redo) gets a fresh record on the new course rather than editing their old one in place — paste them in above as normal, then use <strong>Link repeat</strong> on either their old or new row to connect the two records for reference. Nothing else changes; it just stops an old attempt reading as still-pending once you can see it led to a later one.</p>
-      <div class="summary-line" id="summaryLine"></div>
-      <div id="candidatesWrap"></div>
-      <div style="margin-top:16px;border-top:1px solid #f0f3f6;padding-top:14px;">
-        <p class="hint" style="margin-top:0;"><strong>Recovers from a bad "Allocate now" run</strong> — clears the course and room off every allocated candidate so they go back to unallocated and can be run through Step 3 again. Nobody's record is deleted, nothing from Step 1 or Step 2 (name, email, degree, placement dates) is touched or lost — only course and room are cleared. Needs typing a confirmation phrase, on top of the usual two "are you sure" prompts, since this is the one that undoes a big run in one click.</p>
+    <div class="card dangerzone">
+      <div class="card-header">Clean-up (careful: these change many records at once)</div>
+      <div class="card-body">
+        <p class="hint" style="margin-top:0;"><strong>Un-allocate all:</strong> clears course and room from everyone allocated. No records are deleted. Needs a typed confirmation.</p>
         <button class="btn-danger" id="unallocateAllBtn" onclick="unallocateAllCandidates()">↩️ Un-allocate all (clear course &amp; room)</button>
-        <p class="hint" style="margin:14px 0 6px;">For clearing out a prepped-but-not-yet-allocated batch — test rows, or a real batch you've decided not to run with — before it's been through Step 3. Anyone already allocated (has a course) is never touched by this, allocated or not doesn't matter once Delete all unallocated runs, it only ever looks at who's still unallocated.</p>
+        <p class="hint" style="margin:14px 0 6px;"><strong>Delete all unallocated:</strong> removes everyone with no course yet. Allocated people are never touched.</p>
         <button class="btn-danger" id="deleteUnallocatedBtn" onclick="deleteAllUnallocated()">🗑 Delete all unallocated</button>
-        <p class="hint" style="margin:14px 0 6px;">For clearing out practice data regardless of allocation status — matches anyone whose email contains <code>.test@</code>, which is how every test batch generated for this site has been addressed. Real candidates never match this, so it's safe to run even once some test rows have been allocated.</p>
+        <p class="hint" style="margin:14px 0 6px;"><strong>Delete test candidates:</strong> removes anyone with <code>.test@</code> in their email.</p>
         <button class="btn-danger" id="deleteTestBtn" onclick="deleteTestCandidates()">🧪 Delete test candidates</button>
       </div>
     </div>
-    </details>
   </div>
 
 </div>
@@ -1943,6 +1989,31 @@ function todayIso() { return new Date().toISOString().slice(0, 10); }
 loadCandidates().then(applyFindQueryParam);
 loadAccessCode();
 
+</script>
+
+<script>
+// Layout only: tabs show and hide the blocks above. Nothing here reads or writes data except the counts.
+(function () {
+  const keys = ["list", "add", "rep", "set"];
+  function show(k) {
+    if (keys.indexOf(k) < 0) k = "list";
+    document.querySelectorAll(".pane2").forEach(p => p.classList.toggle("on", p.id === "pane-" + k));
+    document.querySelectorAll(".tab2").forEach(t => t.classList.toggle("on", t.dataset.k === k));
+  }
+  document.querySelectorAll(".tab2").forEach(t => t.onclick = () => { show(t.dataset.k); try { history.replaceState(null, "", "#" + t.dataset.k); } catch (e) {} });
+  const qs = new URLSearchParams(window.location.search);
+  show(qs.get("find") || qs.get("realloc") ? "list" : (location.hash || "").replace("#", ""));
+  function counts() {
+    let a; try { a = allCandidates; } catch (e) { return; }
+    if (!Array.isArray(a)) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set("tTotal", a.length); set("tOn", a.filter(c => c.course).length); set("tOff", a.filter(c => !c.course).length);
+    set("tChk", a.filter(c => !c.course && !c.placementChecked).length); set("tDup", a.filter(c => c._dupColor).length);
+  }
+  const sl = document.getElementById("summaryLine");
+  if (sl) new MutationObserver(counts).observe(sl, { childList: true, characterData: true, subtree: true });
+  counts();
+})();
 </script>
 </body>
 </html>

@@ -246,7 +246,10 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
   if (!course) throw new HttpsError("invalid-argument", "Course is required.");
 
   let ok = await callerIsDirector(auth);
-  if (!ok) ok = !!(await callerFacultyRosterGroup(auth));
+  // 2026-10-16 safety review: only RMD faculty (Director, Student, Senior Faculty) see WHY a Director overrode
+  // eligibility (reason, note, who was present). Everyone else on the night only sees that an override exists.
+  let seeWhy = ok;
+  if (!ok) { seeWhy = !!(await callerFacultyRosterGroup(auth)); ok = seeWhy; }
   if (!ok) {
     try {
       const me = await db.collection("people").doc(auth.uid).get();
@@ -281,7 +284,7 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
   // 2026-10-16 (Jon): eligibility on the night. A first sit needs "here" or "late" in BOTH teaching weeks
   // (stage1_register w1 and w2). Absent in either = state "absent" (the page locks the result form unless a
   // Director has overridden, saved as stage1_candidates.eligibilityOverride). A week with no mark = "unmarked"
-  // (warning only). If the course has no register records at all, nothing is checked. Attempt 2 and above are not checked.
+  // (warning only). If the course has no register records at all, nothing is checked. The third and fourth sit follow the same rule (Jon, 16 Oct). Attempt 2 (same-night retest) is not checked.
   let regDocs = null;
   try { const rs = await db.collection("stage1_register").where("course", "==", course).get(); regDocs = {}; rs.forEach(x => { regDocs[x.id] = x.data(); }); } catch (e) { regDocs = null; }
   const regAny = !!regDocs && Object.keys(regDocs).length > 0;
@@ -301,12 +304,12 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
       absent: c.assessmentAbsent === true,
       assessmentRoom: c.assessmentRoom || null,
       assessmentSlot: c.assessmentSlot || null,
-      ...(regAny && attempt === 1 ? { elig: (() => {
+      ...(regAny && (attempt === 1 || attempt >= 3) ? { elig: (() => {
         const r = regDocs[d.id];
         const ab = [], um = [];
         [1, 2].forEach(n => { const s = wkStatus(r, n); if (s === "absent") ab.push("Absent in week " + n); else if (s !== "here" && s !== "late") um.push("No register mark for week " + n); });
         const o = c.eligibilityOverride;
-        const ov = o && typeof o === "object" && o.by ? { by: cleanStr(o.by), byName: cleanStr(o.byName), reason: cleanStr(o.reason), how: cleanStr(o.how), present: cleanStr(o.present), note: cleanStr(o.note), at: cleanStr(o.at) } : null;
+        const ov = o && typeof o === "object" && o.by ? (seeWhy ? { by: cleanStr(o.by), byName: cleanStr(o.byName), reason: cleanStr(o.reason), how: cleanStr(o.how), present: cleanStr(o.present), note: cleanStr(o.note), at: cleanStr(o.at) } : { by: cleanStr(o.by), byName: cleanStr(o.byName), at: cleanStr(o.at) }) : null;
         return { state: ab.length ? "absent" : (um.length ? "unmarked" : "ok"), why: ab.concat(um), ov };
       })() } : {})
     };

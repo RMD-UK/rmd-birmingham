@@ -157,6 +157,19 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .att.a2{background:#F49001}.att.a3{background:#B3261E}
 .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:14px}
 .card h3{font-size:16px;font-weight:800;display:flex;gap:10px;align-items:center;margin-bottom:8px}
+.gt{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.gt:last-child{border-bottom:0}
+.gt .gts{flex:none;min-width:48px;height:fit-content;text-align:center;font-size:11px;font-weight:800;border-radius:8px;padding:4px 6px}
+.gt.ok .gts{background:var(--okbg);color:var(--ok)}.gt.warn .gts{background:var(--warnbg);color:var(--warn)}.gt.block .gts{background:var(--badbg);color:var(--bad)}
+.gt .gtd{font-size:13.5px;color:var(--mut);margin-top:2px}.gt .gtd a{color:var(--pur);font-weight:700}
+.gt details{margin-top:4px;font-size:13px}.gt .gtn{padding:4px 0;color:var(--ink,#1f2540)}
+.stephd{display:flex;align-items:center;gap:10px;margin:16px 0 6px;padding-top:14px;border-top:2px solid var(--line)}
+.stephd:first-child{margin-top:0;padding-top:0;border-top:0}
+.stephd h3{margin:0;flex:1}
+.stchip{font-size:11px;font-weight:800;border-radius:99px;padding:3px 10px;background:#EEF1F6;color:var(--mut)}
+.stchip.ok{background:var(--okbg);color:var(--ok)}.stchip.open{background:var(--org);color:#fff}.stchip.bad{background:var(--badbg);color:var(--bad)}
+.stbody.locked{opacity:.5;pointer-events:none}
+.lockmsg{font-size:13.5px;color:var(--mut);font-weight:600;margin:2px 0 6px}
 .card .stepno{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:var(--pur);color:#fff;font-size:14px;font-weight:800}
 .card .hint{font-size:13px;color:var(--mut);margin-top:6px}
 .card input[type=search],.card textarea,.card input[type=text]{width:100%;border:2px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
@@ -330,6 +343,17 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
 .fullbar .btn{background:#fff}
 .fullbody{overflow:auto;padding:6px 14px 40px}
 @media (max-width:900px){.rrow,.arow{grid-template-columns:50px minmax(0,1fr)}.rrow .rs,.arow .rs{grid-column:2;justify-content:flex-start}}
+
+/* rmd-tidy 16 Oct: CSS-only. Matches the Assessment Results page. No behaviour changes. */
+:root{--bg:#F0F3F6;--line:#DDE2ED;--mut:#5F6F96;--ink:#1F2540}
+.stepcard,.rooms .r,.tile,.wk,.sched,.card,.plain{border-width:1.5px}
+.stepcard{border-radius:14px}
+.tile{border-radius:14px;padding:12px 14px}
+.tile .n{font-size:30px}
+.tile .l{font-size:12.5px;line-height:1.35}
+.plain,.card,.wk,.sched{border-radius:14px}
+.btn:focus-visible,.cb:focus-visible,.stepcard:focus-visible,.seg button:focus-visible,.tbtn:focus-visible,.rooms .r:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--org);outline-offset:2px}
+.top h1{letter-spacing:-.1px}
 </style>
 </head>
 <body>
@@ -368,7 +392,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
         <div class="sumstrip" id="aTiles"></div>
         <div class="card" id="aAuto"></div>
         <div class="card" id="aMove">
-          <h3><span class="stepno">2</span>Move one person</h3>
+          <h3><span class="stepno">+</span>Adjust: move one person</h3>
           <input type="search" id="aSearch" placeholder="Type a name or email to find someone on this course..." autocomplete="off">
           <div class="pick hidden" id="aPick"></div>
           <div id="aMoveBody"></div>
@@ -490,7 +514,9 @@ auth.onAuthStateChanged(async user => {
       return;
     }
     if (!S.full && !S.mine.length) S.view = "runner";   // assessors with no room team land on the assessment night
-    if (S.isDirector && location.hash === "#setup") S.view = "setup";   // deep link from the Readiness check
+    // Deep links (Readiness check, Director Box): phase1.html#setup, #alloc, #retest, #runner, #assessor, #register. Only honoured if this person may use that view.
+    { const hv = (location.hash || "").replace("#", "");
+      if (hv === "setup" ? S.isDirector : (hv === "alloc" || hv === "retest") ? S.full : (hv === "runner" || hv === "assessor") ? S.night : hv === "register") S.view = hv; }
     const cfg = await db.collection("config").doc("stage1_course_dates").get();
     S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
     try {
@@ -511,6 +537,7 @@ auth.onAuthStateChanged(async user => {
       const mineCourses = new Set(S.mine.map(c => c.course));
       first = S.courseDates.find(c => mineCourses.has(c.name) && c.date >= today) || S.courseDates.find(c => mineCourses.has(c.name)) || first;
     }
+    { const wantC = new URLSearchParams(location.search).get("course"), wc = wantC && S.courseDates.find(c => c.name === wantC); if (wc && (S.night || S.mine.some(m => m.course === wc.name))) first = wc; }   // ?course=Course 2 from the Director Box
     if (first) selectCourse(first.name);
     else $("plain").innerHTML = '<span class="lbl">Nothing set up yet</span>No course dates are set. A Director can add them on Stage 1 Settings.';
   } catch (err) {
@@ -519,26 +546,34 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
+// Links that carry the chosen course and room (set just before the link is used, so they are always current).
+function ctxLink(e) {
+  const a = e.target && e.target.closest ? e.target.closest("a[data-ctx]") : null;
+  if (a) a.setAttribute("href", "opis-rating.html?course=" + encodeURIComponent(S.course || "") + "&room=" + encodeURIComponent(S.room || ""));
+}
+["pointerdown", "focusin", "click", "keydown"].forEach(t => document.addEventListener(t, ctxLink, true));
+
 // ── Left-hand list of jobs ──────────────────────────────────────────────────
 function renderSteps() {
   const jobs = [
-    { no: 1, t: "People", s: "Add, remove, move, tags", href: "admin-stage1-candidates.html", who: "full" },
-    { no: 2, t: "Assessment allocation", s: "Slots for assessment night, move people", view: "alloc", who: "full" },
-    { no: 3, t: "Retest pool", s: "Who is waiting, and who needs a follow-up", view: "retest", who: "full" },
-    { no: 4, t: "Runner view", s: "Assessment night: rooms, who is there", view: "runner", who: "night" },
-    { no: 5, t: "Assessor view", s: "Assessment night: pick a room, record results", view: "assessor", who: "night" },
-    { no: 6, t: "Register", s: "Who arrived in weeks 1 and 2", view: "register", who: "reg" },
-    { no: 7, t: "Comms", s: "Bulk emails, copy addresses, log", href: "admin-comms.html", who: "full" },
-    { no: 8, t: "Assessment setup", s: "Who can assess, mark sheets, Google Form link", view: "setup", who: "director" },
-    { no: 9, t: "Readiness check", s: "Is this course ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
-    { no: 10, t: "Register live screen", s: "Big-screen counts for the teaching evening", href: "register-live.html", who: "full" },
-    { no: 11, t: "Assessment night live screen", s: "Big-screen counts for assessment night", href: "assessment-live.html", who: "full" }
+    { no: 1, t: "People", s: "Add and edit candidates", href: "admin-stage1-candidates.html", who: "full" },
+    { no: 2, t: "Assessment allocation", s: "Give each person a slot", view: "alloc", who: "full" },
+    { no: 3, t: "Retest pool", s: "Waiting and follow-ups", view: "retest", who: "full" },
+    { no: 4, t: "Runner view", s: "Assessment night: rooms", view: "runner", who: "night" },
+    { no: 5, t: "Assessor view", s: "Assessment night: record results", view: "assessor", who: "night" },
+    { no: 6, t: "Register", s: "Weeks 1 and 2", view: "register", who: "reg" },
+    { no: 7, t: "Rate candidates (OPIS)", s: "Score the candidates in your room", href: "opis-rating.html", ctx: true, who: "reg" },
+    { no: 8, t: "Comms", s: "Send emails", href: "admin-comms.html", who: "full" },
+    { no: 9, t: "Assessment setup", s: "Assessors and mark sheets", view: "setup", who: "director" },
+    { no: 10, t: "Readiness check", s: "Ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
+    { no: 11, t: "Register live screen", s: "Big screen: teaching night", href: "register-live.html", who: "full" },
+    { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
   $("steps").innerHTML = jobs.filter(ok).map(j => {
-    const inner = `<span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}${j.href ? " (opens current page)" : ""}</small></span>`;
+    const inner = `<span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}${j.href ? " ↗" : ""}</small></span>`;
     if (j.view) return `<button type="button" class="stepcard${S.view === j.view ? " on" : " link"}" data-view="${j.view}">${inner}</button>`;
-    return `<a class="stepcard link" href="${j.href}">${inner}</a>`;
+    return `<a class="stepcard link"${j.ctx ? ' data-ctx="1"' : ""} href="${esc(j.href)}">${inner}</a>`;
   }).join("");
   $("steps").querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
 }
@@ -600,7 +635,7 @@ function attachListeners() {
   // register entries
   if (S.full) {
     S.unsubs.push(db.collection("stage1_register").where("course", "==", course).onSnapshot(snap => {
-      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render();
+      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render(); if (S.view === "alloc") renderAlloc();
     }, err => onListenErr("register", err)));
   } else {
     S.cands.forEach(c => {
@@ -660,7 +695,7 @@ function renderSent() {
   if (!open.length && !done.length && !lateNo.length) { el.innerHTML = ""; return; }
   let h = '<div class="card sentc"><h3>Sent to you</h3>';
   if (open.length) {
-    h += `<div class="hint" style="margin:0 0 8px">${open.length} absent in week 1 ${open.length === 1 ? "is" : "are"} waiting. ${can ? "Pick what happens for each." : "This opens on the week 2 date (" + nice(dates[1]) + ")."}</div>`;
+    h += `<div class="hint" style="margin:0 0 8px">${open.length} absent in week 1. ${can ? "Choose for each." : "Opens " + nice(dates[1]) + "."}</div>`;
     h += open.map(c => {
       const on = SENT.cid === c.id;
       let r = `<div class="srow"><div class="snm"><b>${esc(c.name || "(no name)")}</b> <small>${esc(c.room || "no room")} · ${esc(c.degree || "")}</small></div>${can ? `<button type="button" class="btn sm" data-s="pick" data-id="${esc(c.id)}">${on ? "Close" : "Choose"}</button>` : ""}</div>`;
@@ -683,7 +718,7 @@ function renderSent() {
     }).join("");
   }
   if (realloc.length) {
-    h += `<div class="lb" style="margin-top:12px">To move to a new course (${realloc.length})</div><div class="hint" style="margin:0 0 6px">A Director moves them in Course Allocation, then emails them. ${realloc.map(c => esc(c.name)).join(", ")}</div><button type="button" class="btn sm" data-s="copy">Copy ${realloc.length} address${realloc.length === 1 ? "" : "es"}</button>`;
+    h += `<div class="lb" style="margin-top:12px">To move to a new course (${realloc.length})</div><div class="hint" style="margin:0 0 6px">A Director moves them (Course Allocation), then emails. ${realloc.map(c => esc(c.name)).join(", ")}</div><button type="button" class="btn sm" data-s="copy">Copy ${realloc.length} address${realloc.length === 1 ? "" : "es"}</button>`;
   }
   if (lateNo.length) {
     h += `<div class="lb" style="margin-top:12px">Late, no reason recorded (${lateNo.length})</div>` + lateNo.map(x => `<div class="srow" style="display:block"><div class="snm"><b>${esc(x.c.name || "")}</b> <small>week ${x.n} · ${esc(x.c.room || "")}</small></div><div style="margin:4px 0 8px">${sChips('data-s="late" data-id="' + esc(x.c.id) + '" data-wk="' + x.n + '"', LATE_WHY, null)}</div></div>`).join("");
@@ -815,9 +850,9 @@ function render() {
   let plain;
   if (todayWk) {
     const c = todayWk === 1 ? a1 : a2;
-    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> Tonight is week ${todayWk}. <b>${c.here + c.late} of ${c.total}</b> have been marked as here${c.late ? ` (${c.late} late)` : ""}${c.absent ? `, ${c.absent} absent` : ""}. ${c.total - c.marked} not marked yet. Buttons work for tonight only.`;
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> Week ${todayWk}. <b>${c.here + c.late} of ${c.total}</b> here${c.late ? ` (${c.late} late)` : ""}${c.absent ? `, ${c.absent} absent` : ""}. ${c.total - c.marked} not marked.`;
   } else {
-    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> There is no register night today. Week 1 was ${nice(dates[0])}, week 2 is ${nice(dates[1])}, assessment night is ${nice(dates[2])}. Buttons switch on for each week on its own date.`;
+    plain = `<b>${esc(S.course)}, room ${esc(S.room)}.</b> No register tonight. Week 1: ${nice(dates[0])}. Week 2: ${nice(dates[1])}. Assessment: ${nice(dates[2])}.`;
   }
   $("plain").innerHTML = '<span class="lbl">In plain English</span>' + plain;
 
@@ -1019,7 +1054,7 @@ function openBackfill() {
   bf.plan = null;
   $("overlay").innerHTML = `<div class="modalbg" id="bfbg"><div class="modal" role="dialog" aria-modal="true">` +
     `<h3>Backfill from a spreadsheet</h3>` +
-    `<div class="sub">${esc(S.course)}, every room. Copy the rows from your spreadsheet and paste them below. Each row needs the candidate's <b>email or name</b> and a status of <b>Here, Late or Absent</b> (P, L, A, Y, N, a tick or a cross also work). Rows with no status are left unmarked.</div>` +
+    `<div class="sub">${esc(S.course)}, every room. Paste rows from your spreadsheet: <b>email or name</b> and <b>Here, Late or Absent</b>. No status stays unmarked.</div>` +
     `<div class="row2"><label class="tg">Week <select id="bfWeek"><option value="1">1 (${esc(nice((weekDates(S.course) || [])[0] || "2000-01-01"))})</option><option value="2">2 (${esc(nice((weekDates(S.course) || [])[1] || "2000-01-01"))})</option></select></label>` +
     `<label class="tg"><input type="checkbox" id="bfOver"> Replace entries that are already marked</label></div>` +
     `<textarea id="bfText" placeholder="Surname\tFirst name\temail\tstatus"></textarea>` +
@@ -1125,16 +1160,26 @@ async function setView(v) {
   await enterView();
 }
 
+// 2026-10-16 (Jon): the attendance rule (present or late in BOTH teaching weeks, Director override) applies to a first sit and to the third and fourth sit. Attempt 2 (the same-night retest) is not checked.
+function needsAttend(a) { return a === 1 || a >= 3; }
+function eligBlocked(x) { const e = eligLocal(x); return !!(e && e.state === "absent" && !e.ov); }
 function stats() {
   const c = S.cands;
   const absent = c.filter(x => x.assessmentAbsent === true);
   const live = c.filter(x => x.assessmentAbsent !== true);
   const rap = live.filter(x => x.rap === true);
   const retest = live.filter(x => attemptOf(x) >= 2);
-  const auto = live.filter(x => x.rap !== true && attemptOf(x) < 2);
+  const auto0 = live.filter(x => x.rap !== true && attemptOf(x) < 2);
+  const late0 = live.filter(x => x.rap !== true && attemptOf(x) >= 3);   // third and fourth sits are placed by hand but follow the same attendance rule
+  // 2026-10-16: someone absent in a teaching week (and not overridden by a Director) must move to a new course, so they are NOT given a slot or emailed one.
+  const isBlocked = eligBlocked;
+  const notElig = auto0.filter(isBlocked).concat(late0.filter(isBlocked));
+  const auto = auto0.filter(x => !isBlocked(x));
+  const gap = auto.filter(x => { const e = eligLocal(x); return !!(e && e.state === "unmarked"); });
   const slotted = c.filter(hasSlot);
+  const slottedBad = slotted.filter(x => (attemptOf(x) < 2 || attemptOf(x) >= 3) && x.rap !== true && x.assessmentAbsent !== true && isBlocked(x));
   const toDo = auto.filter(x => !hasSlot(x));
-  return { absent, live, rap, retest, auto, slotted, toDo };
+  return { absent, live, rap, retest, auto, slotted, toDo, notElig, gap, slottedBad };
 }
 function takenSet(exceptId) {
   const m = new Map();
@@ -1154,44 +1199,149 @@ function renderAlloc() {
   const cap = A.rooms.length * ASSESS_SLOTS.length;
   $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set, so the assessment night cannot be worked out.</div>`;
   $("plain").innerHTML = '<span class="lbl">In plain English</span>' +
-    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. ` +
-    `<b>${st.toDo.length}</b> ${st.toDo.length === 1 ? "person needs" : "people need"} a slot and will get one automatically. ` +
-    `<b>${st.rap.length}</b> with RAP and <b>${st.retest.length}</b> on attempt 2 or above are not allocated automatically: you place them by hand below.`;
+    `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. ` +
+    `<b>${st.toDo.length}</b> ${st.toDo.length === 1 ? "person needs" : "people need"} a slot (automatic). ` +
+    `<b>${st.rap.length}</b> RAP and <b>${st.retest.length}</b> retest: place by hand below.` +
+    (st.notElig.length ? ` <b>${st.notElig.length}</b> absent in a teaching week: move to a new course (Course Allocation, then Comms).` : "");
   const free = Math.max(0, cap - st.slotted.length);
   const tile = (n, l, warn) => `<div class="tile${warn ? " warn" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
   $("aTiles").innerHTML = tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
     tile(st.toDo.length, "Still need a slot", st.toDo.length > 0 && st.toDo.length > free) + tile(st.rap.length, "RAP: place by hand") +
-    tile(st.retest.length, "Retest pool (attempt 2+)") + tile(st.absent.length, "Cannot attend") + tile(free, "Free slots (" + A.rooms.length + " rooms)");
+    tile(st.retest.length, "Retest pool (attempt 2+)") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") + tile(free, "Free slots (" + A.rooms.length + " rooms)");
   renderAAuto(st); renderAMove(); renderALists(st);
 }
 
 // ── Step 1: automatic allocation ────────────────────────────────────────────
+// ── Monday order: four locked steps ─────────────────────────────────────────
+// 1 Check the course is ready  ->  2 Allocate  ->  3 Check the schedule  ->  4 Email their times.
+// Every step is worked out from the live data each time the screen draws, so a refresh cannot skip one.
+// A Director can still allocate with red items open by ticking an explicit "allocate anyway" box (not remembered).
+function placementClash(c) { const d = weekDates(S.course); if (!d) return null; return (c.placementBlocks || []).find(b => b.start && b.end && d.some(m => m >= b.start && m <= b.end)) || null; }
+const MARKED = ["here", "late", "absent"];
+function gateInfo(st) {
+  const d = weekDates(S.course), today = londonNow().date, G = [];
+  const add = (state, title, detail, names, fix) => G.push({ state, title, detail, names: names || [], fix: fix || "" });
+  const nm = list => list.map(c => c.name || "(no name)").sort((a, b) => a.localeCompare(b));
+  const pop = S.cands.filter(c => c.assessmentAbsent !== true && c.rap !== true && attemptOf(c) < 2);   // first sits who would be given a slot
+  const plural2 = (n, a, b) => n + " " + (n === 1 ? a : b);
+  // dates and rooms
+  if (!d) add("block", "Course dates", "This course has no assessment date.", [], 'Set it on <a href="admin-stage1-settings.html">Stage 1 Settings</a>.');
+  else {
+    const need = st.toDo.length, free = freePairs(takenSet(null)).length;
+    add(need > free ? "warn" : "ok", "Dates and rooms", "Assessment night is " + nice(d[2]) + ". " + free + " free slots across " + A.rooms.length + " rooms for " + need + " people." + (need > free ? " " + (need - free) + " will not fit and need placing by hand." : ""));
+  }
+  // placement
+  const clash = pop.filter(placementClash), unchecked = pop.filter(c => !c.placementChecked && !placementClash(c));
+  if (clash.length) add("block", "Placement dates", plural2(clash.length, "person has", "people have") + " a placement that overlaps this course.", nm(clash).map((n, k) => n), 'Confirm they can attend, or move them in <a href="course-allocation.html">Course Allocation</a>. If they can attend, tick "allocate anyway".');
+  else if (unchecked.length) add("warn", "Placement dates", plural2(unchecked.length, "person has", "people have") + " not had placement dates checked.", nm(unchecked), 'Check them on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a> (step 2).');
+  else add("ok", "Placement dates", "Nobody on this course has a placement that overlaps it.");
+  // register
+  if (d) {
+    if (today < d[1]) add("block", "Teaching weeks marked", "Teaching night 2 is " + nice(d[1]) + ". Allocate after that register is finished, so nobody who is absent is given a slot.");
+    else if (!Object.keys(S.reg).length) add("block", "Teaching weeks marked", "There are no register marks at all for this course.", [], "Mark the register first (job 6).");
+    else {
+      const um = pop.filter(c => !MARKED.includes(statusOf(c.id, 1)) || !MARKED.includes(statusOf(c.id, 2)));
+      if (um.length) add("block", "Teaching weeks marked", plural2(um.length, "person has", "people have") + " no mark for week 1 or week 2." + (today === d[1] ? " Teaching night 2 is tonight: finish the register first." : ""), nm(um), "Mark them in the Register (job 6), or backfill from the spreadsheet.");
+      else add("ok", "Teaching weeks marked", "Everyone has a mark for both teaching weeks.");
+    }
+  }
+  // absentees moved
+  if (st.notElig.length) add("block", "Absent people moved", plural2(st.notElig.length, "person was", "people were") + " absent in a teaching week and " + (st.notElig.length === 1 ? "is" : "are") + " still on this course.", nm(st.notElig), 'Move them to a new course in <a href="course-allocation.html">Course Allocation</a> and email them from <a href="admin-comms.html">Comms</a>, or have a Director override one person on the assessment night screen.');
+  else add("ok", "Absent people moved", Object.keys(S.reg).length ? "Nobody on this course is blocked by absence." : "No register to check yet.");
+  return { G, blocks: G.filter(g => g.state === "block"), warns: G.filter(g => g.state === "warn") };
+}
+function reviewInfo(st) {
+  const issues = [];
+  if (!st.slotted.length) return { has: false, issues, ok: false, sig: "" };
+  if (st.toDo.length) issues.push(st.toDo.length + (st.toDo.length === 1 ? " eligible person still has" : " eligible people still have") + " no slot.");
+  if (st.slottedBad.length) issues.push(st.slottedBad.length + (st.slottedBad.length === 1 ? " person with a slot was" : " people with slots were") + " absent in a teaching week.");
+  const seen = new Set(), dups = [];
+  st.slotted.forEach(x => { const k = x.assessmentSlot + "|" + x.assessmentRoom; if (seen.has(k)) dups.push(k); else seen.add(k); });
+  if (dups.length) issues.push(dups.length + " room and time " + (dups.length === 1 ? "is" : "are") + " given to more than one person.");
+  const odd = st.slotted.filter(x => !ASSESS_SLOTS.includes(x.assessmentSlot) || !A.rooms.includes(x.assessmentRoom));
+  if (odd.length) issues.push(odd.length + (odd.length === 1 ? " slot is" : " slots are") + " not a normal room or time for this night.");
+  const sig = st.slotted.map(x => x.id + "@" + x.assessmentSlot + "@" + x.assessmentRoom).sort().join(",");
+  return { has: true, issues, ok: issues.length === 0, sig, first: st.slotted.map(x => x.assessmentSlot).sort()[0], last: st.slotted.map(x => x.assessmentSlot).sort().slice(-1)[0], rooms: new Set(st.slotted.map(x => x.assessmentRoom)).size };
+}
+async function probeMail() {
+  if (!S.isDirector) return;
+  A.mailFor = S.course; A.mail = "checking";
+  try {
+    const r = await firebase.functions().httpsCallable("sendBulkComms")({ recipients: [{ name: "x", email: "x@x.x" }], subject: "check", message: "check", groupLabel: "probe", dryRun: true });
+    A.mail = r.data && r.data.varsSupported === true ? "ok" : "old";
+  } catch (e) { A.mail = "fail"; A.mailErr = (e && e.message) || String(e); }
+  if (S.view === "alloc") renderAlloc();
+}
+function stepHd(n, title, chip, cls) { return `<div class="stephd"><h3><span class="stepno">${n}</span>${esc(title)}</h3><span class="stchip ${cls || ""}">${esc(chip)}</span></div>`; }
 function renderAAuto(st) {
   const box = $("aAuto");
-  let h = `<h3><span class="stepno">1</span>Give everyone eligible a slot</h3>` +
-    `<div style="font-size:14px">Eligible means: on attempt 1, no RAP tag, not marked unable to attend. Slots fill earliest first, one person per room per 15 minutes from ${ASSESS_SLOTS[0]} to ${ASSESS_SLOTS[ASSESS_SLOTS.length - 1]}.</div>`;
-  if (!S.isDirector) {
-    box.innerHTML = h + `<div class="hint">A Director runs this step. You can move individual people in step 2.</div>`; return;
-  }
-  const taken = takenSet(null), free = freePairs(taken);
-  const n = st.toDo.length;
-  if (!n) h += `<div class="msg ok" style="margin:10px 0 0">Everyone eligible already has a slot.</div>`;
+  const gi = gateInfo(st), rv = reviewInfo(st), pend = pendingMail();
+  if (A.forceCourse !== S.course) { A.force = false; A.forceCourse = S.course; }
+  if (S.isDirector && A.mailFor !== S.course) probeMail();
+  const forced = !!A.force && gi.blocks.length > 0;
+  const step1Clear = gi.blocks.length === 0, step2Open = step1Clear || forced;
+  const reviewed = rv.has && rv.ok && A.reviewSig === rv.sig;
+  const step4Open = rv.has && rv.ok && reviewed;
+  const icon = s => s === "ok" ? "OK" : s === "warn" ? "Check" : "Fix";
+  let h = stepHd(1, "Check the course is ready", step1Clear ? (gi.warns.length ? "Ready, with notes" : "Ready") : gi.blocks.length + " to fix", step1Clear ? "ok" : "bad") +
+    gi.G.map(g => `<div class="gt ${g.state}"><span class="gts">${icon(g.state)}</span><div><b>${esc(g.title)}</b><div class="gtd">${esc(g.detail)} ${g.fix}</div>` +
+      (g.names.length ? `<details><summary>Show ${g.names.length} ${g.names.length === 1 ? "name" : "names"}</summary><div class="gtn">${g.names.map(esc).join(", ")}</div></details>` : "") + `</div></div>`).join("");
+  if (!step1Clear && S.isDirector) h += `<label class="tg" style="margin-top:10px"><input type="checkbox" id="aForce"${A.force ? " checked" : ""}> I have read the red items and want to allocate anyway</label>`;
+
+  // 2 allocate
+  const taken = takenSet(null), free = freePairs(taken), n = st.toDo.length;
+  h += stepHd(2, "Give everyone eligible a slot", !step2Open ? "Locked" : (n ? "Ready to allocate" : (st.slotted.length ? "Done" : "Nothing to do")), !step2Open ? "" : (n ? "open" : "ok"));
+  h += `<div class="stbody${step2Open ? "" : " locked"}">` +
+    `<div style="font-size:14px">Attempt 1, no RAP tag, able to attend, not absent in a teaching week. Slots: 15 minutes per room, ${ASSESS_SLOTS[0]} to ${ASSESS_SLOTS[ASSESS_SLOTS.length - 1]}. Nobody is emailed here.</div>`;
+  if (!S.isDirector) h += `<div class="hint">A Director runs this step. You can move individual people below.</div>`;
   else {
-    const last = free[Math.min(n, free.length) - 1];
-    h += `<div class="msg ${n > free.length ? "warn" : "ok"}" style="margin:10px 0 0">${n} will be allocated across ${A.rooms.length} rooms, finishing at ${last ? last.slot : "-"}.${n > free.length ? ` ${n - free.length} will not fit and are left for you to place by hand.` : ""}</div>`;
+    if (!step2Open) h += `<div class="lockmsg">Locked until step 1 has no red items.</div>`;
+    if (st.slottedBad.length) h += `<div class="msg err" style="margin:10px 0 0"><b>${st.slottedBad.length}</b> ${st.slottedBad.length === 1 ? "person already has" : "people already have"} a slot but ${st.slottedBad.length === 1 ? "was" : "were"} absent in a teaching week. See the list below. Moving them to a new course clears their slot.</div>`;
+    if (!n) h += `<div class="msg ok" style="margin:10px 0 0">${st.slotted.length ? "Everyone eligible already has a slot." : "Nobody is eligible for a slot yet."}</div>`;
+    else {
+      const last = free[Math.min(n, free.length) - 1];
+      h += `<div class="msg ${n > free.length ? "warn" : "ok"}" style="margin:10px 0 0">${n} will be allocated across ${A.rooms.length} rooms, finishing at ${last ? last.slot : "-"}.${n > free.length ? ` ${n - free.length} will not fit and are left for you to place by hand.` : ""}</div>`;
+    }
+    h += `<div class="tools" style="margin:12px 0 0"><button class="btn pri" id="aGo" type="button"${n && step2Open ? "" : " disabled"}>Allocate ${n || ""} now</button>` +
+      `<button class="btn" id="aClear" type="button"${st.slotted.length ? "" : " disabled"}>Clear all slots on ${esc(S.course)}</button></div>`;
   }
-  h += `<label class="tg" style="margin-top:10px"><input type="checkbox" id="aEmailAuto"> Email each person their time after allocating</label>` +
-    `<details class="emailbox"><summary style="cursor:pointer;font-weight:700">Email wording (used by steps 1 and 2 when "email" is ticked)</summary>` +
-    `<div class="hint">Placeholders: {{first_name}}, {{assessment_date}}, {{assessment_time}}, {{assessment_room}}.</div>` +
-    `<input type="text" id="aSubject" value="${esc(A.subject)}" style="margin:8px 0"><textarea id="aBody">${esc(A.body)}</textarea></details>` +
-    `<div class="tools" style="margin:12px 0 0"><button class="btn pri" id="aGo" type="button"${n ? "" : " disabled"}>Allocate ${n || ""} now</button>` +
-    `<button class="btn" id="aClear" type="button"${st.slotted.length ? "" : " disabled"}>Clear all slots on ${esc(S.course)}</button></div>` +
-    `<div class="hint">Emails go through the same sender as Bulk Comms. Anything over the daily limit is queued and sent over the next days.</div>`;
+  h += `</div>`;
+
+  // 3 review
+  h += stepHd(3, "Check the schedule", !rv.has ? "Locked" : (reviewed ? "Checked" : (rv.ok ? "Your check needed" : "Fix first")), !rv.has ? "" : (reviewed ? "ok" : (rv.ok ? "open" : "bad")));
+  h += `<div class="stbody${rv.has ? "" : " locked"}">`;
+  if (!rv.has) h += `<div class="lockmsg">Locked until people have slots.</div>`;
+  else {
+    h += `<div style="font-size:14px">${st.slotted.length} people have a slot, ${rv.first} to ${rv.last}, across ${rv.rooms} rooms. Open "Assessment schedule" below and look through it.</div>`;
+    h += rv.issues.map(x => `<div class="msg err" style="margin:8px 0 0">${esc(x)}</div>`).join("");
+    if (S.isDirector) h += `<label class="tg" style="margin-top:10px"><input type="checkbox" id="aReviewed"${reviewed ? " checked" : ""}${rv.ok ? "" : " disabled"}> I have looked through the schedule and it is right</label><div class="hint">Changing anyone's slot afterwards clears this tick.</div>`;
+  }
+  h += `</div>`;
+
+  // 4 email
+  const mailOk = A.mail === "ok";
+  h += stepHd(4, "Email their times", !step4Open ? "Locked" : (pend.length ? (mailOk ? "Ready to send" : "Email check needed") : "All sent"), !step4Open ? "" : (pend.length ? (mailOk ? "open" : "bad") : "ok"));
+  h += `<div class="stbody${step4Open && S.isDirector ? "" : " locked"}">`;
+  if (!step4Open) h += `<div class="lockmsg">Locked until step 3 is ticked.</div>`;
+  else {
+    h += `<div class="msg ${A.mail === "ok" ? "ok" : (A.mail === "checking" || !A.mail ? "warn" : "err")}" style="margin:6px 0">${A.mail === "ok" ? "Email sender checked: it can send personal times." : (A.mail === "checking" || !A.mail ? "Checking that the email sender is ready..." : (A.mail === "old" ? "The email functions on the server are out of date. Deploy them before sending." : "The email sender could not be reached: " + esc(A.mailErr || "unknown error")))}` + (A.mail && A.mail !== "ok" && A.mail !== "checking" ? ` <button class="btn sm" id="aMailRe" type="button">Check again</button>` : "") + `</div>`;
+    h += pend.length ? `<div style="margin:6px 0">${pend.length} ${pend.length === 1 ? "person has" : "people have"} a slot and ${pend.length === 1 ? "has" : "have"} not been emailed that time yet (or the slot changed since). The limit is ${MAIL_DAY_LIMIT} emails a day: ${Math.min(pend.length, MAIL_DAY_LIMIT)} go now${pend.length > MAIL_DAY_LIMIT ? `, ${pend.length - MAIL_DAY_LIMIT} are queued and go out at 06:00 each morning` : ""}.</div>` +
+      `<div class="tools" style="margin:8px 0 0"><button class="btn pri" id="aMailGo" type="button"${mailOk ? "" : " disabled"}>Email ${pend.length} ${pend.length === 1 ? "person" : "people"} now</button></div>` +
+      `<div class="hint">Do not move slots while emails are queued: they keep the old time.</div>`
+      : `<div class="msg ok" style="margin:6px 0">Everyone with a slot has been emailed their current time.</div>`;
+    h += `<details class="emailbox"><summary style="cursor:pointer;font-weight:700">Email wording</summary>` +
+      `<div class="hint">Placeholders: {{first_name}}, {{assessment_date}}, {{assessment_time}}, {{assessment_room}}.</div>` +
+      `<input type="text" id="aSubject" value="${esc(A.subject)}" style="margin:8px 0"><textarea id="aBody">${esc(A.body)}</textarea></details>`;
+  }
+  h += `</div>`;
   box.innerHTML = h;
-  $("aSubject").oninput = e => { A.subject = e.target.value; };
-  $("aBody").oninput = e => { A.body = e.target.value; };
-  $("aGo").onclick = allocateAll;
-  $("aClear").onclick = clearAll;
+  if ($("aSubject")) { $("aSubject").oninput = e => { A.subject = e.target.value; }; $("aBody").oninput = e => { A.body = e.target.value; }; }
+  if ($("aForce")) $("aForce").onchange = e => { A.force = e.target.checked; renderAlloc(); };
+  if ($("aGo")) $("aGo").onclick = allocateAll;
+  if ($("aClear")) $("aClear").onclick = clearAll;
+  if ($("aReviewed")) $("aReviewed").onchange = e => { A.reviewSig = e.target.checked ? rv.sig : null; renderAlloc(); };
+  if ($("aMailGo")) $("aMailGo").onclick = emailPending;
+  if ($("aMailRe")) $("aMailRe").onclick = () => { A.mail = "checking"; probeMail(); renderAlloc(); };
 }
 function askSheet(title, text, yes) {
   return new Promise(res => {
@@ -1212,12 +1362,13 @@ async function writeSlots(list, fields) {
 async function allocateAll() {
   if (A.busy || !S.isDirector) return;
   const st = stats(); if (!st.toDo.length) return;
+  const gi = gateInfo(st); if (gi.blocks.length && !A.force) { toast("Step 1 has red items. Fix them first.", true); return; }
   const taken = takenSet(null), pairs = freePairs(taken);
   const sh = shuffleArr(st.toDo);
   const assign = sh.slice(0, pairs.length).map((c, i) => ({ id: c.id, c, pair: pairs[i] }));
   const over = sh.length - assign.length;
-  const wantEmail = $("aEmailAuto") && $("aEmailAuto").checked;
-  const ok = await askSheet("Allocate " + assign.length + " people?", `One person per room per 15 minutes on ${esc(S.course)}, from ${ASSESS_SLOTS[0]}.${over ? ` ${over} will not fit.` : ""} ${wantEmail ? "Each person will also be emailed their time." : "Nobody will be emailed."}`, "Allocate");
+  const forcedNote = gi.blocks.length ? ` <b>Step 1 still has ${gi.blocks.length} red item${gi.blocks.length === 1 ? "" : "s"} and you are allocating anyway.</b>` : "";
+  const ok = await askSheet("Allocate " + assign.length + " people?", `One person per room per 15 minutes on ${esc(S.course)}, from ${ASSESS_SLOTS[0]}.${over ? ` ${over} will not fit.` : ""} Nobody is emailed yet.${forcedNote}`, "Allocate");
   if (!ok) return;
   A.busy = true;
   try {
@@ -1225,7 +1376,6 @@ async function allocateAll() {
     assign.forEach(x => { x.c.assessmentRoom = x.pair.room; x.c.assessmentSlot = x.pair.slot; });
     logAdd("Allocated " + assign.length + " people." + (over ? " " + over + " did not fit." : ""));
     toast(assign.length + " allocated.");
-    if (wantEmail) await sendAssessmentEmails(assign.map(x => x.c));
   } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "no permission" : err.message), true); }
   A.busy = false; renderAlloc();
 }
@@ -1247,7 +1397,7 @@ async function clearAll() {
 function selCand() { return A.sel ? S.cands.find(c => c.id === A.sel) : null; }
 function renderAMove() {
   const body = $("aMoveBody"), c = selCand();
-  if (!c) { body.innerHTML = `<div class="hint">Search above, or press "Place / Move" beside a name in the lists below. Works for anyone on this course, including RAP and retest candidates.</div>${logHtml()}`; return; }
+  if (!c) { body.innerHTML = `<div class="hint">Search above, or press "Place / Move" beside a name.</div>${logHtml()}`; return; }
   const taken = takenSet(c.id), free = freePairs(taken);
   const now = hasSlot(c) ? `${esc(c.assessmentSlot)} in ${esc(c.assessmentRoom)}` : "no slot yet";
   const tgt = A.target;
@@ -1267,7 +1417,8 @@ function renderAMove() {
         }).join("")}</tr>`).join("") + `</table></div>`;
     }
   }
-  h += `<label class="tg" style="display:flex;margin-top:12px"><input type="checkbox" id="aEmailOne"${c.email ? "" : " disabled"}> Email them the new time${c.email ? "" : " (no email address on record)"}</label>` +
+  if (attemptOf(c) !== 2 && c.rap !== true && eligBlocked(c)) h += `<div class="msg err" style="margin-top:10px">${esc(c.name)} was absent in a teaching week. They should move to a new course, not take a slot.</div>`;
+  h += `<div class="hint" style="margin-top:10px">Changed times are emailed from step 4.</div>` +
     `<div class="tools" style="margin:10px 0 0"><button class="btn pri" id="aMoveGo" type="button"${tgt ? "" : " disabled"}>${tgt ? "Move to " + tgt.slot + " in " + esc(tgt.room) : "Pick a slot first"}</button>` +
     `<button class="btn" id="aOff" type="button"${hasSlot(c) ? "" : " disabled"}>Take them off their slot</button></div>` + logHtml();
   body.innerHTML = h;
@@ -1281,7 +1432,10 @@ function logHtml() { return A.log.length ? `<div class="log"><b>This visit:</b><
 async function moveOne() {
   const c = selCand(), t = A.target; if (!c || !t || A.busy) return;
   if (takenSet(c.id).has(t.slot + "|" + t.room)) { toast("That slot has just been taken. Pick another.", true); A.target = null; renderAMove(); return; }
-  const wantEmail = $("aEmailOne") && $("aEmailOne").checked && !!c.email;
+  if (attemptOf(c) !== 2 && c.rap !== true && eligBlocked(c)) {
+    const go = await askSheet("Give " + esc(c.name) + " a slot?", "They were absent in a teaching week, so they should move to a new course. A Director can override on the assessment night screen instead.", "Place anyway");
+    if (!go) return;
+  }
   A.busy = true;
   try {
     await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update({ assessmentRoom: t.room, assessmentSlot: t.slot });
@@ -1289,7 +1443,6 @@ async function moveOne() {
     logAdd(c.name + " moved to " + t.slot + " in " + t.room + ".");
     toast("Moved.");
     A.target = null;
-    if (wantEmail) await sendAssessmentEmails([c]);
   } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission" : err.message), true); }
   A.busy = false; renderAlloc();
 }
@@ -1312,6 +1465,28 @@ async function setAttempt(c, n) {
   A.busy = false; renderAlloc();
 }
 
+// ── Which slots have been emailed ───
+const MAIL_DAY_LIMIT = 85;   // the sender's safe daily limit; the rest are queued by the function
+function slotKey(c) { return (assessDate() || "") + "|" + (c.assessmentRoom || "") + "|" + (c.assessmentSlot || ""); }
+function pendingMail() { return S.cands.filter(c => c.email && hasSlot(c) && c.assessmentEmailedSlot !== slotKey(c) && !(attemptOf(c) !== 2 && c.rap !== true && c.assessmentAbsent !== true && eligBlocked(c))); }   // never email a slot to someone absent in a teaching week
+async function emailPending() {
+  if (A.busy || !S.isDirector) return;
+  { const st0 = stats(), rv0 = reviewInfo(st0); if (!(rv0.ok && A.reviewSig === rv0.sig && A.mail === "ok")) { toast("Check the schedule (step 3) and the email sender first.", true); return; } }
+  const list = pendingMail(); if (!list.length) return;
+  const ok = await askSheet("Email " + list.length + " people their time?", `${Math.min(list.length, MAIL_DAY_LIMIT)} are sent now${list.length > MAIL_DAY_LIMIT ? ` and ${list.length - MAIL_DAY_LIMIT} are queued for 06:00 tomorrow` : ""}. Each person gets their own time and room. Do not move slots while emails are queued.`, "Send emails");
+  if (!ok) return;
+  A.busy = true; try { await sendAssessmentEmails(list); } finally { A.busy = false; }
+  renderAlloc();
+}
+async function stampEmailed(list, failed) {
+  const bad = new Set((failed || []).map(x => String(x).toLowerCase()));
+  const ok = list.filter(c => !bad.has(String(c.email).toLowerCase()));
+  try {
+    await writeSlots(ok, c => ({ assessmentEmailedSlot: slotKey(c), assessmentEmailedAt: new Date().toISOString() }));
+    ok.forEach(c => { c.assessmentEmailedSlot = slotKey(c); });
+  } catch (e) { logAdd("Emails went out but could not be recorded (" + (e.message || e) + "). Check Comms history before sending again."); }
+}
+
 // ── Optional emails ─────────────────────────────────────────────────────────
 async function sendAssessmentEmails(people) {
   const d = assessDate(); const dateTxt = d ? longDate(d) : "";
@@ -1327,6 +1502,7 @@ async function sendAssessmentEmails(people) {
       subject: A.subject, message: A.body, groupLabel: "Stage 1 assessment time - " + S.course, dryRun: false
     });
     const r = res.data || {};
+    if (S.isDirector) await stampEmailed(withEmail, r.failedEmails);
     logAdd("Emailed " + (r.sent || 0) + " of " + withEmail.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + (skipped ? ", " + skipped + " had no address" : "") + ".");
     toast("Emailed " + (r.sent || 0) + " of " + withEmail.length + ".");
   } catch (err) { toast("Email failed: " + (err.message || err), true); logAdd("Email failed: " + (err.message || err)); }
@@ -1346,8 +1522,10 @@ function renderALists(st) {
   const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""));
   const sched = st.slotted.slice().sort((a, b) => a.assessmentSlot === b.assessmentSlot ? String(a.assessmentRoom).localeCompare(String(b.assessmentRoom)) : a.assessmentSlot.localeCompare(b.assessmentSlot));
   $("aLists").innerHTML =
-    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from step 2 when you are ready.") +
-    group("Retest pool: attempt 2 and above", st.retest.slice().sort(byName), true, "Managed by the organising team. Not allocated automatically. Set the attempt number in step 2.") +
+    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from the Adjust box when you are ready.") +
+    group("Retest pool: attempt 2 and above", st.retest.slice().sort(byName), true, "Managed by the organising team. Not allocated automatically. Set the attempt number in the Adjust box.") +
+    group("Has a slot but was absent in a teaching week", st.slottedBad.slice().sort(byName), true, "These people should move to a new course. Moving them in Course Allocation clears their slot.") +
+    group("Absent in a teaching week: no slot given", st.notElig.slice().sort(byName), true, "Left out of the automatic allocation. They move to a new course unless a Director overrides.") +
     group("Eligible but no slot yet", st.toDo.slice().sort(byName), true, "") +
     group("Cannot attend", st.absent.slice().sort(byName), false, "") +
     group("Assessment schedule", sched, false, "");
@@ -1526,7 +1704,7 @@ function canAssessCandidate(c, att) {
   const mine = S.user.uid;
   const cl = nres(c.id).claim;
   if (cl && cl.uid && cl.uid !== mine) return { ok: false, why: (cl.name || "Another assessor") + " has taken " + firstNameOf(c) + " on." };
-  if (att === 1 && !recordedAt(c.id, 1)) {
+  if (needsAttend(att) && !recordedAt(c.id, att)) {
     const e = eligOf(c);
     if (e && e.state === "absent" && !e.ov) return { ok: false, elig: true, why: "Not eligible tonight: " + e.why.join(" and ").toLowerCase() + ". The rule is present in both teaching weeks. " + (S.isDirector ? "As a Director you can override below." : "Only a Director can override this.") };
   }
@@ -1542,14 +1720,14 @@ function canAssessCandidate(c, att) {
 // ── Eligibility on the night (v12, 2026-10-16) ──────────────────────────────
 // Rule (Jon): a first sit needs "here" or "late" in BOTH teaching weeks. Absent in either week = not eligible
 // and the result form is locked unless a Director overrides. A week with no register mark is only a warning
-// (a gap in the data is not proof of absence). Only attempt 1 is checked: the third and fourth sit rule is not agreed yet.
+// (a gap in the data is not proof of absence). The third and fourth sit follow the same rule (Jon, 16 Oct). Attempt 2 (same-night retest) is not checked.
 // The assessment night function (getAssessmentNight) sends c.elig = { state: "ok"|"absent"|"unmarked", why: [], ov: {...}|null }.
 // If the function is not deployed, full-access users get the same answer worked out here from the register.
 const ELIG_WHY = ["Authorised by a Director", "Register mistake", "Clinical or work", "Unwell", "Other"];
 const ELIG_HOW = ["In person tonight", "Replied by email", "Other"];
 function eligLocal(c) {
   if (!S.full) return null;
-  const cc = candById(c.id); if (!cc || attemptOf(cc) !== 1) return null;
+  const cc = candById(c.id); if (!cc || !needsAttend(attemptOf(cc))) return null;
   if (!Object.keys(S.reg).length) return null;
   const ab = [], um = [];
   [1, 2].forEach(n => { const s = statusOf(c.id, n); if (s === "absent") ab.push("Absent in week " + n); else if (s !== "here" && s !== "late") um.push("No register mark for week " + n); });
@@ -1559,7 +1737,7 @@ function eligLocal(c) {
 function eligOf(c) { if (c.elig) return c.elig; if (N.usingFallback) return eligLocal(c); return null; }
 function eligCounts() {
   let bad = 0, ovr = 0, gap = 0;
-  N.cands.forEach(c => { if (isDoneN(c) || c.absent || effAttempt(c) !== 1) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
+  N.cands.forEach(c => { if (isDoneN(c) || c.absent || !needsAttend(effAttempt(c))) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
   return { bad, ovr, gap };
 }
 async function saveEligOverride(c, d) {
@@ -1645,11 +1823,11 @@ function overrideEvents() {
 function tally(list, f) { const m = {}; list.forEach(e => (f(e) || []).forEach(v => { m[v] = (m[v] || 0) + 1; })); return Object.keys(m).map(k => [k, m[k]]).sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]))); }
 function overridesCard() {
   const ev = overrideEvents();
-  if (!ev.length) return '<div class="card"><h3>Passed with a red step</h3><div class="hint">None so far. Every time an assessor passes a part with a red step marked, it is listed here with the reason and the assessor.</div></div>';
+  if (!ev.length) return '<div class="card"><h3>Passed with a red step</h3><div class="hint">None so far. Passes with a red step are listed here.</div></div>';
   const who = tally(ev, e => [e.assessor]).map(x => `<span class="nchip bad">${esc(x[0])}: ${x[1]}</span>`).join(" ");
   const why = tally(ev, e => e.why.length ? e.why : ["No reason recorded"]).map(x => `<span class="nchip">${esc(x[0])}: ${x[1]}</span>`).join(" ");
   const rows = ev.map(e => `<div class="lrow"><span class="nm">${esc(e.name)}</span><small>${esc(e.part)}, attempt ${e.att}</small><small style="flex-basis:100%">Red: ${esc(e.steps.join("; "))} · Why: ${esc(e.why.length ? e.why.map(o => o === "Other" ? "Other - " + e.other : o).join(", ") : "not recorded")} · Assessor: ${esc(e.assessor)}${e.at ? " · " + esc(String(e.at).replace("T", " ").slice(0, 16)) : ""}</small></div>`).join("");
-  return `<div class="card" style="border-color:var(--org)"><h3>Passed with a red step (${ev.length})</h3><div class="hint" style="margin:0 0 8px">An assessor marked a part Pass although a step was red. Check these are reasonable. Each one is saved on the candidate's record.</div><div style="margin:0 0 6px"><b>By assessor:</b> ${who}</div><div style="margin:0 0 10px"><b>Reasons:</b> ${why}</div>${rows}</div>`;
+  return `<div class="card" style="border-color:var(--org)"><h3>Passed with a red step (${ev.length})</h3><div class="hint" style="margin:0 0 8px">Passed although a step was red. Check these are reasonable.</div><div style="margin:0 0 6px"><b>By assessor:</b> ${who}</div><div style="margin:0 0 10px"><b>Reasons:</b> ${why}</div>${rows}</div>`;
 }
 function nightBanner() {
   let h = "";
@@ -1675,7 +1853,7 @@ function stateChips(c) {
     out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${esc(outcomeShort(o, Number(k)))}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
   });
   if (r.notThere && r.notThere.flag && !isDoneN(c)) out.push('<span class="nchip bad">Not there</span>');
-  if (!isDoneN(c) && effAttempt(c) === 1) {
+  if (!isDoneN(c) && needsAttend(effAttempt(c))) {
     const e = eligOf(c);
     if (e && e.state === "absent") out.push(e.ov ? '<span class="nchip claim">Director override</span>' : '<span class="nchip bad">Not eligible</span>');
     else if (e && e.state === "unmarked") out.push('<span class="nchip claim" title="' + esc(e.why.join(", ")) + '">Register gap</span>');
@@ -1772,8 +1950,8 @@ function renderAssessor() {
   if (!N.room || (N.room !== "__pool" && !by[N.room])) N.room = rooms[0] || (pool.length ? "__pool" : null);
   $("msgs").innerHTML = nightBanner();
   $("plain").innerHTML = '<span class="lbl">Assessor view</span>' +
-    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Pick your room, then tap a candidate to open the assessment form. ` +
-    `Anyone referred at attempt 1 goes straight to the <b>Retest pool</b>${pool.length ? ` (${pool.length} now)` : ""}, where an assessor can take them on the same evening.`;
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Pick your room, then tap a candidate. ` +
+    `Referred at attempt 1: <b>Retest pool</b>${pool.length ? ` (${pool.length})` : ""}.`;
   const chips = rooms.map(r => {
     const l = by[r], dn = l.filter(isDoneN).length;
     return `<button type="button" class="rchip${N.room === r ? " on" : ""}" data-aroom="${esc(r)}"><b>${esc(r)}</b><small>${dn}/${l.length} done</small></button>`;
@@ -1798,7 +1976,7 @@ function roomBody(room, list) {
     (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
 }
 function poolBody(pool) {
-  if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody is waiting for a retest. People appear here as soon as they are referred at attempt 1, or when their attempt number is 2 or more.</div>';
+  if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody waiting. People appear when referred at attempt 1, or set to attempt 2 or more.</div>';
   const row = c => {
     const att = effAttempt(c), chk = canAssessCandidate(c, att), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
     const prev = nattempts(c.id)["1"];
@@ -1809,7 +1987,7 @@ function poolBody(pool) {
       : `<span class="why">${esc(chk.why)}</span>`;
     return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
   };
-  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1. Attempt 3 and above is Senior Faculty or the extra named assessors.</div>` + whoCanBox(pool) + pool.map(row).join("");
+  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2: Student or Senior Faculty, a different assessor. Attempt 3 and above: Senior Faculty or extra named assessors.</div>` + whoCanBox(pool) + pool.map(row).join("");
 }
 async function claimCand(id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
@@ -1849,7 +2027,7 @@ function openForm(id) {
     Object.assign(state.other, existing.reasonOther || {});
     COMPS.forEach(x => { const ov = (existing.overrides || {})[x.k]; if (ov && ov.length && state.marks[x.k] === "pass") { ov.forEach(r => state.reasons[x.k].add(r)); state.override[x.k] = true; const w = (existing.overrideWhy || {})[x.k]; if (w) { (w.options || []).forEach(o => state.ovwhy[x.k].add(o)); state.ovother[x.k] = w.other || ""; } } });
   }
-  const cprHtml = `<div class="cpr" id="cpr"><div class="hint" style="margin:0"><b>Compression counter (optional).</b> Tap once for every compression. Keep tapping past 30 if they carry on. When they move to breaths, hold the TAP button down for a moment to end the cycle (the End cycle button does the same). A cycle of 28 to 32 is fine and goes red outside that. Target rate 100 to 120 per minute. It does not change the result by itself.</div>` +
+  const cprHtml = `<div class="cpr" id="cpr"><div class="hint" style="margin:0"><b>Compression counter (optional).</b> Tap per compression. Hold TAP to end the cycle (28 to 32 is fine). Target 100 to 120 per minute. Does not change the result.</div>` +
     `<div class="cprrow"><div class="cprnum" id="cprN">0</div><div class="cprrate" id="cprRate">Tap to start</div></div><div class="cprcnt" id="cprCnt"></div>` +
     `<button type="button" class="cprbtn" id="cprTap">TAP</button>` +
     `<div class="tools" style="margin:8px 0 0"><button type="button" class="btn sm" id="cprUndo">Undo last tap</button><button type="button" class="btn sm" id="cprNext">End cycle</button><button type="button" class="btn sm" id="cprClear">Clear counter</button></div><div class="cpcyc" id="cprCycles"></div><div class="cprtot" id="cprTot"></div></div>`;
@@ -1867,7 +2045,7 @@ function openForm(id) {
     }).join("");
     if (lastCode) steps += rsnPanel(lastCode);
     return `<div class="cmp" data-cmp="${x.k}"><b>${esc(x.label)}</b>${x.k === "bls" && chk.ok ? cprHtml : ""}` +
-      `<div class="why2" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Steps start green (done correctly). Tap any step that was missed or done wrongly and it turns red, the result below switches to Not yet, and a list of reasons appears for you to tick.</div><div class="stps">${steps}</div></div>` +
+      `<div class="why2" data-why="${x.k}"><div class="hint" style="margin:10px 0 6px">Steps start green. Tap a missed step: it turns red, the result becomes Not yet, then tick the reasons.</div><div class="stps">${steps}</div></div>` +
       `<div class="resbox"><div class="rlab">Result for ${esc(x.label)}</div><div class="fqo">` +
       `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
       `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
@@ -1888,10 +2066,10 @@ function openForm(id) {
   }).join("");
   $("overlay").innerHTML = `<div class="modalbg" id="fbg"><div class="modal" role="dialog" aria-modal="true">` +
     `<h3>${esc(c.name)} ${c.rap ? RAPSVG : ""} ${attBadge(att)}</h3><div class="sub">${esc(S.course)} · ${esc(c.degree || "")}${c.assessmentRoom ? " · " + esc(c.assessmentRoom) + " at " + esc(c.assessmentSlot) : ""} · attempt ${att}</div>` +
-    `<div class="hint" style="margin:0 0 4px">Single-rescuer scenario. Assess BLS + AED first, then the recovery position.${att >= 2 ? " This retest includes: " + retestIncludes(req) + "." : ""}</div>` +
+    `<div class="hint" style="margin:0 0 4px">Single rescuer. BLS + AED first, then recovery position.${att >= 2 ? " This retest includes: " + retestIncludes(req) + "." : ""}</div>` +
     hist +
     (chk.ok ? "" : `<div class="msg err">${esc(chk.why)}</div>`) +
-    (chk.elig && S.isDirector ? `<div class="card" id="elOv" style="margin:8px 0"><h3 style="margin:0 0 4px">Director override</h3><div class="hint" style="margin:0 0 8px">Only override if the candidate has understood that sitting without the missed training raises the risk of not passing. This is saved on their record.</div>` +
+    (chk.elig && S.isDirector ? `<div class="card" id="elOv" style="margin:8px 0"><h3 style="margin:0 0 4px">Director override</h3><div class="hint" style="margin:0 0 8px">Only override if the candidate understands that sitting without the missed training raises the risk of not passing. Saved on their record.</div>` +
       `<div class="lb">Why allow it</div><div class="rsnc">${ELIG_WHY.map(o => `<button type="button" class="ropt" data-elw="${esc(o)}">${esc(o)}</button>`).join("")}</div>` +
       `<div class="lb" style="margin-top:8px">How they agreed</div><div class="rsnc">${ELIG_HOW.map(o => `<button type="button" class="ropt" data-elh="${esc(o)}">${esc(o)}</button>`).join("")}</div>` +
       `<input type="text" id="elPresent" placeholder="Who was present (names)" style="margin-top:8px"><input type="text" id="elNote" placeholder="Short note (optional, no health detail)" style="margin-top:6px">` +
@@ -2137,8 +2315,8 @@ function teamCard(af) {
     { key: "final", title: "Not passed - final attempt (attempt 4)", hint: "Course not completed. Refer back to the degree leads, inform the candidate they have not passed, and tell the programme lead." }
   ];
   const any = groups.some(g => af[g.key].length);
-  let h = `<div class="card"><h3><span class="stepno">3</span>After the night: who needs a follow-up</h3><div class="hint" style="margin:0 0 8px">People who have not passed at attempt 2 or later are not retested tonight. Each group below needs a member of faculty to speak to them. Nothing is emailed from here: copy the note and send it yourself.</div>`;
-  if (!any) return h + '<div class="hint">Nobody yet. People appear here once they have not passed at attempt 2 or later, with their reasons.</div></div>';
+  let h = `<div class="card"><h3><span class="stepno">3</span>After the night: who needs a follow-up</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 2 or later: not retested tonight. A faculty member speaks to each. Nothing is emailed from here: copy the note and send it yourself.</div>`;
+  if (!any) return h + '<div class="hint">Nobody yet.</div></div>';
   groups.forEach(g => {
     const l = af[g.key]; if (!l.length) return;
     h += `<div class="tgroup"><div class="tghead"><b>${esc(g.title)} (${l.length})</b><button type="button" class="btn sm" data-copygroup="${g.key}">Copy all</button></div><div class="hint" style="margin:2px 0 6px">${esc(g.hint)}</div>`;
@@ -2192,14 +2370,14 @@ function renderRetest() {
   $("msgs").innerHTML = nightBanner();
   const af = afterTonight();
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
-    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt tonight. ` +
-    `They are never given a slot automatically: an assessor takes each one on from the Assessor view. Attempt 2 is Student or Senior Faculty and a different assessor from attempt 1; attempt 3 and above is Senior Faculty or the extra named assessors. ` +
-    `Anyone not passed at attempt 2 or above is not retested tonight: they appear under <b>After the night: who needs a follow-up</b> below.`;
+    `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
+    `An assessor takes each one from the Assessor view. ` +
+    `Not passed at attempt 2 or later: see <b>After the night</b> below.`;
   let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}${nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0 && pool.some(c => effAttempt(c) >= 3))}` +
     `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}${nightTile(overrideEvents().length, "Passed with a red step", overrideEvents().length > 0)}</div>`;
   h += overridesCard();
   if (stale.length) {
-    h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> ${stale.length === 1 ? "candidate was" : "candidates were"} referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet column in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
+    h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
   }
   const prow = c => {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
@@ -2214,7 +2392,7 @@ function renderRetest() {
   h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
   h += attemptsOverview();
   h += teamCard(af);
-  if (S.isDirector) h += `<div class="card"><div class="hint" style="margin:0">Who can assess, the mark sheets and the Google Form link are under <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>`;
+  if (S.isDirector) h += `<div class="card"><div class="hint" style="margin:0">Assessors, mark sheets and Google Form link: <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>`;
   const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
   if (wasOpen && $("attDetails")) $("attDetails").open = true;
@@ -2311,9 +2489,9 @@ function hereCard(pool) {
   const people = att3People();
   const wait3 = pool.filter(c => effAttempt(c) >= 3 && !(nres(c.id).claim && nres(c.id).claim.uid)).length;
   let h = `<div class="card"><h3><span class="stepno">1</span>Attempt 3 or later: who is here tonight</h3>` +
-    `<div class="hint" style="margin:0 0 6px">Tap each person who is here to assess tonight. Only people allowed to take attempt 3 or later are listed: Senior Faculty and the extra named assessors. This is for information. It does not stop anyone taking a candidate on.</div>`;
+    `<div class="hint" style="margin:0 0 6px">Tap each person here tonight. Senior Faculty and extra named assessors only. Information only.</div>`;
   if (N.dir === null || N.dir === undefined) return h + '<div class="hint">Loading the list…</div></div>';
-  if (!people.length) return h + `<div class="hint">Nobody is listed yet. Senior Faculty come from the faculty roster. Extra named assessors are added under Assessment setup.</div></div>`;
+  if (!people.length) return h + `<div class="hint">Nobody listed. Senior Faculty come from the faculty roster; extra assessors are added in Assessment setup.</div></div>`;
   const n = people.filter(isHere).length;
   if (wait3 && !n) h += `<div class="msg warn">${wait3} ${wait3 === 1 ? "person is" : "people are"} waiting for attempt 3 or later and nobody is marked as here to take them.</div>`;
   h += `<div class="hbtns">${people.map((x, i) => `<button type="button" class="hbtn${isHere(x) ? " on" : ""}" data-here="${i}" aria-pressed="${isHere(x)}">${isHere(x) ? "&#10003; " : ""}${esc(x)}</button>`).join("")}</div>` +
@@ -2367,7 +2545,7 @@ function suGroups() {
 function renderSetup() {
   if (S.view !== "setup") return;
   suCapture();
-  $("plain").innerHTML = '<span class="lbl">Assessment setup</span>Who can assess, the mark sheets assessors tap through, and the Google Form link. These apply to every course, not only ' + esc(S.course || "this one") + '. Changes reach the assessor form straight away.';
+  $("plain").innerHTML = '<span class="lbl">Assessment setup</span>Who can assess, mark sheets and the Google Form link. Applies to every course. Changes are live straight away.';
   const tabs = [["who", "Who can assess"], ["marks", "Mark sheets"], ["form", "Google Form"]];
   let h = `<div class="sutabs">${tabs.map(t => `<button type="button" data-sutab="${t[0]}" class="${SU.tab === t[0] ? "on" : ""}">${t[1]}</button>`).join("")}</div>`;
   h += SU.tab === "who" ? suWho() : SU.tab === "marks" ? suMarks() : suForm();
@@ -2389,18 +2567,18 @@ function suWho() {
     ["2nd sit", "not the same assessor as the 1st sit", [G.stu, G.sen, G.named]],
     ["3rd sit and later", "", [G.sen, G.named]]
   ];
-  let h = `<div class="card"><h3>Who can assess what</h3><div class="hint" style="margin:0 0 8px">Grey groups come from the site's lists and are changed elsewhere (Student and Senior Faculty on the <a href="admin-faculty-roster.html">faculty roster</a>). Purple groups are edited below.</div>` +
+  let h = `<div class="card"><h3>Who can assess what</h3><div class="hint" style="margin:0 0 8px">Grey groups are changed elsewhere (Student and Senior Faculty: <a href="admin-faculty-roster.html">faculty roster</a>). Purple groups are edited below.</div>` +
     `<table class="suwho"><tr><th>Sit</th><th>Who can assess</th></tr>` +
     rows.map(r => `<tr><td><b>${r[0]}</b>${r[1] ? `<br><small style="color:var(--mut)">${r[1]}</small>` : ""}</td><td><div class="names">${r[2].map(chip).join("")}</div></td></tr>`).join("") +
-    `</table><div class="hint" style="margin:8px 0 0">Directors can take a 2nd or later sit only if they are also on the Student or Senior Faculty roster, or are named below. Senior Instructors on the night list can record first sits only.</div>`;
+    `</table><div class="hint" style="margin:8px 0 0">Directors take 2nd or later sits only if on the Student or Senior Faculty roster, or named below. Senior Instructors on the night list: first sits only.</div>`;
   h += `<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;color:var(--pur)">Show the names in each group</summary>` +
     Object.keys(G).map(k => { const g = G[k]; return `<div class="whorow"><b>${esc(g.label)} (${g.names.length})</b><div class="names">${g.names.length ? g.names.map(n => `<span${g.ed ? ' class="ed"' : ""}>${esc(n)}</span>`).join("") : '<span class="none">nobody listed</span>'}</div></div>`; }).join("") + `</details></div>`;
   const teamV = SU.teamDraft !== null ? SU.teamDraft : (N.team || []).join("\n");
   const namedV = SU.namedDraft !== null ? SU.namedDraft : (N.named || []).join("\n");
-  h += `<div class="card"><h3>Senior Instructors who can open assessment night</h3><div class="hint" style="margin:0 0 6px">They can open assessment night and record first sits. They are in addition to Directors, Student and Senior Faculty, Faculty and Assessor Faculty. Email addresses only, one per line (the email they sign in with).</div>` +
+  h += `<div class="card"><h3>Senior Instructors who can open assessment night</h3><div class="hint" style="margin:0 0 6px">Can open assessment night and record first sits, as well as Directors, Student and Senior Faculty, Faculty and Assessor Faculty. One sign-in email per line.</div>` +
     `<textarea id="teamTxt" placeholder="Email, one per line">${esc(teamV)}</textarea>` +
     `<div class="tools" style="margin:6px 0 0"><button type="button" class="btn sm" id="pickAssessors">Add everyone whose role is Assessor</button><span class="hint" id="pickMsg"></span></div></div>`;
-  h += `<div class="card"><h3>Extra named assessors for retests</h3><div class="hint" style="margin:0 0 6px">They can take 2nd and later sits as well as first sits, on top of the groups above. One per line. Use their email so they can also open assessment night; a name alone only works if they already have access another way.</div>` +
+  h += `<div class="card"><h3>Extra named assessors for retests</h3><div class="hint" style="margin:0 0 6px">Can take 2nd and later sits as well as first sits. One sign-in email per line.</div>` +
     `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc(namedV)}</textarea>` +
     `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveWho">Save both lists</button><span class="sumsg" id="whoMsg"></span></div><div class="hint">Saving needs a super-user account, the same as the other site settings.</div></div>`;
   return h;
@@ -2421,7 +2599,7 @@ function suMarks() {
   if (!SU.draft) SU.draft = { bls: stepsFor("bls").join("\n"), rec: stepsFor("rec").join("\n") };
   const x = COMPS.find(c => c.k === SU.part) || COMPS[0];
   const recorded = Object.values(N.results || {}).reduce((n, r) => n + Object.keys((r && r.attempts) || {}).length, 0);
-  let h = `<div class="card"><h3>Mark sheets</h3><div class="hint" style="margin:0 0 8px">One line per step, in the order assessors see them. Each line starts with its code (1a, 1b, 1c for BLS + AED; 2a for recovery position), which groups the steps and gives the "failed 1a, 2a" text. The two parts themselves are fixed. The Resuscitation Council UK 2025 lay-rescuer sequence is the default.</div>`;
+  let h = `<div class="card"><h3>Mark sheets</h3><div class="hint" style="margin:0 0 8px">One line per step, in the order assessors see them. Start each line with its code (1a, 1b, 1c for BLS + AED; 2a for recovery position). Default: Resuscitation Council UK 2025 lay-rescuer sequence.</div>`;
   if (recorded) h += `<div class="msg warn">${recorded} result${recorded === 1 ? " has" : "s have"} already been recorded on ${esc(S.course || "this course")}. Old results still read correctly after a reword, but amending an old result will not highlight a step you have reworded. Edit between nights where you can.</div>`;
   h += `<div class="sutabs">${COMPS.map(c => `<button type="button" data-supart="${c.k}" class="${SU.part === c.k ? "on" : ""}">${esc(c.label)}</button>`).join("")}</div>` +
     `<div class="sugrid"><div><div class="hint" style="margin:0 0 4px"><b>Edit: ${esc(x.label)}</b></div><textarea id="suSteps" style="min-height:300px">${esc(SU.draft[SU.part])}</textarea>` +
