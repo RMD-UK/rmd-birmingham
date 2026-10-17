@@ -81,6 +81,29 @@
     .tab2 { appearance:none; background:none; border:0; border-bottom:3px solid transparent; margin-bottom:-2px; padding:9px 13px; font:inherit; font-size:14px; font-weight:700; color:var(--mut2); cursor:pointer; white-space:nowrap; }
     .tab2.on { color:var(--pur); border-bottom-color:var(--ora); }
     .tab2:focus-visible, .btn-primary:focus-visible, .btn-secondary:focus-visible { outline:3px solid var(--ora); outline-offset:2px; }
+    /* One-by-one entry (2026-10-17, Jon) */
+    .oneform { border:1.5px solid var(--line2); border-radius:14px; padding:16px; margin:14px 0 18px; background:#faf8fd; }
+    .oneform h3 { margin:0 0 4px; font-size:15px; font-weight:800; color:var(--ink); }
+    .oneform .fgrid { display:grid; grid-template-columns:repeat(6,1fr); gap:12px; margin-top:12px; }
+    .oneform .f { display:flex; flex-direction:column; gap:4px; min-width:0; }
+    .oneform .f label { font-size:12px; font-weight:700; color:var(--mut2); }
+    .oneform .f label em { font-style:normal; font-weight:500; opacity:.8; }
+    .oneform .f input, .oneform .f select { width:100%; margin:0; min-height:44px; box-sizing:border-box; border:1.5px solid var(--line2); border-radius:10px; background:#fff; font-size:15px; }
+    .oneform .f input:focus, .oneform .f select:focus { outline:3px solid var(--ora); outline-offset:1px; border-color:var(--pur); }
+    .oneform .f.c2 { grid-column:span 2; } .oneform .f.c3 { grid-column:span 3; } .oneform .f.c6 { grid-column:span 6; }
+    .oneform .f.bad input, .oneform .f.bad select { border-color:#b7410e; }
+    .oneform .emailnote { font-size:12.5px; line-height:1.45; min-height:18px; }
+    .oneform .emailnote.ok { color:#1a6e31; font-weight:600; }
+    .oneform .emailnote.warn { color:#856404; font-weight:600; }
+    .oneform .emailnote.err { color:#b7410e; font-weight:600; }
+    .oneform .emailnote button { margin-left:8px; padding:4px 10px; font-size:12px; font-weight:700; border-radius:8px; border:1.5px solid var(--line2); background:#fff; color:var(--pur); cursor:pointer; }
+    .oneform .oneactions { display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap; }
+    .oneform .oneactions .okmsg { font-size:13px; color:#1a6e31; font-weight:600; }
+    .oneform .f.c6:has(.emailnote:empty) { display:none; }
+    .orline { display:flex; align-items:center; gap:10px; margin:6px 0 10px; color:var(--mut2); font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+    .orline::before, .orline::after { content:""; flex:1; height:1px; background:var(--line2); }
+    @media (max-width:700px) { .oneform .fgrid { grid-template-columns:1fr 1fr; } .oneform .f.c2, .oneform .f.c3 { grid-column:span 2; } .oneform .f.c6 { grid-column:span 2; } .oneform .f.half { grid-column:span 1; } }
+
     .pane2 { display:none; } .pane2.on { display:block; }
     .secthead { font-size:12px; font-weight:700; color:var(--mut2); text-transform:uppercase; letter-spacing:.6px; margin:6px 0 10px; }
     .director-note { border-radius:12px; }
@@ -175,9 +198,30 @@
   <div class="card">
     <div class="card-header">Step 1 — Add candidates</div>
     <div class="card-body">
+      <p class="hint" style="margin-top:0;"><strong>Nobody gets a course here.</strong> Allocate on the Course allocation page after Step 2. Add people one at a time below, or paste many at once. Both end up in the same box, then press Parse &amp; preview.</p>
+
+      <div class="oneform" id="oneForm">
+        <h3>Add one person</h3>
+        <div class="hint" style="margin:0;">Fill in the boxes and press Add to list. The email ending is checked against the degree.</div>
+        <div class="fgrid">
+          <div class="f c3"><label for="oneSurname">Last name</label><input type="text" id="oneSurname" autocomplete="off" oninput="oneCheck()"></div>
+          <div class="f c3"><label for="oneFirst">First name</label><input type="text" id="oneFirst" autocomplete="off" oninput="oneCheck()"></div>
+          <div class="f c3"><label for="oneDegree">Degree</label><select id="oneDegree" onchange="oneCheck()"></select></div>
+          <div class="f c3"><label for="oneEmail">Email</label><input type="text" id="oneEmail" autocomplete="off" inputmode="email" autocapitalize="off" spellcheck="false" oninput="oneCheck()" onblur="oneAutoSuffix()"></div>
+          <div class="f c6"><div class="emailnote" id="oneEmailNote"></div></div>
+          <div class="f c3 half"><label for="oneStudentId">Student ID <em>(optional)</em></label><input type="text" id="oneStudentId" autocomplete="off" inputmode="numeric" oninput="oneCheck()"></div>
+          <div class="f c3 half"><label for="oneYear">Year <em>(optional)</em></label><select id="oneYear" onchange="oneCheck()"><option value="">Not set</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
+        </div>
+        <div class="oneactions">
+          <button class="btn-primary" id="oneAddBtn" onclick="oneAdd()" disabled>Add to list</button>
+          <button class="btn-secondary" onclick="oneClear()">Clear boxes</button>
+          <span class="okmsg" id="oneMsg" role="status"></span>
+        </div>
+      </div>
+
+      <div class="orline">or paste many</div>
       <p class="hint" style="margin-top:0;">One per line: <strong>last name, first name, email, degree, student ID, year</strong>. Student ID and year are optional. Rows missing a required field are flagged before import.</p>
-      <p class="hint" style="margin-top:0;"><strong>Nobody gets a course here.</strong> Allocate on the Course allocation page after Step 2.</p>
-      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, , 1"></textarea>
+      <textarea id="pasteBox" placeholder="Smith, Jane, j.smith@student.bham.ac.uk, Medicine MBChB, 10234567, 2&#10;Jones, Tom, , Medicine MBChB, , 1"></textarea>
       <button class="btn-primary" id="parseBtn" onclick="parsePreview()">Parse &amp; preview</button>
       <div id="previewWrap"></div>
     </div>
@@ -441,6 +485,97 @@ function computeDuplicateColors() {
     });
   });
 }
+
+// ── Add one person (2026-10-17, Jon) ─────────────────────────────────────
+// Builds one line in the SAME order the paste box already uses
+// (last name, first name, email, degree, student ID, year) and appends it
+// to #pasteBox, so everything after that (Parse & preview, flags, import)
+// is unchanged. Nothing is saved here.
+// Email ending expected for each degree. Dentistry and Physio are confirmed
+// (Jon, 15 Oct: must be @student.bham.ac.uk, not @bham.ac.uk). The other
+// programmes are assumed to match until Jon says otherwise: change the
+// entries below if any degree needs a different ending. A mismatch is a
+// warning with a one-click fix, never a block.
+const STAGE1_EMAIL_SUFFIX_DEFAULT = "@student.bham.ac.uk";
+const STAGE1_EMAIL_SUFFIX = {
+  // "Degree name": "@ending"   (leave empty to use the default)
+};
+function expectedSuffixFor(degree) { return (STAGE1_EMAIL_SUFFIX[degree] || STAGE1_EMAIL_SUFFIX_DEFAULT).toLowerCase(); }
+function oneFillDegrees() {
+  const sel = document.getElementById("oneDegree");
+  if (!sel || sel.options.length) return;
+  sel.innerHTML = `<option value="">Choose degree</option>` + Object.keys(STAGE1_DEGREE_GROUPS).map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+}
+function oneClean(v) { return String(v || "").replace(/[,\t\r\n]+/g, " ").replace(/\s+/g, " ").trim(); }
+function oneEmailState() {
+  const degree = document.getElementById("oneDegree").value;
+  const raw = oneClean(document.getElementById("oneEmail").value).replace(/\s/g, "");
+  const exp = degree ? expectedSuffixFor(degree) : STAGE1_EMAIL_SUFFIX_DEFAULT;
+  if (!raw) return { kind: "empty", raw, exp };
+  const at = raw.indexOf("@");
+  if (at < 0) return { kind: "noat", raw, exp };
+  const local = raw.slice(0, at), dom = raw.slice(at).toLowerCase();
+  if (!local || !/^@[a-z0-9.-]+\.[a-z]{2,}$/.test(dom) || raw.split("@").length > 2) return { kind: "bad", raw, exp };
+  if (!degree) return { kind: "needdeg", raw, exp, local, dom };
+  if (dom !== exp) return { kind: "wrong", raw, exp, local, dom };
+  return { kind: "ok", raw, exp, local, dom };
+}
+function oneAutoSuffix() {
+  // Typing just "jop613" and leaving the box completes it with the degree's ending.
+  const st = oneEmailState();
+  if (st.kind === "noat" && /^[A-Za-z0-9._%+-]+$/.test(st.raw)) {
+    document.getElementById("oneEmail").value = st.raw + st.exp;
+    oneCheck();
+  }
+}
+function oneFixSuffix() {
+  const st = oneEmailState();
+  if (st.local) { document.getElementById("oneEmail").value = st.local + st.exp; oneCheck(); }
+}
+function oneExisting(email) {
+  const e = (email || "").toLowerCase();
+  return e ? (allCandidates || []).find(c => (c.email || "").toLowerCase() === e) : null;
+}
+function oneCheck() {
+  oneFillDegrees();
+  const note = document.getElementById("oneEmailNote");
+  const st = oneEmailState();
+  const degree = document.getElementById("oneDegree").value;
+  const emailBox = document.getElementById("oneEmail").closest(".f");
+  emailBox.classList.toggle("bad", st.kind === "bad" || st.kind === "wrong");
+  let cls = "", html = "";
+  if (st.kind === "ok") { cls = "ok"; html = `Email ending ${esc(st.dom)} is right for ${esc(degree)}.`; }
+  else if (st.kind === "wrong") { cls = "warn"; html = `${esc(degree)} emails should end ${esc(st.exp)}, this one ends ${esc(st.dom)}. <button type="button" onclick="oneFixSuffix()">Change to ${esc(st.exp)}</button>`; }
+  else if (st.kind === "bad") { cls = "err"; html = "That does not look like an email address."; }
+  else if (st.kind === "noat") { cls = ""; html = `Type the whole address, or just the part before the @ and press Tab: the ending ${esc(st.exp)} is added for you.`; }
+  else if (st.kind === "needdeg") { cls = "warn"; html = "Choose the degree to check the email ending."; }
+  const dupe = (st.kind === "ok" || st.kind === "wrong") ? oneExisting(st.raw) : null;
+  if (dupe) { cls = "warn"; html += `${html ? "<br>" : ""}Already in the system: ${esc(dupe.name || "")}${dupe.course ? " (" + esc(dupe.course) + ")" : ""}. Adding again will be flagged as a duplicate.`; }
+  note.className = "emailnote " + cls; note.innerHTML = html;
+  const need = oneClean(document.getElementById("oneSurname").value) && oneClean(document.getElementById("oneFirst").value) && degree && (st.kind === "ok" || st.kind === "wrong");
+  document.getElementById("oneAddBtn").disabled = !need;
+  document.getElementById("oneMsg").textContent = "";
+}
+function oneClear() {
+  ["oneSurname","oneFirst","oneEmail","oneStudentId"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("oneDegree").value = ""; document.getElementById("oneYear").value = "";
+  oneCheck(); document.getElementById("oneSurname").focus();
+}
+function oneAdd() {
+  oneCheck();
+  if (document.getElementById("oneAddBtn").disabled) return;
+  const f = id => oneClean(document.getElementById(id).value);
+  const email = oneEmailState().raw;
+  const line = [f("oneSurname"), f("oneFirst"), email, document.getElementById("oneDegree").value, f("oneStudentId"), document.getElementById("oneYear").value].join(", ");
+  const box = document.getElementById("pasteBox");
+  box.value = (box.value.replace(/\s+$/, "") ? box.value.replace(/\s+$/, "") + "\n" : "") + line + "\n";
+  const n = box.value.split("\n").filter(l => l.trim()).length;
+  oneClear();
+  document.getElementById("oneMsg").textContent = `Added. ${n} ${n === 1 ? "person is" : "people are"} in the box below. Press Parse & preview when ready.`;
+  box.scrollTop = box.scrollHeight;
+}
+document.addEventListener("DOMContentLoaded", () => { oneFillDegrees(); oneCheck(); });
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && /^one(Surname|First|Email|StudentId)$/.test(e.target.id)) { e.preventDefault(); if (e.target.id === "oneEmail") oneAutoSuffix(); oneAdd(); } });
 
 // ── Add candidates (paste, parse, preview, import) ──────────────────────
 function parseLine(line) {
