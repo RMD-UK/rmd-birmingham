@@ -493,6 +493,8 @@ function nice(iso) {
   return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", "");
 }
 // A course's three Mondays: week 1, week 2, assessment evening (the assessment date is the stored date)
+// Teaching weeks only: null for the catch-up night (it has no teaching evenings), so the register screens treat it as "no register".
+function teachDates(courseName) { const c = S.courseDates.find(x => x.name === courseName); return isCatchupCourse(c) ? null : weekDates(courseName); }
 function weekDates(courseName) {
   const c = S.courseDates.find(x => x.name === courseName);
   if (!c || !c.date) return null;
@@ -500,7 +502,7 @@ function weekDates(courseName) {
 }
 function weekState(iso) { const t = londonNow().date; return iso === t ? "today" : (iso < t ? "past" : "future"); }
 function canEditWeek(n) {
-  const d = weekDates(S.course); if (!d) return false;
+  const d = teachDates(S.course); if (!d) return false;
   return S.editAny || weekState(d[n - 1]) === "today";
 }
 
@@ -697,6 +699,10 @@ function chooseRole(id) {
   setView(r.view);
 }
 
+// The final catch-up assessment night (Jon, 18 Oct 2026): one week after Course 6, no teaching evenings, nobody allocated routinely.
+const CATCHUP_NAME = "Catch-up night";
+function isCatchupCourse(c) { return !!c && (c.catchup === true || /^catch-?up/i.test(c.name || "")); }
+function onCatchup() { return isCatchupCourse({ name: S.course, catchup: (S.courseDates.find(x => x.name === S.course) || {}).catchup }); }
 function isTestCourse(c) { return !!c && (c.test === true || /^TEST\b/i.test(c.name || "")); }
 function renderCourseTabs() {
   const today = londonNow().date;
@@ -809,7 +815,7 @@ function lastWeekChip(c) {
 function renderSent() {
   const el = $("sentWrap"); if (!el) return;
   if (!el._bound) { el._bound = true; el.addEventListener("click", onSentClick); }
-  const dates = S.full && S.course ? weekDates(S.course) : null;
+  const dates = S.full && S.course ? teachDates(S.course) : null;
   if (!dates || (S.door === "teach" && S.drole === "tinst")) { el.innerHTML = ""; return; }   // "Sent to you" is RMD faculty work: hidden when a Director is viewing as Instructor
   const can = canEditWeek(2);
   const open = S.cands.filter(c => w1AbsentOpen(c.id, 2) && !outcomeOf(c.id));
@@ -921,7 +927,7 @@ const RAPSVG = '<span class="rap" title="RMD Reasonable Adjustments Pathway" ari
 function render() {
   if (!S.course) return;
   if (S.view !== "register") return;
-  const dates = weekDates(S.course);
+  const dates = teachDates(S.course);
   const list = roomCands();
   const rooms = roomList();
   const now = londonNow();
@@ -930,7 +936,7 @@ function render() {
   let msgs = "";
   if (lastErr) msgs += `<div class="msg err">${esc(lastErr)}</div>`;
   if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
-  if (!dates) msgs += `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
+  if (!dates) msgs += onCatchup() ? `<div class="msg ok"><b>${esc(S.course)}</b> is an assessment-only night. There are no teaching evenings, so there is no register. Use <b>Assessment night</b> above.</div>` : `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
   $("msgs").innerHTML = msgs;
   renderSent();
 
@@ -966,6 +972,7 @@ function render() {
 
   if (!dates || !S.room) {
     $("sum").innerHTML = ""; $("weeks").innerHTML = ""; $("schedWrap").classList.add("hidden");
+    if (!dates && onCatchup()) $("plain").innerHTML = '<span class="lbl">Catch-up night</span>No teaching evenings and no register. This is the final assessment night: RMD faculty add the people who still need a third or fourth sit (Assessment night, Retest-plus &amp; RAP).';
     if (dates && !S.room) $("plain").innerHTML = '<span class="lbl">No room</span>Nobody in ' + esc(S.course) + ' has a room that you can see yet.';
     return;
   }
@@ -1062,7 +1069,7 @@ function onTap(cid, n, wanted) {
   if (needsFaculty(cid, n)) { toast("Absent in week 1. Send " + (c.name || "them") + " to RMD faculty.", true); return; }
   if (cur === wanted) { writeStatus(c, n, null); return; }          // tap the lit button again to clear it
   const now = londonNow();
-  if (wanted === "here" && !S.editAny && weekState(weekDates(S.course)[n - 1]) === "today" && now.hm > S.lateAfter) {
+  if (wanted === "here" && !S.editAny && weekState(teachDates(S.course)[n - 1]) === "today" && now.hm > S.lateAfter) {
     askLate(c, n); return;
   }
   writeStatus(c, n, wanted);
@@ -1179,7 +1186,7 @@ function parseBackfill(text) {
 // Clear a future week (2026-10-17, Jon: week 2 marks were entered before the date). Director only, and only for a week whose date has not come yet.
 function openClearWeek() {
   if (!S.isDirector) return;
-  const dates = weekDates(S.course) || [];
+  const dates = teachDates(S.course) || [];
   const fut = [1, 2].filter(n => dates[n - 1] && weekState(dates[n - 1]) === "future");
   const marked = n => S.cands.filter(c => entryOf(c.id, n));
   let h = `<div class="modalbg" id="cwbg"><div class="modal" role="dialog" aria-modal="true"><h3>Clear a future week</h3>`;
@@ -1205,7 +1212,7 @@ function openClearWeek() {
   $("cwWeek").onchange = show; show();
   $("cwApply").onclick = async () => {
     const n = +$("cwWeek").value;
-    if (weekState((weekDates(S.course) || [])[n - 1]) !== "future") { toast("That week is no longer in the future.", true); return; }
+    if (weekState((teachDates(S.course) || [])[n - 1]) !== "future") { toast("That week is no longer in the future.", true); return; }
     const list = marked(n); if (!list.length) return;
     $("cwApply").disabled = true; $("cwApply").textContent = "Clearing...";
     try {
@@ -1231,7 +1238,7 @@ function openBackfill() {
   $("overlay").innerHTML = `<div class="modalbg" id="bfbg"><div class="modal" role="dialog" aria-modal="true">` +
     `<h3>Backfill from a spreadsheet</h3>` +
     `<div class="sub">${esc(S.course)}, every room. Paste rows from your spreadsheet: <b>email or name</b> and <b>Here, Late or Absent</b>. No status stays unmarked.</div>` +
-    `<div class="row2"><label class="tg">Week <select id="bfWeek"><option value="1">1 (${esc(nice((weekDates(S.course) || [])[0] || "2000-01-01"))})</option><option value="2">2 (${esc(nice((weekDates(S.course) || [])[1] || "2000-01-01"))})</option></select></label>` +
+    `<div class="row2"><label class="tg">Week <select id="bfWeek"><option value="1">1 (${esc(nice((teachDates(S.course) || [])[0] || "2000-01-01"))})</option><option value="2">2 (${esc(nice((weekDates(S.course) || [])[1] || "2000-01-01"))})</option></select></label>` +
     `<label class="tg"><input type="checkbox" id="bfOver"> Replace entries that are already marked</label></div>` +
     `<textarea id="bfText" placeholder="Surname\tFirst name\temail\tstatus"></textarea>` +
     `<div class="row2"><button class="btn" id="bfCheck" type="button">Check</button><button class="btn pri" id="bfApply" type="button" disabled>Apply</button><button class="btn" id="bfClose" type="button">Close</button></div>` +
@@ -1341,7 +1348,7 @@ async function setView(v) {
 }
 
 // 2026-10-16 (Jon): the attendance rule (present or late in BOTH teaching weeks, Director override) applies to a first sit and to the third and fourth sit. Attempt 2 (the same-night retest) is not checked.
-function needsAttend(a) { return a === 1 || a >= 3; }
+function needsAttend(a) { return !onCatchup() && (a === 1 || a >= 3); }   // the catch-up night has no teaching weeks, so no attendance rule
 function eligBlocked(x) { const e = eligLocal(x); return !!(e && e.state === "absent" && !e.ov); }
 function stats() {
   const c = S.cands;
@@ -1415,8 +1422,8 @@ function gateInfo(st) {
   if (clash.length) add("block", "Placement dates", plural2(clash.length, "person has", "people have") + " a placement that overlaps this course.", nm(clash).map((n, k) => n), 'Confirm they can attend, or move them in <a href="course-allocation.html">Course Allocation</a>. If they can attend, tick "allocate anyway".');
   else if (unchecked.length) add("warn", "Placement dates", plural2(unchecked.length, "person has", "people have") + " not had placement dates checked.", nm(unchecked), 'Check them on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a> (step 2).');
   else add("ok", "Placement dates", "Nobody on this course has a placement that overlaps it.");
-  // register
-  if (d) {
+  // register (the catch-up night has no teaching weeks, so nothing to check)
+  if (d && !onCatchup()) {
     if (today < d[1]) add("block", "Teaching weeks marked", "Teaching night 2 is " + nice(d[1]) + ". Allocate after that register is finished, so nobody who is absent is given a slot.");
     else if (!Object.keys(S.reg).length) add("block", "Teaching weeks marked", "There are no register marks at all for this course.", [], "Mark the register first (job 6).");
     else {
@@ -1914,7 +1921,7 @@ function eligLocal(c) {
   const ov = cc.eligibilityOverride && cc.eligibilityOverride.by ? cc.eligibilityOverride : null;
   return { state: ab.length ? "absent" : (um.length ? "unmarked" : "ok"), why: ab.concat(um), ov };
 }
-function eligOf(c) { if (c.elig) return c.elig; if (N.usingFallback) return eligLocal(c); return null; }
+function eligOf(c) { if (onCatchup()) return null; if (c.elig) return c.elig; if (N.usingFallback) return eligLocal(c); return null; }
 function eligCounts() {
   let bad = 0, ovr = 0, gap = 0;
   N.cands.forEach(c => { if (isDoneN(c) || c.absent || !needsAttend(effAttempt(c))) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
@@ -2545,6 +2552,68 @@ function attemptsOverview() {
     : '<div class="hint">Nobody has a result or a retest yet.</div>';
   return `<details class="card" id="attDetails"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All attempts on this course (${list.length})</summary><div style="margin-top:8px">${body}</div></details>`;
 }
+// ── Catch-up night allocation (2026-10-18) ──────────────────────────────────
+// Nobody is placed on the catch-up night routinely. RMD faculty add the people who still need a third or fourth sit: anyone referred at
+// attempt 2 (next sit 3) or attempt 3 (next sit 4) who has not passed and has not already been moved on to another course or to the catch-up night.
+// "Add" makes a NEW candidate record on the catch-up course (same pattern as a repeat course: never edit the old record's course), linked to the old one.
+const CU = { loaded: false, loading: false, rows: [], err: "", busy: null, open: false };
+const CU_COPY = ["name", "firstName", "surname", "email", "degree", "studentId", "yearOfStudy", "rap"];
+function catchupDef() { return (S.courseDates || []).find(isCatchupCourse) || null; }
+async function cuLoad() {
+  CU.loading = true; CU.err = ""; renderRetest();
+  try {
+    const [cs, as] = await Promise.all([db.collection(COLLECTIONS.stage1Candidates).get(), db.collection("stage1_assessments").get()]);
+    const cands = {}; cs.forEach(d => { cands[d.id] = Object.assign({ id: d.id }, d.data()); });
+    const taken = new Set();
+    Object.keys(cands).forEach(id => { const c = cands[id]; if (isCatchupCourse({ name: c.course })) { if (c.linkedCandidateId) taken.add(c.linkedCandidateId); if (c.catchupFrom && c.catchupFrom.id) taken.add(c.catchupFrom.id); } });
+    const rows = [];
+    as.forEach(d => {
+      const c = cands[d.id], a = (d.data() || {}).attempts || {};
+      if (!c || c.isTest === true || isCatchupCourse({ name: c.course }) || c.linkedCandidateId || taken.has(c.id)) return;
+      const keys = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+      if (!keys.length || Object.keys(a).some(k => a[k] && a[k].outcome === "pass")) return;
+      const k = Math.max.apply(null, keys);
+      if (k === 2 || k === 3) rows.push({ c, k, next: k + 1 });
+    });
+    rows.sort((x, y) => String(x.c.name).localeCompare(String(y.c.name)));
+    CU.rows = rows; CU.loaded = true;
+  } catch (e) { CU.err = "Could not look this up: " + ((e && e.message) || e); }
+  CU.loading = false; renderRetest();
+}
+async function cuAdd(id) {
+  const row = CU.rows.find(x => x.c.id === id), def = catchupDef(); if (!row || !def || CU.busy) return;
+  if (!confirm("Add " + (row.c.name || "this person") + " to the " + def.name + " (" + nice(def.date) + ") as attempt " + row.next + "?\n\nThis makes a new record on the catch-up night, linked to the old one. Nothing is emailed from here.")) return;
+  CU.busy = id; renderRetest();
+  try {
+    const data = {};
+    CU_COPY.forEach(k => { if (row.c[k] !== undefined && row.c[k] !== null) data[k] = row.c[k]; });
+    Object.assign(data, { course: def.name, room: null, placementChecked: true, placementBlocks: [], assessmentAttempt: row.next, twoPlusAssessments: true, firstTimeAssessment: false,
+      linkedCandidateId: row.c.id, catchup: true, catchupFrom: { id: row.c.id, course: row.c.course || "" }, catchupAt: new Date().toISOString(), catchupBy: S.user.uid, catchupByName: S.myName || "",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
+    await ref.set(data);
+    if (S.isDirector) { try { await db.collection(COLLECTIONS.stage1Candidates).doc(row.c.id).update({ linkedCandidateId: ref.id }); } catch (e) {} }
+    CU.rows = CU.rows.filter(x => x.c.id !== id);
+    toast((row.c.name || "Candidate") + " added to the " + def.name + " as attempt " + row.next + ".");
+    if (S.course === def.name) { try { const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", def.name).get(); S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); loadNight(); } catch (e) {} }
+  } catch (err) { toast("Not added: " + (err.code === "permission-denied" ? "you do not have permission to do this yet (the rules update is not live). Ask a Director." : err.message), true); }
+  CU.busy = null; renderRetest();
+}
+function catchupCard() {
+  if (!S.full) return "";
+  const def = catchupDef();
+  let h = '<div class="card"><h3>Catch-up night</h3>';
+  if (!def) return h + '<div class="hint" style="margin:0">No catch-up night is set. A Director adds it on Stage 1 Settings, one week after Course 6.</div></div>';
+  h += `<div class="hint" style="margin:0 0 8px"><b>${esc(def.name)}</b>, ${esc(nice(def.date))}. The final assessment night: no teaching evenings, and nobody is placed here automatically. Add the people who still need a third or fourth sit.</div>`;
+  if (!CU.loaded) h += `<button type="button" class="btn sm" data-cuload="1"${CU.loading ? " disabled" : ""}>${CU.loading ? "Looking..." : "Find people who still need a third or fourth sit"}</button>`;
+  else {
+    h += `<div class="hint" style="margin:0 0 6px"><b>${CU.rows.length}</b> ${CU.rows.length === 1 ? "person" : "people"} not yet placed. <button type="button" class="btn sm" data-cuload="1">Refresh</button></div>`;
+    h += CU.rows.map(x => `<div class="lrow"><span class="nm">${esc(x.c.name || "")}${attBadge(x.next)}</span><small>${esc(x.c.degree || "")} · ${esc(x.c.course || "no course")} · ${x.k === 2 ? "referred at attempt 2" : "back to degree leads at attempt 3 (only if the degree lead recommends a fourth sit)"}</small><span class="pact"><button type="button" class="btn sm pri" data-cuadd="${esc(x.c.id)}"${CU.busy ? " disabled" : ""}>${CU.busy === x.c.id ? "Adding..." : "Add as attempt " + x.next}</button></span></div>`).join("");
+    if (!CU.rows.length) h += '<div class="hint">Nobody needs placing.</div>';
+  }
+  if (CU.err) h += `<div class="msg err" style="margin-top:8px">${esc(CU.err)}</div>`;
+  return h + "</div>";
+}
 function renderRetest() {
   if (!S.course || !S.full) return;
   const d = assessDate(), pool = poolList(), stale = staleAttempts();
@@ -2560,6 +2629,7 @@ function renderRetest() {
   let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}${nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0 && pool.some(c => effAttempt(c) >= 3))}` +
     `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}${nightTile(overrideEvents().length, "Passed with a red step", overrideEvents().length > 0)}</div>`;
   h += overridesCard();
+  h += catchupCard();
   if (stale.length) {
     h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
   }
@@ -2594,6 +2664,8 @@ function renderRetest() {
   });
   $("viewRetest").querySelectorAll("[data-hereall]").forEach(b => b.onclick = () => setPresent(b.dataset.hereall === "1" ? att3People() : []));
   $("viewRetest").querySelectorAll("[data-gosetup]").forEach(b => b.onclick = () => setView("setup"));
+  $("viewRetest").querySelectorAll("[data-cuload]").forEach(b => b.onclick = cuLoad);
+  $("viewRetest").querySelectorAll("[data-cuadd]").forEach(b => b.onclick = () => cuAdd(b.dataset.cuadd));
   $("viewRetest").querySelectorAll("[data-copyone]").forEach(b => b.onclick = () => {
     const c = N.cands.find(x => x.id === b.dataset.copyone); if (!c) return;
     copyTxt(noteFor(c, Number(b.dataset.k))).then(() => toast("Note copied for " + c.name));

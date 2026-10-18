@@ -69,6 +69,7 @@
         <tbody></tbody>
       </table>
       <button class="btn-secondary" onclick="addCourseRow()">+ Add course session</button>
+      <button class="btn-secondary" onclick="addCatchupRow()" title="The final assessment night, one week after Course 6">+ Add the catch-up night</button>
       <button class="btn-primary" onclick="saveCourses()" style="margin-left:10px;">Save course sessions</button>
       <div class="status-line" id="coursesStatus"></div>
     </div>
@@ -147,6 +148,10 @@ async function saveDeadlines() {
 // gets written onto stage1_candidates.course, so it must match what's
 // already in use for existing records — Jon's call, not validated here.
 let courseRows = [];
+// The final "catch-up" assessment night (2026-10-18, Jon): always one week after the Course 6 assessment night, no teaching evenings before it,
+// nobody is allocated to it routinely (capacity 0, so auto-fit never places anyone). RMD faculty add the people who still need a third or fourth sit from the Phase 1 hub.
+const CATCHUP_NAME = "Catch-up night";
+const isCatchupRow = c => !!c && (c.catchup === true || /^catch-?up/i.test(c.name || ""));
 
 async function loadCourses() {
   try {
@@ -166,6 +171,7 @@ async function loadCourses() {
     // row's capacity is blank, so there's nothing to pre-fill here any
     // more (2026-10-02, Jon).
     courseRows = Array.from({ length: 6 }, (_, i) => ({ name: `Course ${i + 1}`, date: "", capacity: "" }));
+    courseRows.push({ name: CATCHUP_NAME, date: "", capacity: 0, catchup: true });
   }
   renderCourses();
 }
@@ -184,6 +190,13 @@ function renderCourses() {
   tbody.innerHTML = courseRows.map((c, i) => {
     const isEarliest = earliestRow && c === earliestRow;
     const capPlaceholder = !earliestRow ? "default" : (isEarliest ? "default: 12/room" : "default: 10/room");
+    if (isCatchupRow(c)) return `
+    <tr>
+      <td><input type="text" data-idx="${i}" data-field="name" value="${esc(c.name)}" readonly title="Fixed name"><div class="hint" style="margin:4px 0 0;">Final catch-up night: no teaching evenings, nobody placed here automatically. RMD faculty add people who still need a third or fourth sit.</div></td>
+      <td><input type="date" data-idx="${i}" data-field="date" value="${esc(c.date)}"><div style="margin-top:4px;"><button class="btn-secondary" type="button" onclick="catchupAfterLast(${i})">1 week after the last course</button></div></td>
+      <td><input type="number" value="0" readonly title="Always 0: never filled automatically"></td>
+      <td><button class="btn-danger-sm" onclick="removeCourseRow(${i})">✕</button></td>
+    </tr>`;
     return `
     <tr>
       <td><input type="text" data-idx="${i}" data-field="name" value="${esc(c.name)}" placeholder="e.g. Course 1"></td>
@@ -203,6 +216,20 @@ function renderCourses() {
 function addCourseRow() {
   courseRows.push({ name: "", date: "", capacity: "" });
   renderCourses();
+}
+function addCatchupRow() {
+  if (courseRows.some(isCatchupRow)) return;
+  courseRows.push({ name: CATCHUP_NAME, date: "", capacity: 0, catchup: true });
+  catchupAfterLast(courseRows.length - 1, true);
+  renderCourses();
+}
+// Date = latest other course date + 7 days (the Monday a week after the last assessment night).
+function catchupAfterLast(i, quiet) {
+  const dates = courseRows.filter((c, k) => k !== i && !isCatchupRow(c) && !c.test && c.date).map(c => c.date).sort();
+  if (!dates.length) { if (!quiet) alert("Enter the last course's date first."); return; }
+  const d = new Date(dates[dates.length - 1] + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 7);
+  courseRows[i].date = d.toISOString().slice(0, 10);
+  if (!quiet) renderCourses();
 }
 
 // Capacity's actual default behaviour (course 1 priority-filled to
@@ -228,6 +255,8 @@ async function saveCourses() {
   const clean = courseRows.filter(c => c.name && c.date).map(c => {
     const row = { name: c.name, date: c.date };
     if (c.capacity || c.capacity === 0) row.capacity = Number(c.capacity);
+    if (c.test === true) row.test = true;                                  // keep the test-course flag
+    if (isCatchupRow(c)) { row.catchup = true; row.capacity = 0; row.name = CATCHUP_NAME; }   // never filled automatically
     return row;
   });
   try {
