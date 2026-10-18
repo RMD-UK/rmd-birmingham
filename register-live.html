@@ -136,9 +136,13 @@ auth.onAuthStateChanged(async user => {
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
     if (!S.courseDates.length) { $("screen").innerHTML = '<h2>No courses set up yet</h2>'; return; }
-    $("courseSel").innerHTML = S.courseDates.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(nice(c.date))})</option>`).join("");
-    const today = londonNow().date;
-    const first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    // Real courses first, TEST courses last; the screen opens on the current real course (or the one passed as ?course= from the hub).
+    const isTest = c => c.test === true || /^TEST\b/i.test(c.name || "");
+    const real = S.courseDates.filter(c => !isTest(c)), tests = S.courseDates.filter(isTest);
+    $("courseSel").innerHTML = real.concat(tests).map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(nice(c.date))})</option>`).join("");
+    const today = londonNow().date, pool = real.length ? real : S.courseDates;
+    let first = pool.find(c => c.date >= today) || pool[pool.length - 1];
+    { const wantC = new URLSearchParams(location.search).get("course"), wc = wantC && S.courseDates.find(c => c.name === wantC); if (wc) first = wc; }
     $("courseSel").value = first.name;
     $("courseSel").onchange = () => selectCourse($("courseSel").value);
     $("weekSeg").querySelectorAll("button").forEach(b => b.onclick = () => {

@@ -582,6 +582,8 @@ auth.onAuthStateChanged(async user => {
 // Links that carry the chosen course and room (set just before the link is used, so they are always current).
 function ctxLink(e) {
   const a = e.target && e.target.closest ? e.target.closest("a[data-ctx]") : null;
+  const lv = e.target && e.target.closest ? e.target.closest('a[href*="-live.html"]') : null;
+  if (lv) lv.setAttribute("href", bigHref(lv.getAttribute("href").split("?")[0]));
   if (a) a.setAttribute("href", "opis-rating.html?course=" + encodeURIComponent(S.course || "") + "&room=" + encodeURIComponent(S.room || ""));
 }
 ["pointerdown", "focusin", "click", "keydown"].forEach(t => document.addEventListener(t, ctxLink, true));
@@ -616,7 +618,7 @@ function renderSteps() {
   $("steps").innerHTML = pin + list.map(j => {
     const inner = `<span class="no">${j.show || j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}${j.href ? " ↗" : ""}</small></span>`;
     if (j.view) return `<button type="button" class="stepcard${S.view === j.view && (!j.mode || S.mode === j.mode) ? " on" : " link"}" data-view="${j.view}"${j.mode ? ` data-mode="${j.mode}"` : ""}>${inner}</button>`;
-    return `<a class="stepcard link"${j.ctx ? ' data-ctx="1"' : ""} href="${esc(j.href)}">${inner}</a>`;
+    return `<a class="stepcard link"${j.ctx ? ' data-ctx="1"' : ""} href="${esc(bigHref(j.href))}">${inner}</a>`;
   }).join("");
   $("steps").querySelectorAll("[data-view]").forEach(b => b.onclick = () => { S.mode = b.dataset.mode || "all"; setView(b.dataset.view); });
   $("steps").querySelectorAll("[data-door]").forEach(b => b.onclick = () => chooseDoor(b.dataset.door));
@@ -686,9 +688,11 @@ function chooseDoor(d) {
   dsave(); renderSteps(); showView();
   if (S.door === "plan") enterView();
 }
+// The two big screens open on the course chosen here (they also default to the current real course on their own).
+function bigHref(h) { return /-live\.html$/.test(h || "") && S.course ? h + "?course=" + encodeURIComponent(S.course) : h; }
 function chooseRole(id) {
   const r = (ROLE_DEFS[S.door] || []).find(x => x.id === id); if (!r) return;
-  if (r.href) { window.location.href = r.href; return; }
+  if (r.href) { window.location.href = bigHref(r.href); return; }
   S.drole = id; S.mode = r.mode || "all"; dsave(); renderSteps();
   setView(r.view);
 }
