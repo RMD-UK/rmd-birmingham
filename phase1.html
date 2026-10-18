@@ -25,6 +25,10 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .seg{display:inline-flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px;flex-wrap:wrap}
 .seg button{border:0;background:transparent;color:#fff;padding:7px 14px;border-radius:8px;font-weight:700;font-size:14px;opacity:.85}
 .seg button.on{background:#fff;color:var(--pur);opacity:1}
+.seg.test{background:rgba(255,190,100,.22)}
+.seg.test .tl{align-self:center;color:#ffd9a0;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:0 6px 0 10px}
+.seg.test button{color:#ffe9c8}
+.seg.test button.on{background:#ffe3b8;color:#6a3d00}
 .seg button .nowdot{display:inline-block;background:var(--ok);color:#fff;font-size:10px;font-weight:800;border-radius:6px;padding:1px 5px;margin-left:5px;vertical-align:1px}
 .tbtn{border:0;background:rgba(255,255,255,.14);color:#fff;border-radius:10px;padding:8px 13px;font-weight:700;font-size:13px;text-decoration:none;display:inline-block}
 .tbtn:hover{background:rgba(255,255,255,.26)}
@@ -367,7 +371,8 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
 .rolepick button{display:block;text-align:left;border:0;border-radius:16px;padding:20px 18px;color:#fff;font-size:20px;font-weight:800;background:var(--pur)}
 .rolepick button small{display:block;font-size:13px;font-weight:500;opacity:.9;margin-top:3px}
 .rolepick button:nth-child(2){background:#1f6f5b}.rolepick button:nth-child(3){background:#17566a}
-.rolepick button:nth-child(4){background:#9a3d12}.rolepick button:nth-child(5){background:#6d1f4f}.rolepick button:nth-child(6){background:#3b4a63}
+.rolepick button:nth-child(4){background:#6d1f4f}.rolepick button:nth-child(5){background:#9a3d12}
+@media(min-width:1000px){.rolepick{grid-template-columns:repeat(3,minmax(0,1fr))}}.rolepick button:nth-child(6){background:#3b4a63}
 .rolepick button:focus-visible,.doorbar button:focus-visible,.rolebar .chg:focus-visible{outline:3px solid var(--org);outline-offset:2px}
 .stepcard.pin{border-color:var(--pur)}.stepcard.pin .no{background:var(--pur)}
 </style>
@@ -380,6 +385,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
     <h1>Phase 1 Evening Management</h1>
     <div class="seg" id="courseTabs" role="tablist" aria-label="Course"></div>
     <div class="grow"></div>
+    <div class="seg test hidden" id="testTabs" role="tablist" aria-label="Test courses"></div>
     <a class="tbtn dir-only" href="admin-stage1-candidates.html">Stage 1 Candidates</a>
     <a class="tbtn dir-only" href="admin-comms.html">Comms</a>
   </div>
@@ -553,10 +559,13 @@ auth.onAuthStateChanged(async user => {
     renderCourseTabs();
     // default course: first whose assessment date is today or later, else the last
     const today = londonNow().date;
-    let first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    // Real courses come first; the TEST courses are only the fallback when there is nothing else.
+    const realDates = S.courseDates.filter(c => !isTestCourse(c)), pool = realDates.length ? realDates : S.courseDates;
+    let first = pool.find(c => c.date >= today) || pool[pool.length - 1];
     if (!S.night) { // instructors: only courses where they have candidates
       const mineCourses = new Set(S.mine.map(c => c.course));
-      first = S.courseDates.find(c => mineCourses.has(c.name) && c.date >= today) || S.courseDates.find(c => mineCourses.has(c.name)) || first;
+      const mp = pool.filter(c => mineCourses.has(c.name)), ma = S.courseDates.filter(c => mineCourses.has(c.name));
+      first = mp.find(c => c.date >= today) || mp[0] || ma.find(c => c.date >= today) || ma[0] || first;
     }
     { const wantC = new URLSearchParams(location.search).get("course"), wc = wantC && S.courseDates.find(c => c.name === wantC); if (wc && (S.night || S.mine.some(m => m.course === wc.name))) first = wc; }   // ?course=Course 2 from the Director Box
     if (first) selectCourse(first.name);
@@ -623,8 +632,8 @@ const ROLE_DEFS = {
     { id: "runner", t: "Runner / instructor", s: "Who is due, who is done", ok: () => S.run, view: "runner", jobs: [{ no: 4 }] },
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
-    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Give RAP and third sits a room" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
+    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" }
   ],
   plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
@@ -681,15 +690,21 @@ function chooseRole(id) {
   setView(r.view);
 }
 
+function isTestCourse(c) { return !!c && (c.test === true || /^TEST\b/i.test(c.name || "")); }
 function renderCourseTabs() {
   const today = londonNow().date;
   let list = S.courseDates;
   if (!S.night) { const set = new Set(S.mine.map(c => c.course)); list = list.filter(c => set.has(c.name)); }
-  const live = list.find(c => c.date >= today);
-  $("courseTabs").innerHTML = list.map(c =>
+  const real = list.filter(c => !isTestCourse(c)), tests = list.filter(isTestCourse);
+  const live = real.find(c => c.date >= today);
+  $("courseTabs").innerHTML = real.map(c =>
     `<button type="button" data-course="${esc(c.name)}" class="${c.name === S.course ? "on" : ""}">${esc(c.name)}${live && live.name === c.name ? '<span class="nowdot">next</span>' : ""}</button>`
   ).join("");
-  $("courseTabs").querySelectorAll("button").forEach(b => b.onclick = () => selectCourse(b.dataset.course));
+  $("testTabs").innerHTML = '<span class="tl">Test</span>' + tests.map(c =>
+    `<button type="button" data-course="${esc(c.name)}" class="${c.name === S.course ? "on" : ""}">${esc(c.name)}</button>`
+  ).join("");
+  $("testTabs").classList.toggle("hidden", !tests.length);
+  document.querySelectorAll("#courseTabs button, #testTabs button").forEach(b => b.onclick = () => selectCourse(b.dataset.course));
 }
 
 // ── Loading a course ────────────────────────────────────────────────────────
