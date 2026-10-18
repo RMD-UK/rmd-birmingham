@@ -354,6 +354,22 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
 .plain,.card,.wk,.sched{border-radius:14px}
 .btn:focus-visible,.cb:focus-visible,.stepcard:focus-visible,.seg button:focus-visible,.tbtn:focus-visible,.rooms .r:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--org);outline-offset:2px}
 .top h1{letter-spacing:-.1px}
+
+/* Doors and roles (2026-10-16, Jon) */
+.doorbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.doorbar button{flex:1 1 150px;border:2px solid var(--line);background:#fff;color:var(--ink);border-radius:12px;padding:10px 12px;text-align:left;font-weight:800;font-size:15px}
+.doorbar button small{display:block;font-weight:500;font-size:12px;color:var(--mut);margin-top:1px}
+.doorbar button.on{border-color:var(--pur);background:var(--purtint);color:var(--pur)}
+.doorbar button.all{flex:0 1 auto;align-self:stretch;color:var(--mut);font-size:13px;display:flex;align-items:center}
+.rolebar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#fff;border:2px solid var(--line);border-radius:12px;padding:8px 12px;margin:0 0 12px;font-size:14px}
+.rolebar .chg{border:2px solid var(--line);background:#fff;border-radius:99px;padding:5px 14px;font-weight:700;font-size:13px;color:var(--pur)}
+.rolepick{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));margin:0 0 14px}
+.rolepick button{display:block;text-align:left;border:0;border-radius:16px;padding:20px 18px;color:#fff;font-size:20px;font-weight:800;background:var(--pur)}
+.rolepick button small{display:block;font-size:13px;font-weight:500;opacity:.9;margin-top:3px}
+.rolepick button:nth-child(2){background:#1f6f5b}.rolepick button:nth-child(3){background:#17566a}
+.rolepick button:nth-child(4){background:#9a3d12}.rolepick button:nth-child(5){background:#6d1f4f}.rolepick button:nth-child(6){background:#3b4a63}
+.rolepick button:focus-visible,.doorbar button:focus-visible,.rolebar .chg:focus-visible{outline:3px solid var(--org);outline-offset:2px}
+.stepcard.pin{border-color:var(--pur)}.stepcard.pin .no{background:var(--pur)}
 </style>
 </head>
 <body>
@@ -375,6 +391,9 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
     </aside>
 
     <section class="pane" id="pane">
+      <div id="doorBar" class="doorbar"></div>
+      <div id="roleBar"></div>
+      <div id="rolePick" class="rolepick hidden"></div>
       <div class="plain" id="plain"></div>
       <div id="msgs"></div>
       <div id="viewRegister">
@@ -508,6 +527,7 @@ auth.onAuthStateChanged(async user => {
 
     const snap = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", user.uid).get();
     S.mine = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    S.run = S.night;   // v25b (19 Oct): same as v24 until the rules and getAssessmentNight are widened. After that deploy change back to: S.run = S.night || S.mine.length > 0;
 
     if (!S.night && !S.mine.length) {
       $("authMsg").textContent = "This page is for instructors with a room on a Phase 1 course. You are not on a room team yet. Ask the Course Director if this looks wrong.";
@@ -516,7 +536,7 @@ auth.onAuthStateChanged(async user => {
     if (!S.full && !S.mine.length) S.view = "runner";   // assessors with no room team land on the assessment night
     // Deep links (Readiness check, Director Box): phase1.html#setup, #alloc, #retest, #runner, #assessor, #register. Only honoured if this person may use that view.
     { const hv = (location.hash || "").replace("#", "");
-      if (hv === "setup" ? S.isDirector : (hv === "alloc" || hv === "retest") ? S.full : (hv === "runner" || hv === "assessor") ? S.night : hv === "register") S.view = hv; }
+      if (hv === "setup" ? S.isDirector : (hv === "alloc" || hv === "retest") ? S.full : hv === "runner" ? S.run : hv === "assessor" ? S.night : hv === "register") S.view = hv; }
     const cfg = await db.collection("config").doc("stage1_course_dates").get();
     S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
     try {
@@ -527,6 +547,7 @@ auth.onAuthStateChanged(async user => {
     document.querySelectorAll(".dir-only").forEach(el => { if (!S.full) el.classList.add("hidden"); });
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
+    restoreDoor();
     showView();
     renderSteps();
     renderCourseTabs();
@@ -559,7 +580,7 @@ function renderSteps() {
     { no: 1, t: "People", s: "Add and edit candidates", href: "admin-stage1-candidates.html", who: "full" },
     { no: 2, t: "Assessment allocation", s: "Give each person a slot", view: "alloc", who: "full" },
     { no: 3, t: "Retest pool", s: "Waiting and follow-ups", view: "retest", who: "full" },
-    { no: 4, t: "Runner view", s: "Assessment night: rooms", view: "runner", who: "night" },
+    { no: 4, t: "Runner view", s: "Assessment night: rooms", view: "runner", who: "run" },
     { no: 5, t: "Assessor view", s: "Assessment night: record results", view: "assessor", who: "night" },
     { no: 6, t: "Register", s: "Weeks 1 and 2", view: "register", who: "reg" },
     { no: 7, t: "Rate candidates (OPIS)", s: "Score the candidates in your room", href: "opis-rating.html", ctx: true, who: "reg" },
@@ -569,13 +590,95 @@ function renderSteps() {
     { no: 11, t: "Register live screen", s: "Big screen: teaching night", href: "register-live.html", who: "full" },
     { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" }
   ];
-  const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
-  $("steps").innerHTML = jobs.filter(ok).map(j => {
-    const inner = `<span class="no">${j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}${j.href ? " ↗" : ""}</small></span>`;
-    if (j.view) return `<button type="button" class="stepcard${S.view === j.view ? " on" : " link"}" data-view="${j.view}">${inner}</button>`;
+  const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
+  let list = jobs.filter(ok), pin = "";
+  const sel = doorJobs();
+  if (pickingRole()) { list = []; }
+  else if (sel) {
+    // Filtered to the chosen door and role. Numbers restart at 1; a role can rename a job and set the assessor mode.
+    list = sel.map(x => { const j = jobs.find(y => y.no === x.no); return j && ok(j) ? Object.assign({}, j, x) : null; }).filter(Boolean);
+    list.forEach((j, i) => { j.show = i + 1; });
+  } else if (S.run) {
+    pin = `<button type="button" class="stepcard pin" data-door="assess"><span class="no">&rarr;</span><span><b>Assessment night</b><small>Pick your role</small></span></button>`;
+  }
+  $("steps").innerHTML = pin + list.map(j => {
+    const inner = `<span class="no">${j.show || j.no}</span><span><b>${esc(j.t)}</b><small>${esc(j.s)}${j.href ? " ↗" : ""}</small></span>`;
+    if (j.view) return `<button type="button" class="stepcard${S.view === j.view && (!j.mode || S.mode === j.mode) ? " on" : " link"}" data-view="${j.view}"${j.mode ? ` data-mode="${j.mode}"` : ""}>${inner}</button>`;
     return `<a class="stepcard link"${j.ctx ? ' data-ctx="1"' : ""} href="${esc(j.href)}">${inner}</a>`;
   }).join("");
-  $("steps").querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+  $("steps").querySelectorAll("[data-view]").forEach(b => b.onclick = () => { S.mode = b.dataset.mode || "all"; setView(b.dataset.view); });
+  $("steps").querySelectorAll("[data-door]").forEach(b => b.onclick = () => chooseDoor(b.dataset.door));
+}
+
+// ── Doors and roles (2026-10-16, Jon) ───────────────────────────────────────
+// Three doors above the jobs: Teaching nights, Assessment night, Planning. "All jobs" is today's list, unchanged.
+// A role shows only its own jobs. The last choice is remembered on this phone (localStorage, optional).
+const ROLE_DEFS = {
+  teach: [
+    { id: "tinst", t: "Instructor", s: "Your room: register and ratings", ok: () => S.mine.length > 0, view: "register", jobs: [{ no: 6 }, { no: 7 }] },
+    { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }] },
+    { id: "tscr", t: "Big screen", s: "Live register", ok: () => S.full, href: "register-live.html" }
+  ],
+  assess: [
+    { id: "runner", t: "Runner / instructor", s: "Who is due, who is done", ok: () => S.run, view: "runner", jobs: [{ no: 4 }] },
+    { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
+    { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
+    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }] },
+    { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Give RAP and third sits a room" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
+    { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" }
+  ],
+  plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
+};
+const DOOR_TITLE = { teach: "Teaching nights", assess: "Assessment night", plan: "Planning" };
+function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
+function roleDef() { return S.door && S.drole ? (ROLE_DEFS[S.door] || []).find(r => r.id === S.drole) : null; }
+function doorJobs() { const r = roleDef(); return r && r.jobs ? r.jobs : null; }
+function dsave() { try { localStorage.setItem("rmd_p1_door", JSON.stringify({ uid: S.user && S.user.uid, door: S.door, role: S.drole })); } catch (e) {} }
+function restoreDoor0() {
+  if ((location.hash || "").length > 1) return;   // a deep link wins
+  try {
+    const o = JSON.parse(localStorage.getItem("rmd_p1_door") || "null");
+    if (!o || o.uid !== S.user.uid || !o.door || !doorAllowed(o.door)) return;
+    S.door = o.door;
+    const r = (ROLE_DEFS[o.door] || []).find(x => x.id === o.role && x.ok() && x.view);
+    if (r) { S.drole = r.id; S.mode = r.mode || "all"; S.view = r.view; }
+  } catch (e) {}
+}
+// v25b (19 Oct, Jon): nobody has chosen a door yet on this phone, so land on
+// Teaching nights with the first role they may use (instructor: their own
+// room; faculty and Directors: RMD faculty). "All jobs" stays one tap away.
+function restoreDoor() {
+  restoreDoor0();
+  if (S.door || (location.hash || "").length > 1 || !doorAllowed("teach")) return;
+  const r = (ROLE_DEFS.teach || []).find(x => x.ok() && x.view);
+  if (r) { S.door = "teach"; S.drole = r.id; S.mode = r.mode || "all"; S.view = r.view; dsave(); }
+}
+function renderDoors() {
+  const doors = ["teach", "assess", "plan"].filter(doorAllowed);
+  const sub = { teach: "Weeks 1 and 2", assess: "Pick your role", plan: "People, allocation, Comms" };
+  $("doorBar").innerHTML = doors.length ? doors.map(d => `<button type="button" data-door="${d}" class="${S.door === d ? "on" : ""}">${DOOR_TITLE[d]}<small>${sub[d]}</small></button>`).join("") +
+    `<button type="button" data-door="" class="all${S.door ? "" : " on"}">All jobs</button>` : "";
+  $("doorBar").querySelectorAll("[data-door]").forEach(b => b.onclick = () => chooseDoor(b.dataset.door));
+  const r = roleDef();
+  $("roleBar").innerHTML = S.door && S.door !== "plan" && r ? `<div class="rolebar"><span><b>${DOOR_TITLE[S.door]}</b> · ${esc(r.t)}</span><button type="button" class="chg" id="chgRole">Change role</button></div>` : "";
+  const cr = $("chgRole"); if (cr) cr.onclick = () => chooseDoor(S.door);
+  const picking = pickingRole();
+  $("rolePick").classList.toggle("hidden", !picking);
+  $("rolePick").innerHTML = picking ? (ROLE_DEFS[S.door] || []).filter(x => x.ok()).map(x => `<button type="button" data-role="${x.id}">${esc(x.t)}<small>${esc(x.s)}</small></button>`).join("") : "";
+  $("rolePick").querySelectorAll("[data-role]").forEach(b => b.onclick = () => chooseRole(b.dataset.role));
+}
+function pickingRole() { return !!(S.door && S.door !== "plan" && !S.drole); }
+function chooseDoor(d) {
+  S.door = d || ""; S.drole = ""; S.mode = "all";
+  if (S.door === "plan") { const r = ROLE_DEFS.plan[0]; S.drole = r.id; if (S.view !== "alloc" && S.view !== "setup") S.view = r.view; }
+  dsave(); renderSteps(); showView();
+  if (S.door === "plan") enterView();
+}
+function chooseRole(id) {
+  const r = (ROLE_DEFS[S.door] || []).find(x => x.id === id); if (!r) return;
+  if (r.href) { window.location.href = r.href; return; }
+  S.drole = id; S.mode = r.mode || "all"; dsave(); renderSteps();
+  setView(r.view);
 }
 
 function renderCourseTabs() {
@@ -817,6 +920,7 @@ function render() {
     tools += `<label class="tg"><input type="checkbox" id="editAny"${S.editAny ? " checked" : ""}> Edit any date (Director)</label>`;
     tools += `<label class="tg">Late after <input type="time" id="lateIn" value="${esc(S.lateAfter)}" style="padding:6px 8px;border:2px solid var(--line);border-radius:8px;width:120px"></label><button class="btn sm" id="lateSave" type="button">Save</button>`;
     tools += `<button class="btn sm" id="backfillBtn" type="button">Backfill from spreadsheet</button>`;
+    tools += `<button class="btn sm" id="clearWkBtn" type="button">Clear a future week</button>`;
   } else {
     tools += `<span class="tg" style="color:var(--mut)">Late after ${esc(S.lateAfter)}</span>`;
   }
@@ -825,6 +929,7 @@ function render() {
   if ($("editAny")) $("editAny").onchange = e => { S.editAny = e.target.checked; render(); };
   if ($("lateSave")) $("lateSave").onclick = saveLateAfter;
   if ($("backfillBtn")) $("backfillBtn").onclick = openBackfill;
+  if ($("clearWkBtn")) $("clearWkBtn").onclick = openClearWeek;
 
   // room grid (full access only; instructors see their own room)
   if (S.full && rooms.length) {
@@ -1049,6 +1154,55 @@ function parseBackfill(text) {
   });
   return { matched: [...matched.values()], unmatched, noStatus, dups, conflicts };
 }
+// Clear a future week (2026-10-17, Jon: week 2 marks were entered before the date). Director only, and only for a week whose date has not come yet.
+function openClearWeek() {
+  if (!S.isDirector) return;
+  const dates = weekDates(S.course) || [];
+  const fut = [1, 2].filter(n => dates[n - 1] && weekState(dates[n - 1]) === "future");
+  const marked = n => S.cands.filter(c => entryOf(c.id, n));
+  let h = `<div class="modalbg" id="cwbg"><div class="modal" role="dialog" aria-modal="true"><h3>Clear a future week</h3>`;
+  if (!fut.length) h += `<div class="sub">${esc(S.course)} has no week still to come, so there is nothing to clear here.</div><div class="row2"><button class="btn" id="cwClose" type="button">Close</button></div>`;
+  else {
+    h += `<div class="sub">${esc(S.course)}. Removes every mark for a week that has not happened yet. Past weeks cannot be cleared here.</div>` +
+      `<div class="row2"><label class="tg">Week <select id="cwWeek">${fut.map(n => `<option value="${n}">${n} (${esc(nice(dates[n - 1]))})</option>`).join("")}</select></label></div><div id="cwOut"></div>` +
+      `<div class="row2"><button class="btn pri" id="cwApply" type="button">Clear</button><button class="btn" id="cwClose" type="button">Close</button></div>`;
+  }
+  h += `</div></div>`;
+  $("overlay").innerHTML = h;
+  $("cwClose").onclick = () => { $("overlay").innerHTML = ""; };
+  if (!fut.length) return;
+  const show = () => {
+    const n = +$("cwWeek").value, list = marked(n);
+    const by = {}; list.forEach(c => { const e = entryOf(c.id, n); const k = (e.byName || "unknown") + (e.backfill ? " (backfill)" : ""); by[k] = (by[k] || 0) + 1; });
+    const tally = k => list.filter(c => entryOf(c.id, n).status === k).length;
+    $("cwOut").innerHTML = list.length
+      ? `<div class="msg warn">${list.length} mark(s) for week ${n}: ${tally("here")} here, ${tally("late")} late, ${tally("absent")} absent. Entered by: ${Object.keys(by).map(k => esc(k) + " " + by[k]).join(", ")}.<br>${list.slice(0, 8).map(c => esc(c.name)).join(", ")}${list.length > 8 ? ", and " + (list.length - 8) + " more" : ""}.</div>`
+      : `<div class="msg ok">Nothing is marked for week ${n}.</div>`;
+    $("cwApply").disabled = !list.length; $("cwApply").textContent = list.length ? "Clear " + list.length + " mark(s)" : "Clear";
+  };
+  $("cwWeek").onchange = show; show();
+  $("cwApply").onclick = async () => {
+    const n = +$("cwWeek").value;
+    if (weekState((weekDates(S.course) || [])[n - 1]) !== "future") { toast("That week is no longer in the future.", true); return; }
+    const list = marked(n); if (!list.length) return;
+    $("cwApply").disabled = true; $("cwApply").textContent = "Clearing...";
+    try {
+      for (let i = 0; i < list.length; i += 400) {
+        const batch = db.batch();
+        list.slice(i, i + 400).forEach(c => {
+          const p = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+          p["w" + n] = firebase.firestore.FieldValue.delete();
+          batch.set(db.collection("stage1_register").doc(c.id), p, { merge: true });
+        });
+        await batch.commit();
+      }
+      $("overlay").innerHTML = ""; toast(list.length + " mark(s) cleared for week " + n + ".");
+    } catch (err) {
+      $("cwApply").disabled = false; $("cwApply").textContent = "Clear";
+      $("cwOut").insertAdjacentHTML("afterbegin", `<div class="msg err">Not saved: ${esc(err.message || err)}</div>`);
+    }
+  };
+}
 function openBackfill() {
   if (!S.isDirector) return;
   bf.plan = null;
@@ -1148,12 +1302,16 @@ async function ensureRooms() {
   A.loaded = true;
 }
 function showView() {
+  const picking = pickingRole();
   [["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewSetup", "setup"]]
-    .forEach(([id, v]) => $(id).classList.toggle("hidden", S.view !== v));
+    .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v));
+  $("plain").classList.toggle("hidden", picking); $("msgs").classList.toggle("hidden", picking);
+  renderDoors();
 }
 async function setView(v) {
   if ((v === "alloc" || v === "retest") && !S.full) return;
-  if ((v === "runner" || v === "assessor") && !S.night) return;
+  if (v === "runner" && !S.run) return;
+  if (v === "assessor" && !S.night) return;
   if (v === "setup" && !S.isDirector) return;
   S.view = v; renderSteps();
   if (NIGHT_VIEWS.includes(v)) { if (N.course !== S.course) attachNight(); loadNight(); }
@@ -1750,7 +1908,7 @@ async function saveEligOverride(c, d) {
 
 // ── Loading ─────────────────────────────────────────────────────────────────
 async function loadNight() {
-  if (!S.night || !S.course) return;
+  if (!S.run || !S.course) return;
   const course = S.course;
   try {
     const res = await firebase.functions().httpsCallable("getAssessmentNight")({ course });
@@ -1784,7 +1942,7 @@ function attachNight() {
   N.results = {}; N.resErr = "";
   if (N.unsubP) { try { N.unsubP(); } catch (e) {} N.unsubP = null; }
   N.present = [];
-  if (!S.night || !S.course) return;
+  if (!S.run || !S.course) return;
   // Who is here tonight for attempt 3 or later (one doc per course; Director, Student or Senior Faculty write it)
   N.unsubP = db.collection("stage1_night_present").doc(S.course).onSnapshot(d => {
     N.present = d.exists ? (d.data().present || []) : []; renderNight();
@@ -1945,17 +2103,21 @@ function poolList() { return N.cands.filter(inPool).sort((a, b) => effAttempt(a)
 function renderAssessor() {
   if (!S.course) return;
   const d = assessDate();
-  const by = slottedByRoom(), rooms = roomOrder(Object.keys(by));
-  const pool = poolList();
-  if (!N.room || (N.room !== "__pool" && !by[N.room])) N.room = rooms[0] || (pool.length ? "__pool" : null);
+  const mode = S.mode || "all";   // first: rooms only; second: attempt 2 pool; plus: attempt 3+ and RAP pool; all: as before
+  const by = slottedByRoom(), rooms = (mode === "second" || mode === "plus") ? [] : roomOrder(Object.keys(by));
+  let pool = poolList();
+  if (mode === "second") pool = pool.filter(c => effAttempt(c) === 2);
+  else if (mode === "plus") pool = pool.filter(c => effAttempt(c) >= 3 || c.rap);
+  const showPool = mode !== "first";
+  if (!N.room || (N.room !== "__pool" && !rooms.includes(N.room)) || (N.room === "__pool" && !showPool)) N.room = rooms[0] || (showPool ? "__pool" : null);
   $("msgs").innerHTML = nightBanner();
   $("plain").innerHTML = '<span class="lbl">Assessor view</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Pick your room, then tap a candidate. ` +
-    `Referred at attempt 1: <b>Retest pool</b>${pool.length ? ` (${pool.length})` : ""}.`;
+    (showPool ? `Referred at attempt 1: <b>Retest pool</b>${pool.length ? ` (${pool.length})` : ""}.` : "");
   const chips = rooms.map(r => {
     const l = by[r], dn = l.filter(isDoneN).length;
     return `<button type="button" class="rchip${N.room === r ? " on" : ""}" data-aroom="${esc(r)}"><b>${esc(r)}</b><small>${dn}/${l.length} done</small></button>`;
-  }).join("") + `<button type="button" class="rchip pool${N.room === "__pool" ? " on" : ""}" data-aroom="__pool"><b>Retest pool</b><small>${pool.length} waiting</small></button>`;
+  }).join("") + (showPool ? `<button type="button" class="rchip pool${N.room === "__pool" ? " on" : ""}" data-aroom="__pool"><b>${mode === "second" ? "Second sits" : mode === "plus" ? "Third sits and later" : "Retest pool"}</b><small>${pool.length} waiting</small></button>` : "");
   let body = "";
   if (N.room === "__pool") body = poolBody(pool);
   else if (N.room) body = roomBody(N.room, by[N.room] || []);
