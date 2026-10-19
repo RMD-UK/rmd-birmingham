@@ -48,7 +48,7 @@
 <div class="wrap">
   <div class="card">
     <h2>What this does</h2>
-    <p>Creates a practice course called <b>TEST Course</b> with 15 made-up candidates, plus an earlier course (<b>TEST Earlier</b>) holding the previous attempts of two repeat candidates. Use it to rehearse registers, assessment allocation, the assessment form, the retest pool and the repeat-instructor warning before the real assessment night. Remove it when you have finished.</p>
+    <p>Creates a practice course called <b>Test course 2</b> with 15 made-up candidates, plus an earlier course (<b>Test course 1</b>) holding the previous attempts of two repeat candidates. Use it to rehearse registers, assessment allocation, the assessment form, the retest pool and the repeat-instructor warning before the real assessment night. Remove it when you have finished.</p>
     <ul>
       <li>All test emails end in <code>.test@rmd-test.invalid</code>. They cannot reach a real inbox, and the site does not copy them to the Master Google Sheet.</li>
       <li>Both test courses are set to capacity 0, so the global allocation never places real candidates on them.</li>
@@ -100,8 +100,9 @@ initFirebase();
 const $ = id => document.getElementById(id);
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c])); }
 
-const TEST_COURSE = "TEST Course";
-const TEST_EARLIER = "TEST Earlier";
+const TEST_COURSE = "Test course 2";
+const TEST_EARLIER = "Test course 1";
+const TEST_NAMES = [TEST_COURSE, TEST_EARLIER, "TEST Course", "TEST Earlier"];   // the last two are the old names, so Remove still clears older test data
 const EMAIL_SUFFIX = ".test@rmd-test.invalid";
 const DEGREES = ["Medicine MBChB", "Nursing BNurs", "Midwifery BSc", "Dentistry BDS", "Pharmacy MPharm", "Physio Y1 MSc", "CEP MSc", "Nursing MSc", "Physio Y2 MSci"];
 const FIRST = ["Ada","Ben","Cara","Dev","Elin","Finn","Gia","Hal","Ivy","Jai","Kit","Lena","Milo","Nia","Otis"];
@@ -210,7 +211,7 @@ async function createTest() {
     // cannot, stop here before any test candidate exists.
     const cref = db.collection("config").doc("stage1_course_dates");
     const cur = await cref.get();
-    const courses = ((cur.exists && cur.data().courses) || []).filter(c => c.name !== TEST_COURSE && c.name !== TEST_EARLIER);
+    const courses = ((cur.exists && cur.data().courses) || []).filter(c => !TEST_NAMES.includes(c.name));
     courses.push({ name: TEST_EARLIER, date: earlierDate, capacity: 0, test: true });
     courses.push({ name: TEST_COURSE, date, capacity: 0, test: true });
     try { await cref.set({ courses }, { merge: true }); }
@@ -244,7 +245,7 @@ async function clearTestRegister() {
     const add = ref => { if (!seen.has(ref.path)) { seen.add(ref.path); ops.push(ref); } };
     const list = await findTest();
     list.forEach(c => add(db.collection("stage1_register").doc(c.id)));
-    for (const nm of [TEST_COURSE, TEST_EARLIER]) {
+    for (const nm of TEST_NAMES) {
       const s = await db.collection("stage1_register_staff").where("course", "==", nm).get();
       s.docs.forEach(d => add(d.ref));
       const r = await db.collection("stage1_register").where("course", "==", nm).get();
@@ -275,7 +276,7 @@ async function removeTest() {
       ops.push(db.collection("stage1_assessments").doc(id));
       ops.push(db.collection("stage1_register").doc(id));
     });
-    for (const nm of [TEST_COURSE, TEST_EARLIER]) {
+    for (const nm of TEST_NAMES) {
       const s = await db.collection("stage1_register_staff").where("course", "==", nm).get();
       s.docs.forEach(d => ops.push(d.ref));
       const r = await db.collection("stage1_register").where("course", "==", nm).get();
@@ -288,11 +289,11 @@ async function removeTest() {
     }
     n = ids.length;
     // "who is here tonight for attempt 3+" docs for the test courses; ignored if the new rules are not deployed yet
-    try { for (const nm of [TEST_COURSE, TEST_EARLIER]) await db.collection("stage1_night_present").doc(nm).delete(); } catch (e) {}
+    try { for (const nm of TEST_NAMES) await db.collection("stage1_night_present").doc(nm).delete(); } catch (e) {}
     const ref = db.collection("config").doc("stage1_course_dates");
     const cur = await ref.get();
     if (cur.exists) {
-      const courses = (cur.data().courses || []).filter(c => c.name !== TEST_COURSE && c.name !== TEST_EARLIER);
+      const courses = (cur.data().courses || []).filter(c => !TEST_NAMES.includes(c.name));
       await ref.set({ courses }, { merge: true });
     }
     $("removeMsg").innerHTML = `<div class="msg ok">Removed ${n} test candidate record${n === 1 ? "" : "s"} and the two test courses.</div>`;

@@ -37,9 +37,10 @@ main{max-width:1100px;margin:0 auto;padding:16px}
 .big .of{font-size:24px;color:#D9CFF0;font-weight:700}
 .sbar{height:22px;border-radius:11px;background:rgba(255,255,255,.15);overflow:hidden;display:flex;margin-bottom:6px}
 .sbar i{display:block;height:100%;transition:width .6s}
-.sbar .h{background:#58C07F}.sbar .l{background:var(--org)}
+.sbar .h{background:#58C07F}.sbar .l{background:var(--org)}.sbar .a{background:#E5484D}
 .legend{font-size:13px;color:#D9CFF0;margin-bottom:14px;display:flex;gap:14px;flex-wrap:wrap}
 .dotk{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--org);vertical-align:-1px;margin-right:5px}
+.dotk.red{background:#E5484D}
 .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .sroom{background:rgba(255,255,255,.1);border-radius:12px;padding:12px;min-height:122px}
 .sroom b{font-size:16px}
@@ -49,6 +50,7 @@ main{max-width:1100px;margin:0 auto;padding:16px}
 .sroom.low{background:rgba(244,144,1,.22)}
 .dots{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;min-height:14px}
 .dots i{display:block;width:14px;height:14px;border-radius:50%;background:var(--org);box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+.dots i.ab{background:#E5484D}
 .dots span{font-size:12px;font-weight:800;color:#FFD9A0}
 .screen.full{position:fixed;inset:0;border-radius:0;z-index:50;overflow:auto;padding:28px}
 .screen.full .big .n{font-size:min(22vw,200px)}
@@ -75,7 +77,7 @@ main{max-width:1100px;margin:0 auto;padding:16px}
   <main>
     <div id="msgs"></div>
     <div class="screen" id="screen"></div>
-    <div class="hint" id="hint">Counts only, no names. Updates by itself as each room marks people in. Orange dots are people marked late. Someone marked late counts as here.</div>
+    <div class="hint" id="hint">Counts only, no names. Updates by itself as each room marks people in. Orange dots are people marked late, red dots are people marked absent. Someone marked late counts as here.</div>
   </main>
 </div>
 
@@ -136,9 +138,13 @@ auth.onAuthStateChanged(async user => {
     $("gate").classList.add("hidden");
     $("app").classList.remove("hidden");
     if (!S.courseDates.length) { $("screen").innerHTML = '<h2>No courses set up yet</h2>'; return; }
-    $("courseSel").innerHTML = S.courseDates.map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(nice(c.date))})</option>`).join("");
-    const today = londonNow().date;
-    const first = S.courseDates.find(c => c.date >= today) || S.courseDates[S.courseDates.length - 1];
+    // Real courses first, TEST courses last; the screen opens on the current real course (or the one passed as ?course= from the hub).
+    const isTest = c => c.test === true || /^TEST\b/i.test(c.name || "");
+    const real = S.courseDates.filter(c => !isTest(c)), tests = S.courseDates.filter(isTest);
+    $("courseSel").innerHTML = real.concat(tests).map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(nice(c.date))})</option>`).join("");
+    const today = londonNow().date, pool = real.length ? real : S.courseDates;
+    let first = pool.find(c => c.date >= today) || pool[pool.length - 1];
+    { const wantC = new URLSearchParams(location.search).get("course"), wc = wantC && S.courseDates.find(c => c.name === wantC); if (wc) first = wc; }
     $("courseSel").value = first.name;
     $("courseSel").onchange = () => selectCourse($("courseSel").value);
     $("weekSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
@@ -197,7 +203,8 @@ function render() {
     const l = all.filter(c => c.room === r), x = tally(l, wk), h = x.here + x.late;
     const lateN = x.late;
     const shown = Math.min(lateN, 12);
-    const dots = lateN ? `<div class="dots" title="${lateN} late">${"<i></i>".repeat(shown)}${lateN > shown ? `<span>+${lateN - shown}</span>` : ""}</div>` : '<div class="dots"></div>';
+    const absN = x.absent, shownA = Math.min(absN, Math.max(0, 12 - shown));
+    const dots = (lateN || absN) ? `<div class="dots" title="${lateN} late, ${absN} absent">${"<i></i>".repeat(shown)}${"<i class=\"ab\"></i>".repeat(shownA)}${(lateN + absN) > (shown + shownA) ? `<span>+${lateN + absN - shown - shownA}</span>` : ""}</div>` : '<div class="dots"></div>';
     const state = x.total && h === x.total ? "done" : (x.total && h / x.total < .4 ? "low" : "");
     const sub = x.total && h === x.total ? "All here" : ((x.total - h) + " to come" + (x.absent ? " &middot; " + x.absent + " absent" : ""));
     return `<div class="sroom ${state}"><b>${esc(r)}</b><div class="v">${h}/${x.total}</div><small>${sub}</small>${dots}</div>`;
@@ -205,8 +212,8 @@ function render() {
   $("screen").innerHTML =
     `<div class="head"><h2>${esc(S.course)} &middot; Week ${wk} register${dateTxt ? " &middot; " + esc(dateTxt) : ""}</h2><span class="clock">${esc(now.hm)} &middot; live</span></div>` +
     `<div class="big"><span class="n">${here}</span><span class="of">of ${t.total} here${t.late ? " &middot; " + t.late + " late" : ""}${t.absent ? " &middot; " + t.absent + " absent" : ""}</span></div>` +
-    `<div class="sbar"><i class="h" style="width:${pct(t.here, t.total)}%"></i><i class="l" style="width:${pct(t.late, t.total)}%"></i></div>` +
-    `<div class="legend"><span><span class="dotk"></span>one dot for each person marked late</span></div>` +
+    `<div class="sbar"><i class="h" style="width:${pct(t.here, t.total)}%"></i><i class="l" style="width:${pct(t.late, t.total)}%"></i><i class="a" style="width:${pct(t.absent, t.total)}%"></i></div>` +
+    `<div class="legend"><span><span class="dotk"></span>one dot for each person marked late</span><span><span class="dotk red"></span>one dot for each person marked absent</span></div>` +
     `<div class="sgrid">${tiles || '<div class="sroom"><b>No candidates on this course yet</b></div>'}</div>`;
   if ($("screen").classList.contains("full")) ensureExit(true);
 }
