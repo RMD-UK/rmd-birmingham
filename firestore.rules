@@ -138,8 +138,15 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/config/$(docName)) &&
         request.auth.token.email.lower() in get(/databases/$(database)/documents/config/$(docName)).data.get("emails", []);
     }
+    // 2026-10-19 (Jon): anyone with assessor status (people role "assessor") can always open the
+    // assessment night, without needing to be on an email list.
+    function isAssessorRole() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "assessor";
+    }
     function isNightTeam() {
-      return onNightList("stage1_assessors") || onNightList("stage1_named_assessors");
+      return onNightList("stage1_assessors") || onNightList("stage1_named_assessors") || isAssessorRole();
     }
 
     // Added 2026-10-03 for OPIS access (opis-rating.html): a Stage 1

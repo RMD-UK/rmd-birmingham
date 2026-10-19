@@ -254,7 +254,7 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
     try {
       const me = await db.collection("people").doc(auth.uid).get();
       const role = me.exists ? String(me.data().role || "") : "";
-      ok = role === "faculty" || role === "assessor-faculty";
+      ok = role === "faculty" || role === "assessor-faculty" || role === "assessor";
     } catch (e) { ok = false; }
   }
   if (!ok) {
