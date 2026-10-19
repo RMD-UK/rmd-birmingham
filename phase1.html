@@ -1471,8 +1471,8 @@ function renderAAuto(st) {
   if (S.isDirector && A.mailFor !== S.course) probeMail();
   const forced = !!A.force && gi.blocks.length > 0;
   const step1Clear = gi.blocks.length === 0, step2Open = step1Clear || forced;
-  const reviewed = rv.has && rv.ok && A.reviewSig === rv.sig;
-  const step4Open = rv.has && rv.ok && reviewed;
+  const reviewed = rv.has && rv.ok;   // 2026-10-19 (Jon): no manual tick for ~200 slots. The page checks the schedule itself and blocks step 4 if anything is wrong.
+  const step4Open = rv.has && rv.ok;
   const icon = s => s === "ok" ? "OK" : s === "warn" ? "Check" : "Fix";
   let h = stepHd(1, "Check the course is ready", step1Clear ? (gi.warns.length ? "Ready, with notes" : "Ready") : gi.blocks.length + " to fix", step1Clear ? "ok" : "bad") +
     gi.G.map(g => `<div class="gt ${g.state}"><span class="gts">${icon(g.state)}</span><div><b>${esc(g.title)}</b><div class="gtd">${esc(g.detail)} ${g.fix}</div>` +
@@ -1499,13 +1499,12 @@ function renderAAuto(st) {
   h += `</div>`;
 
   // 3 review
-  h += stepHd(3, "Check the schedule", !rv.has ? "Locked" : (reviewed ? "Checked" : (rv.ok ? "Your check needed" : "Fix first")), !rv.has ? "" : (reviewed ? "ok" : (rv.ok ? "open" : "bad")));
+  h += stepHd(3, "Check the schedule", !rv.has ? "Locked" : (reviewed ? "Checked" : "Fix first"), !rv.has ? "" : (reviewed ? "ok" : "bad"));
   h += `<div class="stbody${rv.has ? "" : " locked"}">`;
   if (!rv.has) h += `<div class="lockmsg">Locked until people have slots.</div>`;
   else {
-    h += `<div style="font-size:14px">${st.slotted.length} people have a slot, ${rv.first} to ${rv.last}, across ${rv.rooms} rooms. Open "Assessment schedule" below and look through it.</div>`;
+    h += `<div style="font-size:14px">${st.slotted.length} people have a slot, ${rv.first} to ${rv.last}, across ${rv.rooms} rooms. ${rv.ok ? "Checked automatically: nobody has two slots in one room and time, nobody absent has a slot, every slot is a normal room and time, and every eligible person has one. The full list is in &quot;Assessment schedule&quot; below if you want to look." : "Fix the red items below before emailing."}</div>`;
     h += rv.issues.map(x => `<div class="msg err" style="margin:8px 0 0">${esc(x)}</div>`).join("");
-    if (S.isDirector) h += `<label class="tg" style="margin-top:10px"><input type="checkbox" id="aReviewed"${reviewed ? " checked" : ""}${rv.ok ? "" : " disabled"}> I have looked through the schedule and it is right</label><div class="hint">Changing anyone's slot afterwards clears this tick.</div>`;
   }
   h += `</div>`;
 
@@ -1530,7 +1529,6 @@ function renderAAuto(st) {
   if ($("aForce")) $("aForce").onchange = e => { A.force = e.target.checked; renderAlloc(); };
   if ($("aGo")) $("aGo").onclick = allocateAll;
   if ($("aClear")) $("aClear").onclick = clearAll;
-  if ($("aReviewed")) $("aReviewed").onchange = e => { A.reviewSig = e.target.checked ? rv.sig : null; renderAlloc(); };
   if ($("aMailGo")) $("aMailGo").onclick = emailPending;
   if ($("aMailRe")) $("aMailRe").onclick = () => { A.mail = "checking"; probeMail(); renderAlloc(); };
 }
@@ -1662,7 +1660,7 @@ function slotKey(c) { return (assessDate() || "") + "|" + (c.assessmentRoom || "
 function pendingMail() { return S.cands.filter(c => c.email && hasSlot(c) && c.assessmentEmailedSlot !== slotKey(c) && !(attemptOf(c) !== 2 && c.rap !== true && c.assessmentAbsent !== true && eligBlocked(c))); }   // never email a slot to someone absent in a teaching week
 async function emailPending() {
   if (A.busy || !S.isDirector) return;
-  { const st0 = stats(), rv0 = reviewInfo(st0); if (!(rv0.ok && A.reviewSig === rv0.sig && A.mail === "ok")) { toast("Check the schedule (step 3) and the email sender first.", true); return; } }
+  { const st0 = stats(), rv0 = reviewInfo(st0); if (!(rv0.ok && A.mail === "ok")) { toast("Check the schedule (step 3) and the email sender first.", true); return; } }
   const list = pendingMail(); if (!list.length) return;
   const ok = await askSheet("Email " + list.length + " people their time?", `${Math.min(list.length, MAIL_DAY_LIMIT)} are sent now${list.length > MAIL_DAY_LIMIT ? ` and ${list.length - MAIL_DAY_LIMIT} are queued for 06:00 tomorrow` : ""}. Each person gets their own time and room. Do not move slots while emails are queued.`, "Send emails");
   if (!ok) return;
