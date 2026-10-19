@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site Feedback — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 80px; color: var(--rmd-text); }
+    .top-bar { background: var(--rmd-navy); color: #fff; padding: 10px 14px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+    .top-bar img { height: 32px; border-radius: 50%; background: #fff; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub { font-size: 11px; font-weight: 400; opacity: .7; display: block; }
+    .top-bar-back { background: none; border: 1px solid rgba(255,255,255,.35); color: #fff; font-size: 12px; font-family: var(--font); padding: 5px 10px; border-radius: 6px; cursor: pointer; text-decoration: none; }
+    .wrap { max-width: 620px; margin: 0 auto; padding: 18px 14px 0; }
+    .intro { font-size: 14px; color: var(--rmd-muted); line-height: 1.5; margin: 0 0 16px; }
+    .card { background: #fff; border: 1px solid #e2e8ed; border-radius: 12px; padding: 16px 16px 18px; margin-bottom: 14px; }
+    .card h2 { font-size: 15px; font-weight: 800; color: var(--rmd-navy); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+    .card h2 .n { background: var(--rmd-navy); color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; flex: none; }
+    .types { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tbtn { text-align: left; background: #fff; border: 2px solid #d6dde6; border-radius: 12px; padding: 12px 12px 12px; cursor: pointer; font-family: var(--font); color: var(--rmd-text); min-height: 76px; }
+    .tbtn b { display: block; font-size: 15px; margin-bottom: 3px; }
+    .tbtn span { font-size: 12px; color: var(--rmd-muted); line-height: 1.35; display: block; }
+    .tbtn:hover { border-color: var(--rmd-navy); }
+    .tbtn.on { border-color: var(--rmd-navy); background: var(--rmd-light); box-shadow: inset 0 0 0 1px var(--rmd-navy); }
+    .tbtn.problem.on { border-color: #b3261e; background: #fdecea; box-shadow: inset 0 0 0 1px #b3261e; }
+    .tbtn.good.on { border-color: var(--rmd-success); background: #e6f4ea; box-shadow: inset 0 0 0 1px var(--rmd-success); }
+    .here { background: var(--rmd-light); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.45; }
+    .here b { color: var(--rmd-navy); }
+    .linkbtn { background: none; border: none; color: var(--rmd-blue); font: inherit; font-size: 13px; font-weight: 700; text-decoration: underline; cursor: pointer; padding: 4px 0 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { border: 2px solid #d6dde6; background: #fff; border-radius: 999px; padding: 9px 14px; font: 600 14px var(--font); color: var(--rmd-text); cursor: pointer; min-height: 40px; }
+    .chip.on { background: var(--rmd-navy); border-color: var(--rmd-navy); color: #fff; }
+    select, textarea { width: 100%; font: 15px var(--font); color: var(--rmd-text); border: 2px solid #d6dde6; border-radius: 10px; padding: 11px 12px; background: #fff; }
+    select { margin-top: 10px; min-height: 46px; }
+    textarea { min-height: 130px; resize: vertical; line-height: 1.45; }
+    textarea:focus, select:focus, .chip:focus-visible, .tbtn:focus-visible { outline: 3px solid var(--rmd-blue); outline-offset: 1px; }
+    .hint { font-size: 12px; color: var(--rmd-muted); margin-top: 6px; line-height: 1.4; }
+    .who { font-size: 13px; color: var(--rmd-muted); line-height: 1.5; }
+    .who label { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; color: var(--rmd-text); font-size: 14px; }
+    .who input { width: 20px; height: 20px; margin-top: 1px; flex: none; }
+    .send { position: sticky; bottom: 0; background: linear-gradient(to top, #f0f3f6 70%, rgba(240,243,246,0)); padding: 12px 0 14px; }
+    .send button { width: 100%; background: var(--rmd-navy); color: #fff; border: none; border-radius: 12px; padding: 15px; font: 800 16px var(--font); cursor: pointer; }
+    .send button:disabled { background: #b9b3c9; cursor: default; }
+    .msg { border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.45; margin-bottom: 12px; }
+    .msg.err { background: #fdecea; color: #7a1a14; border: 1px solid #f3b9b4; }
+    .msg.ok { background: #e6f4ea; color: #14532d; border: 1px solid #b7dfc2; }
+    .thanks { text-align: center; padding: 26px 18px; }
+    .thanks h2 { justify-content: center; font-size: 20px; }
+    .row2 { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+    .btn { background: #fff; border: 2px solid var(--rmd-navy); color: var(--rmd-navy); border-radius: 10px; padding: 11px 16px; font: 700 14px var(--font); cursor: pointer; text-decoration: none; display: inline-block; }
+    .btn.pri { background: var(--rmd-navy); color: #fff; }
+    .hidden { display: none !important; }
+    .copybox { width: 100%; min-height: 110px; font: 13px/1.4 ui-monospace, Menlo, monospace; margin-top: 8px; }
+    @media (max-width: 420px) { .types { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: no-preference) { .tbtn, .chip { transition: border-color .12s, background .12s; } }
+  </style>
+</head>
+<body>
+<div class="top-bar">
+  <img src="assets/rmd-logo.png" alt="" onerror="this.style.display='none'">
+  <div class="top-bar-title">Site feedback<span class="top-bar-sub">Tell us what to fix or add</span></div>
+  <a class="top-bar-back" id="backLink" href="member-menu.html">Back</a>
+</div>
+
+<div class="wrap">
+  <p class="intro">Four taps and a few words. Anything counts: a typo, a button that is hard to find, a screen that confuses you, or something you wish the site could do. You do not need to be sure it is a fault.</p>
+
+  <div id="loading" class="card">Loading…</div>
+
+  <div id="formRoot" class="hidden">
+    <div id="errBox" class="msg err hidden"></div>
+
+    <div class="card">
+      <h2><span class="n">1</span>What is it?</h2>
+      <div class="types" id="types"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">2</span>Which part of the site?</h2>
+      <div id="hereBox" class="here hidden"></div>
+      <button type="button" class="linkbtn hidden" id="changeWhere">It is about somewhere else</button>
+      <div id="picker">
+        <div class="chips" id="areaChips"></div>
+        <select id="pageSel" class="hidden" aria-label="Which page"></select>
+        <div class="hint" id="pickHint">Pick the nearest match. If you are not sure, choose "Not sure".</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">3</span>Tell us</h2>
+      <textarea id="text" maxlength="4000" aria-label="Your feedback"></textarea>
+      <div class="hint" id="textHint"></div>
+    </div>
+
+    <div class="card hidden" id="impactCard">
+      <h2><span class="n">4</span><span id="impactTitle">How much does it matter?</span> <span style="font-weight:400;font-size:12px;color:var(--rmd-muted)">(optional)</span></h2>
+      <div class="chips" id="impactChips"></div>
+    </div>
+
+    <div class="card who" id="whoCard">
+      Sent as <b id="whoName">you</b> <span id="whoRole"></span>, so we can ask you a follow-up question.
+      <label><input type="checkbox" id="anon"> Send without my name (we still see your role, not who you are)</label>
+    </div>
+
+    <div class="send"><button type="button" id="sendBtn" disabled>Send feedback</button></div>
+  </div>
+
+  <div id="thanks" class="card thanks hidden">
+    <h2>Thank you, that is saved</h2>
+    <p class="intro" style="margin:0">Every note is read. Things that are quick to fix get done first, bigger ideas go on the list.</p>
+    <div class="row2">
+      <button class="btn pri" id="againBtn" type="button">Send another</button>
+      <a class="btn" id="backLink2" href="member-menu.html">Back to the site</a>
+    </div>
+  </div>
+
+  <div id="fallback" class="card hidden">
+    <div class="msg err" id="fbWhy"></div>
+    <div class="hint">Nothing was lost. Copy this text and send it to the Course Director.</div>
+    <textarea id="fbText" class="copybox" readonly></textarea>
+    <div class="row2"><button class="btn pri" id="copyBtn" type="button">Copy text</button></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+  initFirebase();
+
+  // ── What kind of feedback ──────────────────────────────────────────────────
+  var TYPES = [
+    { k: "problem", t: "Something is broken", s: "It did not work, or showed an error", ph: "What happened, and what did you expect to happen?", imp: "How much did it get in the way?" },
+    { k: "niggle",  t: "A niggle",            s: "Annoying, confusing or slow",         ph: "What was awkward? What would have made it easier?",  imp: "How much did it get in the way?" },
+    { k: "idea",    t: "An idea",             s: "Something you would like added",      ph: "What would you like the site to do, and how would it help you?", imp: "How useful would it be?" },
+    { k: "good",    t: "Works well",          s: "Tell us what to keep",                ph: "What worked well for you?", imp: "" }
+  ];
+  var IMPACT = {
+    problem: [["blocked", "Stopped me"], ["slowed", "Slowed me down"], ["minor", "Minor"]],
+    niggle:  [["blocked", "Stopped me"], ["slowed", "Slowed me down"], ["minor", "Minor"]],
+    idea:    [["every", "I would use it every time"], ["sometimes", "Now and then"], ["nice", "Nice to have"]]
+  };
+
+  // ── Where on the site. [file, plain name]. Order is the order people look for things. ──
+  var AREAS = [
+    { k: "nights", t: "Course nights", pages: [
+      ["phase1.html", "Course nights hub (register, assessment night)"],
+      ["register-live.html", "Register big screen"],
+      ["assessment-live.html", "Assessment night big screen"],
+      ["opis-rating.html", "Rate candidates (OPIS)"] ] },
+    { k: "cands", t: "Candidates and emails", pages: [
+      ["admin-stage1-candidates.html", "Candidates (People)"],
+      ["course-allocation.html", "Course Allocation"],
+      ["admin-course-room-allocation.html", "Room allocation"],
+      ["admin-comms.html", "Comms (emails)"],
+      ["admin-stage1-readiness.html", "Readiness check"],
+      ["admin-stage1-settings.html", "Stage 1 Settings"],
+      ["admin-stage1-testcourse.html", "Test courses"],
+      ["director-box.html", "Director box"],
+      ["course-roster-view.html", "Current Course (rosters)"] ] },
+    { k: "tt", t: "Timetable and weekend", pages: [
+      ["timetable.html", "Timetable"],
+      ["time-shift.html", "Time shift"],
+      ["timetable-screen.html", "Timetable screen"],
+      ["attendance.html", "Attendance"],
+      ["iw-checkin.html", "Check-in"],
+      ["cd-dashboard.html", "Course Director dashboard"] ] },
+    { k: "rate", t: "Ratings and forms", pages: [
+      ["session-feedback.html", "Session feedback"],
+      ["assessor-feedback.html", "Assessor feedback"],
+      ["assessment-development.html", "Assessment development"],
+      ["itc-observations.html", "ITC observations"],
+      ["session-quality.html", "Session quality"],
+      ["participant-feedback.html", "Participant feedback"] ] },
+    { k: "res", t: "Resources", pages: [
+      ["member-resources.html", "Member resources"],
+      ["resources.html", "Resources"],
+      ["provider-courses.html", "Provider courses"],
+      ["candidate-resources.html", "Candidate resources"] ] },
+    { k: "acct", t: "My account and sign in", pages: [
+      ["member-menu.html", "Welcome page (menu)"],
+      ["my-account.html", "My Account"],
+      ["signin.html", "Sign in"],
+      ["reset-password.html", "Reset password"] ] },
+    { k: "pub", t: "Public website", pages: [
+      ["index.html", "Home page"],
+      ["about.html", "About"],
+      ["news.html", "News"],
+      ["research.html", "Research"],
+      ["sites.html", "Our sites"],
+      ["faculty.html", "Who's who"],
+      ["for-institutions.html", "For institutions"],
+      ["join.html", "Join us"] ] },
+    { k: "other", t: "Not sure / whole site", pages: [["", "Not sure, or the whole site"]] }
+  ];
+
+  var S = { type: "", area: "", page: "", pageLabel: "", ctx: "", url: "", impact: "", user: null, role: "", roleLabel: "", from: null };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function fileOf(p) { return (String(p || "").split("#")[0].split("?")[0].split("/").pop() || "index.html").toLowerCase(); }
+  function areaOfFile(f) {
+    for (var i = 0; i < AREAS.length; i++) for (var j = 0; j < AREAS[i].pages.length; j++) if (AREAS[i].pages[j][0] === f && f) return { a: AREAS[i], p: AREAS[i].pages[j] };
+    return null;
+  }
+  function deviceKind() {
+    var ua = navigator.userAgent || "";
+    if (/iPad|Tablet/i.test(ua)) return "tablet";
+    if (/Mobi|iPhone|Android/i.test(ua)) return "phone";
+    return "computer";
+  }
+
+  // ── Where did they come from? The floating Feedback tab passes ?p=page&t=title&c=where-in-the-page ──
+  (function readFrom() {
+    var q = new URLSearchParams(location.search);
+    var p = q.get("p") || "", t = q.get("t") || "", c = q.get("c") || "";
+    if (!p) return;
+    var f = fileOf(p);
+    if (f === "feedback.html") return;
+    var hit = areaOfFile(f);
+    S.from = { file: f, url: p, title: t, ctx: c, hit: hit };
+    var back = p.charAt(0) === "/" ? p.slice(1) : p;
+    if (/^[a-z0-9_\-\/]+\.html(#[\w\-=&.]*)?$/i.test(back)) { $("backLink").setAttribute("href", back); $("backLink2").setAttribute("href", back); }
+  })();
+
+  function buildTypes() {
+    $("types").innerHTML = TYPES.map(function (t) {
+      return '<button type="button" class="tbtn ' + t.k + '" data-t="' + t.k + '" aria-pressed="false"><b>' + esc(t.t) + '</b><span>' + esc(t.s) + '</span></button>';
+    }).join("");
+    $("types").onclick = function (e) {
+      var b = e.target.closest("[data-t]"); if (!b) return;
+      S.type = b.dataset.t; S.impact = ""; renderType(); validate();
+    };
+  }
+  function renderType() {
+    var t = TYPES.filter(function (x) { return x.k === S.type; })[0];
+    Array.prototype.forEach.call($("types").querySelectorAll("[data-t]"), function (b) { var on = b.dataset.t === S.type; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on); });
+    if (!t) return;
+    $("text").placeholder = t.ph;
+    $("textHint").textContent = S.type === "good" ? "A sentence is plenty." : "A sentence or two is plenty. Say what you were trying to do.";
+    var opts = IMPACT[S.type];
+    $("impactCard").classList.toggle("hidden", !opts);
+    if (opts) {
+      $("impactTitle").textContent = t.imp;
+      $("impactChips").innerHTML = opts.map(function (o) { return '<button type="button" class="chip' + (S.impact === o[0] ? " on" : "") + '" data-i="' + o[0] + '" aria-pressed="' + (S.impact === o[0]) + '">' + esc(o[1]) + "</button>"; }).join("");
+      $("impactChips").onclick = function (e) { var b = e.target.closest("[data-i]"); if (!b) return; S.impact = S.impact === b.dataset.i ? "" : b.dataset.i; renderType(); };
+    }
+  }
+
+  // ── Page picker ──────────────────────────────────────────────────────────────
+  function setHere() {
+    var f = S.from;
+    var label = f ? (f.hit ? f.hit.p[1] : (f.title || f.file)) : "";
+    if (f) {
+      S.area = f.hit ? f.hit.a.k : "other"; S.page = f.file; S.pageLabel = label; S.ctx = f.ctx || ""; S.url = f.url.slice(0, 300);
+      $("hereBox").innerHTML = "You were on <b>" + esc(label) + "</b>" + (f.ctx ? "<br><span style='color:var(--rmd-muted)'>" + esc(f.ctx) + "</span>" : "") + ".";
+      $("hereBox").classList.remove("hidden"); $("changeWhere").classList.remove("hidden"); $("picker").classList.add("hidden");
+    } else {
+      $("picker").classList.remove("hidden"); buildAreas();
+    }
+  }
+  function buildAreas() {
+    $("areaChips").innerHTML = AREAS.map(function (a) { return '<button type="button" class="chip' + (S.area === a.k ? " on" : "") + '" data-a="' + a.k + '" aria-pressed="' + (S.area === a.k) + '">' + esc(a.t) + "</button>"; }).join("");
+    $("areaChips").onclick = function (e) {
+      var b = e.target.closest("[data-a]"); if (!b) return;
+      S.area = b.dataset.a; S.page = ""; S.pageLabel = ""; S.ctx = ""; S.url = ""; buildAreas(); buildPages(); validate();
+    };
+    buildPages();
+  }
+  function buildPages() {
+    var a = AREAS.filter(function (x) { return x.k === S.area; })[0];
+    var sel = $("pageSel");
+    if (!a || a.k === "other") {
+      sel.classList.add("hidden");
+      if (a) { S.page = ""; S.pageLabel = a.pages[0][1]; }
+      return;
+    }
+    sel.classList.remove("hidden");
+    sel.innerHTML = '<option value="">Which page? (or leave as "Not sure")</option>' + a.pages.map(function (p) { return '<option value="' + esc(p[0]) + '">' + esc(p[1]) + "</option>"; }).join("");
+    sel.value = S.page || "";
+    sel.onchange = function () {
+      S.page = sel.value; var h = a.pages.filter(function (p) { return p[0] === S.page; })[0];
+      S.pageLabel = h ? h[1] : a.t + " (not sure which page)"; validate();
+    };
+    if (!S.page) S.pageLabel = a.t + " (not sure which page)";
+  }
+  $("changeWhere").onclick = function () {
+    S.from = null; S.page = ""; S.pageLabel = ""; S.ctx = ""; S.url = ""; S.area = "";
+    $("hereBox").classList.add("hidden"); $("changeWhere").classList.add("hidden"); $("picker").classList.remove("hidden"); buildAreas(); validate();
+  };
+
+  function validate() {
+    var ok = !!S.type && !!S.area && $("text").value.trim().length >= 3;
+    $("sendBtn").disabled = !ok;
+    try { sessionStorage.setItem("rmd_fb_draft", $("text").value); } catch (e) {}
+  }
+  $("text").addEventListener("input", validate);
+
+  function composeText(rec) {
+    var T = TYPES.filter(function (x) { return x.k === rec.type; })[0];
+    return "RMD site feedback: " + (T ? T.t : rec.type) + "\nWhere: " + rec.pageLabel + (rec.ctx ? " (" + rec.ctx + ")" : "") + (rec.url ? "\nAddress: " + rec.url : "") + "\n\n" + rec.text + (rec.impact ? "\n\nImpact: " + rec.impact : "") + "\nFrom: " + (rec.anon ? "anonymous" : rec.name) + (rec.roleLabel ? " (" + rec.roleLabel + ")" : "");
+  }
+
+  async function send() {
+    $("errBox").classList.add("hidden"); $("sendBtn").disabled = true; $("sendBtn").textContent = "Sending…";
+    var anon = $("anon").checked, u = S.user || {};
+    var rec = {
+      type: S.type, area: S.area, page: S.page || "", pageLabel: (S.pageLabel || "").slice(0, 160), ctx: (S.ctx || "").slice(0, 300), url: (S.url || "").slice(0, 300),
+      text: $("text").value.trim().slice(0, 4000), impact: S.impact || "", anon: anon,
+      uid: anon ? "" : (u.uid || ""), name: anon ? "" : (S.name || ""), email: anon ? "" : (u.email || ""),
+      role: S.role || "", roleLabel: S.roleLabel || "", device: deviceKind(), status: "new"
+    };
+    var doc = Object.assign({}, rec, { createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    try {
+      await db.collection("site_feedback").add(doc);
+      try { sessionStorage.removeItem("rmd_fb_draft"); } catch (e) {}
+      $("formRoot").classList.add("hidden"); $("thanks").classList.remove("hidden"); window.scrollTo(0, 0);
+    } catch (err) {
+      var why = err && err.code === "permission-denied" ? "The site could not save this just now (the feedback store is not switched on yet)." : "The site could not save this: " + ((err && err.message) || err);
+      $("fbWhy").textContent = why; $("fbText").value = composeText(rec);
+      $("formRoot").classList.add("hidden"); $("fallback").classList.remove("hidden"); window.scrollTo(0, 0);
+    }
+    $("sendBtn").textContent = "Send feedback";
+  }
+  $("sendBtn").onclick = send;
+  $("copyBtn").onclick = function () {
+    var t = $("fbText"); t.select();
+    var done = function () { $("copyBtn").textContent = "Copied"; };
+    var legacy = function () { try { t.select(); document.execCommand("copy"); done(); } catch (e2) {} };
+    try { navigator.clipboard.writeText(t.value).then(done, legacy); } catch (e) { legacy(); }
+  };
+  $("againBtn").onclick = function () {
+    $("text").value = ""; S.type = ""; S.impact = ""; if (!S.from) { S.area = ""; S.page = ""; S.pageLabel = ""; }
+    $("thanks").classList.add("hidden"); $("formRoot").classList.remove("hidden"); renderType(); setHere(); validate();
+  };
+
+  auth.onAuthStateChanged(async function (user) {
+    if (!user) { window.location.href = "signin.html?next=" + encodeURIComponent("feedback.html" + location.search); return; }
+    S.user = user;
+    S.name = user.displayName || (user.email || "").split("@")[0];
+    try { var st = await resolveAxisAStanding(user.uid, user.email || ""); if (st && st.label) S.roleLabel = st.label; } catch (e) {}
+    try { S.role = (await resolveRole(user.uid, user.email || "")) || ""; } catch (e) {}
+    try { var snap = await db.collection(COLLECTIONS.people).doc(user.uid).get(); var d = snap.exists ? snap.data() : {}; if (d.preferredName) S.name = d.preferredName + (d.lastName ? " " + d.lastName : ""); } catch (e) {}
+    $("whoName").textContent = S.name || "you";
+    $("whoRole").textContent = S.roleLabel ? "(" + S.roleLabel + ")" : "";
+    buildTypes(); setHere(); renderType();
+    try { var dr = sessionStorage.getItem("rmd_fb_draft"); if (dr) $("text").value = dr; } catch (e) {}
+    validate();
+    $("loading").classList.add("hidden"); $("formRoot").classList.remove("hidden");
+  });
+</script>
+</body>
+</html>

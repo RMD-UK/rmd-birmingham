@@ -649,6 +649,17 @@ const DOOR_TITLE = { teach: "Teaching nights", assess: "Assessment night", plan:
 function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
 // Director-only register tools (Edit any date, Late after, Backfill, Clear a future week). Shown only to a real Director, and hidden when that Director is looking at the Instructor role, so the screen matches what an instructor sees.
 function dirToolsOn() { return !!S.isDirector && !(S.door === "teach" && S.drole === "tinst"); }
+// Feedback tab (js/feedback-widget.js) asks this for the part of the page the person is on.
+window.__fbCtx = function () {
+  try {
+    var rd = roleDef(), parts = [];
+    if (S.door) parts.push(DOOR_TITLE[S.door] || S.door);
+    if (rd) parts.push(rd.t);
+    if (S.view) parts.push("screen: " + S.view);
+    if (S.course) parts.push(S.course);
+    return parts.join(", ");
+  } catch (e) { return ""; }
+};
 function roleDef() { return S.door && S.drole ? (ROLE_DEFS[S.door] || []).find(r => r.id === S.drole) : null; }
 function doorJobs() { const r = roleDef(); return r && r.jobs ? r.jobs : null; }
 function dsave() { try { localStorage.setItem("rmd_p1_door", JSON.stringify({ uid: S.user && S.user.uid, door: S.door, role: S.drole })); } catch (e) {} }
