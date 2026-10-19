@@ -405,6 +405,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
       <div id="rolePick" class="rolepick hidden"></div>
       <div class="plain" id="plain"></div>
       <div id="msgs"></div>
+      <div id="viewTassInfo" class="hidden"></div>
       <div id="viewRegister">
         <div class="tools" id="tools"></div>
         <div class="rooms" id="rooms"></div>
@@ -632,6 +633,7 @@ function renderSteps() {
 const ROLE_DEFS = {
   teach: [
     { id: "tinst", t: "Instructor", s: "Your room: register and ratings", ok: () => S.mine.length > 0, view: "register", jobs: [{ no: 6 }, { no: 7 }] },
+    { id: "tass", t: "Assessor", s: "Not in a room on these evenings", ok: () => S.night && S.mine.length === 0 && (!S.full || S.isDirector), view: "tassinfo", info: true, jobs: [] },
     { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }] },
     { id: "tscr", t: "Big screen", s: "Live register", ok: () => S.full, href: "register-live.html" }
   ],
@@ -646,7 +648,7 @@ const ROLE_DEFS = {
   plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
 };
 const DOOR_TITLE = { teach: "Teaching nights", assess: "Assessment night", plan: "Planning" };
-function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
+function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0 || S.night) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
 // Director-only register tools (Edit any date, Late after, Backfill, Clear a future week). Shown only to a real Director, and hidden when that Director is looking at the Instructor role, so the screen matches what an instructor sees.
 function dirToolsOn() { return !!S.isDirector && !(S.door === "teach" && S.drole === "tinst"); }
 // Feedback tab (js/feedback-widget.js) asks this for the part of the page the person is on.
@@ -669,7 +671,7 @@ function restoreDoor0() {
     const o = JSON.parse(localStorage.getItem("rmd_p1_door") || "null");
     if (!o || o.uid !== S.user.uid || !o.door || !doorAllowed(o.door)) return;
     S.door = o.door;
-    const r = (ROLE_DEFS[o.door] || []).find(x => x.id === o.role && x.ok() && x.view);
+    const r = (ROLE_DEFS[o.door] || []).find(x => x.id === o.role && x.ok() && x.view && !x.info);
     if (r) { S.drole = r.id; S.mode = r.mode || "all"; S.view = r.view; }
   } catch (e) {}
 }
@@ -679,7 +681,7 @@ function restoreDoor0() {
 function restoreDoor() {
   restoreDoor0();
   if (S.door || (location.hash || "").length > 1 || !doorAllowed("teach")) return;
-  const r = (ROLE_DEFS.teach || []).find(x => x.ok() && x.view);
+  const r = (ROLE_DEFS.teach || []).find(x => x.ok() && x.view && !x.info);
   if (r) { S.door = "teach"; S.drole = r.id; S.mode = r.mode || "all"; S.view = r.view; dsave(); }
 }
 function renderDoors() {
@@ -699,16 +701,18 @@ function renderDoors() {
 function pickingRole() { return !!(S.door && S.door !== "plan" && !S.drole); }
 function chooseDoor(d) {
   S.door = d || ""; S.drole = ""; S.mode = "all";
+  const wasInfo = S.view === "tassinfo";
+  if (wasInfo) S.view = S.full || S.mine.length ? "register" : "runner";
   if (S.door === "plan") { const r = ROLE_DEFS.plan[0]; S.drole = r.id; if (S.view !== "alloc" && S.view !== "setup") S.view = r.view; }
   dsave(); renderSteps(); showView();
-  if (S.door === "plan") enterView();
+  if (S.door === "plan" || (wasInfo && !S.door)) enterView();
 }
 // The two big screens open on the course chosen here (they also default to the current real course on their own).
 function bigHref(h) { return /-live\.html$/.test(h || "") && S.course ? h + "?course=" + encodeURIComponent(S.course) : h; }
 function chooseRole(id) {
   const r = (ROLE_DEFS[S.door] || []).find(x => x.id === id); if (!r) return;
   if (r.href) { window.location.href = bigHref(r.href); return; }
-  S.drole = id; S.mode = r.mode || "all"; dsave(); renderSteps();
+  S.drole = id; S.mode = r.mode || "all"; if (!r.info) dsave(); renderSteps();
   setView(r.view);
 }
 
@@ -762,8 +766,21 @@ async function selectCourse(name) {
   if (NIGHT_VIEWS.includes(S.view)) { attachNight(); loadNight(); }
   enterView();
 }
+// 2026-10-19 (Jon): an assessor with no room has nothing to use on the teaching evenings, so say so and point them at the test course.
+function renderTassInfo() {
+  const t = (S.courseDates || []).find(isTestCourse);
+  $("viewTassInfo").innerHTML = '<div class="card"><h3 style="margin:0 0 8px;font-size:20px;color:var(--pur)">Nothing for you on the teaching evenings</h3>' +
+    '<p style="margin:0 0 10px;font-size:17px;line-height:1.55">You are an assessor, not an instructor, and you are not allocated to a room. So there is no register and there are no resources for you on these evenings.</p>' +
+    '<p style="margin:0 0 14px;font-size:17px;line-height:1.55">Your job is the assessment night. To get used to the assessor screen beforehand, use the test course' + (t ? "." : ". Ask the Course Director to switch it on.") + '</p>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+    (t ? '<button type="button" id="tassTest" style="border:0;border-radius:12px;padding:12px 18px;background:var(--pur);color:#fff;font-size:16px;font-weight:800">Open the test course</button>' : "") +
+    '<button type="button" id="tassNight" style="border:2px solid var(--line);border-radius:12px;padding:10px 16px;background:#fff;color:var(--pur);font-size:15px;font-weight:700">Go to the assessment night</button></div></div>';
+  const bt = $("tassTest"); if (bt) bt.onclick = async () => { await selectCourse(t.name); chooseDoor("assess"); };
+  $("tassNight").onclick = () => chooseDoor("assess");
+}
 async function enterView() {
   showView();
+  if (S.view === "tassinfo") { renderTassInfo(); return; }
   if (["alloc", "runner", "assessor", "retest"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
   else if (["retest", "runner", "assessor"].includes(S.view)) renderNight();
@@ -1347,9 +1364,10 @@ async function ensureRooms() {
 }
 function showView() {
   const picking = pickingRole();
-  [["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewSetup", "setup"]]
-    .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v));
-  $("plain").classList.toggle("hidden", picking); $("msgs").classList.toggle("hidden", picking);
+  const info = !picking && S.view === "tassinfo" && S.drole === "tass";
+  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewSetup", "setup"]]
+    .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v || (v === "tassinfo" && !info)));
+  $("plain").classList.toggle("hidden", picking || info); $("msgs").classList.toggle("hidden", picking || info);
   renderDoors();
 }
 async function setView(v) {
