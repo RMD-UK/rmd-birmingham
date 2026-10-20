@@ -138,8 +138,25 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/config/$(docName)) &&
         request.auth.token.email.lower() in get(/databases/$(database)/documents/config/$(docName)).data.get("emails", []);
     }
+    // 2026-10-19 (Jon): anyone with assessor status (people role "assessor") can always open the
+    // assessment night, without needing to be on an email list.
+    function isAssessorRole() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.role == "assessor";
+    }
     function isNightTeam() {
-      return onNightList("stage1_assessors") || onNightList("stage1_named_assessors");
+      return onNightList("stage1_assessors") || onNightList("stage1_named_assessors") || isAssessorRole();
+    }
+
+    // 2026-10-16 (Jon, runner access): any RMD member, meaning a signed-in person whose
+    // people/{uid} record carries a role (instructor, senior instructor, faculty and so on).
+    // Used ONLY to let room instructors who run the Phase 1 assessment night open the runner
+    // screen: read the night's results and flag "not there". Nothing else.
+    function isRmdMember() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get("role", "") != "";
     }
 
     // Added 2026-10-03 for OPIS access (opis-rating.html): a Stage 1
@@ -816,13 +833,33 @@ service cloud.firestore {
     // Read and write: Director, Student / Senior Faculty, people whose role is
     // faculty or assessor-faculty, and anyone on the assessment night team or named
     // extra assessor emails (isNightTeam, 2026-10-13) - the people who run the evening.
-    // Instructors on room teams cannot read results. Delete: Director only.
+    // Room instructors (runners) can read results and flag not-there since 2026-10-16. Delete: Director only.
     // Rules that depend on who assessed whom (attempt 2 needs a different assessor,
     // attempt 3+ from the named list) are enforced in the page, not here.
     match /stage1_assessments/{candidateId} {
-      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam();
-      allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam())
-        && request.resource.data.keys().hasOnly(['course', 'candidateName', 'notThere', 'claim', 'attempts', 'updatedAt']);
+      // 2026-10-16 (Jon): runners (any RMD member) can READ results and can flag a candidate
+      // "not there". They cannot record results, claim a retest, or delete: those stay with the
+      // people listed above. The not-there write is limited to the keys below.
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam() || isRmdMember();
+      allow create: if ((isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam())
+          && request.resource.data.keys().hasOnly(['course', 'candidateName', 'notThere', 'claim', 'attempts', 'flow', 'updatedAt']))
+        || (isRmdMember() && request.resource.data.keys().hasOnly(['course', 'candidateName', 'notThere', 'flow', 'updatedAt']));
+      allow update: if ((isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam())
+          && request.resource.data.keys().hasOnly(['course', 'candidateName', 'notThere', 'claim', 'attempts', 'flow', 'updatedAt']))
+        || (isRmdMember() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['course', 'candidateName', 'notThere', 'flow', 'updatedAt']));
+      allow delete: if isDirector();
+    }
+
+    // ── Assessment night check-in (2026-10-20, Jon) ──
+    // stage1_checkin/{course}: {course, on, updatedAt, updatedBy}. on == true means "check-in required tonight":
+    // assessors can only pick people who have been collected. Off by default (no document). Directors, Student
+    // and Senior Faculty set it; everyone on the night can read it. The per-candidate Arrived / Collected / call
+    // count lives on stage1_assessments/{id}.flow["<attempt>"] (keys allowed above).
+    match /stage1_checkin/{courseId} {
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam() || isRmdMember();
+      allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.keys().hasOnly(['course', 'on', 'updatedAt', 'updatedBy'])
+        && request.resource.data.on is bool;
       allow delete: if isDirector();
     }
 
@@ -833,7 +870,7 @@ service cloud.firestore {
     // it (the assessor view shows who is here). Information only: it does not
     // change who may assess.
     match /stage1_night_present/{courseId} {
-      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam();
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty() || isFaculty() || isAssessorFaculty() || isNightTeam() || isRmdMember();
       allow create, update: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
         && request.resource.data.keys().hasOnly(['course', 'present', 'updatedAt', 'updatedBy'])
         && request.resource.data.present is list
@@ -981,6 +1018,26 @@ service cloud.firestore {
     }
     match /organiser_boards/{code}/tasks/{taskId} {
       allow read, write: if isSignedIn();
+    }
+
+    // ── Site feedback (2026-10-19, Jon) ─────────────────────────────────────
+    // feedback.html lets any signed-in person tell the Directors what to fix or
+    // add. They can only create a new note (fixed field list, status "new",
+    // text capped), never read, change or delete one; an anonymous note carries
+    // no uid, name or email. Directors read and triage them in admin-feedback.html.
+    match /site_feedback/{noteId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['type', 'area', 'page', 'pageLabel', 'ctx', 'url', 'text', 'impact', 'anon', 'uid', 'name', 'email', 'role', 'roleLabel', 'device', 'status', 'createdAt'])
+        && request.resource.data.type in ['problem', 'niggle', 'idea', 'good']
+        && request.resource.data.status == 'new'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 3
+        && request.resource.data.text.size() <= 4000
+        && request.resource.data.createdAt == request.time
+        && (request.resource.data.anon == true
+              ? (request.resource.data.uid == '' && request.resource.data.email == '')
+              : request.resource.data.uid == request.auth.uid);
+      allow read, update, delete: if isDirector();
     }
 
   }

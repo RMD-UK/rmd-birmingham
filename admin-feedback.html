@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site Feedback Inbox — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; color: var(--rmd-text); }
+    .top-bar { background: var(--rmd-navy); color: #fff; padding: 10px 14px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+    .top-bar img { height: 32px; border-radius: 50%; background: #fff; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub { font-size: 11px; font-weight: 400; opacity: .7; display: block; }
+    .top-bar-back { background: none; border: 1px solid rgba(255,255,255,.35); color: #fff; font-size: 12px; font-family: var(--font); padding: 5px 10px; border-radius: 6px; text-decoration: none; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 16px 14px 0; }
+    .msg { font-size: 14px; color: var(--rmd-muted); padding: 10px 0; }
+    .msg.err { color: #7a1a14; background: #fdecea; border: 1px solid #f3b9b4; border-radius: 10px; padding: 12px 14px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .stat { background: #fff; border: 1px solid #e2e8ed; border-radius: 10px; padding: 8px 14px; font-size: 12px; color: var(--rmd-muted); }
+    .stat b { display: block; font-size: 20px; color: var(--rmd-navy); }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .filters select { font: 13px var(--font); padding: 8px 10px; border: 1px solid #d6dde6; border-radius: 8px; background: #fff; }
+    .btn { background: var(--rmd-navy); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font: 700 13px var(--font); cursor: pointer; }
+    .btn.sec { background: #fff; color: var(--rmd-navy); border: 1px solid var(--rmd-navy); }
+    .item { background: #fff; border: 1px solid #e2e8ed; border-left: 5px solid #d6dde6; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+    .item.t-problem { border-left-color: #b3261e; }
+    .item.t-niggle { border-left-color: var(--rmd-amber); }
+    .item.t-idea { border-left-color: var(--rmd-blue); }
+    .item.t-good { border-left-color: var(--rmd-success); }
+    .item.done { opacity: .6; }
+    .head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--rmd-muted); }
+    .tag { font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--rmd-light); color: var(--rmd-navy); }
+    .tag.problem { background: #fdecea; color: #b3261e; }
+    .tag.good { background: #e6f4ea; color: var(--rmd-success); }
+    .where { font-weight: 700; color: var(--rmd-text); font-size: 14px; margin-top: 6px; }
+    .where small { font-weight: 400; color: var(--rmd-muted); }
+    .text { margin: 6px 0 8px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    .foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .foot select, .foot input { font: 13px var(--font); padding: 6px 8px; border: 1px solid #d6dde6; border-radius: 8px; background: #fff; }
+    .foot input { flex: 1; min-width: 160px; }
+    .saved { font-size: 12px; color: var(--rmd-success); }
+    .hidden { display: none !important; }
+    #copyOut { width: 100%; min-height: 160px; font: 12px/1.4 ui-monospace, Menlo, monospace; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div class="top-bar">
+  <img src="assets/rmd-logo.png" alt="" onerror="this.style.display='none'">
+  <div class="top-bar-title">Site feedback inbox<span class="top-bar-sub">Course Directors only</span></div>
+  <a class="top-bar-back" href="member-menu.html">Back</a>
+</div>
+<div class="wrap">
+  <div id="authMsg" class="msg">Checking access…</div>
+  <div id="main" class="hidden">
+    <div id="err" class="msg err hidden"></div>
+    <div class="stats" id="stats"></div>
+    <div class="filters">
+      <select id="fStatus" aria-label="Status"><option value="open">Open (new, seen, planned)</option><option value="new">New only</option><option value="seen">Seen</option><option value="planned">Planned</option><option value="done">Done</option><option value="no">Not doing</option><option value="">All</option></select>
+      <select id="fType" aria-label="Type"><option value="">Any type</option><option value="problem">Broken</option><option value="niggle">Niggle</option><option value="idea">Idea</option><option value="good">Works well</option></select>
+      <select id="fArea" aria-label="Area"><option value="">Any area</option></select>
+      <select id="fRole" aria-label="Role"><option value="">Any role</option></select>
+      <button class="btn sec" id="copyBtn" type="button">Copy open list</button>
+    </div>
+    <textarea id="copyOut" class="hidden" readonly></textarea>
+    <div id="list"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+  initFirebase();
+  var AREA_NAMES = { nights: "Course nights", cands: "Candidates and emails", tt: "Timetable and weekend", rate: "Ratings and forms", res: "Resources", acct: "My account and sign in", pub: "Public website", other: "Not sure / whole site" };
+  var TYPE_NAMES = { problem: "Broken", niggle: "Niggle", idea: "Idea", good: "Works well" };
+  var IMPACT_NAMES = { blocked: "Stopped them", slowed: "Slowed them down", minor: "Minor", every: "Would use every time", sometimes: "Now and then", nice: "Nice to have" };
+  var STATUS = [["new", "New"], ["seen", "Seen"], ["planned", "Planned"], ["done", "Done"], ["no", "Not doing"]];
+  var ALL = [];
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function when(ts) {
+    try { var d = ts && ts.toDate ? ts.toDate() : null; if (!d) return ""; return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + " " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; }
+  }
+  function isOpen(s) { return s === "new" || s === "seen" || s === "planned"; }
+
+  function filtered() {
+    var fs = $("fStatus").value, ft = $("fType").value, fa = $("fArea").value, fr = $("fRole").value;
+    return ALL.filter(function (r) {
+      var st = r.status || "new";
+      if (fs === "open" ? !isOpen(st) : (fs && st !== fs)) return false;
+      if (ft && r.type !== ft) return false;
+      if (fa && r.area !== fa) return false;
+      if (fr && (r.roleLabel || "Unknown") !== fr) return false;
+      return true;
+    });
+  }
+
+  function render() {
+    var rows = filtered();
+    var cnt = { new: 0, problem: 0 };
+    ALL.forEach(function (r) { if ((r.status || "new") === "new") cnt.new++; if (isOpen(r.status || "new") && r.type === "problem") cnt.problem++; });
+    $("stats").innerHTML = '<div class="stat"><b>' + cnt.new + '</b>new</div><div class="stat"><b>' + cnt.problem + '</b>open "broken"</div><div class="stat"><b>' + ALL.filter(function (r) { return isOpen(r.status || "new"); }).length + '</b>open in total</div><div class="stat"><b>' + ALL.length + '</b>all time</div>';
+    $("list").innerHTML = rows.length ? rows.map(function (r) {
+      var st = r.status || "new";
+      return '<div class="item t-' + esc(r.type) + (st === "done" || st === "no" ? " done" : "") + '" data-id="' + esc(r.id) + '">' +
+        '<div class="head"><span class="tag ' + esc(r.type) + '">' + esc(TYPE_NAMES[r.type] || r.type) + '</span>' +
+        (r.impact ? '<span>' + esc(IMPACT_NAMES[r.impact] || r.impact) + '</span>' : '') +
+        '<span>' + esc(r.anon ? "Anonymous" : (r.name || "Unknown")) + (r.roleLabel ? " (" + esc(r.roleLabel) + ")" : "") + '</span>' +
+        '<span>' + esc(when(r.createdAt)) + '</span><span>' + esc(r.device || "") + '</span></div>' +
+        '<div class="where">' + esc(r.pageLabel || "Not sure") + (r.ctx ? ' <small>' + esc(r.ctx) + '</small>' : '') + '</div>' +
+        '<div class="text">' + esc(r.text) + '</div>' +
+        '<div class="foot"><select data-st>' + STATUS.map(function (s) { return '<option value="' + s[0] + '"' + (s[0] === st ? " selected" : "") + ">" + s[1] + "</option>"; }).join("") + '</select>' +
+        '<input data-note type="text" maxlength="300" placeholder="Note to self (optional)" value="' + esc(r.note || "") + '">' +
+        '<button class="btn sec" data-save type="button">Save</button><span class="saved"></span>' +
+        (r.url ? '<a class="top-bar-back" style="color:var(--rmd-blue);border-color:var(--rmd-blue)" href="' + esc(/^[a-z0-9_\-\/]+\.html(\?[^\s"<>]*)?(#[\w\-=&.]*)?$/i.test(r.url) ? r.url.replace(/^\//, "") : "#") + '">Open page</a>' : '') +
+        '</div></div>';
+    }).join("") : '<div class="msg">Nothing matches these filters.</div>';
+  }
+
+  function fillFilters() {
+    var areas = {}, roles = {};
+    ALL.forEach(function (r) { if (r.area) areas[r.area] = 1; roles[r.roleLabel || "Unknown"] = 1; });
+    $("fArea").innerHTML = '<option value="">Any area</option>' + Object.keys(areas).map(function (a) { return '<option value="' + esc(a) + '">' + esc(AREA_NAMES[a] || a) + "</option>"; }).join("");
+    $("fRole").innerHTML = '<option value="">Any role</option>' + Object.keys(roles).sort().map(function (a) { return '<option value="' + esc(a) + '">' + esc(a) + "</option>"; }).join("");
+  }
+
+  $("list").addEventListener("click", async function (e) {
+    var b = e.target.closest("[data-save]"); if (!b) return;
+    var card = b.closest(".item"), id = card.dataset.id;
+    var st = card.querySelector("[data-st]").value, note = card.querySelector("[data-note]").value.trim();
+    var tag = card.querySelector(".saved"); tag.textContent = "Saving…";
+    try {
+      await db.collection("site_feedback").doc(id).update({ status: st, note: note, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      var r = ALL.filter(function (x) { return x.id === id; })[0]; if (r) { r.status = st; r.note = note; }
+      tag.textContent = "Saved"; setTimeout(render, 600);
+    } catch (err) { tag.style.color = "#b3261e"; tag.textContent = "Not saved: " + (err.message || err); }
+  });
+  ["fStatus", "fType", "fArea", "fRole"].forEach(function (id) { $(id).onchange = render; });
+
+  $("copyBtn").onclick = function () {
+    var open = ALL.filter(function (r) { return isOpen(r.status || "new"); });
+    var by = {};
+    open.forEach(function (r) { var a = AREA_NAMES[r.area] || "Other"; (by[a] = by[a] || []).push(r); });
+    var out = "RMD site feedback, open items (" + open.length + ")\n";
+    Object.keys(by).sort().forEach(function (a) {
+      out += "\n== " + a + " ==\n";
+      by[a].forEach(function (r) {
+        out += "- [" + (TYPE_NAMES[r.type] || r.type) + "] " + (r.pageLabel || "") + (r.ctx ? " (" + r.ctx + ")" : "") + ": " + String(r.text).replace(/\s+/g, " ") + (r.impact ? " {" + (IMPACT_NAMES[r.impact] || r.impact) + "}" : "") + " (" + (r.anon ? "anon" : (r.name || "?")) + (r.roleLabel ? ", " + r.roleLabel : "") + ")\n";
+      });
+    });
+    var box = $("copyOut"); box.value = out; box.classList.remove("hidden"); box.select();
+    var done = function () { $("copyBtn").textContent = "Copied"; };
+    var legacy = function () { try { box.select(); document.execCommand("copy"); done(); } catch (e2) {} };
+    try { navigator.clipboard.writeText(out).then(done, legacy); } catch (e) { legacy(); }
+  };
+
+  requireDirector("timetable.html").then(async function () {
+    $("authMsg").classList.add("hidden"); $("main").classList.remove("hidden");
+    try {
+      var snap = await db.collection("site_feedback").orderBy("createdAt", "desc").limit(500).get();
+      ALL = snap.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; });
+      fillFilters(); render();
+    } catch (err) {
+      $("err").textContent = err && err.code === "permission-denied" ? "The feedback store is not switched on yet. Deploy the Firestore rules, then reload." : "Could not load feedback: " + ((err && err.message) || err);
+      $("err").classList.remove("hidden");
+    }
+  });
+</script>
+</body>
+</html>

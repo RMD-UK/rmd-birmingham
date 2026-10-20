@@ -685,3 +685,15 @@ function initFirebase() {
     document.head.appendChild(s);
   } catch (e) {}
 })();
+
+// Site feedback tab (2026-10-19): loads js/feedback-widget.js on every page that uses this
+// config. Signed-in pages get a small "Feedback" tab that opens feedback.html already
+// pointing at the page; the script skips sign-in, public pages, forms and display screens.
+(function () {
+  try {
+    var s = document.createElement("script");
+    s.src = "/js/feedback-widget.js?v=20261019";
+    s.defer = true;
+    document.head.appendChild(s);
+  } catch (e) {}
+})();

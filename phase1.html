@@ -405,6 +405,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
       <div id="rolePick" class="rolepick hidden"></div>
       <div class="plain" id="plain"></div>
       <div id="msgs"></div>
+      <div id="viewTassInfo" class="hidden"></div>
       <div id="viewRegister">
         <div class="tools" id="tools"></div>
         <div class="rooms" id="rooms"></div>
@@ -517,7 +518,7 @@ auth.onAuthStateChanged(async user => {
     const sen = await isSeniorFaculty(user.email || "").catch(() => false);
     S.sen = sen; S.stu = stu;
     S.full = S.isDirector || stu || sen;
-    S.night = S.full || S.role === "faculty" || S.role === "assessor-faculty";   // can use the assessment night views
+    S.night = S.full || S.role === "faculty" || S.role === "assessor-faculty" || S.role === "assessor";   // can use the assessment night views
     if (!S.night) {
       // Assessment night team (e.g. Senior Instructors) and named extra assessors: email lists in config.
       try {
@@ -632,6 +633,7 @@ function renderSteps() {
 const ROLE_DEFS = {
   teach: [
     { id: "tinst", t: "Instructor", s: "Your room: register and ratings", ok: () => S.mine.length > 0, view: "register", jobs: [{ no: 6 }, { no: 7 }] },
+    { id: "tass", t: "Assessor", s: "Not in a room on these evenings", ok: () => S.night && S.mine.length === 0 && (!S.full || S.isDirector), view: "tassinfo", info: true, jobs: [] },
     { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }] },
     { id: "tscr", t: "Big screen", s: "Live register", ok: () => S.full, href: "register-live.html" }
   ],
@@ -646,7 +648,20 @@ const ROLE_DEFS = {
   plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
 };
 const DOOR_TITLE = { teach: "Teaching nights", assess: "Assessment night", plan: "Planning" };
-function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
+function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0 || S.night) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
+// Director-only register tools (Edit any date, Late after, Backfill, Clear a future week). Shown only to a real Director, and hidden when that Director is looking at the Instructor role, so the screen matches what an instructor sees.
+function dirToolsOn() { return !!S.isDirector && !(S.door === "teach" && S.drole === "tinst"); }
+// Feedback tab (js/feedback-widget.js) asks this for the part of the page the person is on.
+window.__fbCtx = function () {
+  try {
+    var rd = roleDef(), parts = [];
+    if (S.door) parts.push(DOOR_TITLE[S.door] || S.door);
+    if (rd) parts.push(rd.t);
+    if (S.view) parts.push("screen: " + S.view);
+    if (S.course) parts.push(S.course);
+    return parts.join(", ");
+  } catch (e) { return ""; }
+};
 function roleDef() { return S.door && S.drole ? (ROLE_DEFS[S.door] || []).find(r => r.id === S.drole) : null; }
 function doorJobs() { const r = roleDef(); return r && r.jobs ? r.jobs : null; }
 function dsave() { try { localStorage.setItem("rmd_p1_door", JSON.stringify({ uid: S.user && S.user.uid, door: S.door, role: S.drole })); } catch (e) {} }
@@ -656,7 +671,7 @@ function restoreDoor0() {
     const o = JSON.parse(localStorage.getItem("rmd_p1_door") || "null");
     if (!o || o.uid !== S.user.uid || !o.door || !doorAllowed(o.door)) return;
     S.door = o.door;
-    const r = (ROLE_DEFS[o.door] || []).find(x => x.id === o.role && x.ok() && x.view);
+    const r = (ROLE_DEFS[o.door] || []).find(x => x.id === o.role && x.ok() && x.view && !x.info);
     if (r) { S.drole = r.id; S.mode = r.mode || "all"; S.view = r.view; }
   } catch (e) {}
 }
@@ -666,7 +681,7 @@ function restoreDoor0() {
 function restoreDoor() {
   restoreDoor0();
   if (S.door || (location.hash || "").length > 1 || !doorAllowed("teach")) return;
-  const r = (ROLE_DEFS.teach || []).find(x => x.ok() && x.view);
+  const r = (ROLE_DEFS.teach || []).find(x => x.ok() && x.view && !x.info);
   if (r) { S.door = "teach"; S.drole = r.id; S.mode = r.mode || "all"; S.view = r.view; dsave(); }
 }
 function renderDoors() {
@@ -686,16 +701,18 @@ function renderDoors() {
 function pickingRole() { return !!(S.door && S.door !== "plan" && !S.drole); }
 function chooseDoor(d) {
   S.door = d || ""; S.drole = ""; S.mode = "all";
+  const wasInfo = S.view === "tassinfo";
+  if (wasInfo) S.view = S.full || S.mine.length ? "register" : "runner";
   if (S.door === "plan") { const r = ROLE_DEFS.plan[0]; S.drole = r.id; if (S.view !== "alloc" && S.view !== "setup") S.view = r.view; }
   dsave(); renderSteps(); showView();
-  if (S.door === "plan") enterView();
+  if (S.door === "plan" || (wasInfo && !S.door)) enterView();
 }
 // The two big screens open on the course chosen here (they also default to the current real course on their own).
 function bigHref(h) { return /-live\.html$/.test(h || "") && S.course ? h + "?course=" + encodeURIComponent(S.course) : h; }
 function chooseRole(id) {
   const r = (ROLE_DEFS[S.door] || []).find(x => x.id === id); if (!r) return;
   if (r.href) { window.location.href = bigHref(r.href); return; }
-  S.drole = id; S.mode = r.mode || "all"; dsave(); renderSteps();
+  S.drole = id; S.mode = r.mode || "all"; if (!r.info) dsave(); renderSteps();
   setView(r.view);
 }
 
@@ -749,8 +766,21 @@ async function selectCourse(name) {
   if (NIGHT_VIEWS.includes(S.view)) { attachNight(); loadNight(); }
   enterView();
 }
+// 2026-10-19 (Jon): an assessor with no room has nothing to use on the teaching evenings, so say so and point them at the test course.
+function renderTassInfo() {
+  const t = (S.courseDates || []).find(isTestCourse);
+  $("viewTassInfo").innerHTML = '<div class="card"><h3 style="margin:0 0 8px;font-size:20px;color:var(--pur)">Nothing for you on the teaching evenings</h3>' +
+    '<p style="margin:0 0 10px;font-size:17px;line-height:1.55">You are an assessor, not an instructor, and you are not allocated to a room. So there is no register and there are no resources for you on these evenings.</p>' +
+    '<p style="margin:0 0 14px;font-size:17px;line-height:1.55">Your job is the assessment night. To get used to the assessor screen beforehand, use the test course' + (t ? "." : ". Ask the Course Director to switch it on.") + '</p>' +
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
+    (t ? '<button type="button" id="tassTest" style="border:0;border-radius:12px;padding:12px 18px;background:var(--pur);color:#fff;font-size:16px;font-weight:800">Open the test course</button>' : "") +
+    '<button type="button" id="tassNight" style="border:2px solid var(--line);border-radius:12px;padding:10px 16px;background:#fff;color:var(--pur);font-size:15px;font-weight:700">Go to the assessment night</button></div></div>';
+  const bt = $("tassTest"); if (bt) bt.onclick = async () => { await selectCourse(t.name); chooseDoor("assess"); };
+  $("tassNight").onclick = () => chooseDoor("assess");
+}
 async function enterView() {
   showView();
+  if (S.view === "tassinfo") { renderTassInfo(); return; }
   if (["alloc", "runner", "assessor", "retest"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
   else if (["retest", "runner", "assessor"].includes(S.view)) renderNight();
@@ -935,6 +965,7 @@ function render() {
   // messages
   let msgs = "";
   if (lastErr) msgs += `<div class="msg err">${esc(lastErr)}</div>`;
+  if (S.editAny && !dirToolsOn()) S.editAny = false;
   if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
   if (!dates) msgs += onCatchup() ? `<div class="msg ok"><b>${esc(S.course)}</b> is an assessment-only night. There are no teaching evenings, so there is no register. Use <b>Assessment night</b> above.</div>` : `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
   $("msgs").innerHTML = msgs;
@@ -944,7 +975,7 @@ function render() {
   let tools = "";
   if (S.full && rooms.length) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
   else if (!S.full && rooms.length > 1) tools += `<label class="tg">Room <select id="roomSel">${rooms.map(r => `<option value="${esc(r)}"${r === S.room ? " selected" : ""}>${esc(r)}</option>`).join("")}</select></label>`;
-  if (S.isDirector) {
+  if (dirToolsOn()) {
     tools += `<label class="tg"><input type="checkbox" id="editAny"${S.editAny ? " checked" : ""}> Edit any date (Director)</label>`;
     tools += `<label class="tg">Late after <input type="time" id="lateIn" value="${esc(S.lateAfter)}" style="padding:6px 8px;border:2px solid var(--line);border-radius:8px;width:120px"></label><button class="btn sm" id="lateSave" type="button">Save</button>`;
     tools += `<button class="btn sm" id="backfillBtn" type="button">Backfill from spreadsheet</button>`;
@@ -1127,6 +1158,7 @@ async function setArrival(n, undo) {
   } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
 }
 async function saveLateAfter() {
+  if (!dirToolsOn()) return;
   const v = ($("lateIn") || {}).value;
   if (!/^\d\d:\d\d$/.test(v || "")) { toast("Enter a time like 18:45.", true); return; }
   S.lateAfter = v;
@@ -1185,7 +1217,7 @@ function parseBackfill(text) {
 }
 // Clear a future week (2026-10-17, Jon: week 2 marks were entered before the date). Director only, and only for a week whose date has not come yet.
 function openClearWeek() {
-  if (!S.isDirector) return;
+  if (!dirToolsOn()) return;
   const dates = teachDates(S.course) || [];
   const fut = [1, 2].filter(n => dates[n - 1] && weekState(dates[n - 1]) === "future");
   const marked = n => S.cands.filter(c => entryOf(c.id, n));
@@ -1233,7 +1265,7 @@ function openClearWeek() {
   };
 }
 function openBackfill() {
-  if (!S.isDirector) return;
+  if (!dirToolsOn()) return;
   bf.plan = null;
   $("overlay").innerHTML = `<div class="modalbg" id="bfbg"><div class="modal" role="dialog" aria-modal="true">` +
     `<h3>Backfill from a spreadsheet</h3>` +
@@ -1332,9 +1364,10 @@ async function ensureRooms() {
 }
 function showView() {
   const picking = pickingRole();
-  [["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewSetup", "setup"]]
-    .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v));
-  $("plain").classList.toggle("hidden", picking); $("msgs").classList.toggle("hidden", picking);
+  const info = !picking && S.view === "tassinfo" && S.drole === "tass";
+  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewSetup", "setup"]]
+    .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v || (v === "tassinfo" && !info)));
+  $("plain").classList.toggle("hidden", picking || info); $("msgs").classList.toggle("hidden", picking || info);
   renderDoors();
 }
 async function setView(v) {
@@ -1467,8 +1500,8 @@ function renderAAuto(st) {
   if (S.isDirector && A.mailFor !== S.course) probeMail();
   const forced = !!A.force && gi.blocks.length > 0;
   const step1Clear = gi.blocks.length === 0, step2Open = step1Clear || forced;
-  const reviewed = rv.has && rv.ok && A.reviewSig === rv.sig;
-  const step4Open = rv.has && rv.ok && reviewed;
+  const reviewed = rv.has && rv.ok;   // 2026-10-19 (Jon): no manual tick for ~200 slots. The page checks the schedule itself and blocks step 4 if anything is wrong.
+  const step4Open = rv.has && rv.ok;
   const icon = s => s === "ok" ? "OK" : s === "warn" ? "Check" : "Fix";
   let h = stepHd(1, "Check the course is ready", step1Clear ? (gi.warns.length ? "Ready, with notes" : "Ready") : gi.blocks.length + " to fix", step1Clear ? "ok" : "bad") +
     gi.G.map(g => `<div class="gt ${g.state}"><span class="gts">${icon(g.state)}</span><div><b>${esc(g.title)}</b><div class="gtd">${esc(g.detail)} ${g.fix}</div>` +
@@ -1495,13 +1528,12 @@ function renderAAuto(st) {
   h += `</div>`;
 
   // 3 review
-  h += stepHd(3, "Check the schedule", !rv.has ? "Locked" : (reviewed ? "Checked" : (rv.ok ? "Your check needed" : "Fix first")), !rv.has ? "" : (reviewed ? "ok" : (rv.ok ? "open" : "bad")));
+  h += stepHd(3, "Check the schedule", !rv.has ? "Locked" : (reviewed ? "Checked" : "Fix first"), !rv.has ? "" : (reviewed ? "ok" : "bad"));
   h += `<div class="stbody${rv.has ? "" : " locked"}">`;
   if (!rv.has) h += `<div class="lockmsg">Locked until people have slots.</div>`;
   else {
-    h += `<div style="font-size:14px">${st.slotted.length} people have a slot, ${rv.first} to ${rv.last}, across ${rv.rooms} rooms. Open "Assessment schedule" below and look through it.</div>`;
+    h += `<div style="font-size:14px">${st.slotted.length} people have a slot, ${rv.first} to ${rv.last}, across ${rv.rooms} rooms. ${rv.ok ? "Checked automatically: nobody has two slots in one room and time, nobody absent has a slot, every slot is a normal room and time, and every eligible person has one. The full list is in &quot;Assessment schedule&quot; below if you want to look." : "Fix the red items below before emailing."}</div>`;
     h += rv.issues.map(x => `<div class="msg err" style="margin:8px 0 0">${esc(x)}</div>`).join("");
-    if (S.isDirector) h += `<label class="tg" style="margin-top:10px"><input type="checkbox" id="aReviewed"${reviewed ? " checked" : ""}${rv.ok ? "" : " disabled"}> I have looked through the schedule and it is right</label><div class="hint">Changing anyone's slot afterwards clears this tick.</div>`;
   }
   h += `</div>`;
 
@@ -1526,7 +1558,6 @@ function renderAAuto(st) {
   if ($("aForce")) $("aForce").onchange = e => { A.force = e.target.checked; renderAlloc(); };
   if ($("aGo")) $("aGo").onclick = allocateAll;
   if ($("aClear")) $("aClear").onclick = clearAll;
-  if ($("aReviewed")) $("aReviewed").onchange = e => { A.reviewSig = e.target.checked ? rv.sig : null; renderAlloc(); };
   if ($("aMailGo")) $("aMailGo").onclick = emailPending;
   if ($("aMailRe")) $("aMailRe").onclick = () => { A.mail = "checking"; probeMail(); renderAlloc(); };
 }
@@ -1658,7 +1689,7 @@ function slotKey(c) { return (assessDate() || "") + "|" + (c.assessmentRoom || "
 function pendingMail() { return S.cands.filter(c => c.email && hasSlot(c) && c.assessmentEmailedSlot !== slotKey(c) && !(attemptOf(c) !== 2 && c.rap !== true && c.assessmentAbsent !== true && eligBlocked(c))); }   // never email a slot to someone absent in a teaching week
 async function emailPending() {
   if (A.busy || !S.isDirector) return;
-  { const st0 = stats(), rv0 = reviewInfo(st0); if (!(rv0.ok && A.reviewSig === rv0.sig && A.mail === "ok")) { toast("Check the schedule (step 3) and the email sender first.", true); return; } }
+  { const st0 = stats(), rv0 = reviewInfo(st0); if (!(rv0.ok && A.mail === "ok")) { toast("Check the schedule (step 3) and the email sender first.", true); return; } }
   const list = pendingMail(); if (!list.length) return;
   const ok = await askSheet("Email " + list.length + " people their time?", `${Math.min(list.length, MAIL_DAY_LIMIT)} are sent now${list.length > MAIL_DAY_LIMIT ? ` and ${list.length - MAIL_DAY_LIMIT} are queued for 06:00 tomorrow` : ""}. Each person gets their own time and room. Do not move slots while emails are queued.`, "Send emails");
   if (!ok) return;
