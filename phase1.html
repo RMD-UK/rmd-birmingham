@@ -378,6 +378,36 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
 .rolepick [data-role=fac]{grid-column:3;grid-row:1}.rolepick [data-role=ascr]{grid-column:3;grid-row:2}}.rolepick button:nth-child(6){background:#3b4a63}
 .rolepick button:focus-visible,.doorbar button:focus-visible,.rolebar .chg:focus-visible{outline:3px solid var(--org);outline-offset:2px}
 .stepcard.pin{border-color:var(--pur)}.stepcard.pin .no{background:var(--pur)}
+/* v26 check-in states (Jon, 20 Oct): Not here, Arrived, Collected, Being assessed, Assessed. Words as well as colour. */
+.nchip.s-nothere{background:#E9ECF1;color:#5D6B80}
+.nchip.s-late{background:var(--warnbg);color:var(--warn)}
+.nchip.s-arrived{background:#DCEBFF;color:#0B4A99}
+.nchip.s-collected{background:var(--okbg);color:var(--ok)}
+.nchip.s-being{background:var(--purtint);color:var(--pur)}
+.nchip.s-assessed{background:#EEF1F6;color:var(--mut)}
+.arow.st-nothere,.rrow.st-nothere{background:#F3F4F7}
+.arow.st-nothere .rn,.arow.st-nothere .rt,.rrow.st-nothere .rn,.rrow.st-nothere .rt{color:#8793A6}
+.arow.st-arrived,.rrow.st-arrived{background:#EEF5FF}
+.arow.st-collected{background:#F1FAF4;cursor:pointer}
+.arow.st-being,.rrow.st-being{background:var(--purtint)}
+.arow .rs,.rrow .rs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.rrow.act{grid-template-columns:58px minmax(0,1fr) auto auto}
+.ract{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.arow.st-collected:hover{background:#E6F6EC}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px;margin:6px 0 14px}
+.dtile{text-align:left;border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 12px;color:var(--ink);display:flex;flex-direction:column;gap:2px;min-height:58px}
+.dtile b{font-size:16px;font-weight:800}
+.dtile span{font-size:12.5px;color:var(--mut);font-weight:600}
+.dtile:hover{border-color:var(--pur);background:var(--purtint)}
+.dtile.late{background:var(--warnbg);border-color:#E8C27A}
+.dtile.blocked{background:var(--badbg);border-color:#E7B4AF}
+.dtile{position:relative}
+.dtile[data-l]::before{content:attr(data-l);position:absolute;top:6px;right:9px;font-size:11px;font-weight:800;color:var(--pur);background:var(--purtint);border-radius:6px;padding:1px 6px}
+.dhead{font-size:13px;font-weight:800;color:var(--ink);margin:12px 0 2px}
+.dhead small{display:block;font-weight:600;color:var(--mut);font-size:12px;margin-top:2px}
+.dundo{position:sticky;top:8px;z-index:6;display:flex;gap:10px;align-items:center;justify-content:space-between}
+#dQ{width:100%;max-width:420px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:16px}
+@media (max-width:900px){.rrow.act{grid-template-columns:50px minmax(0,1fr)}.rrow.act .ract{grid-column:2;justify-content:flex-start}}
 </style>
 </head>
 <body>
@@ -432,6 +462,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
       <div id="viewSetup" class="hidden"></div>
       <div id="viewRunner" class="hidden"></div>
       <div id="viewAssessor" class="hidden"></div>
+      <div id="viewCheckin" class="hidden"></div>
     </section>
   </div>
 </div>
@@ -539,7 +570,7 @@ auth.onAuthStateChanged(async user => {
 
     const snap = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", user.uid).get();
     S.mine = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
-    S.run = S.night;   // v25b (19 Oct): same as v24 until the rules and getAssessmentNight are widened. After that deploy change back to: S.run = S.night || S.mine.length > 0;
+    S.run = S.night || S.mine.length > 0;   // v26 (20 Oct): rules v25 and getAssessmentNight v25 are deployed, so room instructors can use the runner view (Collect, Not answering).
 
     if (!S.night && !S.mine.length) {
       $("authMsg").textContent = "This page is for instructors with a room on a Phase 1 course. You are not on a room team yet. Ask the Course Director if this looks wrong.";
@@ -605,7 +636,8 @@ function renderSteps() {
     { no: 9, t: "Assessment setup", s: "Assessors and mark sheets", view: "setup", who: "director" },
     { no: 10, t: "Readiness check", s: "Ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
     { no: 11, t: "Register live screen", s: "Big screen: teaching night", href: "register-live.html", who: "full" },
-    { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" }
+    { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" },
+    { no: 13, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
   let list = jobs.filter(ok), pin = "";
@@ -639,10 +671,11 @@ const ROLE_DEFS = {
   ],
   assess: [
     { id: "runner", t: "Runner / instructor", s: "Who is due, who is done", ok: () => S.run, view: "runner", jobs: [{ no: 4 }] },
+    { id: "desk", t: "Check-in station", s: "Arrivals: check people in", ok: () => S.full, view: "checkin", jobs: [{ no: 13 }, { no: 4, s: "Runners: who has been collected" }] },
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Give RAP and third sits a room" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }] },
+    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 13 }, { no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" }
   ],
   plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
@@ -781,9 +814,9 @@ function renderTassInfo() {
 async function enterView() {
   showView();
   if (S.view === "tassinfo") { renderTassInfo(); return; }
-  if (["alloc", "runner", "assessor", "retest"].includes(S.view)) await ensureRooms();
+  if (["alloc", "runner", "assessor", "retest", "checkin"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
-  else if (["retest", "runner", "assessor"].includes(S.view)) renderNight();
+  else if (["retest", "runner", "assessor", "checkin"].includes(S.view)) renderNight();
   else if (S.view === "setup") await enterSetup();
   else render();
 }
@@ -1365,7 +1398,7 @@ async function ensureRooms() {
 function showView() {
   const picking = pickingRole();
   const info = !picking && S.view === "tassinfo" && S.drole === "tass";
-  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewSetup", "setup"]]
+  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewSetup", "setup"]]
     .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v || (v === "tassinfo" && !info)));
   $("plain").classList.toggle("hidden", picking || info); $("msgs").classList.toggle("hidden", picking || info);
   renderDoors();
@@ -1374,6 +1407,7 @@ async function setView(v) {
   if ((v === "alloc" || v === "retest") && !S.full) return;
   if (v === "runner" && !S.run) return;
   if (v === "assessor" && !S.night) return;
+  if (v === "checkin" && !S.full) return;
   if (v === "setup" && !S.isDirector) return;
   S.view = v; renderSteps();
   if (NIGHT_VIEWS.includes(v)) { if (N.course !== S.course) attachNight(); loadNight(); }
@@ -1789,10 +1823,11 @@ document.addEventListener("DOMContentLoaded", () => { const s = document.getElem
 //     and by someone other than the attempt 1 assessor
 //   - attempt 3 and above only by Senior Faculty or an extra named assessor
 // ════════════════════════════════════════════════════════════════════════════
-const NIGHT_VIEWS = ["retest", "runner", "assessor"];
+const NIGHT_VIEWS = ["retest", "runner", "assessor", "checkin"];
 const N = {
   course: null, cands: [], results: {}, named: [], team: [], form: {}, err: "", resErr: "", usingFallback: false,
-  room: null, open: new Set(), fullRoom: null, unsub: null, poll: null, formOpen: false, loadedAt: 0, present: [], unsubP: null
+  room: null, open: new Set(), fullRoom: null, unsub: null, poll: null, formOpen: false, loadedAt: 0, present: [], unsubP: null,
+  gate: false, unsubG: null, gateAsk: false, confirmCollect: null, dq: "", dtab: "due", undoBar: null
 };
 
 function nres(id) { return N.results[id] || {}; }
@@ -2007,6 +2042,9 @@ function attachNight() {
   N.unsubP = db.collection("stage1_night_present").doc(S.course).onSnapshot(d => {
     N.present = d.exists ? (d.data().present || []) : []; renderNight();
   }, () => { /* not readable yet (rules not deployed): treat as nobody marked */ });
+  if (N.unsubG) { try { N.unsubG(); } catch (e) {} N.unsubG = null; }
+  N.gate = false;
+  N.unsubG = db.collection("stage1_checkin").doc(S.course).onSnapshot(d => { N.gate = !!(d.exists && d.data().on === true); renderNight(); }, () => { /* not readable yet (rules not deployed): treat as off */ });
   N.unsub = db.collection("stage1_assessments").where("course", "==", S.course).onSnapshot(snap => {
     N.results = {}; snap.forEach(d => { N.results[d.id] = d.data(); }); N.resErr = ""; renderNight();
   }, err => {
@@ -2014,12 +2052,13 @@ function attachNight() {
     renderNight();
   });
   if (N.poll) clearInterval(N.poll);
-  N.poll = setInterval(() => { if (!N.formOpen && ["retest", "runner", "assessor"].includes(S.view)) loadNight(); }, 30000);
+  N.poll = setInterval(() => { if (!N.formOpen && ["retest", "runner", "assessor", "checkin"].includes(S.view)) loadNight(); }, 30000);
 }
 function renderNight() {
   if (S.view === "retest") renderRetest();
   else if (S.view === "runner") renderRunner();
   else if (S.view === "assessor") renderAssessor();
+  else if (S.view === "checkin") renderCheckin();
 }
 // Passed with red steps (2026-10-15, Jon): every time an assessor marks a part Pass although a step was red.
 // Read from the saved results, so it needs no extra collection and survives a reload.
@@ -2070,7 +2109,9 @@ function stateChips(c) {
     const o = a[k].outcome;
     out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${esc(outcomeShort(o, Number(k)))}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
   });
-  if (r.notThere && r.notThere.flag && !isDoneN(c)) out.push('<span class="nchip bad">Not there</span>');
+  { const lk = keys[keys.length - 1];
+    if (lk && a[lk].outcome === "refer" && !recordedAt(c.id, effAttempt(c)) && !passedAtKey(c.id)) out.push('<span class="nchip refer">See RMD faculty</span>'); }
+  if (r.notThere && r.notThere.flag && !isDoneN(c)) { const cn = flowOf(c).calls || 0; out.push('<span class="nchip bad">Not there' + (cn > 1 ? " (called " + cn + " times)" : "") + '</span>'); }
   if (!isDoneN(c) && needsAttend(effAttempt(c))) {
     const e = eligOf(c);
     if (e && e.state === "absent") out.push(e.ov ? '<span class="nchip claim">Director override</span>' : '<span class="nchip bad">Not eligible</span>');
@@ -2080,7 +2121,220 @@ function stateChips(c) {
   return out.join("");
 }
 
-// ── Runner view (view only; tap a name to flag "not there") ─────────────────
+// ── Check-in (v26, 2026-10-20, Jon) ─────────────────────────────────────────
+// Five states for a candidate's CURRENT attempt: Not here, Arrived, Collected, Being assessed, Assessed.
+//   Not here      nothing recorded yet for this attempt
+//   Arrived       checked in at the check-in station (staff)
+//   Collected     the runner (or an assessor using "Collect now") has brought them to the room
+//   Being assessed an assessor has taken them on (the existing "claim"; released with Put back)
+//   Assessed      the result has been saved from the assessment form (existing attempts record)
+// Arrived and Collected are stored per attempt on stage1_assessments/{id}.flow["<attempt>"]
+//   {arrived:{by,byName,at}|null, collected:{by,byName,at,override}|null, calls:n}
+// so a retest starts again at Not here and attempt 1 stays on file. Not answering also sets the older notThere flag.
+// "Check-in required tonight" is stage1_checkin/{course}.on (Directors set it; OFF by default). While OFF the
+// assessor view behaves exactly as before: everyone is selectable. The runner and station screens always work.
+const ST_LABEL = { nothere: "Not here", arrived: "Arrived", collected: "Collected", being: "Being assessed", assessed: "Assessed" };
+function flowOf(c, att) { const f = nres(c.id).flow || {}; return f[String(att == null ? effAttempt(c) : att)] || {}; }
+function cstate(c) {
+  const att = effAttempt(c);
+  if (passedAtKey(c.id) || recordedAt(c.id, att)) return "assessed";
+  const cl = nres(c.id).claim; if (cl && cl.uid) return "being";
+  const f = flowOf(c, att);
+  return f.collected ? "collected" : f.arrived ? "arrived" : "nothere";
+}
+function hmMin(hm) { const m = /^(\d{1,2}):(\d{2})/.exec(hm || ""); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+function isLate(c) {   // more than 10 minutes past the slot on the night itself, still not here
+  if (effAttempt(c) >= 2) return false;   // a retest has no slot time of its own
+  const now = nightTimeNow(); if (!now || !c.assessmentSlot) return false;
+  const a = hmMin(now), b = hmMin(c.assessmentSlot);
+  return a != null && b != null && a - b > 10;
+}
+function stChip(c) {
+  const st = cstate(c);
+  if (st === "nothere" && isLate(c)) return '<span class="nchip s-late">Not here, late</span>';
+  return `<span class="nchip s-${st}">${ST_LABEL[st]}</span>`;
+}
+function whoNow() { return { by: S.user.uid, byName: S.myName, at: new Date().toISOString() }; }
+function permMsg(err) { return "Not saved: " + (err && err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : (err && err.message) || err); }
+async function flowWrite(c, patch, msg, extra) {
+  const att = effAttempt(c);
+  const payload = Object.assign({ course: S.course, candidateName: c.name || "", flow: { [String(att)]: patch }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, extra || {});
+  if ((patch.arrived || patch.collected) && !(extra && "notThere" in extra)) payload.notThere = null;
+  try { await db.collection("stage1_assessments").doc(c.id).set(payload, { merge: true }); if (msg) toast(msg); return true; }
+  catch (err) { toast(permMsg(err), true); return false; }
+}
+function deskBlocked(c) {
+  const att = effAttempt(c);
+  if (!needsAttend(att)) return false;
+  const e = eligOf(c); return !!(e && e.state === "absent" && !e.ov);
+}
+function deskExpected(c) { return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || !!nres(c.id).flow); }
+function checkIn(c) {
+  if (deskBlocked(c)) { toast(c.name + " is not eligible tonight. See RMD faculty.", true); return; }
+  if (!deskExpected(c)) { toast(c.name + " has no slot tonight. See RMD faculty.", true); return; }
+  return flowWrite(c, { arrived: whoNow() }, c.name + " checked in").then(ok => {
+    if (ok && S.view === "checkin") {
+      N.undoBar = { id: c.id, name: c.name, until: Date.now() + 6000 };
+      renderDeskUndo();
+      setTimeout(() => { if (N.undoBar && N.undoBar.id === c.id && N.undoBar.until <= Date.now() + 50) { N.undoBar = null; renderDeskUndo(); } }, 6100);
+    }
+    return ok;
+  });
+}
+function doAct(act, id) {
+  const c = N.cands.find(x => x.id === id); if (!c) return;
+  if (act === "checkin") return checkIn(c);
+  if (act === "undo") { N.undoBar = null; renderDeskUndo(); return flowWrite(c, { arrived: null, collected: null }, c.name + ": check-in undone"); }
+  if (act === "collect") return flowWrite(c, { collected: Object.assign(whoNow(), { override: false }) }, c.name + " collected");
+  if (act === "collectnow") { N.confirmCollect = id; return renderNight(); }
+  if (act === "collectno") { N.confirmCollect = null; return renderNight(); }
+  if (act === "collectyes") { N.confirmCollect = null; return flowWrite(c, { collected: Object.assign(whoNow(), { override: true }) }, c.name + " collected by you, not by the runner"); }
+  if (act === "putback") return flowWrite(c, { collected: null }, c.name + " put back to Arrived");
+  if (act === "noans") {
+    const n = (flowOf(c).calls || 0) + 1;
+    return flowWrite(c, { calls: n }, c.name + " not answering (called " + n + (n === 1 ? " time)" : " times)"), { notThere: Object.assign({ flag: true }, whoNow()) });
+  }
+  if (act === "clear") return toggleNotThere(id);
+  if (act === "release") return releaseCand(id);
+}
+function bindActs(root) {
+  root.querySelectorAll("[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); doAct(b.dataset.act, b.dataset.id); });
+  root.querySelectorAll("[data-take]").forEach(b => b.onclick = e => { e.stopPropagation(); startAssess(b.dataset.take); });
+}
+// Taking someone on is one transaction, so two assessors tapping the same name cannot both get them.
+async function takeClaim(c) {
+  const ref = db.collection("stage1_assessments").doc(c.id);
+  const claim = { uid: S.user.uid, name: S.myName, at: new Date().toISOString() };
+  const doc = { course: S.course, candidateName: c.name || "", claim, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  if (typeof db.runTransaction === "function") {
+    return db.runTransaction(async tx => {
+      const s = await tx.get(ref), cur = s.exists ? s.data().claim : null;
+      if (cur && cur.uid && cur.uid !== S.user.uid) throw new Error("TAKEN:" + (cur.name || "Another assessor"));
+      tx.set(ref, doc, { merge: true });
+    });
+  }
+  await ref.set(doc, { merge: true });
+}
+function takenMsg(err, c) { const m = /^TAKEN:(.*)$/.exec((err && err.message) || ""); return m ? m[1] + " has taken " + firstNameOf(c) + " on." : permMsg(err); }
+async function startAssess(id) {
+  const c = N.cands.find(x => x.id === id); if (!c) return;
+  const cl = nres(id).claim, mine = cl && cl.uid === S.user.uid;
+  const chk = canAssessCandidate(c, formAttemptOf(c)); if (!chk.ok) { toast(chk.why, true); return; }
+  if (N.gate && !mine && cstate(c) !== "collected") { toast(firstNameOf(c) + " has not been collected yet.", true); return; }
+  if (!mine) { try { await takeClaim(c); } catch (err) { toast(takenMsg(err, c), true); return; } }
+  openForm(id);
+}
+// ── Check-in station (staff: Directors, Student / Senior Faculty, Faculty) ──
+function renderCheckin() {
+  if (!S.course) return;
+  const d = assessDate(), v = $("viewCheckin");
+  $("msgs").innerHTML = nightBanner();
+  $("plain").innerHTML = '<span class="lbl">Check-in station</span>' + `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Tap a name to check that person in once you have seen their Student ID, or type a name to search. Runners then collect them from the atrium and assessors take them from the room list.`;
+  if (!$("dQ")) {
+    v.innerHTML = '<div id="dUndo"></div><div id="dGate"></div><div id="dSum"></div><div class="card"><input type="search" id="dQ" placeholder="Type a name to find anyone expected tonight..." autocomplete="off"><div class="rchips" id="dTabs" style="margin-top:10px"></div><div id="dList"></div></div>';
+    $("dQ").oninput = () => { N.dq = $("dQ").value; renderDeskList(); };
+  }
+  renderDeskUndo(); renderDeskGate(); renderDeskSum(); renderDeskList();
+}
+function renderDeskGate() {
+  const g = $("dGate"); if (!g) return;
+  const state = `<span class="nchip ${N.gate ? "s-collected" : "s-nothere"}">${N.gate ? "ON" : "OFF"}</span>`;
+  const txt = N.gate
+    ? "Assessors can only pick people who have been collected. If someone is in the atrium but not yet collected, an assessor can use Collect now."
+    : "Assessors see everyone in their room and can pick anyone, exactly as before. Turn this on when the check-in station is running.";
+  if (!S.isDirector) { g.innerHTML = `<div class="msg ${N.gate ? "ok" : "warn"}"><b>Check-in required tonight: ${N.gate ? "ON" : "OFF"}.</b> ${txt} A Director turns this on or off.</div>`; return; }
+  const ask = N.gateAsk
+    ? `<div class="msg warn" style="margin:8px 0 0">${N.gate ? "Turn it off? Assessors will see and can pick everyone again." : "Turn it on? From now on assessors can only pick people who have been collected. Check people in first."}</div><div class="row2" style="margin-top:8px"><button type="button" class="btn pri" id="dGateYes">Yes, turn ${N.gate ? "off" : "on"}</button><button type="button" class="btn" id="dGateNo">No</button></div>`
+    : `<div class="row2" style="margin-top:8px"><button type="button" class="btn${N.gate ? "" : " pri"}" id="dGateBtn">${N.gate ? "Turn off" : "Turn on"}</button></div>`;
+  g.innerHTML = `<div class="card"><h3 style="margin:0 0 4px">Check-in required tonight: ${state}</h3><div class="hint" style="margin:0">${txt}</div>${ask}</div>`;
+  const b = $("dGateBtn"); if (b) b.onclick = () => { N.gateAsk = true; renderDeskGate(); };
+  const n = $("dGateNo"); if (n) n.onclick = () => { N.gateAsk = false; renderDeskGate(); };
+  const y = $("dGateYes"); if (y) y.onclick = async () => {
+    N.gateAsk = false;
+    try { await db.collection("stage1_checkin").doc(S.course).set({ course: S.course, on: !N.gate, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: S.myName || S.user.uid }, { merge: true }); toast("Check-in required tonight: " + (!N.gate ? "ON" : "OFF")); }
+    catch (err) { toast(permMsg(err), true); }
+    renderDeskGate();
+  };
+}
+function deskCounts() {
+  const k = { nothere: 0, arrived: 0, collected: 0, being: 0, assessed: 0 };
+  N.cands.filter(deskExpected).forEach(c => { k[cstate(c)]++; });
+  return k;
+}
+function renderDeskSum() {
+  const s = $("dSum"); if (!s) return;
+  const k = deskCounts();
+  s.innerHTML = '<div class="sumstrip">' + nightTile(k.nothere, "Not here") + nightTile(k.arrived, "Arrived") + nightTile(k.collected, "Collected") + nightTile(k.being, "Being assessed") + nightTile(k.assessed, "Assessed") + "</div>";
+}
+function deskRow(c) {
+  const st = cstate(c), att = effAttempt(c), id = esc(c.id), noSlot = !hasSlot(c);
+  let acts = "", extra = "";
+  if (st === "nothere") {
+    if (deskBlocked(c)) extra = '<span class="nchip bad">See RMD faculty</span>';
+    else if (!deskExpected(c)) extra = '<span class="nchip bad">No slot: see RMD faculty</span>';
+    else acts = `<button type="button" class="btn sm pri" data-act="checkin" data-id="${id}">Check in</button>`;
+  } else if (st === "arrived") {
+    acts = `<button type="button" class="btn sm" data-act="undo" data-id="${id}">Undo</button>` + (noSlot || att >= 2 ? `<button type="button" class="btn sm pri" data-act="collect" data-id="${id}">Collected</button>` : "");
+  } else if (st === "collected") {
+    acts = `<button type="button" class="btn sm" data-act="putback" data-id="${id}">Put back</button>`;
+  }
+  const sub = [c.assessmentRoom, c.degree].filter(Boolean).join(" · ");
+  return `<div class="rrow act st-${st}${st === "assessed" ? " done" : ""}"><span class="rt">${esc(c.assessmentSlot || "-")}</span>` +
+    `<span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>` +
+    `<span class="rs">${stChip(c)}${stateChips(c)}${extra}</span><span class="ract">${acts}</span></div>`;
+}
+function surnameOf(c) { const p = String(c.name || "").trim().split(/\s+/); return (p[p.length - 1] || "").toLowerCase(); }
+function bySurname(a, b) { return surnameOf(a).localeCompare(surnameOf(b), "en") || String(a.name).localeCompare(String(b.name), "en"); }
+// Who is due at the desk: not yet checked in, first sit with a slot. Candidates arrive about 30 minutes before their slot,
+// so "due" means a slot within the next hour (anyone already overdue stays on the grid until they arrive).
+function deskWindow() { const nm = hmMin(nightTimeNow()); return nm == null ? null : nm + 60; }
+function deskDue() {
+  const lim = deskWindow();
+  return N.cands.filter(c => deskExpected(c) && cstate(c) === "nothere" && effAttempt(c) < 2 && hasSlot(c) && (lim == null || (hmMin(c.assessmentSlot) != null && hmMin(c.assessmentSlot) <= lim))).sort(bySurname);
+}
+function deskNoSlot() { return N.cands.filter(c => deskExpected(c) && cstate(c) === "nothere" && (effAttempt(c) >= 2 || !hasSlot(c))).sort(bySurname); }
+function deskTile(c, letter) {
+  const blocked = deskBlocked(c), late = isLate(c), att = effAttempt(c);
+  const bits = [c.assessmentSlot && att < 2 ? c.assessmentSlot : "", att >= 2 ? "Attempt " + att : "", c.degree || "", late ? "late" : "", blocked ? "See RMD faculty" : ""].filter(Boolean);
+  return `<button type="button" class="dtile${late ? " late" : ""}${blocked ? " blocked" : ""}"${letter ? ` data-l="${esc(letter)}"` : ""} data-act="checkin" data-id="${esc(c.id)}"><b>${esc(c.name)} ${c.rap ? RAPSVG : ""}</b><span>${esc(bits.join(" · "))}</span></button>`;
+}
+function deskGrid(list) {
+  let h = '<div class="dgrid">', cur = "";
+  list.forEach(c => { const l = (surnameOf(c)[0] || "?").toUpperCase(); h += deskTile(c, l !== cur ? l : ""); cur = l; });
+  return h + "</div>";
+}
+function renderDeskUndo() {
+  const u = $("dUndo"); if (!u) return;
+  const b = N.undoBar;
+  if (!b || b.until < Date.now()) { u.innerHTML = ""; return; }
+  u.innerHTML = `<div class="msg ok dundo"><span><b>${esc(b.name)}</b> checked in.</span><button type="button" class="btn sm" data-act="undo" data-id="${esc(b.id)}">Undo</button></div>`;
+  bindActs(u);
+}
+function renderDeskList() {
+  const list = $("dList"), tabs = $("dTabs"); if (!list) return;
+  const q = normId(N.dq || ""), tab = N.dtab || "due";
+  const exp = N.cands.filter(deskExpected), k = deskCounts();
+  const due = deskDue(), ns = deskNoSlot();
+  const T = [["due", "Due now", due.length + ns.length], ["nothere", "Not here yet", k.nothere], ["atrium", "Arrived", k.arrived], ["through", "Collected or with an assessor", k.collected + k.being], ["all", "Everyone", exp.length]];
+  tabs.innerHTML = T.map(t => `<button type="button" class="rchip${tab === t[0] && !q ? " on" : ""}" data-dtab="${t[0]}"><b>${esc(t[1])}</b><small>${t[2]}</small></button>`).join("");
+  tabs.querySelectorAll("[data-dtab]").forEach(b => b.onclick = () => { N.dtab = b.dataset.dtab; $("dQ").value = ""; N.dq = ""; renderDeskList(); });
+  if (!q && tab === "due") {
+    const lim = deskWindow();
+    let h = "";
+    if (ns.length) h += `<div class="dhead">Retests and people without a slot (${ns.length})</div>` + deskGrid(ns);
+    h += `<div class="dhead">Due to arrive (${due.length})<small>${lim == null ? "Not the assessment night on this clock, so everyone not yet checked in is shown." : "Slots up to " + String(Math.floor(lim / 60)).padStart(2, "0") + ":" + String(lim % 60).padStart(2, "0") + ", plus anyone already late. Anyone else: type their name."}</small></div>`;
+    h += due.length ? deskGrid(due) : `<div class="hint">${k.nothere ? "Nobody else is due yet. Type a name above to find an early arrival." : "Everyone expected has been checked in."}</div>`;
+    list.innerHTML = h; bindActs(list); return;
+  }
+  let rows;
+  if (q) rows = N.cands.filter(c => !c.absent && normId(c.name).includes(q));
+  else rows = exp.filter(c => { const st = cstate(c); return tab === "all" || (tab === "nothere" && st === "nothere") || (tab === "atrium" && st === "arrived") || (tab === "through" && (st === "collected" || st === "being")); });
+  rows.sort((a, b) => String(a.assessmentSlot || "99:99").localeCompare(String(b.assessmentSlot || "99:99")) || bySurname(a, b));
+  list.innerHTML = rows.length ? rows.map(deskRow).join("") : `<div class="hint">${q ? "Nobody matches that name." : "Nobody here yet."}</div>`;
+  bindActs(list);
+}
+
+// ── Runner view: Not answering, Collect, Put back (v26) ─────────────────────
 function slottedByRoom() {
   const by = {};
   N.cands.filter(c => !c.absent && c.assessmentRoom && c.assessmentSlot).forEach(c => { (by[c.assessmentRoom] = by[c.assessmentRoom] || []).push(c); });
@@ -2094,12 +2348,18 @@ function runnerRows(list, big) {
   const now = nightTimeNow();
   const open = list.filter(c => !isDoneN(c)), done = list.filter(isDoneN);
   const row = c => {
-    const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneN(c);
-    const due = !d && !flagged && now && c.assessmentSlot <= now;
+    const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneN(c), st = cstate(c), id = esc(c.id);
+    const due = !d && st === "nothere" && !flagged && now && c.assessmentSlot <= now;
     const att = effAttempt(c);
-    return `<button type="button" class="rrow${d ? " done" : ""}${flagged ? " flag" : ""}${due ? " due" : ""}${big ? " big" : ""}" data-flag="${esc(c.id)}"${d ? " disabled" : ""}>` +
+    let acts = "";
+    if (!d) {
+      if (st === "nothere") acts = `<button type="button" class="btn sm" data-act="noans" data-id="${id}">Not answering</button>` + (flagged ? `<button type="button" class="btn sm" data-act="clear" data-id="${id}">Clear</button>` : "");
+      else if (st === "arrived") acts = `<button type="button" class="btn sm pri" data-act="collect" data-id="${id}">Collect</button>`;
+      else if (st === "collected") acts = `<button type="button" class="btn sm" data-act="putback" data-id="${id}">Put back</button>`;
+    }
+    return `<div class="rrow act st-${d ? "assessed" : st}${d ? " done" : ""}${flagged ? " flag" : ""}${due ? " due" : ""}${big ? " big" : ""}">` +
       `<span class="rt">${esc(c.assessmentSlot)}</span><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${S.full || S.night ? attBadge(att) : ""}</span>` +
-      `<span class="rs">${stateChips(c) || (due ? '<span class="nchip due">Due now</span>' : "")}</span></button>`;
+      `<span class="rs">${d ? "" : stChip(c)}${stateChips(c) || (due ? '<span class="nchip due">Due now</span>' : "")}</span><span class="ract">${acts}</span></div>`;
   };
   return open.map(row).join("") + (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
 }
@@ -2124,7 +2384,7 @@ function renderRunner() {
       (isOpen ? `<span class="racts"><button type="button" class="btn sm" data-rfull="${esc(r)}">Full screen</button><button type="button" class="btn sm" data-rcollapse="${esc(r)}">Collapse</button></span>` : "") + `</div>` +
       (isOpen ? `<div class="rbody">${runnerRows(list, false)}</div>` : "") + `</div>`;
   }).join("");
-  const banner = rooms.length ? `<div class="rbanner"><b>How this screen works</b>Tap a room to open it. In an open room, press <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Full screen</b> for the big-screen view or <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Collapse</b> to close it again (tapping the room name also goes full screen). Tap a name to flag that person as not there at their time; tap it again to clear the flag.` +
+  const banner = rooms.length ? `<div class="rbanner"><b>How this screen works</b>Tap a room to open it. In an open room, press <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Full screen</b> for the big-screen view or <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Collapse</b> to close it again (tapping the room name also goes full screen). Each row has its own buttons: <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Not answering</b> if someone is called and does not come, <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Collect</b> once they are in the atrium (the check-in station marks them Arrived), and <b style="display:inline;font-size:inherit;text-transform:none;letter-spacing:0">Put back</b> to undo a Collect.` +
     `<div class="tools"><button type="button" class="btn sm" id="rOpenAll">Open all rooms</button><button type="button" class="btn sm" id="rCollapseAll">Collapse all</button></div></div>` : "";
   $("viewRunner").innerHTML = banner + cards || `<div class="card"><div class="hint">Nobody has an assessment slot yet for ${esc(S.course)}. Slots are made on the Assessment allocation page.</div></div>`;
   $("viewRunner").querySelectorAll("[data-rroom]").forEach(b => b.onclick = () => {
@@ -2135,7 +2395,7 @@ function renderRunner() {
   $("viewRunner").querySelectorAll("[data-rcollapse]").forEach(b => b.onclick = () => { N.open.delete(b.dataset.rcollapse); renderRunner(); });
   const oa = $("rOpenAll"); if (oa) oa.onclick = () => { rooms.forEach(r => N.open.add(r)); renderRunner(); };
   const ca = $("rCollapseAll"); if (ca) ca.onclick = () => { N.open.clear(); renderRunner(); };
-  $("viewRunner").querySelectorAll("[data-flag]").forEach(b => b.onclick = () => toggleNotThere(b.dataset.flag));
+  bindActs($("viewRunner"));
   if (N.fullRoom) renderFull();
 }
 function renderFull() {
@@ -2143,7 +2403,7 @@ function renderFull() {
   const list = slottedByRoom()[r] || [];
   $("nightFull").innerHTML = `<div class="fullscr"><div class="fullbar"><b>${esc(r)}</b><span>${esc(S.course)} · ${list.filter(isDoneN).length} of ${list.length} assessed</span><button type="button" class="btn" id="fullClose">Close</button></div><div class="fullbody">${runnerRows(list, true)}</div></div>`;
   $("fullClose").onclick = () => { N.fullRoom = null; renderFull(); };
-  $("nightFull").querySelectorAll("[data-flag]").forEach(b => b.onclick = () => toggleNotThere(b.dataset.flag));
+  bindActs($("nightFull"));
 }
 async function toggleNotThere(id) {
   const c = N.cands.find(x => x.id === id); if (!c || isDoneN(c)) return;
@@ -2188,14 +2448,33 @@ function renderAssessor() {
   $("viewAssessor").querySelectorAll("[data-aroom]").forEach(b => b.onclick = () => { N.room = b.dataset.aroom; renderAssessor(); });
   $("viewAssessor").querySelectorAll("[data-aopen]").forEach(b => b.onclick = () => openForm(b.dataset.aopen));
   $("viewAssessor").querySelectorAll("[data-claim]").forEach(b => b.onclick = e => { e.stopPropagation(); claimCand(b.dataset.claim); });
+  bindActs($("viewAssessor"));
   $("viewAssessor").querySelectorAll("[data-release]").forEach(b => b.onclick = e => { e.stopPropagation(); releaseCand(b.dataset.release); });
 }
 function roomBody(room, list) {
   const open = list.filter(c => !isDoneN(c)), done = list.filter(isDoneN);
-  const row = c => `<button type="button" class="arow${isDoneN(c) ? " done" : ""}" data-aopen="${esc(c.id)}"><span class="rt">${esc(c.assessmentSlot)}</span>` +
+  const legacy = c => `<button type="button" class="arow${isDoneN(c) ? " done" : ""}" data-aopen="${esc(c.id)}"><span class="rt">${esc(c.assessmentSlot)}</span>` +
     `<span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}<small>${esc(c.degree || "")}</small></span><span class="rs">${stateChips(c)}</span></button>`;
-  return `<h3 style="margin-bottom:6px">${esc(room)}</h3>` + (open.map(row).join("") || '<div class="hint">Everyone in this room has been assessed.</div>') +
-    (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
+  // With check-in required, each open row shows its state; only Collected rows can be picked.
+  const live = c => {
+    if (!N.gate) return legacy(c);
+    const st = cstate(c), id = esc(c.id), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
+    let acts = "", attrs = "";
+    if (st === "collected") { acts = `<button type="button" class="btn sm pri" data-take="${id}">Start assessment</button>`; attrs = ` data-take="${id}" role="button" tabindex="0"`; }
+    else if (st === "being") {
+      if (mine) { acts = `<button type="button" class="btn sm pri" data-aopen="${id}">Open form</button>`; }
+      if (mine || S.isDirector) acts += `<button type="button" class="btn sm" data-act="release" data-id="${id}">Put back</button>`;
+    } else if (st === "arrived") {
+      acts = N.confirmCollect === c.id
+        ? `<span class="hint" style="margin:0">Collect without the runner?</span><button type="button" class="btn sm pri" data-act="collectyes" data-id="${id}">Yes, collect</button><button type="button" class="btn sm" data-act="collectno" data-id="${id}">No</button>`
+        : `<button type="button" class="btn sm" data-act="collectnow" data-id="${id}">Collect now</button>`;
+    }
+    return `<div class="arow st-${st}"${attrs}><span class="rt">${esc(c.assessmentSlot)}</span>` +
+      `<span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}<small>${esc(c.degree || "")}</small></span><span class="rs">${stChip(c)}${stateChips(c)}${acts}</span></div>`;
+  };
+  const gateNote = N.gate ? '<div class="hint" style="margin:0 0 8px">Pick someone once they show <b>Collected</b>. Arrived means they are in the atrium and the runner has not brought them yet; if you cannot wait, use Collect now.</div>' : "";
+  return `<h3 style="margin-bottom:6px">${esc(room)}</h3>` + gateNote + (open.map(live).join("") || '<div class="hint">Everyone in this room has been assessed.</div>') +
+    (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(legacy).join("") : "");
 }
 function poolBody(pool) {
   if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody waiting. People appear when referred at attempt 1, or set to attempt 2 or more.</div>';
@@ -2203,10 +2482,16 @@ function poolBody(pool) {
     const att = effAttempt(c), chk = canAssessCandidate(c, att), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
     const prev = nattempts(c.id)["1"];
     const needs = att === 2 && prev && prev.components ? "Retest includes: " + retestIncludes(requiredComps(c.id, att)) + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : (att >= 3 ? "Retest includes: BLS/AED & first aid" : "");
+    const gst = N.gate ? cstate(c) : "";
+    const gnote = N.gate && !cl ? stChip(c) : "";
+    const gbtn = gst === "arrived"
+      ? (N.confirmCollect === c.id ? `<span class="hint" style="margin:0">Collect without the runner?</span><button type="button" class="btn sm pri" data-act="collectyes" data-id="${esc(c.id)}">Yes, collect</button><button type="button" class="btn sm" data-act="collectno" data-id="${esc(c.id)}">No</button>` : `<button type="button" class="btn sm" data-act="collectnow" data-id="${esc(c.id)}">Collect now</button>`)
+      : "";
     const action = mine ? `<button type="button" class="btn sm pri" data-aopen="${esc(c.id)}">Open form</button><button type="button" class="btn sm" data-release="${esc(c.id)}">Release</button>`
-      : cl ? `<span class="nchip claim">With ${esc(cl.name || "an assessor")}</span>`
-      : chk.ok ? `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`
-      : `<span class="why">${esc(chk.why)}</span>`;
+      : cl ? `<span class="nchip claim">With ${esc(cl.name || "an assessor")}</span>` + (S.isDirector ? `<button type="button" class="btn sm" data-release="${esc(c.id)}">Release</button>` : "")
+      : !chk.ok ? `<span class="why">${esc(chk.why)}</span>`
+      : (N.gate && gst !== "collected") ? gnote + gbtn
+      : gnote + `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`;
     return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
   };
   return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2: Student or Senior Faculty, a different assessor. Attempt 3 and above: Senior Faculty or extra named assessors.</div>` + whoCanBox(pool) + pool.map(row).join("");
@@ -2215,10 +2500,8 @@ async function claimCand(id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
   const chk = canAssessCandidate(c, effAttempt(c));
   if (!chk.ok) { toast(chk.why, true); return; }
-  try {
-    await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: c.name || "", claim: { uid: S.user.uid, name: S.myName, at: new Date().toISOString() }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-    toast("You have taken on " + c.name);
-  } catch (err) { toast("Not saved: " + err.message, true); }
+  try { await takeClaim(c); toast("You have taken on " + c.name); }
+  catch (err) { toast(takenMsg(err, c), true); }
 }
 async function releaseCand(id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
