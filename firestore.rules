@@ -990,5 +990,25 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    // ── Site feedback (2026-10-19, Jon) ─────────────────────────────────────
+    // feedback.html lets any signed-in person tell the Directors what to fix or
+    // add. They can only create a new note (fixed field list, status "new",
+    // text capped), never read, change or delete one; an anonymous note carries
+    // no uid, name or email. Directors read and triage them in admin-feedback.html.
+    match /site_feedback/{noteId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['type', 'area', 'page', 'pageLabel', 'ctx', 'url', 'text', 'impact', 'anon', 'uid', 'name', 'email', 'role', 'roleLabel', 'device', 'status', 'createdAt'])
+        && request.resource.data.type in ['problem', 'niggle', 'idea', 'good']
+        && request.resource.data.status == 'new'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 3
+        && request.resource.data.text.size() <= 4000
+        && request.resource.data.createdAt == request.time
+        && (request.resource.data.anon == true
+              ? (request.resource.data.uid == '' && request.resource.data.email == '')
+              : request.resource.data.uid == request.auth.uid);
+      allow read, update, delete: if isDirector();
+    }
+
   }
 }

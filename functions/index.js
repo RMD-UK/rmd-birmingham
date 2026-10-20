@@ -3958,6 +3958,124 @@ function buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedE
   return lines.join("\n");
 }
 
+// 2026-10-20 (Jon): the copy of every bulk send that goes to the RMD address, one layout for every case
+// (a send that went out in one go, a send that is part sent with the rest queued, and the final summary
+// of a staggered send). Sections: what it was for, where it went, batches, issues, who it went to (paste-ready),
+// the message as sent. The RMD address itself is never listed among the recipients.
+function commsLondonDate(d, withTime) {
+  try {
+    const dt = d && d.toDate ? d.toDate() : (d instanceof Date ? d : null);
+    if (!dt) return "";
+    const opts = { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" };
+    if (withTime) { opts.hour = "2-digit"; opts.minute = "2-digit"; }
+    return dt.toLocaleString("en-GB", opts);
+  } catch (e) { return ""; }
+}
+
+function commsSummaryParts(d) {
+  const rmd = String(COMMS_BCC || "").toLowerCase();
+  const clean = (arr) => Array.from(new Set((arr || []).map(x => String(x || "").trim()).filter(x => x && x.toLowerCase() !== rmd)));
+  const sentTo = clean(d.sentTo), failed = clean(d.failedEmails);
+  const total = d.totalRecipients || (sentTo.length + failed.length + (d.queuedLeft || 0));
+  const partial = (d.queuedLeft || 0) > 0;
+  let tone, headline;
+  if (partial) {
+    tone = "amber";
+    headline = `Part sent: ${sentTo.length} sent so far, ${d.queuedLeft} still to go. The rest are sent automatically at 06:00 each day. A final summary like this one arrives when the last are sent.`;
+  } else if (failed.length) {
+    tone = "amber";
+    headline = `Finished, with ${failed.length} not sent. See "Issues" below.`;
+  } else {
+    tone = "green";
+    headline = `All sent. Every address in this send was accepted for sending.`;
+  }
+  const facts = [
+    ["Recipients", String(total)],
+    ["Sent", String(sentTo.length)],
+    ["Not sent (failed)", String(failed.length)],
+    ["Still queued", String(d.queuedLeft || 0)],
+    ["Sent by", d.sentBy || ""],
+    ["Started", d.startedAt ? commsLondonDate(d.startedAt, true) : ""],
+    ["Finished", partial ? "Not finished yet" : (d.finishedAt ? commsLondonDate(d.finishedAt, true) : "")]
+  ].filter(f => f[1] !== "");
+  const batches = (d.batches || []).filter(b => b);
+  const hasPlaceholders = /\{\{\s*[a-z_]+\s*\}\}/i.test(d.message || "");
+  return { sentTo, failed, total, partial, tone, headline, facts, batches, hasPlaceholders, rmd };
+}
+
+function commsSummarySubject(d) {
+  const p = commsSummaryParts(d);
+  const state = p.partial ? `part sent, ${d.queuedLeft} queued` : (p.failed.length ? `finished, ${p.failed.length} failed` : `all sent`);
+  return `[RMD Comms copy] ${d.subject} - ${state} (${p.sentTo.length} sent)${d.groupLabel ? " - " + d.groupLabel : ""}`;
+}
+
+function buildCommsSummaryText(d) {
+  const p = commsSummaryParts(d);
+  const L = [];
+  let n = 0;
+  L.push("RMD COMMS COPY", p.headline, "");
+  L.push(`${++n}. WHAT THIS SEND WAS FOR`, "Subject: " + d.subject, "Group: " + (d.groupLabel || "(none)"), "");
+  L.push(`${++n}. WHERE IT WENT`);
+  p.facts.forEach(f => L.push(f[0] + ": " + f[1]));
+  L.push("");
+  if (p.batches.length > 1) {
+    L.push(`${++n}. BATCHES`);
+    p.batches.forEach(b => L.push(`${b.label}: ${b.sent} sent${b.failed ? ", " + b.failed + " failed" : ""}`));
+    L.push("");
+  }
+  L.push(`${++n}. ISSUES`);
+  if (p.failed.length) {
+    L.push(`${p.failed.length} address${p.failed.length === 1 ? "" : "es"} could not be sent. These are not retried automatically; send to them by hand:`, p.failed.join("; "));
+  } else {
+    L.push("None. Every address was accepted for sending. (Bounces after that are not tracked here.)");
+  }
+  L.push("", `${++n}. SENT TO (${p.sentTo.length}) - paste into a To: field`, p.sentTo.length ? p.sentTo.join("; ") : "(none yet)", "");
+  L.push(`${++n}. MESSAGE AS SENT`, d.message || "");
+  if (p.hasPlaceholders) L.push("", "Placeholders such as {{first_name}} are filled in separately for each person. This is the template.");
+  return L.join("\n");
+}
+
+function buildCommsSummaryHtmlV2(d) {
+  const esc = escapeHtmlForEmail;
+  const p = commsSummaryParts(d);
+  const font = "font-family:Arial,Helvetica,sans-serif;";
+  const secHead = (n, t, color) => `<div style="${font}font-size:12px;font-weight:bold;letter-spacing:0.7px;text-transform:uppercase;color:${color || "#44247c"};margin:22px 0 8px;padding-top:14px;border-top:1px solid #e3e8ef;">${esc(t)}</div>`;
+  const tones = { green: ["#e3f3e8", "#1e6b3a"], amber: ["#fff1d6", "#7a4a00"] };
+  const [bg, fg] = tones[p.tone];
+  const factRows = p.facts.map(([k, v]) => {
+    const warn = (k === "Not sent (failed)" && v !== "0") || (k === "Still queued" && v !== "0");
+    return `<tr><td style="padding:4px 14px 4px 0;color:#6b7c93;white-space:nowrap;vertical-align:top;">${esc(k)}</td><td style="padding:4px 0;font-weight:bold;${warn ? "color:#b3261e;" : ""}">${esc(v)}</td></tr>`;
+  }).join("");
+  const batchRows = p.batches.length > 1 ? `<table style="border-collapse:collapse;font-size:14px;width:100%;max-width:420px;">` +
+    `<tr><td style="padding:4px 12px 4px 0;color:#6b7c93;">Day</td><td style="padding:4px 12px;color:#6b7c93;">Sent</td><td style="padding:4px 0;color:#6b7c93;">Failed</td></tr>` +
+    p.batches.map(b => `<tr><td style="padding:4px 12px 4px 0;font-weight:bold;">${esc(b.label)}</td><td style="padding:4px 12px;">${b.sent}</td><td style="padding:4px 0;${b.failed ? "color:#b3261e;font-weight:bold;" : ""}">${b.failed}</td></tr>`).join("") + `</table>` : "";
+  const box = "font-family:Menlo,Consolas,monospace;font-size:12px;border-radius:6px;padding:10px;word-break:normal;overflow-wrap:anywhere;";
+  const issues = p.failed.length
+    ? `<div style="background:#fcece9;border:1px solid #f1c4bd;border-radius:6px;padding:10px 12px;color:#8c1c13;margin-bottom:8px;"><b>${p.failed.length} address${p.failed.length === 1 ? "" : "es"} could not be sent.</b> These are not retried automatically. Send to them by hand.</div>` +
+      `<div style="${box}background:#fcece9;border:1px solid #f1c4bd;color:#8c1c13;">${esc(p.failed.join("; "))}</div>`
+    : `<div style="background:#e3f3e8;border-radius:6px;padding:10px 12px;color:#1e6b3a;"><b>No issues.</b> Every address was accepted for sending. Bounces after that are not tracked here.</div>`;
+  let n = 0;
+  const num = () => ++n + ". ";
+  return `<div style="${font}font-size:14px;line-height:1.5;color:#1a2233;max-width:680px;">` +
+    `<div style="background:#44247c;color:#fff;border-radius:8px 8px 0 0;padding:14px 18px;font-size:17px;font-weight:bold;">RMD Comms copy</div>` +
+    `<div style="border:1px solid #e3e8ef;border-top:0;border-radius:0 0 8px 8px;padding:18px;">` +
+    `<div style="background:${bg};color:${fg};border-radius:8px;padding:11px 14px;font-weight:bold;">${esc(p.headline)}</div>` +
+    secHead(1, num() + "What this send was for") +
+    `<div style="font-size:16px;font-weight:bold;">${esc(d.subject)}</div>` +
+    `<div style="color:#6b7c93;margin-top:2px;">Group: <b style="color:#1a2233;">${esc(d.groupLabel || "(none)")}</b></div>` +
+    secHead(2, num() + "Where it went") +
+    `<table style="border-collapse:collapse;font-size:14px;">${factRows}</table>` +
+    (batchRows ? secHead(3, num() + "Batches") + batchRows : "") +
+    secHead(4, num() + "Issues", p.failed.length ? "#b3261e" : "#44247c") + issues +
+    secHead(5, num() + `Sent to (${p.sentTo.length}) - copy into a To: field`) +
+    `<div style="${box}background:#f8f9fc;border:1px solid #e3e8ef;color:#1a2233;">${p.sentTo.length ? esc(p.sentTo.join("; ")) : "(none yet)"}</div>` +
+    `<div style="color:#6b7c93;font-size:12px;margin-top:4px;">One line, separated by semicolons, ready for Outlook. The RMD address is not included.</div>` +
+    secHead(6, num() + "Message as sent") +
+    `<div style="border-left:4px solid #44247c;background:#f8f9fc;padding:10px 14px;white-space:pre-wrap;word-break:break-word;">${linkifyForEmail(esc(d.message || ""))}</div>` +
+    (p.hasPlaceholders ? `<div style="color:#6b7c93;font-size:12px;margin-top:4px;">Placeholders such as {{first_name}} are filled in separately for each person. This is the template.</div>` : "") +
+    `</div></div>`;
+}
+
 exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -4028,25 +4146,19 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
   // joined on one line, same separator used elsewhere on this site for
   // Outlook-pasteable lists (see outlook_email_copy_semicolons).
   try {
-    const headerLines = [
-      `Group: ${groupLabel || "(none)"}`,
-      `Sent by: ${(auth.token.email || auth.uid)}`,
-      `Recipients: ${sent} sent today${failedEmails.length ? `, ${failedEmails.length} failed` : ""}${deferred.length ? `, ${deferred.length} queued (${COMMS_DAILY_SAFE_LIMIT}/day, Resend's free-plan quota — will finish automatically over the next few days)` : ""}`,
-      // 2026-10-05, Jon: this email is the one confirmation that a group's
-      // send is actually done — it always fires after every recipient in
-      // this call has been attempted, never before, so "all sent" here is
-      // never a lie-in-advance. Only said when nothing was deferred; a
-      // split send gets the "queued" line above instead, and its own true
-      // "all sent" comes from processCommsQueueDaily once the queue empties.
-      ...(deferred.length ? [] : [`✅ All emails to "${groupLabel || "this group"}" have now been sent.`]),
-    ];
+    const sd = {
+      subject, message, groupLabel, sentBy: (auth.token.email || auth.uid),
+      startedAt: new Date(), finishedAt: deferred.length ? null : new Date(),
+      totalRecipients: valid.length, sentTo, failedEmails, queuedLeft: deferred.length,
+      batches: [{ label: commsLondonDate(new Date(), false), sent, failed: failedEmails.length }]
+    };
     await resend.emails.send({
       from: FROM_EMAIL,
       to: COMMS_BCC,
       replyTo: REPLY_TO,
-      subject: `[RMD Comms copy] ${subject} — ${sent} sent${deferred.length ? `, ${deferred.length} queued` : ""}${groupLabel ? ` (${groupLabel})` : ""}`,
-      text: buildCommsSummaryLines(headerLines, { subject, message, sentTo, failedEmails }),
-      html: buildCommsSummaryHtmlStructured(headerLines, { subject, message, sentTo, failedEmails })
+      subject: commsSummarySubject(sd),
+      text: buildCommsSummaryText(sd),
+      html: buildCommsSummaryHtmlV2(sd)
     });
   } catch (err) {
     console.error("sendBulkComms: summary copy to COMMS_BCC failed", err.message);
@@ -4116,23 +4228,32 @@ exports.processCommsQueueDaily = onSchedule(
 
       if (nowCompleted) {
         try {
-          const headerLines = [
-            `Group: ${job.groupLabel || "(none)"} — final batch of a staggered send`,
-            `Queued by: ${job.createdByEmail || job.createdByUid}`,
-            `Total recipients: ${cumulativeSentTo.length + cumulativeFailed.length}`,
-            `Sent: ${cumulativeSentTo.length}${cumulativeFailed.length ? `, Failed: ${cumulativeFailed.length}` : ""}`,
-            // This only fires once stillRemaining is empty (nowCompleted),
-            // i.e. after every recipient in the job has been attempted — so,
-            // same as sendBulkComms's version, never sent before it's true.
-            `✅ All emails to "${job.groupLabel || "this group"}" have now been sent.`,
-          ];
+          // Pull every part of this send from the log (the first batch sent at the time, then each morning's batch) so the final summary covers the whole send, not just the queued part.
+          let entries = [];
+          try {
+            const ls = await db.collection("comms_log").where("queueId", "==", doc.id).get();
+            entries = ls.docs.map(x => x.data()).sort((x, y) => (x.sentAt?.toMillis?.() || 0) - (y.sentAt?.toMillis?.() || 0));
+          } catch (e) { entries = []; }
+          const firstEntry = entries.find(e => !e.queueBatch) || entries[0] || null;
+          const allSent = entries.length ? entries.flatMap(e => e.sentTo || []) : cumulativeSentTo;
+          const allFailed = entries.length ? entries.flatMap(e => e.failedEmails || []) : cumulativeFailed;
+          const sd = {
+            subject: job.subject, message: job.message, groupLabel: job.groupLabel,
+            sentBy: job.createdByEmail || job.createdByUid || "",
+            startedAt: firstEntry ? firstEntry.sentAt : job.createdAt, finishedAt: new Date(),
+            totalRecipients: firstEntry && firstEntry.recipientCount ? firstEntry.recipientCount : (allSent.length + allFailed.length),
+            sentTo: allSent, failedEmails: allFailed, queuedLeft: 0,
+            batches: entries.length
+              ? entries.map(e => ({ label: commsLondonDate(e.sentAt, false), sent: e.sent || 0, failed: (e.failedEmails || []).length }))
+              : [{ label: "Queued batches", sent: cumulativeSentTo.length, failed: cumulativeFailed.length }]
+          };
           await resend.emails.send({
             from: FROM_EMAIL,
             to: COMMS_BCC,
             replyTo: REPLY_TO,
-            subject: `[RMD Comms copy] ${job.subject} — staggered send complete, ${cumulativeSentTo.length} sent`,
-            text: buildCommsSummaryLines(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed }),
-            html: buildCommsSummaryHtmlStructured(headerLines, { subject: job.subject, message: job.message, sentTo: cumulativeSentTo, failedEmails: cumulativeFailed })
+            subject: commsSummarySubject(sd),
+            text: buildCommsSummaryText(sd),
+            html: buildCommsSummaryHtmlV2(sd)
           });
         } catch (err) {
           console.error("processCommsQueueDaily: completion summary failed", err.message);
