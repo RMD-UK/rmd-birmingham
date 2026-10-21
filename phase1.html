@@ -174,6 +174,7 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .stchip.ok{background:var(--okbg);color:var(--ok)}.stchip.open{background:var(--org);color:#fff}.stchip.bad{background:var(--badbg);color:var(--bad)}
 .stbody.locked{opacity:.5;pointer-events:none}
 .lockmsg{font-size:13.5px;color:var(--mut);font-weight:600;margin:2px 0 6px}
+.card summary .stepno{margin-right:8px}
 .card .stepno{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:var(--pur);color:#fff;font-size:14px;font-weight:800}
 .card .hint{font-size:13px;color:var(--mut);margin-top:6px}
 .card input[type=search],.card textarea,.card input[type=text]{width:100%;border:2px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
@@ -202,7 +203,7 @@ details.lst .in{padding:0 14px 12px}
 .lrow .nm{flex:1;min-width:150px;font-weight:700;display:flex;gap:6px;align-items:center}
 .lrow small{color:var(--mut);font-weight:500}
 .agroup{margin:14px 0 2px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
-.lrow.arow2 .adeg{min-width:110px}.lrow.arow2 .atl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-left:auto}.lrow.arow2 .atl i{font-style:normal;color:var(--mut)}
+.lrow.arow2{display:grid;grid-template-columns:1fr auto;gap:5px 10px;align-items:center}.lrow.arow2 .nm{min-width:0}.lrow.arow2 .adeg{text-align:right}.lrow.arow2 .atl{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.lrow.arow2 .atl i{font-style:normal;color:var(--mut)}
 .stepper{display:inline-flex;align-items:center;gap:6px}
 .stepper button{width:30px;height:30px;border-radius:8px;border:2px solid var(--pur);background:#fff;color:var(--pur);font-weight:800;font-size:16px;line-height:1}
 .emailbox{background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:10px}
@@ -1378,6 +1379,8 @@ const ASSESS_SLOTS = (() => {
   while (h < 21 || (h === 21 && m <= 30)) { out.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0")); m += 15; if (m >= 60) { m -= 60; h++; } }
   return out;
 })();
+// Rooms used for retests (attempt 2). Student Faculty pick from these when they confirm a retest. Empty = every assessment room is offered. Jon to confirm the list.
+const DEFAULT_RETEST_ROOMS = [];
 const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
 const A = {
   rooms: [], loaded: false, sel: null, target: null, showGrid: false, busy: false, log: [],
@@ -1397,7 +1400,8 @@ async function ensureRooms() {
   try {
     const snap = await db.collection("config").doc("stage1_assessment_rooms").get();
     A.rooms = snap.exists ? (snap.data().rooms || []) : [];
-  } catch (e) { A.rooms = []; }
+    A.retestRooms = snap.exists && Array.isArray(snap.data().retestRooms) ? snap.data().retestRooms : [];
+  } catch (e) { A.rooms = []; A.retestRooms = []; }
   if (!A.rooms.length) A.rooms = DEFAULT_ASSESS_ROOMS;
   A.loaded = true;
 }
@@ -2190,24 +2194,34 @@ function deskBlocked(c) {
   const e = eligOf(c); return !!(e && e.state === "absent" && !e.ov);
 }
 function deskExpected(c) { return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || !!nres(c.id).flow); }
-function askResitRoom(c) {
-  const rooms = (A.rooms || []).slice();
-  $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true"><h3>Resit room for ${esc(c.name)}</h3>` +
-    `<div class="hint" style="margin:0 0 8px">Which room will ${esc(firstNameOf(c))} be retested in? The runner and the assessor will see it. Student Faculty at the atrium hub tell you the room.</div>` +
-    `<div class="fqo">${rooms.map(r => `<button type="button" class="fqb" data-rr="${esc(r)}">${esc(r)}</button>`).join("")}</div>` +
-    `<div class="row2" style="margin-top:12px"><button type="button" class="btn" data-rr="">No room yet</button><button type="button" class="btn" id="rrCancel">Cancel</button></div></div></div>`;
+function retestRoomList() {
+  const all = (A.rooms || []).slice(), pick = ((A.retestRooms && A.retestRooms.length) ? A.retestRooms : DEFAULT_RETEST_ROOMS).filter(r => !all.length || all.includes(r));
+  return pick.length ? pick : all;
+}
+// Student Faculty step at the atrium hub: confirm the retest is tonight, pick a retest room (no time needed).
+// The room is a guide for the runner and assessor, not a rule. changeOnly = just move the room, no new check-in.
+function askResitRoom(c, changeOnly) {
+  const rooms = retestRoomList(), cur = resitRoom(c);
+  $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true"><h3>${changeOnly ? "Change retest room" : "Retest tonight"} for ${esc(c.name)}</h3>` +
+    `<div class="hint" style="margin:0 0 8px">${changeOnly ? "Pick the new room." : "Student Faculty: confirm " + esc(firstNameOf(c)) + " is retesting tonight, then pick a retest room. No time needed. Send them for their extra training; a runner collects them and takes them to the room."} The room is a guide: an assessor can take them to a different room.</div>` +
+    `<div class="fqo">${rooms.map(r => `<button type="button" class="fqb${r === cur ? " on" : ""}" data-rr="${esc(r)}">${esc(r)}</button>`).join("")}</div>` +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn" id="rrCancel">Cancel</button></div></div></div>`;
   const close = () => { $("overlay").innerHTML = ""; };
   $("rrCancel").onclick = close;
   $("rrbg").onclick = e => { if (e.target.id === "rrbg") close(); };
-  $("overlay").querySelectorAll("[data-rr]").forEach(b => b.onclick = () => { close(); checkIn(c, true, b.dataset.rr); });
+  $("overlay").querySelectorAll("[data-rr]").forEach(b => b.onclick = () => {
+    close();
+    if (changeOnly) return flowWrite(c, { room: b.dataset.rr }, c.name + ": retest room " + b.dataset.rr);
+    checkIn(c, true, b.dataset.rr);
+  });
 }
 function checkIn(c, roomAsked, room) {
   if (deskBlocked(c)) { toast(c.name + " is not eligible tonight. See RMD faculty.", true); return; }
   if (!deskExpected(c)) { toast(c.name + " has no slot tonight. See RMD faculty.", true); return; }
-  if (effAttempt(c) >= 2 && !roomAsked && S.view === "checkin") { askResitRoom(c); return; }
+  if (effAttempt(c) >= 2 && !roomAsked) { toast(c.name + " is a retest. RMD faculty confirm the retest and pick the room from the Retest pool.", true); return; }
   const patch = { arrived: whoNow() };
   if (effAttempt(c) >= 2 && room) patch.room = room;
-  return flowWrite(c, patch, c.name + " checked in" + (patch.room ? " (resit room " + patch.room + ")" : "")).then(ok => {
+  return flowWrite(c, patch, c.name + " checked in" + (patch.room ? " (retest room " + patch.room + ")" : "")).then(ok => {
     if (ok && S.view === "checkin") {
       N.undoBar = { id: c.id, name: c.name, until: Date.now() + 6000 };
       renderDeskUndo();
@@ -2219,6 +2233,8 @@ function checkIn(c, roomAsked, room) {
 function doAct(act, id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
   if (act === "checkin") return checkIn(c);
+  if (act === "changeroom") return askResitRoom(c, true);
+  if (act === "retestroom") return askResitRoom(c, false);
   if (act === "undo") { N.undoBar = null; renderDeskUndo(); return flowWrite(c, { arrived: null, collected: null }, c.name + ": check-in undone"); }
   if (act === "collect") return flowWrite(c, { collected: Object.assign(whoNow(), { override: false }) }, c.name + " collected");
   if (act === "collectnow") { N.confirmCollect = id; return renderNight(); }
@@ -2307,13 +2323,14 @@ function deskRow(c) {
   if (st === "nothere") {
     if (deskBlocked(c)) extra = '<span class="nchip bad">See RMD faculty</span>';
     else if (!deskExpected(c)) extra = '<span class="nchip bad">No slot: see RMD faculty</span>';
+    else if (att >= 2) extra = '<span class="nchip bad">Retest: RMD faculty pick the room</span>';
     else acts = `<button type="button" class="btn sm pri" data-act="checkin" data-id="${id}">Check in</button>`;
   } else if (st === "arrived") {
     acts = `<button type="button" class="btn sm" data-act="undo" data-id="${id}">Undo</button>` + (noSlot || att >= 2 ? `<button type="button" class="btn sm pri" data-act="collect" data-id="${id}">Collected</button>` : "");
   } else if (st === "collected") {
     acts = `<button type="button" class="btn sm" data-act="putback" data-id="${id}">Put back</button>`;
   }
-  const rr = resitRoom(c), sub = [att >= 2 ? (rr ? "Resit room " + rr : "") : c.assessmentRoom, c.degree].filter(Boolean).join(" · ");
+  const rr = resitRoom(c), sub = [att >= 2 ? (rr ? "Retest room " + rr : "") : c.assessmentRoom, c.degree].filter(Boolean).join(" · ");
   return `<div class="rrow act st-${st}${st === "assessed" ? " done" : ""}"><span class="rt">${esc(slotLabel(c))}</span>` +
     `<span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>` +
     `<span class="rs">${stChip(c)}${stateChips(c)}${extra}</span><span class="ract">${acts}</span></div>`;
@@ -2551,9 +2568,9 @@ function poolBody(pool) {
       : !chk.ok ? `<span class="why">${esc(chk.why)}</span>`
       : (N.gate && gst !== "collected") ? gnote + gbtn
       : gnote + `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`;
-    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${resitRoom(c) ? " · Resit room " + esc(resitRoom(c)) : ""}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
+    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${resitRoom(c) ? " · Room " + esc(resitRoom(c)) + " (guide)" : ""}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
   };
-  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2: Student or Senior Faculty, a different assessor. Attempt 3 and above: Senior Faculty or extra named assessors.</div>` + whoCanBox(pool) + pool.map(row).join("");
+  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2: Student or Senior Faculty, a different assessor. Attempt 3 and above: Senior Faculty or extra named assessors. The room shown is Student Faculty\'s guide. You can take someone for a different room.</div>` + whoCanBox(pool) + pool.map(row).join("");
 }
 async function claimCand(id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
@@ -2895,14 +2912,14 @@ function copyTxt(t) {
   const fb = () => { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} ta.remove(); };
   try { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t).catch(fb) : Promise.resolve(fb()); } catch (e) { fb(); return Promise.resolve(); }
 }
-function teamCard(af) {
+function teamCard(af, no) {
   const groups = [
     { key: "retrain", title: "Awaiting retraining (referred at attempt 2)", hint: "Not retested tonight. A Student Faculty member meets them, then they repeat all 3 evenings in a different room (different instructors) before attempt 3 with Senior Faculty." },
     { key: "leads", title: "Referred back to degree leads (attempt 3)", hint: "A Senior Faculty member meets them to discuss progress and support, and the programme lead is told. Further course in full, then attempt 4." },
     { key: "final", title: "Not passed - final attempt (attempt 4)", hint: "Course not completed. Refer back to the degree leads, inform the candidate they have not passed, and tell the programme lead." }
   ];
   const any = groups.some(g => af[g.key].length);
-  let h = `<div class="card"><h3><span class="stepno">3</span>After the night: who needs a follow-up</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 2 or later: not retested tonight. A faculty member speaks to each. Nothing is emailed from here: copy the note and send it yourself.</div>`;
+  let h = `<div class="card"><h3><span class="stepno">${no || 3}</span>Not retested tonight: who needs a follow-up</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 2 or later: not retested tonight. A faculty member speaks to each. Nothing is emailed from here: copy the note and send it yourself.</div>`;
   if (!any) return h + '<div class="hint">Nobody yet.</div></div>';
   groups.forEach(g => {
     const l = af[g.key]; if (!l.length) return;
@@ -3030,6 +3047,8 @@ function catchupCard() {
 }
 function renderRetest() {
   if (!S.course || !S.full) return;
+  // Assessment night, Retest-plus & RAP: a short view (21 Oct, Jon). RMD faculty keep the full one.
+  const simple = S.door === "assess" && S.drole === "plus";
   const d = assessDate(), pool = poolList(), stale = staleAttempts();
   const waiting = pool.filter(c => !(nres(c.id).claim && nres(c.id).claim.uid));
   const withA = pool.length - waiting.length;
@@ -3039,31 +3058,52 @@ function renderRetest() {
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
     `An assessor takes each one from the Assessor view. ` +
-    `Not passed at attempt 2 or later: see <b>After the night</b> below.`;
-  let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}</div>`;
-  h += catchupCard();
-  if (stale.length) {
-    h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
-  }
-  const prow = c => {
+    (simple ? "" : `Do <b>step 1</b> first: anyone referred needs a retest room.`);
+  const needRoom = c => effAttempt(c) === 2 && !resitRoom(c) && !(nres(c.id).claim && nres(c.id).claim.uid);
+  const need = simple ? [] : pool.filter(needRoom), queue = simple ? pool : pool.filter(c => !needRoom(c));
+  const has3 = pool.some(c => effAttempt(c) >= 3);
+  let h = `<div class="sumstrip">` + (simple ? `${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}` :
+    `${nightTile(need.length, "Need a retest room", need.length > 0)}${nightTile(waiting.length - need.length, "Queued, waiting for an assessor")}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
+    (has3 ? nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0) : "") +
+    `${nightTile(af.retrain.length + af.leads.length + af.final.length, "Not retested tonight", af.retrain.length + af.leads.length + af.final.length > 0)}`) + `</div>`;
+  const staleCard = () => `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
+  const prow = (c, mode) => {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
-    const hist = Object.keys(nattempts(c.id)).sort((a, b) => a - b).map(k => { const a = nattempts(c.id)[k]; return `Attempt ${esc(k)}: ${esc(outcomeLabel(a.outcome, Number(k)))}${a.assessorName ? " (" + esc(a.assessorName) + ")" : ""}${compsText(a) ? " - " + esc(compsText(a)) : ""}`; }).join(" · ");
-    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest includes " + retestIncludes(requiredComps(c.id, 2)) + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : "") : "Senior Faculty or extra named assessor";
+    const sec = COMPS.map(x => { let r = ""; Object.keys(nattempts(c.id)).sort((a, b) => b - a).some(k => { const v = (nattempts(c.id)[k].components || {})[x.k]; if (v === "pass" || v === "fail") { r = v; return true; } return false; }); return esc(x.label) + ": <b>" + (r === "pass" ? "Pass" : r === "fail" ? "Fail" : "Not yet tested") + "</b>"; }).join(" &middot; ");
+    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") : "Senior Faculty or extra named assessor";
+    const who = cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : (mode === "need" ? "" : '<span class="nchip bad">Waiting</span>');
+    const roomBits = (!simple && att === 2 && !cl) ? (resitRoom(c) ? `<span class="nchip claim">Room ${esc(resitRoom(c))}</span><button type="button" class="btn sm" data-act="changeroom" data-id="${esc(c.id)}">Change room</button>` : `<button type="button" class="btn sm pri" data-act="retestroom" data-id="${esc(c.id)}">Confirm retest + pick room</button>`) : "";
+    const stepper = (simple || mode === "need") ? "" : `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span>`;
     return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
-      `<small style="flex-basis:100%">${rule}${hist ? " · " + hist : " · no result recorded on the site yet"}</small>` +
-      `<span class="pact">${cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : '<span class="nchip bad">Waiting</span>'}` +
-      `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span></span></div>`;
+      `<small style="flex-basis:100%">${sec}${simple || mode === "need" ? "" : " &middot; " + rule}</small>` +
+      `<span class="pact">${who}${roomBits}${stepper}</span></div>`;
   };
-  h += hereCard(pool);
-  h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
-  h += attemptsOverview();
-  h += teamCard(af);
-  if (S.isDirector) h += `<div class="card"><div class="hint" style="margin:0">Assessors, mark sheets and Google Form link: <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>`;
+  if (simple) {
+    h += hereCard(pool, 1);
+    h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(c => prow(c)).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them.</div>') + `</div>`;
+  } else {
+    // RMD faculty hub order: what needs input now first, then the queue, then information and admin.
+    h += `<div class="card"><h3><span class="stepno">1</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Referred at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
+      (need.length ? need.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is waiting for a room.</div>') + `</div>`;
+    const lead = teamCard(af, 2);
+    h += lead;
+    h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
+    h += hereCard(pool, 4);
+    if (stale.length) h += staleCard();
+    const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
+    h += more;
+  }
   const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
+  if (!simple && $("moreDetails")) {
+    const mb = $("moreDetails").lastElementChild;
+    mb.innerHTML = overridesCard() + catchupCard() + attemptsOverview() + (S.isDirector ? `<div class="card"><div class="hint" style="margin:0">Assessors, mark sheets and Google Form link: <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>` : "");
+    $("moreDetails").addEventListener("toggle", () => { N.moreOpen = $("moreDetails").open; });
+  }
   if (wasOpen && $("attDetails")) $("attDetails").open = true;
   { const hd = $("hereDetails"); if (hd) hd.addEventListener("toggle", () => { N.hereOpen = hd.open; }); }
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
+  bindActs($("viewRetest"));
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {
     const c = S.cands.find(x => x.id === b.dataset.patt), n = N.cands.find(x => x.id === b.dataset.patt);
@@ -3154,9 +3194,9 @@ async function setPresent(list) {
     toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true);
   }
 }
-function hereCard(pool) {
-  const people = att3People(), open = N.hereOpen !== false, n = people.filter(isHere).length;
-  const wrap = inner => `<details class="card" id="hereDetails"${open ? " open" : ""}><summary style="cursor:pointer;font-weight:800;font-size:17px"><span class="stepno">1</span>Attempt 3 or later: who is here tonight${people.length ? ` <span class="hint" style="margin:0 0 0 8px;font-weight:600">${n} of ${people.length} here</span>` : ""}</summary><div style="margin-top:8px">${inner}</div></details>`;
+function hereCard(pool, no) {
+  const people = att3People(), open = N.hereOpen !== undefined ? N.hereOpen === true : (S.door === "assess" && S.drole === "plus" ? false : pool.some(c => effAttempt(c) >= 3)), n = people.filter(isHere).length;
+  const wrap = inner => `<details class="card" id="hereDetails"${open ? " open" : ""}><summary style="cursor:pointer;font-weight:800;font-size:17px"><span class="stepno">${no || 1}</span>Attempt 3 or later: who is here tonight${people.length ? ` <span class="hint" style="margin:0 0 0 8px;font-weight:600">${n} of ${people.length} here</span>` : ""}</summary><div style="margin-top:8px">${inner}</div></details>`;
   const wait3 = pool.filter(c => effAttempt(c) >= 3 && !(nres(c.id).claim && nres(c.id).claim.uid)).length;
   let h = `<div class="hint" style="margin:0 0 6px">Tap each person here tonight. Senior Faculty and extra named assessors only. Information only.</div>`;
   if (N.dir === null || N.dir === undefined) return wrap(h + '<div class="hint">Loading the list…</div>');
