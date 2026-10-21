@@ -692,7 +692,7 @@ function initFirebase() {
 (function () {
   try {
     var s = document.createElement("script");
-    s.src = "/js/feedback-widget.js?v=20261019";
+    s.src = "/js/feedback-widget.js?v=20261020";
     s.defer = true;
     document.head.appendChild(s);
   } catch (e) {}

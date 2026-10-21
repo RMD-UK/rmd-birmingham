@@ -254,7 +254,7 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
     try {
       const me = await db.collection("people").doc(auth.uid).get();
       const role = me.exists ? String(me.data().role || "") : "";
-      ok = role === "faculty" || role === "assessor-faculty" || role === "assessor";
+      ok = role !== "";   // 2026-10-16 (Jon, runner access): any RMD member with a role can open the runner view; the result is the same name / programme / slot list, no email or DOB (includes the assessor role)
     } catch (e) { ok = false; }
   }
   if (!ok) {

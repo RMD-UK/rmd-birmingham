@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Assessment Night Flow Screen - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{--ink:#1A2233;--mut:#6B7C93;--line:#E3E8EF;--bg:#F5F7FA;--pur:#44247C;--pur2:#2E1856;--purtint:#EFEAF8;--org:#F49001;--font:'Inter','Segoe UI',Arial,sans-serif;
+  --a1:#4DB3FF;--a2:#F2B84B;--a3:#F06DB8;--a4:#5FD0A0;--dotink:#1B0F33;--soft:#D9CFF0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;min-height:100vh}
+button,select{font-family:inherit;font-size:inherit}
+button{cursor:pointer}
+.hidden{display:none!important}
+.gate{max-width:560px;margin:80px auto;padding:20px;font-weight:600;color:var(--ink)}
+.top{background:var(--pur2);color:#fff;padding:14px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.top h1{font-size:18px;font-weight:800;margin-right:auto}
+.top a{color:#D9CFF0;font-size:13px;font-weight:700}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 18px;background:#fff;border-bottom:1px solid var(--line)}
+.bar label{font-weight:700;font-size:13px;color:var(--mut);display:flex;gap:6px;align-items:center}
+.bar select{padding:7px 10px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-size:15px}
+.btn{border:2px solid var(--line);background:#fff;border-radius:10px;padding:8px 14px;font-weight:700;color:var(--ink)}
+.btn.pri{background:var(--pur);border-color:var(--pur);color:#fff}
+main{max-width:1500px;margin:0 auto;padding:16px}
+.msg{background:#FCE8E6;color:#B3261E;border-radius:10px;padding:9px 12px;font-weight:600;margin-bottom:12px}
+.hint{font-size:13px;color:var(--mut);margin-top:8px}
+
+/* The screen */
+.screen{background:var(--pur2);color:#fff;border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:12px}
+.head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+.head h2{font-size:22px;font-weight:800}
+.clock{font-size:14px;color:var(--soft);font-variant-numeric:tabular-nums}
+.stats{display:flex;gap:10px 26px;flex-wrap:wrap;align-items:flex-end}
+.stat b{display:block;font-size:44px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;font-weight:700;color:var(--soft);text-transform:uppercase;letter-spacing:.06em}
+.stat.g b{color:#7BE0A8}.stat.o b{color:#FFC36B}
+.legend{display:flex;gap:6px 18px;flex-wrap:wrap;margin-left:auto;align-items:center;font-size:13px;color:var(--soft)}
+.legend .lk{display:flex;align-items:center;gap:7px;font-weight:600}
+.legend .lk i{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-style:normal;font-size:12px;font-weight:800;color:var(--dotink)}
+.legend .lk em{font-style:normal;color:#fff;font-weight:800;font-variant-numeric:tabular-nums}
+.legend .ntk{display:flex;align-items:center;gap:7px;font-weight:600}
+.legend .ntk i{display:inline-block;width:20px;height:20px;border-radius:50%;border:2px dashed #fff;opacity:.85}
+
+.field{position:relative;display:grid;gap:10px;grid-template-columns:1.55fr 1fr .9fr .9fr 1.5fr;min-height:520px;height:62vh}
+.zone{position:relative;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;min-height:0;min-width:0}
+.zone h3{font-size:14px;font-weight:800;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.zone h3 b{font-size:26px;font-variant-numeric:tabular-nums}
+.zone small{display:block;font-size:11.5px;color:var(--soft);margin-top:1px}
+.za{flex:1;min-height:0;margin-top:6px}
+.zone.flow1{border-color:rgba(255,255,255,.22)}
+.zone.z-being{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.35)}
+.outs{display:grid;grid-template-rows:1.5fr 1fr 1fr 1fr;gap:10px;min-height:0;min-width:0}
+.outs .zone.z-pass1,.outs .zone.z-passRe{border-color:rgba(123,224,168,.55);background:rgba(123,224,168,.09)}
+.outs .zone.z-ref{border-color:rgba(255,195,107,.6);background:rgba(255,195,107,.09)}
+.outs .zone.z-other{border-color:rgba(255,255,255,.28);background:rgba(0,0,0,.18)}
+.arrow{position:absolute;top:50%;width:0;height:0;display:none}
+
+.dot{position:absolute;left:0;top:0;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--dotink);font-weight:800;line-height:1;
+  transition:transform .95s cubic-bezier(.22,.8,.3,1),width .4s,height .4s,background-color .5s,font-size .4s;will-change:transform}
+.dot.c1{background:var(--a1)}.dot.c2{background:var(--a2)}.dot.c3{background:var(--a3)}.dot.c4{background:var(--a4)}
+.dot.nt{box-shadow:0 0 0 2px var(--pur2),0 0 0 4px #fff}
+.dot.nt::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px dashed #fff;opacity:.9}
+.dot.bing{animation:glow 2.4s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}50%{box-shadow:0 0 0 4px rgba(255,255,255,.55)}}
+.field.noanim .dot{transition:none}
+
+.fac{background:rgba(255,255,255,.07);border:1px solid rgba(255,195,107,.5);border-radius:14px;padding:10px 14px}
+.fac h3{font-size:14px;font-weight:800;margin-bottom:8px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.fac h3 span{font-size:12px;font-weight:600;color:var(--soft)}
+.facg{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 18px}
+.facg div b{display:block;font-size:30px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+.facg div span{display:block;font-size:12px;color:var(--soft);font-weight:600;line-height:1.3}
+.facg div small{display:block;font-size:11.5px;color:#FFD9A0;font-weight:700;margin-top:1px}
+
+.screen.full{position:fixed;inset:0;border-radius:0;z-index:50;overflow:hidden;padding:16px 20px}
+.screen.full .field{flex:1;height:auto;min-height:0}
+.screen.full .stat b{font-size:min(6vh,56px)}
+#exitFull{position:fixed;right:16px;top:12px;z-index:60}
+.screen.full .head{padding-right:170px}
+
+@media(max-width:900px){
+  .field{grid-template-columns:1fr 1fr;height:auto;min-height:0;grid-auto-rows:minmax(150px,auto)}
+  .outs{grid-column:1 / -1;grid-template-columns:1fr 1fr;grid-template-rows:auto}
+  .outs .zone{min-height:150px}
+  .zone.z-nothere{grid-column:1 / -1;min-height:200px}
+  .stat b{font-size:32px}.head h2{font-size:18px}.legend{margin-left:0}
+  .screen{padding:14px}main{padding:12px}
+}
+@media(prefers-reduced-motion:reduce){.dot{transition:none}.dot.bing{animation:none}}
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+
+<div id="app" class="hidden">
+  <div class="top"><h1>Assessment night flow screen</h1><a href="assessment-live.html">Results screen</a><a href="phase1.html">Back to Phase 1 hub</a></div>
+  <div class="bar" id="bar">
+    <label>Course <select id="courseSel"></select></label>
+    <button type="button" class="btn pri" id="fullBtn">Full screen</button>
+  </div>
+  <main>
+    <div id="msgs"></div>
+    <div class="screen" id="screen">
+      <div class="head"><h2 id="ttl">Opening...</h2><span class="clock" id="clk"></span></div>
+      <div class="stats" id="stats"></div>
+      <div class="field noanim" id="field">
+        <div class="zone z-nothere flow1" data-z="nothere"><h3><span>Not here yet</span><b data-n></b></h3><small>due tonight, not checked in</small><div class="za"></div></div>
+        <div class="zone z-arrived flow1" data-z="arrived"><h3><span>Waiting</span><b data-n></b></h3><small>arrived, not yet collected</small><div class="za"></div></div>
+        <div class="zone z-collected flow1" data-z="collected"><h3><span>Collected</span><b data-n></b></h3><small>with a runner, on the way</small><div class="za"></div></div>
+        <div class="zone z-being flow1" data-z="being"><h3><span>Being assessed</span><b data-n></b></h3><small>in a room now</small><div class="za"></div></div>
+        <div class="outs">
+          <div class="zone z-pass1" data-z="pass1"><h3><span>Passed first time</span><b data-n></b></h3><div class="za"></div></div>
+          <div class="zone z-passRe" data-z="passRe"><h3><span>Passed after retest</span><b data-n></b></h3><div class="za"></div></div>
+          <div class="zone z-ref" data-z="ref"><h3><span>With RMD faculty</span><b data-n></b></h3><small>referred, retest to arrange</small><div class="za"></div></div>
+          <div class="zone z-other" data-z="other"><h3><span>Not passed at a later sit</span><b data-n></b></h3><small>retrain, degree leads or final</small><div class="za"></div></div>
+        </div>
+      </div>
+      <div class="fac" id="fac"></div>
+    </div>
+    <div class="hint" id="hint">Numbers and flow only, never names. Each dot is one candidate and the number inside it is the assessment attempt they are on (blue 1, amber 2, pink 3, green 4). A dashed white ring means the runner could not find them. Dots move by themselves as people are checked in, collected and assessed. Who is expected at RMD faculty (with names) is on the Check-in station in the Phase 1 hub.</div>
+  </main>
+</div>
+<script>
+initFirebase();
+const S = { user: null, courseDates: [], course: null, cands: [], res: {}, unsubs: [], err: "", tick: null, wake: null, dots: new Map(), d: 0 };
+const $ = id => document.getElementById(id);
+const esc = v => (v == null ? "" : String(v)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function londonNow() {
+  const p = {};
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, hm: p.hour + ":" + p.minute };
+}
+function nice(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(",", ""); }
+function assessDate(name) { const c = S.courseDates.find(x => x.name === name); return c ? c.date : null; }
+
+// ── Same rules as the hub's check-in states ─────────────────────────────────
+const nres = id => S.res[id] || {};
+const nattempts = id => nres(id).attempts || {};
+const passedAtKey = id => { const a = nattempts(id); return Object.keys(a).find(k => a[k] && a[k].outcome === "pass") || null; };
+const recordedAt = (id, att) => nattempts(id)[String(att)] || null;
+const attemptOf = c => Number.isFinite(c.assessmentAttempt) ? c.assessmentAttempt : (c.firstTimeAssessment === false || c.twoPlusAssessments === true ? 2 : 1);
+const derivedAttempt = id => { const a = nattempts(id)["1"]; return a && a.outcome === "refer" ? 2 : 1; };
+const effAttempt = c => Math.max(attemptOf(c), derivedAttempt(c.id));
+const isAbsent = c => c.assessmentAbsent === true;
+const hasSlot = c => !!(c.assessmentRoom && c.assessmentSlot);
+const flowOf = (c, att) => (nres(c.id).flow || {})[String(att)] || {};
+function cstate(c) {
+  const att = effAttempt(c);
+  if (passedAtKey(c.id) || recordedAt(c.id, att)) return "assessed";
+  const cl = nres(c.id).claim; if (cl && cl.uid) return "being";
+  const f = flowOf(c, att);
+  return f.collected ? "collected" : f.arrived ? "arrived" : "nothere";
+}
+const expected = c => !isAbsent(c) && (hasSlot(c) || effAttempt(c) >= 2 || !!nres(c.id).flow);
+const clampA = n => Math.min(4, Math.max(1, Number(n) || 1));
+const lastReferAt = id => { const a = nattempts(id); const ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number); return ks.length ? Math.max.apply(null, ks) : 0; };
+
+// Where a candidate's dot lives, and which attempt colour it wears.
+function placeOf(c) {
+  const pk = passedAtKey(c.id);
+  if (pk) return { z: Number(pk) === 1 ? "pass1" : "passRe", a: clampA(pk) };
+  const lr = lastReferAt(c.id), st = cstate(c);
+  if (lr >= 2) return { z: "other", a: clampA(lr) };
+  if (lr === 1 && st === "nothere") return { z: "ref", a: 1 };
+  if (st === "assessed") return { z: "other", a: clampA(effAttempt(c)) };
+  return { z: st, a: clampA(effAttempt(c)) };
+}
+
+auth.onAuthStateChanged(async user => {
+  if (!user) { window.location.href = "signin.html"; return; }
+  try {
+    S.user = user;
+    const role = await resolveRole(user.uid, user.email || "");
+    const stu = await isStudentFaculty(user.email || "").catch(() => false);
+    const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+    if (!(role === ROLES.DIRECTOR || stu || sen)) {
+      $("authMsg").textContent = "This screen is for Directors, Student Faculty and Senior Faculty. If you should have access, ask the Course Director.";
+      return;
+    }
+    const cfg = await db.collection("config").doc("stage1_course_dates").get();
+    S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
+    $("gate").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    if (!S.courseDates.length) { $("ttl").textContent = "No courses set up yet"; return; }
+    const isTest = c => c.test === true || /^TEST\b/i.test(c.name || "");
+    const real = S.courseDates.filter(c => !isTest(c)), tests = S.courseDates.filter(isTest);
+    $("courseSel").innerHTML = real.concat(tests).map(c => `<option value="${esc(c.name)}">${esc(c.name)} (${esc(nice(c.date))})</option>`).join("");
+    const today = londonNow().date, pool = real.length ? real : S.courseDates;
+    let first = pool.find(c => c.date >= today) || pool[pool.length - 1];
+    { const wantC = new URLSearchParams(location.search).get("course"), wc = wantC && S.courseDates.find(c => c.name === wantC); if (wc) first = wc; }
+    $("courseSel").value = first.name;
+    $("courseSel").onchange = () => selectCourse($("courseSel").value);
+    $("fullBtn").onclick = () => setFull(!$("screen").classList.contains("full"));
+    selectCourse(first.name);
+    S.tick = setInterval(() => { clock(); }, 20000);
+    setInterval(reloadCands, 5 * 60 * 1000);
+    if (window.ResizeObserver) new ResizeObserver(() => layout(true)).observe($("field"));
+    window.addEventListener("resize", () => layout(true));
+  } catch (err) {
+    console.error(err);
+    $("authMsg").textContent = "Could not open this page: " + (err.message || err);
+  }
+});
+
+function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
+async function loadCands(name) {
+  const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
+  S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+}
+async function reloadCands() { if (!S.course) return; try { await loadCands(S.course); render(); } catch (e) {} }
+async function selectCourse(name) {
+  detach();
+  S.course = name; S.res = {}; S.cands = []; S.err = "";
+  clearDots();
+  $("ttl").textContent = "Opening " + name + "...";
+  try { await loadCands(name); }
+  catch (err) { S.err = "Could not load the candidates: " + (err.message || err); render(); return; }
+  S.unsubs.push(db.collection("stage1_assessments").where("course", "==", name).onSnapshot(snap => {
+    S.res = {}; snap.forEach(d => { S.res[d.id] = d.data(); });
+    S.err = ""; render();
+  }, err => { S.err = "Could not read the results: " + (err.message || err) + ". If this says permission denied, check you are Student Faculty, Senior Faculty or a Director, and that the latest rules are deployed."; render(); }));
+  render();
+}
+function clearDots() { S.dots.forEach(el => el.remove()); S.dots.clear(); $("field").classList.add("noanim"); }
+function clock() { const n = londonNow(); $("clk").textContent = n.hm + " · live"; }
+
+// ── Draw ────────────────────────────────────────────────────────────────────
+let ZONES = {};   // zone key -> { el, list:[{key,a,nt,bing}] }
+function render() {
+  if (!S.course) return;
+  $("msgs").innerHTML = S.err ? `<div class="msg">${esc(S.err)}</div>` : "";
+  const d = assessDate(S.course);
+  $("ttl").textContent = S.course + " · Assessment night" + (d ? " · " + nice(d) : "");
+  clock();
+  const list = S.cands.filter(expected);
+  const absent = S.cands.filter(isAbsent).length;
+  // Opaque dot keys: position in a stable order, never the id or the name.
+  const ordered = list.slice().sort((a, b) => (a.assessmentSlot || "99:99").localeCompare(b.assessmentSlot || "99:99") || String(a.id).localeCompare(String(b.id)));
+  const keyOf = new Map(); ordered.forEach((c, i) => keyOf.set(c.id, "k" + i));
+  const zones = {}; ["nothere", "arrived", "collected", "being", "pass1", "passRe", "ref", "other"].forEach(z => zones[z] = []);
+  const att = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  let facRetest = { n: 0, arr: 0, by: { 2: 0, 3: 0, 4: 0 } }, other = { 2: 0, 3: 0, 4: 0 };
+  ordered.forEach(c => {
+    const p = placeOf(c), st = cstate(c);
+    att[clampA(effAttempt(c))]++;
+    const nt = p.z === "nothere" && !!(nres(c.id).notThere && nres(c.id).notThere.flag);
+    zones[p.z].push({ key: keyOf.get(c.id), a: p.a, nt, bing: p.z === "being", ord: zones[p.z].length });
+    if (p.z === "other") other[p.a] = (other[p.a] || 0) + 1;
+    if (effAttempt(c) >= 2 && !passedAtKey(c.id) && !recordedAt(c.id, effAttempt(c)) && !isAbsent(c)) {
+      facRetest.n++; if (st !== "nothere") facRetest.arr++;
+      facRetest.by[clampA(effAttempt(c))] = (facRetest.by[clampA(effAttempt(c))] || 0) + 1;
+    }
+  });
+  Object.keys(zones).forEach(z => zones[z].sort((x, y) => x.a - y.a || x.ord - y.ord));
+  const total = ordered.length;
+  const here = zones.arrived.length + zones.collected.length + zones.being.length;
+  const passed = zones.pass1.length + zones.passRe.length;
+  const assessed = passed + zones.other.length + zones.ref.length;
+  const refd = zones.ref.length + zones.other.length;
+  $("stats").innerHTML =
+    `<div class="stat"><b>${total}</b><span>Expected tonight</span></div>` +
+    `<div class="stat"><b>${here}</b><span>In the building</span></div>` +
+    `<div class="stat"><b>${assessed}</b><span>Assessed</span></div>` +
+    `<div class="stat g"><b>${passed}</b><span>Passed</span></div>` +
+    `<div class="stat o"><b>${refd}</b><span>Referred</span></div>` +
+    `<div class="legend">` +
+    [1, 2, 3, 4].map(n => `<span class="lk"><i style="background:var(--a${n})">${n}</i>attempt ${n} <em>${att[n]}</em></span>`).join("") +
+    `<span class="ntk"><i></i>can't find</span>` +
+    (absent ? `<span class="lk" style="opacity:.8">${absent} not coming</span>` : "") +
+    `</div>`;
+  $("fac").innerHTML =
+    `<h3>RMD faculty <span>counts only, names are on the Check-in station</span></h3><div class="facg">` +
+    `<div><b>${facRetest.n}</b><span>on the retest list tonight</span><small>${facRetest.arr} here already &middot; attempt 2: ${facRetest.by[2]} &middot; 3: ${facRetest.by[3]} &middot; 4: ${facRetest.by[4]}</small></div>` +
+    `<div><b>${zones.ref.length}</b><span>referred tonight, retest to arrange</span></div>` +
+    `<div><b>${other[2]}</b><span>retrain after attempt 2</span></div>` +
+    `<div><b>${other[3]}</b><span>back to degree leads (attempt 3)</span></div>` +
+    `<div><b>${other[4]}</b><span>final attempt not passed</span></div></div>`;
+  ZONES = {};
+  document.querySelectorAll("#field .zone").forEach(el => {
+    const z = el.getAttribute("data-z");
+    ZONES[z] = { el, list: zones[z] || [] };
+    el.querySelector("[data-n]").textContent = (zones[z] || []).length;
+  });
+  // Create, update or remove dots
+  const seen = new Set();
+  Object.keys(zones).forEach(z => zones[z].forEach(it => {
+    seen.add(it.key);
+    let el = S.dots.get(it.key);
+    if (!el) { if (!S.dots.size) $("field").classList.add("noanim"); el = document.createElement("div"); el.className = "dot"; el._fresh = true; $("field").appendChild(el); S.dots.set(it.key, el); }
+    el.className = "dot c" + it.a + (it.nt ? " nt" : "") + (it.bing ? " bing" : "");
+    el.textContent = it.a;
+    el.setAttribute("aria-hidden", "true");
+  }));
+  S.dots.forEach((el, k) => { if (!seen.has(k)) { el.remove(); S.dots.delete(k); } });
+  layout(false);
+  if ($("screen").classList.contains("full")) ensureExit(true);
+}
+
+// Put every dot on its slot inside its zone. Moves are animated by the CSS transform transition.
+function layout(resizeOnly) {
+  const field = $("field"); if (!field || !Object.keys(ZONES).length) return;
+  const fr = field.getBoundingClientRect(); if (!fr.width) return;
+  const rects = {}; let d = 46; const gap = 0.2;
+  Object.keys(ZONES).forEach(z => {
+    const a = ZONES[z].el.querySelector(".za").getBoundingClientRect();
+    rects[z] = { x: a.left - fr.left, y: a.top - fr.top, w: Math.max(10, a.width), h: Math.max(10, a.height) };
+  });
+  // largest dot size at which every zone's dots fit
+  for (; d > 9; d -= 1) {
+    const pitch = d * (1 + gap);
+    const ok = Object.keys(ZONES).every(z => {
+      const r = rects[z], cols = Math.max(1, Math.floor(r.w / pitch)), rows = Math.max(1, Math.floor(r.h / pitch));
+      return cols * rows >= ZONES[z].list.length;
+    });
+    if (ok) break;
+  }
+  const pitch = d * (1 + gap);
+  if (field.classList.contains("noanim")) requestAnimationFrame(() => requestAnimationFrame(() => field.classList.remove("noanim")));
+  Object.keys(ZONES).forEach(z => {
+    const r = rects[z], cols = Math.max(1, Math.floor(r.w / pitch));
+    ZONES[z].list.forEach((it, i) => {
+      const el = S.dots.get(it.key); if (!el) return;
+      const col = i % cols, row = Math.floor(i / cols);
+      el.style.width = el.style.height = d + "px";
+      el.style.fontSize = Math.max(8, Math.round(d * 0.55)) + "px";
+      if (el._fresh) { el.style.transition = "none"; }
+      el.style.transform = "translate3d(" + Math.round(r.x + col * pitch) + "px," + Math.round(r.y + row * pitch) + "px,0)";
+      if (el._fresh) { void el.offsetWidth; el.style.transition = ""; el._fresh = false; }
+    });
+  });
+}
+
+function ensureExit(on) {
+  let x = $("exitFull");
+  if (on && !x) { x = document.createElement("button"); x.id = "exitFull"; x.className = "btn"; x.textContent = "Close full screen"; x.onclick = () => setFull(false); document.body.appendChild(x); }
+  if (!on && x) x.remove();
+}
+async function setFull(on) {
+  $("screen").classList.toggle("full", on);
+  $("fullBtn").textContent = on ? "Close full screen" : "Full screen";
+  ensureExit(on);
+  try {
+    if (on) {
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) await document.documentElement.requestFullscreen().catch(() => {});
+      if (navigator.wakeLock) S.wake = await navigator.wakeLock.request("screen").catch(() => null);
+    } else {
+      if (document.fullscreenElement && document.exitFullscreen) await document.exitFullscreen().catch(() => {});
+      if (S.wake) { S.wake.release().catch(() => {}); S.wake = null; }
+    }
+  } catch (e) {}
+  layout(true);
+}
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && $("screen").classList.contains("full")) setFull(false); });
+</script>
+</body>
+</html>
