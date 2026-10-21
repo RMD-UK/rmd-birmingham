@@ -201,6 +201,8 @@ details.lst .in{padding:0 14px 12px}
 .lrow{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #F0F3F8;flex-wrap:wrap}
 .lrow .nm{flex:1;min-width:150px;font-weight:700;display:flex;gap:6px;align-items:center}
 .lrow small{color:var(--mut);font-weight:500}
+.agroup{margin:14px 0 2px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.lrow.arow2 .adeg{min-width:110px}.lrow.arow2 .atl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-left:auto}.lrow.arow2 .atl i{font-style:normal;color:var(--mut)}
 .stepper{display:inline-flex;align-items:center;gap:6px}
 .stepper button{width:30px;height:30px;border-radius:8px;border:2px solid var(--pur);background:#fff;color:var(--pur);font-weight:800;font-size:16px;line-height:1}
 .emailbox{background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:10px}
@@ -2933,17 +2935,35 @@ function attemptStatus(c) {
   return { cls: "", text: "Not yet assessed" };
 }
 function attemptsOverview() {
-  const list = N.cands.filter(c => effAttempt(c) >= 2 || isDoneN(c))
-    .sort((a, b) => effAttempt(b) - effAttempt(a) || String(a.name).localeCompare(String(b.name)));
-  const body = list.length
-    ? list.map(c => {
-        const st = attemptStatus(c), a = nattempts(c.id);
-        const hist = Object.keys(a).sort((x, y) => x - y).map(k => "A" + k + " " + outcomeShort(a[k].outcome, Number(k))).join(" · ");
-        const exc = Object.keys(a).some(k => a[k] && a[k].excellent);
-        return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small>${esc(c.degree || "")}</small>` +
-          `<small style="flex-basis:100%">${hist ? esc(hist) + " · " : ""}<span class="nchip ${st.cls}">${esc(st.text)}</span>${exc ? ' <span class="nchip exc-chip">Excellent</span>' : ""}</small></div>`;
-      }).join("")
-    : '<div class="hint">Nobody has a result or a retest yet.</div>';
+  const list = N.cands.filter(c => effAttempt(c) >= 2 || isDoneN(c));
+  const groupOf = c => {
+    if (passedAtKey(c.id)) return "passed";
+    if (c.absent) return "absent";
+    if (inPool(c)) return "pool";
+    const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+    return ks.length ? "follow" : "notyet";
+  };
+  const GROUPS = [
+    ["pool", "In the retest pool", "Waiting for a retest tonight"],
+    ["passed", "Passed", ""],
+    ["follow", "Not passed: follow-up needed", "Not retested tonight"],
+    ["absent", "Not there", ""],
+    ["notyet", "Not yet assessed", ""]
+  ];
+  const row = c => {
+    const a = nattempts(c.id), ks = Object.keys(a).sort((x, y) => x - y), st = attemptStatus(c);
+    const exc = ks.some(k => a[k] && a[k].excellent);
+    const tl = ks.length ? ks.map(k => `<span class="nchip ${a[k].outcome === "pass" ? "pass" : "refer"}">Attempt ${esc(k)}: ${esc(outcomeShort(a[k].outcome, Number(k)))}</span>`).join('<i>&rarr;</i>') : '<span class="hint" style="margin:0">No result yet</span>';
+    return `<div class="lrow arow2"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small class="adeg">${esc(c.degree || "")}</small>` +
+      `<span class="atl">${tl}${exc ? ' <span class="nchip exc-chip">Excellent</span>' : ""}</span></div>`;
+  };
+  let body = "";
+  GROUPS.forEach(g => {
+    const l = list.filter(c => groupOf(c) === g[0]).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    if (!l.length) return;
+    body += `<div class="agroup">${esc(g[1])} (${l.length})</div>` + l.map(row).join("");
+  });
+  if (!list.length) body = '<div class="hint">Nobody has a result or a retest yet.</div>';
   return `<details class="card" id="attDetails"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All attempts on this course (${list.length})</summary><div style="margin-top:8px">${body}</div></details>`;
 }
 // ── Catch-up night allocation (2026-10-18) ──────────────────────────────────
@@ -3020,9 +3040,7 @@ function renderRetest() {
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
     `An assessor takes each one from the Assessor view. ` +
     `Not passed at attempt 2 or later: see <b>After the night</b> below.`;
-  let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}${nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0 && pool.some(c => effAttempt(c) >= 3))}` +
-    `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}${nightTile(overrideEvents().length, "Passed with a red step", overrideEvents().length > 0)}</div>`;
-  h += overridesCard();
+  let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}</div>`;
   h += catchupCard();
   if (stale.length) {
     h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
@@ -3044,6 +3062,7 @@ function renderRetest() {
   const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
   if (wasOpen && $("attDetails")) $("attDetails").open = true;
+  { const hd = $("hereDetails"); if (hd) hd.addEventListener("toggle", () => { N.hereOpen = hd.open; }); }
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {
@@ -3136,17 +3155,16 @@ async function setPresent(list) {
   }
 }
 function hereCard(pool) {
-  const people = att3People();
+  const people = att3People(), open = N.hereOpen !== false, n = people.filter(isHere).length;
+  const wrap = inner => `<details class="card" id="hereDetails"${open ? " open" : ""}><summary style="cursor:pointer;font-weight:800;font-size:17px"><span class="stepno">1</span>Attempt 3 or later: who is here tonight${people.length ? ` <span class="hint" style="margin:0 0 0 8px;font-weight:600">${n} of ${people.length} here</span>` : ""}</summary><div style="margin-top:8px">${inner}</div></details>`;
   const wait3 = pool.filter(c => effAttempt(c) >= 3 && !(nres(c.id).claim && nres(c.id).claim.uid)).length;
-  let h = `<div class="card"><h3><span class="stepno">1</span>Attempt 3 or later: who is here tonight</h3>` +
-    `<div class="hint" style="margin:0 0 6px">Tap each person here tonight. Senior Faculty and extra named assessors only. Information only.</div>`;
-  if (N.dir === null || N.dir === undefined) return h + '<div class="hint">Loading the list…</div></div>';
-  if (!people.length) return h + `<div class="hint">Nobody listed. Senior Faculty come from the faculty roster; extra assessors are added in Assessment setup.</div></div>`;
-  const n = people.filter(isHere).length;
+  let h = `<div class="hint" style="margin:0 0 6px">Tap each person here tonight. Senior Faculty and extra named assessors only. Information only.</div>`;
+  if (N.dir === null || N.dir === undefined) return wrap(h + '<div class="hint">Loading the list…</div>');
+  if (!people.length) return wrap(h + `<div class="hint">Nobody listed. Senior Faculty come from the faculty roster; extra assessors are added in Assessment setup.</div>`);
   if (wait3 && !n) h += `<div class="msg warn">${wait3} ${wait3 === 1 ? "person is" : "people are"} waiting for attempt 3 or later and nobody is marked as here to take them.</div>`;
   h += `<div class="hbtns">${people.map((x, i) => `<button type="button" class="hbtn${isHere(x) ? " on" : ""}" data-here="${i}" aria-pressed="${isHere(x)}">${isHere(x) ? "&#10003; " : ""}${esc(x)}</button>`).join("")}</div>` +
-    `<div class="tools" style="margin:6px 0 0"><span class="hint" style="margin:0"><b>${n}</b> of ${people.length} here</span><button type="button" class="btn sm" data-hereall="1">Everyone is here</button><button type="button" class="btn sm" data-hereall="0">Nobody is here</button></div></div>`;
-  return h;
+    `<div class="tools" style="margin:6px 0 0"><span class="hint" style="margin:0"><b>${n}</b> of ${people.length} here</span><button type="button" class="btn sm" data-hereall="1">Everyone is here</button><button type="button" class="btn sm" data-hereall="0">Nobody is here</button></div>`;
+  return wrap(h);
 }
 function whoCanBox(pool) {
   const atts = [...new Set(pool.map(c => effAttempt(c) >= 3 ? 3 : 2))].sort();
