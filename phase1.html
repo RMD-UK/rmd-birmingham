@@ -460,6 +460,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
           <div class="pick hidden" id="aPick"></div>
           <div id="aMoveBody"></div>
         </div>
+        <div class="card hidden" id="aAdd"></div>
         <div id="aLists"></div>
       </div>
       <div id="viewRetest" class="hidden"></div>
@@ -680,8 +681,8 @@ const ROLE_DEFS = {
     { id: "runner", t: "Runner / instructor", s: "Who is due, who is done", ok: () => S.run, view: "runner", jobs: [{ no: 4 }] },
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night && !S.teamOnly, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && !S.teamOnly && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
-    { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Give RAP and third sits a room" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 12 }, { no: 13 }] },
+    { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
+    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 12 }, { no: 13 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
     { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
@@ -1420,7 +1421,7 @@ async function setView(v) {
   if (v === "checkin" && !S.full) return;
   if (v === "setup" && !S.isDirector) return;
   S.view = v; renderSteps();
-  if (NIGHT_VIEWS.includes(v)) { if (N.course !== S.course) attachNight(); loadNight(); }
+  if (NIGHT_VIEWS.includes(v) || (v === "alloc" && S.door === "assess")) { if (N.course !== S.course) attachNight(); loadNight(); }
   await enterView();
 }
 
@@ -1457,22 +1458,93 @@ function freePairs(taken) {
 }
 function logAdd(t) { A.log.unshift(t); A.log = A.log.slice(0, 8); }
 
+function nightAlloc() { return S.door === "assess"; }
 function renderAlloc() {
   if (!S.course || S.view !== "alloc") return;
-  const d = assessDate(), st = stats();
+  const d = assessDate(), st = stats(), night = nightAlloc();
   const cap = A.rooms.length * ASSESS_SLOTS.length;
   $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set, so the assessment night cannot be worked out.</div>`;
-  $("plain").innerHTML = '<span class="lbl">In plain English</span>' +
+  $("plain").innerHTML = '<span class="lbl">In plain English</span>' + (night ?
+    `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. Add someone from another course, move one person to a different slot, or place someone with a Reasonable Adjustments Pathway (RAP). <b>${st.rap.length}</b> RAP.` :
     `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. ` +
     `<b>${st.toDo.length}</b> ${st.toDo.length === 1 ? "person needs" : "people need"} a slot (automatic). ` +
-    `<b>${st.rap.length}</b> RAP and <b>${st.retest.length}</b> retest: place by hand below.` +
-    (st.notElig.length ? ` <b>${st.notElig.length}</b> absent in a teaching week: move to a new course (Course Allocation, then Comms).` : "");
+    `<b>${st.rap.length}</b> RAP: place by hand below. <b>${st.retest.length}</b> retest: managed on assessment night.` +
+    (st.notElig.length ? ` <b>${st.notElig.length}</b> absent in a teaching week: move to a new course (Course Allocation, then Comms).` : ""));
   const free = Math.max(0, cap - st.slotted.length);
   const tile = (n, l, warn) => `<div class="tile${warn ? " warn" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
-  $("aTiles").innerHTML = tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
+  $("aTiles").innerHTML = night ?
+    tile(S.cands.length, "On this course") + tile(st.slotted.length, "Have a slot") + tile(st.toDo.length, "Still need a slot", st.toDo.length > 0) + tile(st.rap.length, "RAP") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") :
+    tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
     tile(st.toDo.length, "Still need a slot", st.toDo.length > 0 && st.toDo.length > free) + tile(st.rap.length, "RAP: place by hand") +
     tile(st.retest.length, "Retest pool (attempt 2+)") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") + tile(free, "Free slots (" + A.rooms.length + " rooms)");
-  renderAAuto(st); renderAMove(); renderALists(st);
+  $("aAuto").classList.toggle("hidden", night);
+  $("aAdd").classList.toggle("hidden", !night);
+  $("aMove").querySelector("h3").innerHTML = night ? '<span class="stepno">1</span>Move one person to a different slot' : '<span class="stepno">+</span>Adjust: move one person';
+  if (!night) renderAAuto(st);
+  renderAMove(); renderALists(st); if (night) renderAAdd();
+}
+
+// ── Add someone onto tonight (21 Oct, Jon) ──────────────────────────────────
+// Someone from another course who needs to sit tonight. Makes a NEW record on this course, linked to the old one (the old record is never
+// edited, same pattern as the catch-up night and repeat courses). Attempt = one more than their last referral, else their saved attempt.
+const AD = { loaded: false, loading: false, rows: [], q: "", busy: null, err: "" };
+function adTestMode() { return isTestCourse({ name: S.course, test: (S.courseDates.find(x => x.name === S.course) || {}).test }); }
+async function adLoad() {
+  AD.loading = true; AD.err = ""; renderAAdd();
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get(), tm = adTestMode(), rows = [];
+    snap.forEach(d => { const c = Object.assign({ id: d.id }, d.data()); if (c.course && c.course !== S.course && (tm ? c.isTest === true : c.isTest !== true)) rows.push(c); });
+    AD.rows = rows; AD.loaded = true;
+  } catch (e) { AD.err = "Could not look this up: " + ((e && e.message) || e); }
+  AD.loading = false; renderAAdd();
+}
+function adHere(c) { return S.cands.some(x => x.id === c.id || x.linkedCandidateId === c.id || (x.addedFrom && x.addedFrom.id === c.id)) || !!c.linkedCandidateId && S.cands.some(x => x.id === c.linkedCandidateId); }
+function renderAAdd() {
+  const box = $("aAdd"); if (!box || !nightAlloc()) return;
+  let h = '<h3><span class="stepno">2</span>Add someone from another course</h3>' +
+    '<div class="hint" style="margin:0 0 8px">For someone who needs to sit tonight but is on a different course. This makes a new record here, linked to their old one. Nothing is emailed. First sits then get a slot in box 1. Retests (attempt 2 or later) go to the Retest pool.</div>';
+  if (!AD.loaded) h += `<button type="button" class="btn sm" id="adLoad"${AD.loading ? " disabled" : ""}>${AD.loading ? "Looking..." : "Find someone on another course"}</button>`;
+  else {
+    const q = AD.q.trim().toLowerCase();
+    const hits = q.length < 2 ? [] : AD.rows.filter(c => String(c.name || "").toLowerCase().includes(q) || String(c.email || "").toLowerCase().includes(q)).slice(0, 8);
+    h += `<input type="search" id="adSearch" placeholder="Type a name or email (${AD.rows.length} people on other courses)" autocomplete="off" value="${esc(AD.q)}">`;
+    h += q.length < 2 ? '<div class="hint">Type at least 2 letters.</div>' : hits.length ? hits.map(c => `<div class="lrow"><span class="nm">${esc(c.name || "")}${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}</span><small>${esc(c.degree || "")} &middot; ${esc(c.course || "")}</small><span class="pact">${adHere(c) ? '<span class="nchip claim">Already here</span>' : `<button type="button" class="btn sm pri" data-adadd="${esc(c.id)}"${AD.busy ? " disabled" : ""}>${AD.busy === c.id ? "Adding..." : "Add to tonight"}</button>`}</span></div>`).join("") : '<div class="hint">Nobody found.</div>';
+  }
+  if (AD.err) h += `<div class="msg err" style="margin-top:8px">${esc(AD.err)}</div>`;
+  box.innerHTML = h;
+  if ($("adLoad")) $("adLoad").onclick = adLoad;
+  if ($("adSearch")) { const el = $("adSearch"); el.oninput = () => { AD.q = el.value; const pos = el.selectionStart; renderAAdd(); const n = $("adSearch"); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }; }
+  box.querySelectorAll("[data-adadd]").forEach(b => b.onclick = () => adAdd(b.dataset.adadd));
+}
+async function adAdd(id) {
+  const old = AD.rows.find(x => x.id === id); if (!old || AD.busy) return;
+  let next = attemptOf(old), passed = false;
+  try {
+    const ad = await db.collection("stage1_assessments").doc(id).get(), a = (ad.exists ? ad.data().attempts : null) || {};
+    passed = Object.keys(a).some(k => a[k] && a[k].outcome === "pass");
+    const refers = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+    if (refers.length) next = Math.max(next, Math.max.apply(null, refers) + 1);
+  } catch (e) {}
+  if (passed) { toast(old.name + " has already passed, so is not added.", true); return; }
+  const ok = await askSheet("Add " + esc(old.name || "this person") + " to tonight?", `From ${esc(old.course || "another course")}. They join ${esc(S.course)} as <b>attempt ${next}</b> in a new linked record; the old record is not changed. Nothing is emailed. ` + (next >= 2 ? "They then appear in the Retest pool, where RMD faculty pick their room (no time slot)." : "After this, give them a slot in box 1."), "Add to tonight");
+  if (!ok) return;
+  AD.busy = id; renderAAdd();
+  try {
+    const data = {};
+    CU_COPY.forEach(k => { if (old[k] !== undefined && old[k] !== null) data[k] = old[k]; });
+    if (old.isTest === true) data.isTest = true;
+    Object.assign(data, { course: S.course, room: null, placementChecked: true, placementBlocks: [], assessmentAttempt: next, twoPlusAssessments: next >= 2, firstTimeAssessment: next === 1,
+      linkedCandidateId: old.id, addedFrom: { id: old.id, course: old.course || "" }, addedAt: new Date().toISOString(), addedBy: S.user.uid, addedByName: S.myName || "",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
+    await ref.set(data);
+    if (S.isDirector) { try { await db.collection(COLLECTIONS.stage1Candidates).doc(old.id).update({ linkedCandidateId: ref.id }); old.linkedCandidateId = ref.id; } catch (e) {} }
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", S.course).get();
+    S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); loadNight();
+    AD.q = ""; A.target = null; A.sel = next >= 2 ? null : ref.id;
+    toast((old.name || "Candidate") + " added to tonight as attempt " + next + (next >= 2 ? ". They are in the Retest pool." : ". Pick their slot in box 1."));
+  } catch (err) { toast("Not added: " + (err.code === "permission-denied" ? "you do not have permission (a Director can do this)." : err.message), true); }
+  AD.busy = null; renderAlloc();
 }
 
 // ── Step 1: automatic allocation ────────────────────────────────────────────
@@ -1664,7 +1736,7 @@ function renderAMove() {
   const now = hasSlot(c) ? `${esc(c.assessmentSlot)} in ${esc(c.assessmentRoom)}` : "no slot yet";
   const tgt = A.target;
   let h = `<div class="selbox"><b>${esc(c.name)}</b>${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}<span style="color:var(--mut);font-size:13px">${esc(c.degree || "")} · now: ${now}${c.assessmentAbsent === true ? " · marked unable to attend" : ""}</span></div>` +
-    `<div class="tools" style="margin:6px 0"><span class="tg">Attempt</span><span class="stepper"><button type="button" id="aDec"${attemptOf(c) <= 1 ? " disabled" : ""}>-</button><b>${attemptOf(c)}</b><button type="button" id="aInc"${attemptOf(c) >= 9 ? " disabled" : ""}>+</button></span><span class="hint" style="margin:0">Anyone on 2 or more is left out of the automatic allocation.</span></div>`;
+    `<div class="tools" style="margin:6px 0"><span class="tg">Attempt</span><b>${attemptOf(c)}</b><button type="button" class="btn sm" id="aEdit">Edit attempt</button><span class="hint" style="margin:0">Anyone on 2 or more is left out of the automatic allocation.</span></div>`;
   if (!free.length) h += `<div class="msg warn">No free slots left on ${esc(S.course)}'s assessment night.</div>`;
   else {
     h += `<div class="fieldlab" style="font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">Earliest free slots (same evening, ${d8()})</div><div class="chips">` +
@@ -1687,7 +1759,7 @@ function renderAMove() {
   body.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => { A.target = { slot: b.dataset.slot, room: b.dataset.room }; renderAMove(); });
   if ($("aGrid")) $("aGrid").onclick = () => { A.showGrid = !A.showGrid; renderAMove(); };
   $("aMoveGo").onclick = moveOne; $("aOff").onclick = takeOff;
-  $("aDec").onclick = () => setAttempt(c, attemptOf(c) - 1); $("aInc").onclick = () => setAttempt(c, attemptOf(c) + 1);
+  $("aEdit").onclick = () => editAttempt(c.id);
 }
 function d8() { const d = assessDate(); return d ? nice(d) : ""; }
 function logHtml() { return A.log.length ? `<div class="log"><b>This visit:</b><br>${A.log.map(esc).join("<br>")}</div>` : ""; }
@@ -1784,8 +1856,7 @@ function renderALists(st) {
   const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""));
   const sched = st.slotted.slice().sort((a, b) => a.assessmentSlot === b.assessmentSlot ? String(a.assessmentRoom).localeCompare(String(b.assessmentRoom)) : a.assessmentSlot.localeCompare(b.assessmentSlot));
   $("aLists").innerHTML =
-    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from the Adjust box when you are ready.") +
-    group("Retest pool: attempt 2 and above", st.retest.slice().sort(byName), true, "Managed by the organising team. Not allocated automatically. Set the attempt number in the Adjust box.") +
+    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from the Adjust box when you are ready. Retests and attempt 3 or later are on the Retest pool page.") +
     group("Has a slot but was absent in a teaching week", st.slottedBad.slice().sort(byName), true, "These people should move to a new course. Moving them in Course Allocation clears their slot.") +
     group("Absent in a teaching week: no slot given", st.notElig.slice().sort(byName), true, "Left out of the automatic allocation. They move to a new course unless a Director overrides.") +
     group("Eligible but no slot yet", st.toDo.slice().sort(byName), true, "") +
@@ -3220,8 +3291,8 @@ function renderRetest() {
 // on file imply, asks "are you sure" with the exact change, and logs who did it on stage1_assessments/{id}.flow.edits.
 async function editAttempt(id) {
   const c = S.cands.find(x => x.id === id), n = N.cands.find(x => x.id === id);
-  if (!c || !n) { toast("Reload the page and try again.", true); return; }
-  const cur = effAttempt(n), min = derivedAttempt(id), MAXA = 4;
+  if (!c) { toast("Reload the page and try again.", true); return; }
+  const cur = n ? effAttempt(n) : attemptOf(c), min = derivedAttempt(id), MAXA = 4;
   let pick = null;
   const close = () => { $("overlay").innerHTML = ""; };
   const shell = inner => { $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">${inner}</div></div>`; $("sbg").onclick = e => { if (e.target.id === "sbg") close(); }; };
@@ -3248,14 +3319,14 @@ async function editAttempt(id) {
     try {
       await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ assessmentAttempt: pick, twoPlusAssessments: pick >= 2 });
     } catch (err) { close(); toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission" : err.message), true); return; }
-    c.assessmentAttempt = pick; c.twoPlusAssessments = pick >= 2; n.attempt = pick;
+    c.assessmentAttempt = pick; c.twoPlusAssessments = pick >= 2; if (n) n.attempt = pick;
     let logged = true;
     try {
       const at = new Date().toISOString();
       await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: c.name || "", flow: { edits: { ["e" + Date.now()]: { from: cur, to: pick, by: S.user.uid, byName: S.myName, at } } }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
     } catch (err) { logged = false; }
     close(); toast(c.name + " is now on attempt " + pick + (logged ? "." : ". The change was saved but could not be logged."), !logged);
-    renderRetest();
+    renderRetest(); renderAlloc();
   };
   step1();
 }
