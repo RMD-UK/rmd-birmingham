@@ -319,7 +319,7 @@ function layout(resizeOnly) {
   for (; d > 9; d -= 1) {
     const pitch = d * (1 + gap);
     const ok = Object.keys(ZONES).every(z => {
-      const r = rects[z], cols = Math.max(1, Math.floor(r.w / pitch)), rows = Math.max(1, Math.floor(r.h / pitch));
+      const r = rects[z], cols = Math.floor((r.w + d * gap) / pitch), rows = Math.floor((r.h + d * gap) / pitch);   // the last row and column need only d, not the full pitch; never force a dot into a zone shorter than itself
       return cols * rows >= ZONES[z].list.length;
     });
     if (ok) break;
@@ -327,7 +327,7 @@ function layout(resizeOnly) {
   const pitch = d * (1 + gap);
   if (field.classList.contains("noanim")) requestAnimationFrame(() => requestAnimationFrame(() => field.classList.remove("noanim")));
   Object.keys(ZONES).forEach(z => {
-    const r = rects[z], cols = Math.max(1, Math.floor(r.w / pitch));
+    const r = rects[z], cols = Math.max(1, Math.floor((r.w + d * gap) / pitch));
     ZONES[z].list.forEach((it, i) => {
       const el = S.dots.get(it.key); if (!el) return;
       const col = i % cols, row = Math.floor(i / cols);
