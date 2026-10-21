@@ -3160,9 +3160,11 @@ function renderRetest() {
     const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") : "Senior Faculty or extra named assessor";
     const who = cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : (mode === "need" ? "" : '<span class="nchip bad">Waiting</span>');
     const roomBits = (!simple && att === 2 && !cl) ? (resitRoom(c) ? `<span class="nchip claim">Room ${esc(resitRoom(c))}</span><button type="button" class="btn sm" data-act="changeroom" data-id="${esc(c.id)}">Change room</button>` : `<button type="button" class="btn sm pri" data-act="retestroom" data-id="${esc(c.id)}">Confirm retest + pick room</button>`) : "";
-    const stepper = (simple || mode === "need") ? "" : `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span>`;
+    const ed = Object.values((nres(c.id).flow || {}).edits || {}).sort((a, b) => String(a.at).localeCompare(String(b.at))).pop();
+    const stepper = (simple || mode === "need") ? "" : `<button type="button" class="btn sm" data-patt="${esc(c.id)}">Edit attempt</button>`;
+    const edNote = (!stepper || !ed) ? "" : ` &middot; <i>Attempt edited ${esc(ed.from)} to ${esc(ed.to)} by ${esc(ed.byName || "someone")}</i>`;
     return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
-      `<small style="flex-basis:100%">${sec}${simple || mode === "need" ? "" : " &middot; " + rule}</small>` +
+      `<small style="flex-basis:100%">${sec}${simple || mode === "need" ? "" : " &middot; " + rule}${edNote}</small>` +
       `<span class="pact">${who}${roomBits}${stepper}</span></div>`;
   };
   if (simple) {
@@ -3194,11 +3196,7 @@ function renderRetest() {
   bindActs($("viewRetest"));
   $("viewRetest").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
-  $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {
-    const c = S.cands.find(x => x.id === b.dataset.patt), n = N.cands.find(x => x.id === b.dataset.patt);
-    if (!c || !n) { toast("Reload the page and try again.", true); return; }
-    setAttempt(c, effAttempt(n) + Number(b.dataset.d)).then(() => { n.attempt = attemptOf(c); renderRetest(); });
-  });
+  $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => editAttempt(b.dataset.patt));
   $("viewRetest").querySelectorAll("[data-here]").forEach(b => b.onclick = () => {
     const people = att3People(), name = people[Number(b.dataset.here)]; if (name === undefined) return;
     const cur = people.filter(isHere);
@@ -3216,6 +3214,50 @@ function renderRetest() {
     const l = af[b.dataset.copygroup] || [];
     copyTxt(l.map(x => noteFor(x.c, x.k)).join("\n\n")).then(() => toast("Copied " + l.length + " note" + (l.length === 1 ? "" : "s")));
   });
+}
+
+// Edit attempt (21 Oct, Jon): replaces the +/- buttons. Explains what the number does, never goes below what the results
+// on file imply, asks "are you sure" with the exact change, and logs who did it on stage1_assessments/{id}.flow.edits.
+async function editAttempt(id) {
+  const c = S.cands.find(x => x.id === id), n = N.cands.find(x => x.id === id);
+  if (!c || !n) { toast("Reload the page and try again.", true); return; }
+  const cur = effAttempt(n), min = derivedAttempt(id), MAXA = 4;
+  let pick = null;
+  const close = () => { $("overlay").innerHTML = ""; };
+  const shell = inner => { $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">${inner}</div></div>`; $("sbg").onclick = e => { if (e.target.id === "sbg") close(); }; };
+  const step1 = () => {
+    let opts = ""; for (let k = 1; k <= MAXA; k++) opts += `<button type="button" class="btn${k === pick ? " pri" : ""}" data-pk="${k}"${(k < min || k === cur) ? " disabled" : ""} style="min-width:48px">${k}</button> `;
+    shell(`<h3>Edit attempt number: ${esc(c.name)}</h3>` +
+      `<p>Now on <b>attempt ${cur}</b>. This number decides which attempt they sit next and who is allowed to assess them (attempt 2: a different assessor from attempt 1; attempt 3 or 4: Senior Faculty or a named assessor). It is also copied to the Master sheet.</p>` +
+      `<p>The hub sets attempt 2 by itself when someone is referred at attempt 1. Edit it only to correct a wrong number, for example someone who already had a third attempt on an earlier course. No results are deleted.</p>` +
+      (min > 1 ? `<p><b>Cannot go lower than ${min}</b>: a referral is already on file.</p>` : "") +
+      `<p style="margin:10px 0">New attempt: ${opts}</p>` +
+      `<div class="two"><button type="button" class="pri" id="epNext"${pick ? "" : " disabled"}>Continue</button><button type="button" id="epNo">Cancel</button></div>`);
+    $("overlay").querySelectorAll("[data-pk]").forEach(b => b.onclick = () => { pick = Number(b.dataset.pk); step1(); });
+    $("epNext").onclick = step2; $("epNo").onclick = close;
+  };
+  const step2 = () => {
+    shell(`<h3>Are you sure?</h3><p>Change <b>${esc(c.name)}</b> from <b>attempt ${cur}</b> to <b>attempt ${pick}</b>.</p>` +
+      `<p>${pick > cur ? "They will join the pool for attempt " + pick + " if they have no result on file for it." : "They go back to attempt " + pick + "; results already saved stay as they are."} Your name and the time are saved against this change.</p>` +
+      `<div class="two"><button type="button" class="pri" id="epYes">Yes, change to attempt ${pick}</button><button type="button" id="epBack">Go back</button></div>`);
+    $("epBack").onclick = step1; $("epYes").onclick = save;
+  };
+  const save = async () => {
+    if (!pick || pick === cur || pick < min || pick > MAXA) return;
+    $("epYes").disabled = true;
+    try {
+      await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ assessmentAttempt: pick, twoPlusAssessments: pick >= 2 });
+    } catch (err) { close(); toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission" : err.message), true); return; }
+    c.assessmentAttempt = pick; c.twoPlusAssessments = pick >= 2; n.attempt = pick;
+    let logged = true;
+    try {
+      const at = new Date().toISOString();
+      await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: c.name || "", flow: { edits: { ["e" + Date.now()]: { from: cur, to: pick, by: S.user.uid, byName: S.myName, at } } }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    } catch (err) { logged = false; }
+    close(); toast(c.name + " is now on attempt " + pick + (logged ? "." : ". The change was saved but could not be logged."), !logged);
+    renderRetest();
+  };
+  step1();
 }
 async function syncAttempts() {
   const list = staleAttempts(); if (!list.length) return;
