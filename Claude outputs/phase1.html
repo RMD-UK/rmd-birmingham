@@ -2920,11 +2920,11 @@ function copyTxt(t) {
 const NM_ADMIN = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
 const NM_SIGN = `Kind regards,\nBLS Administrative Team\nRMD Birmingham\n\nRMD Birmingham - Basic Life Support Faculty\n${NM_ADMIN}\nInstagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
 const NIGHT_MAIL = {
-  notpassed2: { title: "Not passed at attempt 2: further course, then attempt 3", subject: "Your BLS assessment: result and next steps", body:
+  notpassed2: { title: "Not passed at attempt 2: further course, then attempt 3", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
     "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your second attempt.\n\nNext steps: a member of Student Faculty will explain what happens next. You will attend a further BLS course in full (all 3 evenings), in a different teaching room with different instructors from your first course, and then sit your third attempt with Senior Faculty. We will email you your new course and dates separately.\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
-  notpassed3: { title: "Not passed at attempt 3: further course, then attempt 4", subject: "Your BLS assessment: result and next steps", body:
+  notpassed3: { title: "Not passed at attempt 3: further course, then attempt 4", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
     "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your third attempt.\n\nNext steps: a member of Senior Faculty will meet you to discuss your progress, anything that has made it harder to perform, and any extra support you may need. Your programme lead will be told about the additional requirements. You will then attend a further BLS course in full (all 3 evenings) before your fourth attempt. We will email you your new course and dates separately.\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
-  final: { title: "Final attempt (4) not passed", guard: "A Senior Faculty member has spoken to each of these candidates", subject: "Your BLS assessment: result", body:
+  final: { title: "Final attempt (4) not passed", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result", body:
     "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your fourth and final attempt.\n\nThis means you have not completed the course and cannot gain the ERC qualification. Your programme lead will be told, and the effect on your degree programme is decided by the programme lead.\n\nIf you would like to talk this through, please email us (" + NM_ADMIN + ") and a member of Senior Faculty will be in touch.\n\n" + NM_SIGN },
   notseen: { title: "Not seen tonight: absent, not there, or not assessed", subject: "Your BLS assessment evening", body:
     "Dear {{first_name}},\n\nOur records show that we were not able to complete your BLS assessment on {{assessment_date}}.\n\nPlease email us (" + NM_ADMIN + ") as soon as you can so that we can let you know the next step.\n\n" + NM_SIGN }
@@ -2955,20 +2955,33 @@ function openNightMail(kind) {
   const def = NIGHT_MAIL[kind], l = nmCands(kind), todo = l.filter(x => !x.done && x.email), noMail = l.filter(x => !x.done && !x.email);
   if (!todo.length) return;
   const lim = typeof MAIL_DAY_LIMIT === "number" ? MAIL_DAY_LIMIT : 85;
-  $("overlay").innerHTML = `<div class="modalbg" id="nmbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px)"><h3>${esc(def.title)}</h3>` +
-    `<div class="hint" style="margin:0 0 6px"><b>${todo.length}</b> will be emailed: ${esc(todo.map(x => x.name).join(", "))}.${noMail.length ? ` No email address on file (not emailed): ${esc(noMail.map(x => x.name).join(", "))}.` : ""}${todo.length > lim ? ` ${todo.length - lim} are queued for the next days.` : ""}</div>` +
-    `<input type="text" id="nmSub" value="${esc(def.subject)}" style="margin:6px 0"><textarea id="nmBody" style="min-height:260px">${esc(def.body)}</textarea>` +
+  // Guarded emails (not passed): only people ticked as "seen face to face by RMD faculty" are emailed.
+  const who = def.guard
+    ? `<div class="hint" style="margin:0 0 4px"><b>Tick each person once RMD faculty have seen them face to face.</b> Only ticked people are emailed. Unticked people stay on the list for later.</div><div id="nmPeople" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:0 0 6px">` +
+      todo.map((x, i) => `<label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-weight:700"><input type="checkbox" data-nmp="${i}"> ${esc(x.name)} <small style="font-weight:500;color:var(--mut)">${esc(def.guard)}</small></label>`).join("") + `</div>` +
+      `<div class="tools" style="margin:0 0 6px"><button type="button" class="btn sm" id="nmAll">Tick everyone</button><button type="button" class="btn sm" id="nmNone">Untick everyone</button></div>`
+    : `<div class="hint" style="margin:0 0 6px"><b>${todo.length}</b> will be emailed: ${esc(todo.map(x => x.name).join(", "))}.${todo.length > lim ? ` ${todo.length - lim} are queued for the next days.` : ""}</div>`;
+  $("overlay").innerHTML = `<div class="modalbg" id="nmbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>${esc(def.title)}</h3>` + who +
+    (noMail.length ? `<div class="hint" style="margin:0 0 6px">No email address on file (not emailed): ${esc(noMail.map(x => x.name).join(", "))}.</div>` : "") +
+    `<input type="text" id="nmSub" value="${esc(def.subject)}" style="margin:6px 0"><textarea id="nmBody" style="min-height:240px">${esc(def.body)}</textarea>` +
     `<div class="hint" style="margin:4px 0 0">{{first_name}} and {{assessment_date}} are filled in for each person.</div>` +
-    (def.guard ? `<label style="display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:700"><input type="checkbox" id="nmGuard"> ${esc(def.guard)}</label>` : "") +
-    `<div class="row2" style="margin-top:12px"><button type="button" class="btn pri" id="nmSend"${def.guard ? " disabled" : ""}>Send ${todo.length} email${todo.length === 1 ? "" : "s"}</button><button type="button" class="btn" id="nmCancel">Cancel</button></div></div></div>`;
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn pri" id="nmSend"></button><button type="button" class="btn" id="nmCancel">Cancel</button></div></div></div>`;
   const close = () => { $("overlay").innerHTML = ""; };
+  const picked = () => def.guard ? todo.filter((x, i) => { const cb = $("overlay").querySelector(`[data-nmp="${i}"]`); return cb && cb.checked; }) : todo;
+  const refresh = () => { const n = picked().length; $("nmSend").disabled = n === 0; $("nmSend").textContent = n ? `Send ${n} email${n === 1 ? "" : "s"}` : "Tick at least one person"; };
   $("nmCancel").onclick = close; $("nmbg").onclick = e => { if (e.target.id === "nmbg") close(); };
-  if (def.guard) $("nmGuard").onchange = e => { $("nmSend").disabled = !e.target.checked; };
+  if (def.guard) {
+    $("overlay").querySelectorAll("[data-nmp]").forEach(cb => cb.onchange = refresh);
+    $("nmAll").onclick = () => { $("overlay").querySelectorAll("[data-nmp]").forEach(cb => { cb.checked = true; }); refresh(); };
+    $("nmNone").onclick = () => { $("overlay").querySelectorAll("[data-nmp]").forEach(cb => { cb.checked = false; }); refresh(); };
+  }
+  refresh();
   $("nmSend").onclick = async () => {
-    const subject = $("nmSub").value.trim(), body = $("nmBody").value.trim();
+    const subject = $("nmSub").value.trim(), body = $("nmBody").value.trim(), list = picked();
     if (!subject || !body) { toast("Subject and message are needed.", true); return; }
+    if (!list.length) return;
     $("nmSend").disabled = true; $("nmSend").textContent = "Sending...";
-    await sendNightMail(kind, todo, subject, body);
+    await sendNightMail(kind, list, subject, body);
     close(); renderRetest();
   };
 }
