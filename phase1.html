@@ -463,6 +463,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
         <div class="card hidden" id="aAdd"></div>
         <div id="aLists"></div>
       </div>
+      <div id="viewPlan" class="hidden"></div>
       <div id="viewRetest" class="hidden"></div>
       <div id="viewSetup" class="hidden"></div>
       <div id="viewRunner" class="hidden"></div>
@@ -585,7 +586,7 @@ auth.onAuthStateChanged(async user => {
     if (!S.full && !S.mine.length) S.view = "runner";   // assessors with no room team land on the assessment night
     // Deep links (Readiness check, Director Box): phase1.html#setup, #alloc, #retest, #runner, #assessor, #register. Only honoured if this person may use that view.
     { const hv = (location.hash || "").replace("#", "");
-      if (hv === "setup" ? S.isDirector : (hv === "alloc" || hv === "retest") ? S.full : hv === "runner" ? S.run : hv === "assessor" ? (S.night && !S.teamOnly) : hv === "register") S.view = hv; }
+      if (hv === "setup" ? S.isDirector : (hv === "alloc" || hv === "retest" || hv === "plan") ? S.full : hv === "runner" ? S.run : hv === "assessor" ? (S.night && !S.teamOnly) : hv === "register") S.view = hv; }
     const cfg = await db.collection("config").doc("stage1_course_dates").get();
     S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
     try {
@@ -644,10 +645,11 @@ function renderSteps() {
     { no: 11, t: "Register live screen", s: "Big screen: teaching night", href: "register-live.html", who: "full" },
     { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" },
     { no: 13, t: "Flow screen", s: "Big screen: who is where tonight (dots, no names)", href: "assessment-flow.html", who: "full" },
-    { no: 14, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" }
+    { no: 14, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" },
+    { no: 15, t: "Planning overview", s: "What to do before the night, in order", view: "plan", who: "full", onlyRole: true }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
-  let list = jobs.filter(ok), pin = "";
+  let list = jobs.filter(j => ok(j) && !j.onlyRole), pin = "";
   const sel = doorJobs();
   if (pickingRole()) { list = []; }
   else if (sel) {
@@ -673,7 +675,7 @@ const ROLE_DEFS = {
   teach: [
     { id: "tinst", t: "Instructor", s: "Your room: register and ratings", ok: () => S.mine.length > 0, view: "register", jobs: [{ no: 6 }, { no: 7 }] },
     { id: "tass", t: "Assessor", s: "Not in a room on these evenings", ok: () => S.night && !S.teamOnly && S.mine.length === 0 && (!S.full || S.isDirector), view: "tassinfo", info: true, jobs: [] },
-    { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }, { no: 2, s: "Week 2: give each person a slot" }] },
+    { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }] },
     { id: "tscr", t: "Big screen", s: "Live register", ok: () => S.full, href: "register-live.html" }
   ],
   assess: [
@@ -686,7 +688,7 @@ const ROLE_DEFS = {
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
     { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
-  plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
+  plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "plan", jobs: [{ no: 15 }, { no: 2, s: "Slots and times for everyone" }, { no: 9 }] }]
 };
 const DOOR_TITLE = { teach: "Teaching nights", assess: "Assessment night", plan: "Planning" };
 function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0 || S.night) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
@@ -727,7 +729,7 @@ function restoreDoor() {
 }
 function renderDoors() {
   const doors = ["teach", "assess", "plan"].filter(doorAllowed);
-  const sub = { teach: "Weeks 1 and 2", assess: "Pick your role", plan: "People, allocation, Comms" };
+  const sub = { teach: "Weeks 1 and 2", assess: "Pick your role", plan: "Before the night, in order" };
   $("doorBar").innerHTML = doors.length ? doors.map(d => `<button type="button" data-door="${d}" class="${S.door === d ? "on" : ""}">${DOOR_TITLE[d]}<small>${sub[d]}</small></button>`).join("") +
     `<button type="button" data-door="" class="all${S.door ? "" : " on"}">All jobs</button>` : "";
   $("doorBar").querySelectorAll("[data-door]").forEach(b => b.onclick = () => chooseDoor(b.dataset.door));
@@ -744,7 +746,7 @@ function chooseDoor(d) {
   S.door = d || ""; S.drole = ""; S.mode = "all";
   const wasInfo = S.view === "tassinfo";
   if (wasInfo) S.view = S.full || S.mine.length ? "register" : "runner";
-  if (S.door === "plan") { const r = ROLE_DEFS.plan[0]; S.drole = r.id; if (S.view !== "alloc" && S.view !== "setup") S.view = r.view; }
+  if (S.door === "plan") { const r = ROLE_DEFS.plan[0]; S.drole = r.id; if (S.view !== "alloc" && S.view !== "setup" && S.view !== "plan") S.view = r.view; }
   dsave(); renderSteps(); showView();
   if (S.door === "plan" || (wasInfo && !S.door)) enterView();
 }
@@ -822,8 +824,9 @@ function renderTassInfo() {
 async function enterView() {
   showView();
   if (S.view === "tassinfo") { renderTassInfo(); return; }
-  if (["alloc", "runner", "assessor", "retest", "checkin"].includes(S.view)) await ensureRooms();
+  if (["alloc", "plan", "runner", "assessor", "retest", "checkin"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
+  else if (S.view === "plan") renderPlan();
   else if (["retest", "runner", "assessor", "checkin"].includes(S.view)) renderNight();
   else if (S.view === "setup") await enterSetup();
   else render();
@@ -837,7 +840,7 @@ function attachListeners() {
   // register entries
   if (S.full) {
     S.unsubs.push(db.collection("stage1_register").where("course", "==", course).onSnapshot(snap => {
-      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render(); if (S.view === "alloc") renderAlloc();
+      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render(); if (S.view === "alloc") renderAlloc(); else if (S.view === "plan") renderPlan();
     }, err => onListenErr("register", err)));
   } else {
     S.cands.forEach(c => {
@@ -1381,7 +1384,7 @@ const ASSESS_SLOTS = (() => {
   return out;
 })();
 // Rooms used for retests (attempt 2). Student Faculty pick from these when they confirm a retest. Empty = every assessment room is offered. Jon to confirm the list.
-const DEFAULT_RETEST_ROOMS = [];
+const DEFAULT_RETEST_ROOMS = ["CM08", "CM09", "CM10", "CM11"];   // 21 Oct, Jon: the only rooms offered for retests (every retest attempt). RAP can use any room.
 const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
 const A = {
   rooms: [], loaded: false, sel: null, target: null, showGrid: false, busy: false, log: [],
@@ -1409,13 +1412,13 @@ async function ensureRooms() {
 function showView() {
   const picking = pickingRole();
   const info = !picking && S.view === "tassinfo" && S.drole === "tass";
-  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewSetup", "setup"]]
+  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewPlan", "plan"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewSetup", "setup"]]
     .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v || (v === "tassinfo" && !info)));
   $("plain").classList.toggle("hidden", picking || info); $("msgs").classList.toggle("hidden", picking || info);
   renderDoors();
 }
 async function setView(v) {
-  if ((v === "alloc" || v === "retest") && !S.full) return;
+  if ((v === "alloc" || v === "retest" || v === "plan") && !S.full) return;
   if (v === "runner" && !S.run) return;
   if (v === "assessor" && (!S.night || S.teamOnly)) return;
   if (v === "checkin" && !S.full) return;
@@ -1451,9 +1454,9 @@ function takenSet(exceptId) {
   S.cands.forEach(x => { if (x.id !== exceptId && hasSlot(x)) m.set(x.assessmentSlot + "|" + x.assessmentRoom, x.name || ""); });
   return m;
 }
-function freePairs(taken) {
+function freePairs(taken, rooms) {
   const out = [];
-  ASSESS_SLOTS.forEach(sl => A.rooms.forEach(r => { if (!taken.has(sl + "|" + r)) out.push({ slot: sl, room: r }); }));
+  ASSESS_SLOTS.forEach(sl => (rooms || A.rooms).forEach(r => { if (!taken.has(sl + "|" + r)) out.push({ slot: sl, room: r }); }));
   return out;
 }
 function logAdd(t) { A.log.unshift(t); A.log = A.log.slice(0, 8); }
@@ -1482,6 +1485,48 @@ function renderAlloc() {
   $("aMove").querySelector("h3").innerHTML = night ? '<span class="stepno">1</span>Move one person to a different slot' : '<span class="stepno">+</span>Adjust: move one person';
   if (!night) renderAAuto(st);
   renderAMove(); renderALists(st); if (night) renderAAdd();
+}
+
+
+// ── Planning overview (21 Oct, Jon): one list, in the order the work happens, with a status on each part ──
+// Student and Senior Faculty see every step; Director-only ones are greyed. Allocation lives in Planning only.
+function renderPlan() {
+  if (!S.course || S.view !== "plan") return;
+  const d = weekDates(S.course), today = londonNow().date, st = stats(), gi = gateInfo(st), rv = reviewInfo(st), pend = pendingMail();
+  const days = d ? Math.round((Date.parse(d[2]) - Date.parse(today)) / 86400000) : null;
+  $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set. A Director sets it on Stage 1 Settings.</div>`;
+  $("plain").innerHTML = '<span class="lbl">Planning</span>' + `<b>${esc(S.course)}.</b> Assessment night ${d ? nice(d[2]) + (days > 0 ? ", " + days + (days === 1 ? " day" : " days") + " to go" : days === 0 ? ", tonight" : ", past") : "not set"}. Work down the list: each part shows what is left.`;
+  const unchecked = S.cands.filter(c => c.assessmentAbsent !== true && c.rap !== true && attemptOf(c) < 2 && !c.placementChecked && !placementClash(c)).length;
+  const clash = S.cands.filter(c => c.assessmentAbsent !== true && c.rap !== true && attemptOf(c) < 2 && placementClash(c)).length;
+  const dirOnly = (label) => S.isDirector ? "" : ` <span class="nchip bad">Director only</span>`;
+  const btn = (label, go, off, pri) => `<button type="button" class="btn sm${pri ? " pri" : ""}" data-pgo="${go}"${off ? " disabled" : ""}>${esc(label)}</button>`;
+  const lnk = (label, href, off) => off ? `<button type="button" class="btn sm" disabled>${esc(label)}</button>` : `<a class="btn sm" href="${esc(href)}" style="text-decoration:none;display:inline-block">${esc(label)} &#8599;</a>`;
+  const body = (inner, off) => `<div class="stbody${off ? " locked" : ""}" style="${off ? "opacity:.6" : ""}">${inner}</div>`;
+  let h = "";
+  // 1 people
+  const c1 = !S.cands.length ? ["No people", "bad"] : (clash || unchecked) ? [(clash + unchecked) + " to check", "open"] : ["Ready", "ok"];
+  h += `<div class="card">` + stepHd(1, "Before teaching starts: people", c1[0], c1[1]) +
+    body(`<div style="font-size:14px"><b>${S.cands.length}</b> on this course. ${clash ? `<b>${clash}</b> with a placement that overlaps. ` : ""}${unchecked ? `<b>${unchecked}</b> without placement dates checked.` : (clash ? "" : "Placement dates are checked.")}</div><div class="tools" style="margin:8px 0 0">${lnk("Open Stage 1 Candidates", "admin-stage1-candidates.html")}${lnk("Course Allocation", "course-allocation.html")}</div>`) + `</div>`;
+  // 2 setup
+  h += `<div class="card">` + stepHd(2, "Set up the night", S.isDirector ? "Set once" : "Director only", "") +
+    body(`<div style="font-size:14px">Who can assess, mark sheets and the Google Form link. Applies to every course. ${A.rooms && A.rooms.length ? `<b>${A.rooms.length}</b> assessment rooms.` : ""}</div><div class="tools" style="margin:8px 0 0">${btn("Open Assessment setup", "setup", !S.isDirector, true)}</div>`, !S.isDirector) + `</div>`;
+  // 3 allocation
+  let c3, t3;
+  if (!d) { c3 = ["No date", "bad"]; t3 = "This course has no assessment date."; }
+  else if (today < d[1] && !onCatchup()) { c3 = ["Opens " + nice(d[1]), ""]; t3 = "Allocate after teaching night 2 is finished, so nobody absent is given a slot."; }
+  else if (gi.blocks.length) { c3 = [gi.blocks.length + " to fix", "bad"]; t3 = gi.blocks.map(g => g.title).join(", ") + " need attention first."; }
+  else if (st.toDo.length) { c3 = [st.toDo.length + " need a slot", "open"]; t3 = `<b>${st.toDo.length}</b> eligible ${st.toDo.length === 1 ? "person has" : "people have"} no slot yet.`; }
+  else if (rv.has && !rv.ok) { c3 = ["Check schedule", "bad"]; t3 = rv.issues.join(" "); }
+  else if (pend.length) { c3 = [pend.length + " to email", "open"]; t3 = `<b>${pend.length}</b> ${pend.length === 1 ? "person has" : "people have"} not been emailed their time.${S.isDirector ? "" : " A Director sends the emails."}`; }
+  else if (rv.has) { c3 = ["Done", "ok"]; t3 = "Everyone has a slot and has been emailed their time."; }
+  else { c3 = ["Nothing yet", ""]; t3 = "Nobody is eligible for a slot yet."; }
+  h += `<div class="card">` + stepHd(3, "After teaching night 2: slots and times", c3[0], c3[1]) +
+    body(`<div style="font-size:14px">${t3}</div><div class="tools" style="margin:8px 0 0">${btn("Open Assessment allocation", "alloc", false, c3[1] === "open" || c3[1] === "bad")}</div>`) + `</div>`;
+  // 4 week of the night
+  h += `<div class="card">` + stepHd(4, "Week of the night", days === null ? "No date" : days > 0 ? days + (days === 1 ? " day to go" : " days to go") : days === 0 ? "Tonight" : "Past", days !== null && days <= 3 && days >= 0 ? "open" : "") +
+    body(`<div style="font-size:14px">Check the course is ready, then send reminders and follow-ups.${dirOnly()}</div><div class="tools" style="margin:8px 0 0">${lnk("Readiness check", "admin-stage1-readiness.html", !S.isDirector)}${lnk("Comms", "admin-comms.html")}</div>`) + `</div>`;
+  $("viewPlan").innerHTML = h;
+  $("viewPlan").querySelectorAll("[data-pgo]").forEach(b => b.onclick = () => setView(b.dataset.pgo));
 }
 
 // ── Add someone onto tonight (21 Oct, Jon) ──────────────────────────────────
@@ -1594,7 +1639,7 @@ function reviewInfo(st) {
   const seen = new Set(), dups = [];
   st.slotted.forEach(x => { const k = x.assessmentSlot + "|" + x.assessmentRoom; if (seen.has(k)) dups.push(k); else seen.add(k); });
   if (dups.length) issues.push(dups.length + " room and time " + (dups.length === 1 ? "is" : "are") + " given to more than one person.");
-  const odd = st.slotted.filter(x => !ASSESS_SLOTS.includes(x.assessmentSlot) || !A.rooms.includes(x.assessmentRoom));
+  const odd = st.slotted.filter(x => !ASSESS_SLOTS.includes(x.assessmentSlot) || !(A.rooms.includes(x.assessmentRoom) || retestRoomList().includes(x.assessmentRoom)));
   if (odd.length) issues.push(odd.length + (odd.length === 1 ? " slot is" : " slots are") + " not a normal room or time for this night.");
   const sig = st.slotted.map(x => x.id + "@" + x.assessmentSlot + "@" + x.assessmentRoom).sort().join(",");
   return { has: true, issues, ok: issues.length === 0, sig, first: st.slotted.map(x => x.assessmentSlot).sort()[0], last: st.slotted.map(x => x.assessmentSlot).sort().slice(-1)[0], rooms: new Set(st.slotted.map(x => x.assessmentRoom)).size };
@@ -1732,7 +1777,7 @@ function selCand() { return A.sel ? S.cands.find(c => c.id === A.sel) : null; }
 function renderAMove() {
   const body = $("aMoveBody"), c = selCand();
   if (!c) { body.innerHTML = `<div class="hint">Search above, or press "Place / Move" beside a name.</div>${logHtml()}`; return; }
-  const taken = takenSet(c.id), free = freePairs(taken);
+  const rms = roomsFor(c), taken = takenSet(c.id), free = freePairs(taken, rms);
   const now = hasSlot(c) ? `${esc(c.assessmentSlot)} in ${esc(c.assessmentRoom)}` : "no slot yet";
   const tgt = A.target;
   let h = `<div class="selbox"><b>${esc(c.name)}</b>${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}<span style="color:var(--mut);font-size:13px">${esc(c.degree || "")} · now: ${now}${c.assessmentAbsent === true ? " · marked unable to attend" : ""}</span></div>` +
@@ -1743,8 +1788,8 @@ function renderAMove() {
       free.slice(0, 10).map(p => `<button type="button" class="slotchip${tgt && tgt.slot === p.slot && tgt.room === p.room ? " on" : ""}" data-slot="${p.slot}" data-room="${esc(p.room)}">${p.slot} · ${esc(p.room)}</button>`).join("") + `</div>` +
       `<button type="button" class="btn sm" id="aGrid">${A.showGrid ? "Hide" : "Show"} every slot and room</button>`;
     if (A.showGrid) {
-      h += `<div class="grid"><table><tr><th></th>${A.rooms.map(r => `<th>${esc(r)}</th>`).join("")}</tr>` +
-        ASSESS_SLOTS.map(sl => `<tr><td class="t">${sl}</td>${A.rooms.map(r => {
+      h += `<div class="grid"><table><tr><th></th>${rms.map(r => `<th>${esc(r)}</th>`).join("")}</tr>` +
+        ASSESS_SLOTS.map(sl => `<tr><td class="t">${sl}</td>${rms.map(r => {
           const who = taken.get(sl + "|" + r);
           if (who !== undefined) return `<td><span class="gx" title="${esc(who)}">${esc((who || "?").split(" ").map(w => w[0]).join("").slice(0, 3))}</span></td>`;
           return `<td><button type="button" class="gc${tgt && tgt.slot === sl && tgt.room === r ? " on" : ""}" data-slot="${sl}" data-room="${esc(r)}">free</button></td>`;
@@ -1752,7 +1797,7 @@ function renderAMove() {
     }
   }
   if (attemptOf(c) !== 2 && c.rap !== true && eligBlocked(c)) h += `<div class="msg err" style="margin-top:10px">${esc(c.name)} was absent in a teaching week. They should move to a new course, not take a slot.</div>`;
-  h += `<div class="hint" style="margin-top:10px">Changed times are emailed from step 4.</div>` +
+  h += (rms !== A.rooms ? `<div class="hint" style="margin-top:10px">Retests can only go in ${rms.map(esc).join(", ")}.</div>` : "") + `<div class="hint" style="margin-top:10px">Changed times are emailed from step 4.</div>` +
     `<div class="tools" style="margin:10px 0 0"><button class="btn pri" id="aMoveGo" type="button"${tgt ? "" : " disabled"}>${tgt ? "Move to " + tgt.slot + " in " + esc(tgt.room) : "Pick a slot first"}</button>` +
     `<button class="btn" id="aOff" type="button"${hasSlot(c) ? "" : " disabled"}>Take them off their slot</button></div>` + logHtml();
   body.innerHTML = h;
@@ -2266,9 +2311,11 @@ function deskBlocked(c) {
 }
 function deskExpected(c) { const f = nres(c.id).flow; return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || (!!f && Object.keys(f).some(k => /^\d+$/.test(k)))); }
 function retestRoomList() {
-  const all = (A.rooms || []).slice(), pick = ((A.retestRooms && A.retestRooms.length) ? A.retestRooms : DEFAULT_RETEST_ROOMS).filter(r => !all.length || all.includes(r));
-  return pick.length ? pick : all;
+  // Jon's list is the rule: offered as it stands, whether or not a room is also in the assessment rooms list. A saved list (config/stage1_assessment_rooms.retestRooms) overrides it.
+  return (A.retestRooms && A.retestRooms.length) ? A.retestRooms.slice() : DEFAULT_RETEST_ROOMS.slice();
 }
+// Rooms a person may be given in the Adjust box: RAP any room; every other retest (attempt 2 or later) only the retest rooms; first sits any assessment room.
+function roomsFor(c) { return (c && c.rap !== true && attemptOf(c) >= 2) ? retestRoomList() : A.rooms; }
 // Student Faculty step at the atrium hub: confirm the retest is tonight, pick a retest room (no time needed).
 // The room is a guide for the runner and assessor, not a rule. changeOnly = just move the room, no new check-in.
 function askResitRoom(c, changeOnly) {
