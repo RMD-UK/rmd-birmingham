@@ -637,7 +637,8 @@ function renderSteps() {
     { no: 10, t: "Readiness check", s: "Ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
     { no: 11, t: "Register live screen", s: "Big screen: teaching night", href: "register-live.html", who: "full" },
     { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" },
-    { no: 13, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" }
+    { no: 13, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" },
+    { no: 14, t: "Flow screen", s: "Big screen: who is where tonight (dots, no names)", href: "assessment-flow.html", who: "full" }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
   let list = jobs.filter(ok), pin = "";
@@ -675,8 +676,9 @@ const ROLE_DEFS = {
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Give RAP and third sits a room" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 13 }, { no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }] },
-    { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" }
+    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 13 }, { no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }, { no: 14 }] },
+    { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
+    { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
   plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
 };
@@ -2310,14 +2312,38 @@ function renderDeskUndo() {
   u.innerHTML = `<div class="msg ok dundo"><span><b>${esc(b.name)}</b> checked in.</span><button type="button" class="btn sm" data-act="undo" data-id="${esc(b.id)}">Undo</button></div>`;
   bindActs(u);
 }
+function lastReferAt(id) { const a = nattempts(id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number); return ks.length ? Math.max.apply(null, ks) : 0; }
+// Names for RMD faculty: who is expected at their table (this is the page the flow screen points to; the flow screen itself never shows names)
+function facultyData() {
+  const refd = N.cands.filter(c => !c.absent && !passedAtKey(c.id) && lastReferAt(c.id) === 1 && cstate(c) === "nothere");
+  const refIds = new Set(refd.map(c => c.id));
+  const pool = poolList().filter(c => !refIds.has(c.id));
+  return { refd: refd.sort(bySurname), pool: pool.sort(bySurname), af: afterTonight() };
+}
+function renderFacultyTab() {
+  const f = facultyData(), af = f.af;
+  let h = `<div class="hint" style="margin:0 0 8px">Who RMD faculty are expected to see. Check people in here when they come back. Nothing is emailed from here.</div>`;
+  h += `<div class="dhead">Referred tonight, retest to arrange (${f.refd.length})<small>Not retested yet. Check them in when they return for attempt 2.</small></div>`;
+  h += f.refd.length ? f.refd.map(deskRow).join("") : `<div class="hint">Nobody yet.</div>`;
+  h += `<div class="dhead">Other people on the retest list (${f.pool.length})<small>Attempt 2 or later, not yet assessed at their current attempt.</small></div>`;
+  h += f.pool.length ? f.pool.map(deskRow).join("") : `<div class="hint">Nobody.</div>`;
+  const G = [["retrain", "Retrain after attempt 2"], ["leads", "Back to degree leads (attempt 3)"], ["final", "Final attempt not passed (attempt 4)"]];
+  G.forEach(g => {
+    const l = af[g[0]];
+    h += `<div class="dhead">${esc(g[1])} (${l.length})</div>`;
+    h += l.length ? l.map(x => `<div class="lrow"><span class="nm">${esc(x.c.name)}${attBadge(x.k)}</span><small>${esc(x.c.degree || "")}</small></div>`).join("") : `<div class="hint">Nobody.</div>`;
+  });
+  return h;
+}
 function renderDeskList() {
   const list = $("dList"), tabs = $("dTabs"); if (!list) return;
   const q = normId(N.dq || ""), tab = N.dtab || "due";
   const exp = N.cands.filter(deskExpected), k = deskCounts();
   const due = deskDue(), ns = deskNoSlot();
-  const T = [["due", "Due now", due.length + ns.length], ["nothere", "Not here yet", k.nothere], ["atrium", "Arrived", k.arrived], ["through", "Collected or with an assessor", k.collected + k.being], ["all", "Everyone", exp.length]];
+  const T = [["due", "Due now", due.length + ns.length], ["nothere", "Not here yet", k.nothere], ["atrium", "Arrived", k.arrived], ["through", "Collected or with an assessor", k.collected + k.being], ["all", "Everyone", exp.length], ["fac", "RMD faculty", (() => { const f = facultyData(); return f.refd.length + f.pool.length + f.af.retrain.length + f.af.leads.length + f.af.final.length; })()]];
   tabs.innerHTML = T.map(t => `<button type="button" class="rchip${tab === t[0] && !q ? " on" : ""}" data-dtab="${t[0]}"><b>${esc(t[1])}</b><small>${t[2]}</small></button>`).join("");
   tabs.querySelectorAll("[data-dtab]").forEach(b => b.onclick = () => { N.dtab = b.dataset.dtab; $("dQ").value = ""; N.dq = ""; renderDeskList(); });
+  if (!q && tab === "fac") { list.innerHTML = renderFacultyTab(); bindActs(list); return; }
   if (!q && tab === "due") {
     const lim = deskWindow();
     let h = "";
