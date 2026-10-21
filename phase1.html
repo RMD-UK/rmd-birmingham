@@ -2715,7 +2715,7 @@ function openForm(id) {
     const o = outcomeFor(state.marks, req);
     $("fRes").className = "resline" + (o === "pass" ? " pass" : o ? " refer" : "");
     $("fRes").textContent = o ? "Result: " + outcomeLabel(o, att) : "Mark each part to see the result.";
-    const showExc = o === "pass";
+    const showExc = o === "pass" && att < 2;   // Excellent is for first sits only (Jon, 21 Oct)
     $("fExc").classList.toggle("hidden", !showExc);
     $("fExcBtn").classList.toggle("on", showExc && state.exc);
     $("fExcCrit").classList.toggle("hidden", !(showExc && state.exc));
@@ -2819,7 +2819,7 @@ function openForm(id) {
     }
     for (const k of req) { if (state.marks[k] === "fail" && !state.reasons[k].size && !state.opts[k].size && !comment) { $("fMsg").textContent = "Tap at least one red step or reason for " + compLabel(k) + " (or add a comment)."; return; } }
     for (const q of qs) { if (q.required && !(state.answers[q.id] || ($("overlay").querySelector('[data-qt="' + q.id + '"]') || {}).value)) { $("fMsg").textContent = "Please answer: " + q.label; return; } }
-    const wantExc = out === "pass" && state.exc;
+    const wantExc = out === "pass" && state.exc && att < 2;
     if (wantExc && !state.excCrit.size) { $("fMsg").textContent = "Tap at least one reason for Excellent, or switch it off."; return; }
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
     if (state.cpr.cur.length >= 1) cprFinish();
