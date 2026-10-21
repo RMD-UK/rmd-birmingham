@@ -1844,6 +1844,9 @@ function inPool(c) { if (c.absent || passedAtKey(c.id)) return false; const e = 
 function isDoneN(c) { return Object.keys(nattempts(c.id)).length > 0; }
 // Done for the CURRENT attempt only (a candidate referred at attempt 1 who has come back for attempt 2 is not done). Runner, check-in and Not answering use this; isDoneN (any attempt on file) stays for the assessor room lists.
 function isDoneNow(c) { return !!(passedAtKey(c.id) || recordedAt(c.id, effAttempt(c))); }
+// Resit room (21 Oct, Jon): chosen by RMD faculty when a referred candidate is checked in again. Stored on flow["<attempt>"].room. A resit has a room but no time slot.
+function resitRoom(c) { const a = effAttempt(c); return a >= 2 ? String((nres(c.id).flow || {})[String(a)] && (nres(c.id).flow || {})[String(a)].room || "") : ""; }
+function slotLabel(c) { return resitRoom(c) ? "Resit" : (c.assessmentSlot || "-"); }
 function formAttemptOf(c) { const p = passedAtKey(c.id); return p ? Number(p) : effAttempt(c); }
 function firstNameOf(c) { return String(c.name || "").trim().split(/\s+/)[0] || "this candidate"; }
 function normId(t) { return String(t || "").toLowerCase().replace(/\s+/g, " ").trim(); }
@@ -2119,12 +2122,14 @@ function stateChips(c) {
   const r = nres(c.id), out = [];
   const a = nattempts(c.id);
   const keys = Object.keys(a).sort((x, y) => Number(x) - Number(y));
+  const backIn = effAttempt(c) >= 2 && ["arrived", "collected", "being"].includes(cstate(c));   // already seen by RMD faculty and checked in again: drop the "retest tonight" and "see RMD faculty" tags
   keys.forEach(k => {
     const o = a[k].outcome;
+    if (backIn && o === "refer" && Number(k) === effAttempt(c) - 1) return;
     out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${esc(outcomeShort(o, Number(k)))}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
   });
   { const lk = keys[keys.length - 1];
-    if (lk && a[lk].outcome === "refer" && !recordedAt(c.id, effAttempt(c)) && !passedAtKey(c.id)) out.push('<span class="nchip refer">See RMD faculty</span>'); }
+    if (lk && a[lk].outcome === "refer" && !recordedAt(c.id, effAttempt(c)) && !passedAtKey(c.id) && !backIn) out.push('<span class="nchip refer">See RMD faculty</span>'); }
   if (r.notThere && r.notThere.flag && !isDoneNow(c)) { const cn = flowOf(c).calls || 0; out.push('<span class="nchip bad">Not there' + (cn > 1 ? " (called " + cn + " times)" : "") + '</span>'); }
   if (!isDoneNow(c) && needsAttend(effAttempt(c))) {
     const e = eligOf(c);
@@ -2183,10 +2188,24 @@ function deskBlocked(c) {
   const e = eligOf(c); return !!(e && e.state === "absent" && !e.ov);
 }
 function deskExpected(c) { return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || !!nres(c.id).flow); }
-function checkIn(c) {
+function askResitRoom(c) {
+  const rooms = (A.rooms || []).slice();
+  $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true"><h3>Resit room for ${esc(c.name)}</h3>` +
+    `<div class="hint" style="margin:0 0 8px">Which room will ${esc(firstNameOf(c))} be retested in? The runner and the assessor will see it. Student Faculty at the atrium hub tell you the room.</div>` +
+    `<div class="fqo">${rooms.map(r => `<button type="button" class="fqb" data-rr="${esc(r)}">${esc(r)}</button>`).join("")}</div>` +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn" data-rr="">No room yet</button><button type="button" class="btn" id="rrCancel">Cancel</button></div></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("rrCancel").onclick = close;
+  $("rrbg").onclick = e => { if (e.target.id === "rrbg") close(); };
+  $("overlay").querySelectorAll("[data-rr]").forEach(b => b.onclick = () => { close(); checkIn(c, true, b.dataset.rr); });
+}
+function checkIn(c, roomAsked, room) {
   if (deskBlocked(c)) { toast(c.name + " is not eligible tonight. See RMD faculty.", true); return; }
   if (!deskExpected(c)) { toast(c.name + " has no slot tonight. See RMD faculty.", true); return; }
-  return flowWrite(c, { arrived: whoNow() }, c.name + " checked in").then(ok => {
+  if (effAttempt(c) >= 2 && !roomAsked && S.view === "checkin") { askResitRoom(c); return; }
+  const patch = { arrived: whoNow() };
+  if (effAttempt(c) >= 2 && room) patch.room = room;
+  return flowWrite(c, patch, c.name + " checked in" + (patch.room ? " (resit room " + patch.room + ")" : "")).then(ok => {
     if (ok && S.view === "checkin") {
       N.undoBar = { id: c.id, name: c.name, until: Date.now() + 6000 };
       renderDeskUndo();
@@ -2292,8 +2311,8 @@ function deskRow(c) {
   } else if (st === "collected") {
     acts = `<button type="button" class="btn sm" data-act="putback" data-id="${id}">Put back</button>`;
   }
-  const sub = [c.assessmentRoom, c.degree].filter(Boolean).join(" · ");
-  return `<div class="rrow act st-${st}${st === "assessed" ? " done" : ""}"><span class="rt">${esc(c.assessmentSlot || "-")}</span>` +
+  const rr = resitRoom(c), sub = [att >= 2 ? (rr ? "Resit room " + rr : "") : c.assessmentRoom, c.degree].filter(Boolean).join(" · ");
+  return `<div class="rrow act st-${st}${st === "assessed" ? " done" : ""}"><span class="rt">${esc(slotLabel(c))}</span>` +
     `<span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>` +
     `<span class="rs">${stChip(c)}${stateChips(c)}${extra}</span><span class="ract">${acts}</span></div>`;
 }
@@ -2373,10 +2392,10 @@ function renderDeskList() {
 }
 
 // ── Runner view: Not answering, Collect, Put back (v26) ─────────────────────
-function slottedByRoom() {
-  const by = {};
-  N.cands.filter(c => !c.absent && c.assessmentRoom && c.assessmentSlot).forEach(c => { (by[c.assessmentRoom] = by[c.assessmentRoom] || []).push(c); });
-  Object.keys(by).forEach(r => by[r].sort((x, y) => x.assessmentSlot < y.assessmentSlot ? -1 : x.assessmentSlot > y.assessmentSlot ? 1 : String(x.name).localeCompare(String(y.name))));
+function slottedByRoom(forRunner) {
+  const by = {}, key = c => (forRunner && resitRoom(c)) ? "99:99" : (c.assessmentSlot || "");
+  N.cands.filter(c => !c.absent && ((c.assessmentRoom && c.assessmentSlot) || (forRunner && resitRoom(c)))).forEach(c => { const r = (forRunner && resitRoom(c)) || c.assessmentRoom; (by[r] = by[r] || []).push(c); });
+  Object.keys(by).forEach(r => by[r].sort((x, y) => key(x) < key(y) ? -1 : key(x) > key(y) ? 1 : String(x.name).localeCompare(String(y.name))));
   return by;
 }
 function roomOrder(keys) {
@@ -2387,7 +2406,7 @@ function runnerRows(list, big) {
   const open = list.filter(c => !isDoneNow(c)), done = list.filter(isDoneNow);
   const row = c => {
     const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneNow(c), st = cstate(c), id = esc(c.id);
-    const due = !d && st === "nothere" && !flagged && now && c.assessmentSlot <= now;
+    const due = !d && st === "nothere" && !flagged && now && effAttempt(c) < 2 && c.assessmentSlot <= now;
     const att = effAttempt(c);
     let acts = "";
     if (!d) {
@@ -2396,7 +2415,7 @@ function runnerRows(list, big) {
       else if (st === "collected") acts = `<button type="button" class="btn sm" data-act="putback" data-id="${id}">Put back</button>`;
     }
     return `<div class="rrow act st-${d ? "assessed" : st}${d ? " done" : ""}${flagged ? " flag" : ""}${due ? " due" : ""}${big ? " big" : ""}">` +
-      `<span class="rt">${esc(c.assessmentSlot)}</span><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${S.full || S.night ? attBadge(att) : ""}</span>` +
+      `<span class="rt">${esc(slotLabel(c))}</span><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${S.full || S.night ? attBadge(att) : ""}</span>` +
       `<span class="rs">${d ? "" : stChip(c)}${stateChips(c) || (due ? '<span class="nchip due">Due now</span>' : "")}</span><span class="ract">${acts}</span></div>`;
   };
   return open.map(row).join("") + (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
@@ -2404,7 +2423,7 @@ function runnerRows(list, big) {
 function renderRunner() {
   if (!S.course) return;
   const d = assessDate();
-  const by = slottedByRoom(), rooms = roomOrder(Object.keys(by));
+  const by = slottedByRoom(true), rooms = roomOrder(Object.keys(by));
   const all = rooms.reduce((a, r) => a.concat(by[r]), []);
   const doneN = all.filter(isDoneNow).length;
   const flagged = all.filter(c => { const r = nres(c.id); return r.notThere && r.notThere.flag && !isDoneNow(c); }).length;
@@ -2438,7 +2457,7 @@ function renderRunner() {
 }
 function renderFull() {
   const r = N.fullRoom; if (!r) { $("nightFull").innerHTML = ""; return; }
-  const list = slottedByRoom()[r] || [];
+  const list = slottedByRoom(true)[r] || [];
   $("nightFull").innerHTML = `<div class="fullscr"><div class="fullbar"><b>${esc(r)}</b><span>${esc(S.course)} · ${list.filter(isDoneNow).length} of ${list.length} assessed</span><button type="button" class="btn" id="fullClose">Close</button></div><div class="fullbody">${runnerRows(list, true)}</div></div>`;
   $("fullClose").onclick = () => { N.fullRoom = null; renderFull(); };
   bindActs($("nightFull"));
@@ -2530,7 +2549,7 @@ function poolBody(pool) {
       : !chk.ok ? `<span class="why">${esc(chk.why)}</span>`
       : (N.gate && gst !== "collected") ? gnote + gbtn
       : gnote + `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`;
-    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
+    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${resitRoom(c) ? " · Resit room " + esc(resitRoom(c)) : ""}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
   };
   return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2: Student or Senior Faculty, a different assessor. Attempt 3 and above: Senior Faculty or extra named assessors.</div>` + whoCanBox(pool) + pool.map(row).join("");
 }
