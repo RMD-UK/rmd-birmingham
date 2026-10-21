@@ -1842,6 +1842,8 @@ function passedAtKey(id) { const a = nattempts(id); return Object.keys(a).find(k
 function recordedAt(id, att) { return nattempts(id)[String(att)] || null; }
 function inPool(c) { if (c.absent || passedAtKey(c.id)) return false; const e = effAttempt(c); return e >= 2 && !recordedAt(c.id, e); }
 function isDoneN(c) { return Object.keys(nattempts(c.id)).length > 0; }
+// Done for the CURRENT attempt only (a candidate referred at attempt 1 who has come back for attempt 2 is not done). Runner, check-in and Not answering use this; isDoneN (any attempt on file) stays for the assessor room lists.
+function isDoneNow(c) { return !!(passedAtKey(c.id) || recordedAt(c.id, effAttempt(c))); }
 function formAttemptOf(c) { const p = passedAtKey(c.id); return p ? Number(p) : effAttempt(c); }
 function firstNameOf(c) { return String(c.name || "").trim().split(/\s+/)[0] || "this candidate"; }
 function normId(t) { return String(t || "").toLowerCase().replace(/\s+/g, " ").trim(); }
@@ -2002,7 +2004,7 @@ function eligLocal(c) {
 function eligOf(c) { if (onCatchup()) return null; if (c.elig) return c.elig; if (N.usingFallback) return eligLocal(c); return null; }
 function eligCounts() {
   let bad = 0, ovr = 0, gap = 0;
-  N.cands.forEach(c => { if (isDoneN(c) || c.absent || !needsAttend(effAttempt(c))) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
+  N.cands.forEach(c => { if (isDoneNow(c) || c.absent || !needsAttend(effAttempt(c))) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
   return { bad, ovr, gap };
 }
 async function saveEligOverride(c, d) {
@@ -2123,8 +2125,8 @@ function stateChips(c) {
   });
   { const lk = keys[keys.length - 1];
     if (lk && a[lk].outcome === "refer" && !recordedAt(c.id, effAttempt(c)) && !passedAtKey(c.id)) out.push('<span class="nchip refer">See RMD faculty</span>'); }
-  if (r.notThere && r.notThere.flag && !isDoneN(c)) { const cn = flowOf(c).calls || 0; out.push('<span class="nchip bad">Not there' + (cn > 1 ? " (called " + cn + " times)" : "") + '</span>'); }
-  if (!isDoneN(c) && needsAttend(effAttempt(c))) {
+  if (r.notThere && r.notThere.flag && !isDoneNow(c)) { const cn = flowOf(c).calls || 0; out.push('<span class="nchip bad">Not there' + (cn > 1 ? " (called " + cn + " times)" : "") + '</span>'); }
+  if (!isDoneNow(c) && needsAttend(effAttempt(c))) {
     const e = eligOf(c);
     if (e && e.state === "absent") out.push(e.ov ? '<span class="nchip claim">Director override</span>' : '<span class="nchip bad">Not eligible</span>');
     else if (e && e.state === "unmarked") out.push('<span class="nchip claim" title="' + esc(e.why.join(", ")) + '">Register gap</span>');
@@ -2382,9 +2384,9 @@ function roomOrder(keys) {
 }
 function runnerRows(list, big) {
   const now = nightTimeNow();
-  const open = list.filter(c => !isDoneN(c)), done = list.filter(isDoneN);
+  const open = list.filter(c => !isDoneNow(c)), done = list.filter(isDoneNow);
   const row = c => {
-    const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneN(c), st = cstate(c), id = esc(c.id);
+    const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneNow(c), st = cstate(c), id = esc(c.id);
     const due = !d && st === "nothere" && !flagged && now && c.assessmentSlot <= now;
     const att = effAttempt(c);
     let acts = "";
@@ -2404,15 +2406,15 @@ function renderRunner() {
   const d = assessDate();
   const by = slottedByRoom(), rooms = roomOrder(Object.keys(by));
   const all = rooms.reduce((a, r) => a.concat(by[r]), []);
-  const doneN = all.filter(isDoneN).length;
-  const flagged = all.filter(c => { const r = nres(c.id); return r.notThere && r.notThere.flag && !isDoneN(c); }).length;
+  const doneN = all.filter(isDoneNow).length;
+  const flagged = all.filter(c => { const r = nres(c.id); return r.notThere && r.notThere.flag && !isDoneNow(c); }).length;
   $("msgs").innerHTML = nightBanner();
   $("plain").innerHTML = '<span class="lbl">Runner view</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${doneN}</b> of <b>${all.length}</b> assessed` +
     (flagged ? `, <b>${flagged}</b> flagged as not there` : "") + `.`;
   const cards = rooms.map(r => {
-    const list = by[r], dn = list.filter(isDoneN).length;
-    const fl = list.filter(c => { const x = nres(c.id); return x.notThere && x.notThere.flag && !isDoneN(c); }).length;
+    const list = by[r], dn = list.filter(isDoneNow).length;
+    const fl = list.filter(c => { const x = nres(c.id); return x.notThere && x.notThere.flag && !isDoneNow(c); }).length;
     const isOpen = N.open.has(r);
     return `<div class="rcard${isOpen ? " open" : ""}"><div class="rhead"><button type="button" class="rmain" data-rroom="${esc(r)}"><b>${esc(r)}</b>` +
       `<span class="rmeta">${list.length} candidate${list.length === 1 ? "" : "s"} · ${dn} assessed${fl ? ` · <span class="bad">${fl} not there</span>` : ""}</span>` +
@@ -2437,12 +2439,12 @@ function renderRunner() {
 function renderFull() {
   const r = N.fullRoom; if (!r) { $("nightFull").innerHTML = ""; return; }
   const list = slottedByRoom()[r] || [];
-  $("nightFull").innerHTML = `<div class="fullscr"><div class="fullbar"><b>${esc(r)}</b><span>${esc(S.course)} · ${list.filter(isDoneN).length} of ${list.length} assessed</span><button type="button" class="btn" id="fullClose">Close</button></div><div class="fullbody">${runnerRows(list, true)}</div></div>`;
+  $("nightFull").innerHTML = `<div class="fullscr"><div class="fullbar"><b>${esc(r)}</b><span>${esc(S.course)} · ${list.filter(isDoneNow).length} of ${list.length} assessed</span><button type="button" class="btn" id="fullClose">Close</button></div><div class="fullbody">${runnerRows(list, true)}</div></div>`;
   $("fullClose").onclick = () => { N.fullRoom = null; renderFull(); };
   bindActs($("nightFull"));
 }
 async function toggleNotThere(id) {
-  const c = N.cands.find(x => x.id === id); if (!c || isDoneN(c)) return;
+  const c = N.cands.find(x => x.id === id); if (!c || isDoneNow(c)) return;
   const on = !(nres(id).notThere && nres(id).notThere.flag);
   try {
     await db.collection("stage1_assessments").doc(id).set({
