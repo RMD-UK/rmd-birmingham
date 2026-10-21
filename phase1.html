@@ -672,7 +672,7 @@ const ROLE_DEFS = {
   teach: [
     { id: "tinst", t: "Instructor", s: "Your room: register and ratings", ok: () => S.mine.length > 0, view: "register", jobs: [{ no: 6 }, { no: 7 }] },
     { id: "tass", t: "Assessor", s: "Not in a room on these evenings", ok: () => S.night && !S.teamOnly && S.mine.length === 0 && (!S.full || S.isDirector), view: "tassinfo", info: true, jobs: [] },
-    { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }] },
+    { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }, { no: 2, s: "Week 2: give each person a slot" }] },
     { id: "tscr", t: "Big screen", s: "Live register", ok: () => S.full, href: "register-live.html" }
   ],
   assess: [
@@ -681,7 +681,7 @@ const ROLE_DEFS = {
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night && !S.teamOnly, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && !S.teamOnly && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Give RAP and third sits a room" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, moves", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Move people between rooms" }, { no: 12 }, { no: 13 }] },
+    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 12 }, { no: 13 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
     { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
@@ -2193,7 +2193,7 @@ function deskBlocked(c) {
   if (!needsAttend(att)) return false;
   const e = eligOf(c); return !!(e && e.state === "absent" && !e.ov);
 }
-function deskExpected(c) { return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || !!nres(c.id).flow); }
+function deskExpected(c) { const f = nres(c.id).flow; return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || (!!f && Object.keys(f).some(k => /^\d+$/.test(k)))); }
 function retestRoomList() {
   const all = (A.rooms || []).slice(), pick = ((A.retestRooms && A.retestRooms.length) ? A.retestRooms : DEFAULT_RETEST_ROOMS).filter(r => !all.length || all.includes(r));
   return pick.length ? pick : all;
@@ -2912,6 +2912,80 @@ function copyTxt(t) {
   const fb = () => { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} ta.remove(); };
   try { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t).catch(fb) : Promise.resolve(fb()); } catch (e) { fb(); return Promise.resolve(); }
 }
+
+// ── End-of-night emails (RMD faculty, Retest pool page; Jon 21 Oct) ──────────────────────────────
+// Sent through the same sendBulkComms function as the Comms page (so the daily limit, queue, log and
+// RMD copy all behave the same). Each person is stamped on stage1_assessments/{id}.flow.comms.<kind> so
+// nobody is emailed twice. Drafts are editable before sending.
+const NM_ADMIN = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
+const NM_SIGN = `Kind regards,\nBLS Administrative Team\nRMD Birmingham\n\nRMD Birmingham - Basic Life Support Faculty\n${NM_ADMIN}\nInstagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
+const NIGHT_MAIL = {
+  notpassed2: { title: "Not passed at attempt 2: further course, then attempt 3", subject: "Your BLS assessment: result and next steps", body:
+    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your second attempt.\n\nNext steps: a member of Student Faculty will explain what happens next. You will attend a further BLS course in full (all 3 evenings), in a different teaching room with different instructors from your first course, and then sit your third attempt with Senior Faculty. We will email you your new course and dates separately.\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
+  notpassed3: { title: "Not passed at attempt 3: further course, then attempt 4", subject: "Your BLS assessment: result and next steps", body:
+    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your third attempt.\n\nNext steps: a member of Senior Faculty will meet you to discuss your progress, anything that has made it harder to perform, and any extra support you may need. Your programme lead will be told about the additional requirements. You will then attend a further BLS course in full (all 3 evenings) before your fourth attempt. We will email you your new course and dates separately.\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
+  final: { title: "Final attempt (4) not passed", guard: "A Senior Faculty member has spoken to each of these candidates", subject: "Your BLS assessment: result", body:
+    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your fourth and final attempt.\n\nThis means you have not completed the course and cannot gain the ERC qualification. Your programme lead will be told, and the effect on your degree programme is decided by the programme lead.\n\nIf you would like to talk this through, please email us (" + NM_ADMIN + ") and a member of Senior Faculty will be in touch.\n\n" + NM_SIGN },
+  notseen: { title: "Not seen tonight: absent, not there, or not assessed", subject: "Your BLS assessment evening", body:
+    "Dear {{first_name}},\n\nOur records show that we were not able to complete your BLS assessment on {{assessment_date}}.\n\nPlease email us (" + NM_ADMIN + ") as soon as you can so that we can let you know the next step.\n\n" + NM_SIGN }
+};
+function nmStamped(c, kind) { const f = (nres(c.id).flow || {}).comms; return !!(f && f[kind]); }
+function nmCands(kind) {
+  const af = afterTonight();
+  let l = [];
+  if (kind === "notpassed2") l = af.retrain.map(x => x.c);
+  else if (kind === "notpassed3") l = af.leads.map(x => x.c);
+  else if (kind === "final") l = af.final.map(x => x.c);
+  else if (kind === "notseen") {
+    const inAf = new Set([].concat(af.retrain, af.leads, af.final).map(x => x.c.id));
+    l = N.cands.filter(c => !c.absent && !inAf.has(c.id) && !passedAtKey(c.id) && (hasSlot(c) || effAttempt(c) >= 2) && !nattempts(c.id)[String(effAttempt(c))]);
+  }
+  return l.map(c => { const sc = (S.cands || []).find(x => x.id === c.id) || {}; return { id: c.id, name: c.name, email: String(sc.email || "").trim(), done: nmStamped(c, kind) }; });
+}
+function mailCard(no) {
+  const rows = Object.keys(NIGHT_MAIL).map(k => {
+    const l = nmCands(k), todo = l.filter(x => !x.done && x.email), done = l.filter(x => x.done).length, none = l.filter(x => !x.done && !x.email).length;
+    return `<div class="lrow"><span class="nm">${esc(NIGHT_MAIL[k].title)}</span>` +
+      `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to email${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}</small>` +
+      `<span class="pact"><button type="button" class="btn sm${todo.length ? " pri" : ""}" data-nmail="${k}"${todo.length ? "" : " disabled"}>Review and send (${todo.length})</button></span></div>`;
+  }).join("");
+  return `<div class="card"><h3><span class="stepno">${no || 5}</span>End of night: send emails</h3><div class="hint" style="margin:0 0 8px">Each email is shown for you to read and edit before it goes. Nobody is emailed twice. Sent emails are in Comms history.</div>${rows}</div>`;
+}
+function openNightMail(kind) {
+  const def = NIGHT_MAIL[kind], l = nmCands(kind), todo = l.filter(x => !x.done && x.email), noMail = l.filter(x => !x.done && !x.email);
+  if (!todo.length) return;
+  const lim = typeof MAIL_DAY_LIMIT === "number" ? MAIL_DAY_LIMIT : 85;
+  $("overlay").innerHTML = `<div class="modalbg" id="nmbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px)"><h3>${esc(def.title)}</h3>` +
+    `<div class="hint" style="margin:0 0 6px"><b>${todo.length}</b> will be emailed: ${esc(todo.map(x => x.name).join(", "))}.${noMail.length ? ` No email address on file (not emailed): ${esc(noMail.map(x => x.name).join(", "))}.` : ""}${todo.length > lim ? ` ${todo.length - lim} are queued for the next days.` : ""}</div>` +
+    `<input type="text" id="nmSub" value="${esc(def.subject)}" style="margin:6px 0"><textarea id="nmBody" style="min-height:260px">${esc(def.body)}</textarea>` +
+    `<div class="hint" style="margin:4px 0 0">{{first_name}} and {{assessment_date}} are filled in for each person.</div>` +
+    (def.guard ? `<label style="display:flex;gap:8px;align-items:center;margin:10px 0 0;font-weight:700"><input type="checkbox" id="nmGuard"> ${esc(def.guard)}</label>` : "") +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn pri" id="nmSend"${def.guard ? " disabled" : ""}>Send ${todo.length} email${todo.length === 1 ? "" : "s"}</button><button type="button" class="btn" id="nmCancel">Cancel</button></div></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("nmCancel").onclick = close; $("nmbg").onclick = e => { if (e.target.id === "nmbg") close(); };
+  if (def.guard) $("nmGuard").onchange = e => { $("nmSend").disabled = !e.target.checked; };
+  $("nmSend").onclick = async () => {
+    const subject = $("nmSub").value.trim(), body = $("nmBody").value.trim();
+    if (!subject || !body) { toast("Subject and message are needed.", true); return; }
+    $("nmSend").disabled = true; $("nmSend").textContent = "Sending...";
+    await sendNightMail(kind, todo, subject, body);
+    close(); renderRetest();
+  };
+}
+async function sendNightMail(kind, todo, subject, body) {
+  const d = assessDate(), dateTxt = d ? longDate(d) : "";
+  try {
+    const call = firebase.functions().httpsCallable("sendBulkComms");
+    const probe = await call({ recipients: [{ name: "x", email: "x@x.x" }], subject, message: body, groupLabel: "probe", dryRun: true });
+    if (!probe.data || probe.data.varsSupported !== true) { toast("Emails not sent: the updated functions have not been deployed yet.", true); return; }
+    const res = await call({ recipients: todo.map(x => ({ name: x.name, email: x.email, vars: { assessment_date: dateTxt } })), subject, message: body, groupLabel: "Assessment night - " + NIGHT_MAIL[kind].title + " - " + S.course, dryRun: false });
+    const r = res.data || {}, bad = new Set((r.failedEmails || []).map(x => String(x).toLowerCase()));
+    const ok = todo.filter(x => !bad.has(x.email.toLowerCase()));
+    const stamp = { at: new Date().toISOString(), by: S.myName || "" };
+    await Promise.all(ok.map(x => db.collection("stage1_assessments").doc(x.id).set({ course: S.course, candidateName: x.name || "", flow: { comms: { [kind]: stamp } }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => null)));
+    toast("Emailed " + (r.sent || 0) + " of " + todo.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + ".");
+  } catch (err) { toast("Email failed: " + (err.message || err), true); }
+}
 function teamCard(af, no) {
   const groups = [
     { key: "retrain", title: "Awaiting retraining (referred at attempt 2)", hint: "Not retested tonight. A Student Faculty member meets them, then they repeat all 3 evenings in a different room (different instructors) before attempt 3 with Senior Faculty." },
@@ -3089,6 +3163,7 @@ function renderRetest() {
     h += lead;
     h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
     h += hereCard(pool, 4);
+    h += mailCard(5);
     if (stale.length) h += staleCard();
     const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
     h += more;
@@ -3104,6 +3179,7 @@ function renderRetest() {
   { const hd = $("hereDetails"); if (hd) hd.addEventListener("toggle", () => { N.hereOpen = hd.open; }); }
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
   bindActs($("viewRetest"));
+  $("viewRetest").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {
     const c = S.cands.find(x => x.id === b.dataset.patt), n = N.cands.find(x => x.id === b.dataset.patt);
