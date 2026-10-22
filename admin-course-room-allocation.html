@@ -189,6 +189,15 @@
 <script src="js/fuzzy-search.js"></script>
 <script src="js/course-result.js"></script>
 <script>
+// Course order everywhere (22 Oct, Jon): numbered courses in order, then the Catch-up night (after Course 6), then test courses last.
+function rmdCourseSort(a, b) {
+  const rank = n => { const s = String(n || ""), num = parseInt((s.match(/\d+/) || [])[0], 10);
+    if (/^test\b/i.test(s)) return [2, isNaN(num) ? 0 : num];
+    if (/^catch-?up/i.test(s)) return [1, 0];
+    return [0, isNaN(num) ? 9999 : num]; };
+  const x = rank(a), y = rank(b);
+  return (x[0] - y[0]) || (x[1] - y[1]) || String(a).localeCompare(String(b));
+}
 // ── Constants ────────────────────────────────────────────────────────────
 // STAGE1_TEACHING_ROOMS is declared once in js/firebase-config.js — do not
 // redeclare it here (two <script> tags share one global scope; a duplicate
@@ -357,14 +366,7 @@ function courseList() {
   // not fixing the typo, just not letting it scramble the order. Anything
   // with no number at all sorts after every numbered course, alphabetically
   // among itself.
-  return Array.from(set).sort((a, b) => {
-    const na = parseInt((a.match(/\d+/) || [])[0], 10);
-    const nb = parseInt((b.match(/\d+/) || [])[0], 10);
-    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
-    if (!isNaN(na) && isNaN(nb)) return -1;
-    if (isNaN(na) && !isNaN(nb)) return 1;
-    return a.localeCompare(b);
-  });
+  return Array.from(set).sort(rmdCourseSort);
 }
 
 function populateCourseDropdown() {

@@ -113,6 +113,15 @@
 <script src="js/ip-form.js"></script>
 <script>
 
+// Course order everywhere (22 Oct, Jon): numbered courses in order, then the Catch-up night (after Course 6), then test courses last.
+function rmdCourseSort(a, b) {
+  const rank = n => { const s = String(n || ""), num = parseInt((s.match(/\d+/) || [])[0], 10);
+    if (/^test\b/i.test(s)) return [2, isNaN(num) ? 0 : num];
+    if (/^catch-?up/i.test(s)) return [1, 0];
+    return [0, isNaN(num) ? 9999 : num]; };
+  const x = rank(a), y = rank(b);
+  return (x[0] - y[0]) || (x[1] - y[1]) || String(a).localeCompare(String(b));
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // Instructor Potential (IP) forms — built 2026-10-07 per Jon.
 // Fills RCUK's "BLS Instructor Potential (IP)" pilot form (June 2026, V1.2) in
@@ -191,7 +200,7 @@ async function init() {
     return;
   }
 
-  const names = Array.from(new Set(candidates.filter(c => c.outcome === "Passed" && c.course).map(c => c.course))).sort();
+  const names = Array.from(new Set(candidates.filter(c => c.outcome === "Passed" && c.course).map(c => c.course))).sort(rmdCourseSort);
   const sel = document.getElementById("courseSelect");
   sel.innerHTML = `<option value="">— Choose a course —</option>` + names.map(n => {
     const d = longDate(courseDates[n]);

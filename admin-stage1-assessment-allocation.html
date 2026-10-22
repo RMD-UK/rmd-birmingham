@@ -102,6 +102,15 @@
 <script src="js/fuzzy-search.js"></script>
 <script>
 
+// Course order everywhere (22 Oct, Jon): numbered courses in order, then the Catch-up night (after Course 6), then test courses last.
+function rmdCourseSort(a, b) {
+  const rank = n => { const s = String(n || ""), num = parseInt((s.match(/\d+/) || [])[0], 10);
+    if (/^test\b/i.test(s)) return [2, isNaN(num) ? 0 : num];
+    if (/^catch-?up/i.test(s)) return [1, 0];
+    return [0, isNaN(num) ? 9999 : num]; };
+  const x = rank(a), y = rank(b);
+  return (x[0] - y[0]) || (x[1] - y[1]) || String(a).localeCompare(String(b));
+}
 initFirebase();
 // Directors get the whole page. RMD Senior/Student Faculty (2026-10-04, Jon)
 // get only the "Find a candidate" lookup - allocation, clearing slots and
@@ -177,12 +186,7 @@ async function loadCandidates() {
 function populateCourseSelect() {
   const sel = document.getElementById("courseSelect");
   const current = sel.value;
-  const courses = Array.from(new Set(allCandidates.map(c => c.course).filter(Boolean))).sort((a, b) => {
-    const an = parseInt((a.match(/\d+/) || [])[0], 10);
-    const bn = parseInt((b.match(/\d+/) || [])[0], 10);
-    if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
-    return a.localeCompare(b);
-  });
+  const courses = Array.from(new Set(allCandidates.map(c => c.course).filter(Boolean))).sort(rmdCourseSort);
   sel.innerHTML = `<option value="">Choose a course…</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
   const sc = document.getElementById("excludeCourse");
   if (sc) { const cur = sc.value; sc.innerHTML = `<option value="">Any course (optional filter)</option>` + courses.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join(""); if (cur && courses.includes(cur)) sc.value = cur; }

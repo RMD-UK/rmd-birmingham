@@ -152,6 +152,15 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script>
+// Course order everywhere (22 Oct, Jon): numbered courses in order, then the Catch-up night (after Course 6), then test courses last.
+function rmdCourseSort(a, b) {
+  const rank = n => { const s = String(n || ""), num = parseInt((s.match(/\d+/) || [])[0], 10);
+    if (/^test\b/i.test(s)) return [2, isNaN(num) ? 0 : num];
+    if (/^catch-?up/i.test(s)) return [1, 0];
+    return [0, isNaN(num) ? 9999 : num]; };
+  const x = rank(a), y = rank(b);
+  return (x[0] - y[0]) || (x[1] - y[1]) || String(a).localeCompare(String(b));
+}
 initFirebase();
 const fns = firebase.functions();
 
@@ -176,12 +185,7 @@ function dedupe(people) {
   return Array.from(map.values());
 }
 
-function courseSort(a, b) {
-  const an = parseInt((a.match(/\d+/) || [])[0], 10);
-  const bn = parseInt((b.match(/\d+/) || [])[0], 10);
-  if (!isNaN(an) && !isNaN(bn) && an !== bn) return an - bn;
-  return a.localeCompare(b);
-}
+function courseSort(a, b) { return rmdCourseSort(a, b); }
 
 async function loadGroups() {
   groups = [];

@@ -2229,9 +2229,9 @@ function nightBanner() {
   let h = "";
   if (S.full) { const ev = overrideEvents(); if (ev.length) { const as = new Set(ev.map(e => e.assessor)).size; h += `<div class="msg warn"><b>${ev.length} pass${ev.length === 1 ? "" : "es"} with a red step</b> from ${as} assessor${as === 1 ? "" : "s"} on ${esc(S.course || "this course")}. Details are on the Retest pool page.</div>`; } }
   { const q = eligCounts();
-    if (q.bad) h += `<div class="msg err"><b>${q.bad} candidate${q.bad === 1 ? " is" : "s are"} not eligible tonight</b> (absent in a teaching week). Their result form is locked. ${S.isDirector ? "A Director can override from the candidate's form." : "Ask a Director."}</div>`;
+    if (q.bad) h += `<div class="msg err"><b>${q.bad} candidate${q.bad === 1 ? " is" : "s are"} not eligible tonight</b> (absent in a teaching week). Their result form is locked. ${S.isDirector ? "A Director can override from the candidate's form." : "Ask a Director."}${S.full ? ' <button type="button" class="btn sm" data-regreview="1">Show who</button>' : ""}</div>`;
     if (S.full && q.ovr) h += `<div class="msg warn"><b>${q.ovr} Director override${q.ovr === 1 ? "" : "s"}</b> for someone who was absent in a teaching week. The reason and how they agreed are saved on the candidate.</div>`;
-    if (S.full && q.gap) h += `<div class="msg warn">${q.gap} candidate${q.gap === 1 ? " has" : "s have"} a missing register mark in week 1 or 2 ("Register gap" chip). Not blocked, but worth a look.</div>`; }
+    if (S.full && q.gap) h += `<div class="msg warn">${q.gap} candidate${q.gap === 1 ? " has" : "s have"} a missing register mark in week 1 or 2 ("Register gap" chip). Not blocked, but worth a look. <button type="button" class="btn sm" data-regreview="1">Show who</button></div>`; }
   if (N.err) h += `<div class="msg err">${esc(N.err)}</div>`;
   if (N.resErr) h += `<div class="msg err">${esc(N.resErr)}</div>`;
   if (N.usingFallback) h += `<div class="msg warn">The assessment night function is not deployed yet, so this page is using the full candidate list instead. Everything still works for you.</div>`;
@@ -3117,6 +3117,228 @@ async function sendNightMail(kind, todo, subject, body) {
     toast("Emailed " + (r.sent || 0) + " of " + todo.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + ".");
   } catch (err) { toast("Email failed: " + (err.message || err), true); }
 }
+// ── End-of-night results backup (22 Oct, Jon) ───────────────────────────────────────────────────────
+// A CSV of the whole night's results, emailed (sendNightBackup function) to a backup address. BACKUP ONLY: it does not
+// replace what goes to the degree leads. One row per attempt, so nothing is lost; people with no result get one row. Columns are
+// grouped: who, attendance, result, sections, notes, who/when, admin. A copy can always be downloaded instead.
+const NB_DEFAULT_TO = ["j.hulme.1@bham.ac.uk"];
+const NB_NEXT = { 1: "Retest tonight (attempt 2)", 2: "Further course, then attempt 3", 3: "Further course, then attempt 4", 4: "Final attempt not passed" };
+const NB_HEAD = ["Course", "Assessment date", "Candidate", "Email", "Degree", "Year", "Student ID", "RAP",
+  "Week 1 register", "Week 2 register", "Eligibility override",
+  "Attempt", "Result", "What happens next", "Excellent", "Why excellent",
+  "BLS + AED", "Recovery position", "Steps missed: BLS + AED", "Steps missed: Recovery position", "Passed with red steps", "Compression counter",
+  "Assessor comment", "Form answers",
+  "Assessor", "Room", "Slot", "Recorded at", "Re-saved",
+  "Status at end of night", "Attempt number edits", "Emails sent", "Candidate ID"];
+function nbSlug(course) { return String(course || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "course"; }
+function nbFile() { return "RMD_assessment_night_backup_" + nbSlug(S.course) + "_" + (assessDate() || "undated") + ".csv"; }
+function nbCell(v) { let s = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function nbTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso); if (isNaN(d)) return "";
+  return d.toLocaleString("sv-SE", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+function nbState(c) {
+  const p = passedAtKey(c.id);
+  if (p) return { code: "passed", text: "Passed at attempt " + p };
+  if (c.absent) return { code: "absent", text: "Not there" };
+  const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number), k = ks.length ? Math.max.apply(null, ks) : 0;
+  if (k === 2) return { code: "r2", text: "Not passed at attempt 2: further course, then attempt 3" };
+  if (k === 3) return { code: "r3", text: "Not passed at attempt 3: further course, then attempt 4" };
+  if (k >= 4) return { code: "r4", text: "Final attempt (4) not passed" };
+  if (inPool(c)) return { code: "pool", text: "Waiting for attempt " + effAttempt(c) + " (not yet assessed)" };
+  return { code: "notassessed", text: "Not assessed tonight" };
+}
+function nbReasons(a, k) {
+  return ((a.reasons && a.reasons[k]) || []).concat((a.reasonOptions && a.reasonOptions[k]) || [])
+    .map(r => / Other$/.test(r) ? r + ": " + (((a.reasonOther || {})[r.split(" ")[0]]) || "") : r).join("; ");
+}
+function nbBuild() {
+  const date = assessDate() || "", qs = Array.isArray(N.form && N.form.questions) ? N.form.questions : [];
+  const cands = N.cands.slice().sort((x, y) => String(x.name).localeCompare(String(y.name)));
+  const cnt = { passed: 0, pool: 0, r2: 0, r3: 0, r4: 0, absent: 0, notassessed: 0 }, res = { all: 0, pass: 0, notyet: 0 };
+  const rows = [];
+  const reg = (id, n) => { const s = statusOf(id, n); return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; };
+  cands.forEach(c => {
+    const sc = (S.cands || []).find(x => x.id === c.id) || {}, st = nbState(c), fl = nres(c.id).flow || {};
+    cnt[st.code]++;
+    const ov = sc.eligibilityOverride && sc.eligibilityOverride.by ? sc.eligibilityOverride : null;
+    const ovTxt = ov ? [ov.reason, ov.how, ov.present ? "present: " + ov.present : "", ov.note ? "note: " + ov.note : ""].filter(Boolean).join("; ") + " (by " + (ov.byName || "someone") + ", " + nbTime(ov.at) + ")" : "";
+    const edits = Object.values(fl.edits || {}).sort((x, y) => String(x.at).localeCompare(String(y.at))).map(e => "Attempt " + e.from + " to " + e.to + " by " + (e.byName || "someone") + " (" + nbTime(e.at) + ")").join("; ");
+    const mails = Object.keys(fl.comms || {}).map(k => (NIGHT_MAIL[k] ? NIGHT_MAIL[k].title : k) + ": " + nbTime(fl.comms[k].at) + " by " + (fl.comms[k].by || "someone")).join("; ");
+    const who = [S.course, date, c.name, sc.email || "", c.degree || sc.degree || "", sc.yearOfStudy || "", sc.studentId || "", c.rap ? "Yes" : "", reg(c.id, 1), reg(c.id, 2), ovTxt];
+    const tail = [st.text, edits, mails, c.id];
+    const at = nattempts(c.id), keys = Object.keys(at).filter(k => at[k]).sort((x, y) => x - y);
+    if (!keys.length) { rows.push(who.concat(["", "No result recorded"], new Array(16).fill(""), tail)); return; }
+    keys.forEach(k => {
+      const a = at[k], pass = a.outcome === "pass";
+      res.all++; if (pass) res.pass++; else res.notyet++;
+      const sect = x => ({ pass: "Pass", fail: "Not yet", skip: "Not retested" })[a.components && a.components[x]] || "";
+      const red = COMPS.map(x => { const o = a.overrides && a.overrides[x.k]; if (!o || !o.length) return ""; const w = a.overrideWhy && a.overrideWhy[x.k]; return (x.k === "bls" ? "BLS + AED" : "Recovery position") + ": " + o.join("; ") + (w ? " (why: " + (w.options || []).map(z => z === "Other" ? "Other - " + (w.other || "") : z).join(", ") + ")" : ""); }).filter(Boolean).join(" | ");
+      const cy = (a.cpr && a.cpr.cycles || []).map(z => z.n + (z.n < 28 ? " (too few)" : z.n > 32 ? " (too many)" : "") + " at " + (z.rate === null || z.rate === undefined ? "-" : z.rate) + "/min").join("; ");
+      const ans = Object.keys(a.answers || {}).filter(id => String(a.answers[id] || "").trim()).map(id => { const q = qs.find(z => z.id === id); return (q && q.label ? q.label : id) + ": " + a.answers[id]; }).join("; ");
+      rows.push(who.concat([k, pass ? "Pass" : "Not yet", pass ? "" : (NB_NEXT[Number(k)] || ""), a.excellent ? "Yes" : "", (a.excellentCriteria || []).join("; "),
+        sect("bls"), sect("rec"), nbReasons(a, "bls"), nbReasons(a, "rec"), red, cy, a.comment || "", ans,
+        a.assessorName || "", a.room || "", a.slot || "", nbTime(a.at), a.amended ? "Yes" : ""], tail));
+    });
+  });
+  const csv = "﻿" + [NB_HEAD].concat(rows).map(r => r.map(nbCell).join(",")).join("\r\n") + "\r\n";
+  const summary = [
+    "Candidates on the course: " + cands.length,
+    "Results recorded: " + res.all + " (" + res.pass + " pass, " + res.notyet + " not yet)",
+    "Passed on the night (any attempt): " + cnt.passed,
+    "Waiting for a retest or later attempt: " + cnt.pool,
+    "Not passed at attempt 2 / 3 / final (4): " + cnt.r2 + " / " + cnt.r3 + " / " + cnt.r4,
+    "Not there: " + cnt.absent,
+    "Not assessed: " + cnt.notassessed
+  ];
+  return { csv, rows, summary, cnt, res, cands: cands.length };
+}
+async function nbLoad() {
+  if (N.nb && N.nb.course === S.course) return;
+  const mine = N.nb = { course: S.course, to: NB_DEFAULT_TO.slice(), stamp: null };
+  try {
+    const [c1, c2] = await Promise.all([db.collection("config").doc("stage1_night_backup").get(), db.collection("config").doc("night_backup_" + nbSlug(S.course)).get()]);
+    const em = c1.exists && Array.isArray(c1.data().emails) ? c1.data().emails.map(x => String(x || "").trim()).filter(Boolean) : [];
+    if (em.length) mine.to = em;
+    if (c2.exists) mine.stamp = c2.data();
+  } catch (e) { /* default address, no stamp */ }
+  if (N.nb === mine && S.view === "retest") renderRetest();
+}
+function backupCard(no) {
+  const b = nbBuild(), nb = N.nb || { to: NB_DEFAULT_TO, stamp: null }, st = nb.stamp;
+  const chip = st ? `<span class="nchip claim">Sent ${esc(nbTime(st.sentAtIso))} by ${esc(st.byName || st.byEmail || "someone")}</span>` : '<span class="nchip bad">Not sent yet</span>';
+  return `<div class="card"><h3><span class="stepno">${no || 6}</span>End of night: email the results backup</h3>` +
+    `<div class="hint" style="margin:0 0 8px">A spreadsheet (CSV) of the whole night's results is emailed to <b>${esc(nb.to.join(", "))}</b> as a backup. It does not replace the reports for the degree leads. Send it when the night is finished. You can send it again if anything changes.</div>` +
+    `<div class="lrow"><span class="nm">${b.cands} candidates, ${b.res.all} result${b.res.all === 1 ? "" : "s"}</span>${chip}` +
+    `<small style="flex-basis:100%">${esc(b.summary.slice(2).join(". "))}.</small>` +
+    `<span class="pact"><button type="button" class="btn sm${st ? "" : " pri"}" data-nbopen="1">${st ? "Send again" : "Review and send"}</button><button type="button" class="btn sm" data-nbdl="1">Download a copy</button></span></div></div>`;
+}
+function nbDownload(b) {
+  const blob = new Blob([b.csv], { type: "text/csv;charset=utf-8" }), url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = nbFile(); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+function openBackup() {
+  const b = nbBuild(), nb = N.nb || { to: NB_DEFAULT_TO, stamp: null };
+  const pend = b.cnt.pool + N.cands.filter(c => { const cl = nres(c.id).claim; return cl && cl.uid && !isDoneNow(c); }).length;
+  $("overlay").innerHTML = `<div class="modalbg" id="nbbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:560px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>Email the results backup</h3>` +
+    `<div class="hint" style="margin:0 0 6px">To: <b>${esc(nb.to.join(", "))}</b><br>File: ${esc(nbFile())} (${b.rows.length} rows)</div>` +
+    `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 8px">${b.summary.map(x => `<div>${esc(x)}</div>`).join("")}</div>` +
+    (pend ? `<div class="hint" style="margin:0 0 8px;color:var(--bad,#b3261e)"><b>${pend}</b> ${pend === 1 ? "person is" : "people are"} still waiting for a retest or with an assessor. Wait until the night is finished, or send now and send again later.</div>` : "") +
+    `<div class="hint" style="margin:0 0 8px">Backup only. It contains named results, so keep it within university systems.</div>` +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn pri" id="nbSend">Send backup</button><button type="button" class="btn" id="nbCancel">Cancel</button></div></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("nbCancel").onclick = close; $("nbbg").onclick = e => { if (e.target.id === "nbbg") close(); };
+  $("nbSend").onclick = async () => {
+    $("nbSend").disabled = true; $("nbSend").textContent = "Sending...";
+    await sendBackup(b);
+    close(); renderRetest();
+  };
+}
+async function sendBackup(b) {
+  try {
+    const res = await firebase.functions().httpsCallable("sendNightBackup")({ course: S.course, nightDate: assessDate() || "", csv: b.csv, rowCount: b.rows.length, summaryLines: b.summary, byName: S.myName || "" });
+    const r = res.data || {};
+    N.nb = { course: S.course, to: (r.to && r.to.length ? r.to : (N.nb && N.nb.to) || NB_DEFAULT_TO), stamp: { sentAtIso: r.sentAtIso || new Date().toISOString(), byName: S.myName || "", filename: r.filename || nbFile() } };
+    toast("Backup emailed to " + N.nb.to.join(", ") + ".");
+  } catch (err) {
+    nbDownload(b);
+    const nf = err && (err.code === "functions/not-found" || /not.?found|not deployed/i.test(String(err.message || "")));
+    toast("Not emailed: " + (nf ? "the backup email function has not been deployed yet." : (err.message || err)) + " The file was downloaded instead.", true);
+  }
+}
+
+// ── Register check (22 Oct, Jon) ────────────────────────────────────────────────────────────────────
+// Who has a register problem tonight, what the problem is, and fix it in place. RMD faculty (Director, Student, Senior Faculty)
+// can already write the register under the rules; the "only on its own date" limit is for room instructors, so it is skipped here.
+// Every change is stamped on the week (review: was, why, by) so the original mark is never lost.
+function regIssues() {
+  const out = { act: [], ovr: [] };
+  if (!S.full || !Array.isArray(N.cands)) return out;
+  N.cands.forEach(c => {
+    if (isDoneNow(c) || c.absent || !needsAttend(effAttempt(c))) return;
+    const e = eligOf(c); if (!e || (e.state !== "absent" && e.state !== "unmarked")) return;
+    const row = { c, e };
+    if (e.state === "absent" && e.ov) out.ovr.push(row); else out.act.push(row);
+  });
+  const by = (x, y) => String(x.c.name).localeCompare(String(y.c.name));
+  out.act.sort(by); out.ovr.sort(by);
+  return out;
+}
+const REG_LBL = { here: "Here", late: "Late", absent: "Absent" };
+function regChip(id, n) {
+  const st = statusOf(id, n), r = S.reg[id] && S.reg[id]["w" + n], d = (teachDates(S.course) || [])[n - 1];
+  const txt = st ? REG_LBL[st] + (st === "late" && r && r.time ? " " + r.time : "") : "No mark";
+  return `<span class="chip ${st === "here" ? "here" : st === "late" ? "late" : st === "absent" ? "abs" : "none"}">Week ${n}${d ? " (" + esc(nice(d)) + ")" : ""}: ${esc(txt)}</span>`;
+}
+function regRow(x, withOv) {
+  const c = x.c, wk = [1, 2].map(n => {
+    const cur = statusOf(c.id, n);
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:3px 0">${regChip(c.id, n)}` +
+      ["here", "late", "absent"].filter(s => s !== cur).map(s => `<button type="button" class="btn sm" data-regfix="${esc(c.id)}" data-wk="${n}" data-st="${s}">Mark ${REG_LBL[s].toLowerCase()}</button>`).join("") + `</div>`;
+  }).join("");
+  const sc = candById(c.id) || {};
+  const why = x.e.why.join("; ") + (x.e.ov ? "; Director override on file (" + esc(x.e.ov.reason || "") + ")" : "");
+  return `<div class="lrow" style="flex-wrap:wrap"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small>${esc(c.degree || "")}${sc.room ? " &middot; teaching room " + esc(sc.room) : ""}</small>` +
+    `<small style="flex-basis:100%;color:${x.e.state === "absent" && !x.e.ov ? "var(--bad,#b3261e)" : "var(--mut)"}"><b>${esc(why)}</b>${x.e.state === "absent" && !x.e.ov ? " &middot; not eligible, their result form is locked" : ""}</small>` +
+    `<div style="flex-basis:100%">${wk}</div>` +
+    (x.e.state === "absent" && !x.e.ov ? `<div style="flex-basis:100%;margin:2px 0 4px">${S.isDirector ? `<button type="button" class="btn sm" data-regov="${esc(c.id)}">Director override</button> <small style="color:var(--mut)">Use this if they were genuinely absent and you are letting them sit.</small>` : `<small style="color:var(--mut)">If they were genuinely absent, a Director can override from their form.</small>`}</div>` : "") + `</div>`;
+}
+function regListHtml() {
+  const q = regIssues();
+  if (!q.act.length && !q.ovr.length) return '<div class="hint">No register problems. Everyone still to sit has a mark for both weeks.</div>';
+  let h = "";
+  if (q.act.length) h += `<div class="agroup">Needs a look (${q.act.length})</div>` + q.act.map(x => regRow(x)).join("");
+  if (q.ovr.length) h += `<div class="agroup">Director override on file (${q.ovr.length})</div>` + q.ovr.map(x => regRow(x)).join("");
+  return h;
+}
+function regCard() {
+  const q = regIssues(); if (!q.act.length) return "";
+  return `<div class="card" id="regCard" style="border-color:var(--org)"><h3>Register check: who needs a look (${q.act.length})</h3><div class="hint" style="margin:0 0 8px">These candidates are missing a register mark, or were marked absent, in a teaching week. Fix the mark here if it was a mistake. Each change is logged with the original mark.</div>${regListHtml()}</div>`;
+}
+function bindReg(root) {
+  root.querySelectorAll("[data-regfix]").forEach(b => b.onclick = () => regFix(b.dataset.regfix, Number(b.dataset.wk), b.dataset.st));
+  root.querySelectorAll("[data-regov]").forEach(b => b.onclick = () => { $("overlay").innerHTML = ""; N.regModal = false; openForm(b.dataset.regov); });
+}
+function openRegReview() {
+  N.regModal = true;
+  $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>Register check</h3>` +
+    `<div class="hint" style="margin:0 0 6px">Fix a mark here if it was a mistake. Each change is logged with the original mark.</div><div id="rrList">${regListHtml()}</div>` +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn" id="rrClose">Close</button></div></div></div>`;
+  const close = () => { N.regModal = false; $("overlay").innerHTML = ""; };
+  $("rrClose").onclick = close; $("rrbg").onclick = e => { if (e.target.id === "rrbg") close(); };
+  bindReg($("overlay"));
+}
+function regFix(id, n, status) {
+  const c = candById(id); if (!c) { toast("Reload the page and try again.", true); return; }
+  const cur = statusOf(id, n), needWhy = cur === "absent" || status === "absent";
+  if (!needWhy) { regSave(c, n, status, ""); return; }
+  const reasons = status === "absent" ? ["They were not there", "Other"] : ["Register mistake", "Arrived but was not marked", "Other"];
+  let pick = null;
+  const back = () => { if (N.regModal) openRegReview(); else $("overlay").innerHTML = ""; };
+  $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true"><h3>Change week ${n} for ${esc(c.name)}?</h3>` +
+    `<p>Week ${n} is recorded as <b>${esc(cur ? REG_LBL[cur] : "no mark")}</b>. You are changing it to <b>${esc(REG_LBL[status])}</b>.${status === "absent" ? " They will not be eligible to sit tonight unless a Director overrides." : ""} The original mark is kept in the log.</p>` +
+    `<div class="two" id="rgWhy">${reasons.map((r, i) => `<button type="button" data-rw="${i}">${esc(r)}</button>`).join("")}</div>` +
+    `<div class="two" style="margin-top:8px"><button type="button" class="pri" id="rgOk" disabled>Yes, change it</button><button type="button" id="rgNo">Cancel</button></div></div></div>`;
+  $("overlay").querySelectorAll("[data-rw]").forEach(b => b.onclick = () => { pick = reasons[Number(b.dataset.rw)]; $("overlay").querySelectorAll("[data-rw]").forEach(x => x.classList.toggle("on", x === b)); $("rgOk").disabled = false; });
+  $("rgNo").onclick = back; $("sbg").onclick = e => { if (e.target.id === "sbg") back(); };
+  $("rgOk").onclick = async () => { if (!pick) return; await regSave(c, n, status, pick); back(); };
+}
+async function regSave(c, n, status, why) {
+  const was = statusOf(c.id, n) || "no mark", key = "w" + n;
+  const payload = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  payload[key] = { status, time: "", by: S.user.uid, byName: S.myName || "", at: firebase.firestore.FieldValue.serverTimestamp(), review: { was, why: why || "", byName: S.myName || "", atIso: new Date().toISOString() } };
+  try {
+    await db.collection("stage1_register").doc(c.id).set(payload, { merge: true });
+    toast(c.name + ": week " + n + " now " + REG_LBL[status].toLowerCase() + ".");
+    await loadNight();
+    renderRetest();
+    if (N.regModal && $("rrList")) { $("rrList").innerHTML = regListHtml(); bindReg($("overlay")); }
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+document.addEventListener("click", e => { const t = e.target && e.target.closest && e.target.closest("[data-regreview]"); if (t) openRegReview(); });
+
 function teamCard(af, no) {
   const groups = [
     { key: "retrain", title: "Awaiting retraining (referred at attempt 2)", hint: "Not retested tonight. A Student Faculty member meets them, then they repeat all 3 evenings in a different room (different instructors) before attempt 3 with Senior Faculty." },
@@ -3290,13 +3512,16 @@ function renderRetest() {
     h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(c => prow(c)).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them.</div>') + `</div>`;
   } else {
     // RMD faculty hub order: what needs input now first, then the queue, then information and admin.
+    h += regCard();
     h += `<div class="card"><h3><span class="stepno">1</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Referred at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
       (need.length ? need.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is waiting for a room.</div>') + `</div>`;
     const lead = teamCard(af, 2);
     h += lead;
     h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
     h += hereCard(pool, 4);
+    nbLoad();
     h += mailCard(5);
+    h += backupCard(6);
     if (stale.length) h += staleCard();
     const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
     h += more;
@@ -3313,6 +3538,9 @@ function renderRetest() {
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
   bindActs($("viewRetest"));
   $("viewRetest").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));
+  $("viewRetest").querySelectorAll("[data-nbopen]").forEach(b => b.onclick = openBackup);
+  bindReg($("viewRetest"));
+  $("viewRetest").querySelectorAll("[data-nbdl]").forEach(b => b.onclick = () => { nbDownload(nbBuild()); toast("Downloaded " + nbFile()); });
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => editAttempt(b.dataset.patt));
   $("viewRetest").querySelectorAll("[data-here]").forEach(b => b.onclick = () => {

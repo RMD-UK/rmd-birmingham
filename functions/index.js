@@ -4167,6 +4167,77 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
   return { sent, failed: failedEmails.length, failedEmails, queued: deferred.length, queueId };
 });
 
+// 2026-10-22, Jon: at the end of every assessment night the hub (Retest pool page, RMD faculty) emails a CSV of the night's
+// results to a backup address. BACKUP ONLY: it does not replace what is sent to the degree leads. The hub builds the CSV; this
+// function checks the caller, keeps a server-side copy (stage1_night_backups, never readable from the browser), emails the CSV
+// as an attachment and stamps config/night_backup_<course> so the hub can show "Sent at ... by ...". Recipients are NEVER taken
+// from the caller: they come from config/stage1_night_backup.emails (super-user editable) or the default below.
+// Deploy: firebase deploy --only functions:sendNightBackup
+const NIGHT_BACKUP_DEFAULT_TO = ["j.hulme.1@bham.ac.uk"];
+exports.sendNightBackup = onCall({ secrets: [resendApiKey], region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const isDirector = await callerIsDirector(auth);
+  const rosterGroup = isDirector ? null : await callerFacultyRosterGroup(auth);
+  if (!isDirector && rosterGroup !== "student" && rosterGroup !== "senior") {
+    throw new HttpsError("permission-denied", "Course Directors, RMD Student Faculty or RMD Senior Faculty only.");
+  }
+  const course = String(request.data?.course || "").trim().slice(0, 80);
+  const csv = typeof request.data?.csv === "string" ? request.data.csv : "";
+  if (!course) throw new HttpsError("invalid-argument", "Course is required.");
+  if (csv.length < 20) throw new HttpsError("invalid-argument", "The results file is empty.");
+  if (csv.length > 900000) throw new HttpsError("invalid-argument", "The results file is too large to email.");
+  const rowCount = Math.max(0, Math.min(100000, Number(request.data?.rowCount) || 0));
+  const summaryLines = (Array.isArray(request.data?.summaryLines) ? request.data.summaryLines : []).slice(0, 20).map(x => String(x).slice(0, 200));
+  const rawDate = String(request.data?.nightDate || "");
+  const nightDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+  const slug = course.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "course";
+  const filename = "RMD_assessment_night_backup_" + slug + "_" + nightDate + ".csv";
+  const byEmail = (auth.token.email || "").toLowerCase();
+  const byName = String(request.data?.byName || auth.token.name || byEmail || "").slice(0, 80);
+
+  let to = NIGHT_BACKUP_DEFAULT_TO;
+  try {
+    const cfg = await db.collection("config").doc("stage1_night_backup").get();
+    const list = cfg.exists && Array.isArray(cfg.data().emails) ? cfg.data().emails.map(x => String(x || "").trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)).slice(0, 5) : [];
+    if (list.length) to = list;
+  } catch (e) { /* default address */ }
+
+  // Server-side copy first, so the results exist somewhere even if the email fails.
+  await db.collection("stage1_night_backups").add({
+    course, nightDate, filename, csv, rowCount, summaryLines, to,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(), byUid: auth.uid, byEmail
+  });
+
+  const subject = "RMD assessment night backup: " + course + " (" + nightDate + ")";
+  const lines = [
+    "Backup copy of the assessment night results for " + course + ", " + nightDate + ".",
+    "Sent from the RMD hub by " + byName + (byEmail ? " (" + byEmail + ")" : "") + ".",
+    "",
+    "Rows in the attached file: " + rowCount + ".",
+    ...summaryLines,
+    "",
+    "This is a backup only. It does not replace what is sent to the degree leads.",
+    "The file contains named student results. Keep it within university systems."
+  ];
+  const resend = new Resend(resendApiKey.value());
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL, to, replyTo: REPLY_TO, subject,
+    text: lines.join("\n"),
+    html: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1a2233;max-width:640px;">' + lines.map(l => l ? "<p style=\"margin:0 0 6px;\">" + String(l).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" : "<br>").join("") + "</div>",
+    attachments: [{ filename, content: Buffer.from(csv, "utf8") }]
+  });
+  if (error) {
+    console.error("sendNightBackup: email failed", error.message || error);
+    throw new HttpsError("internal", "The results are saved on the server, but the email did not send: " + (error.message || "unknown error"));
+  }
+  const sentAtIso = new Date().toISOString();
+  try {
+    await db.collection("config").doc("night_backup_" + slug).set({ course, nightDate, filename, rowCount, to, byName, byEmail, sentAtIso, sentAt: admin.firestore.FieldValue.serverTimestamp() });
+  } catch (e) { console.error("sendNightBackup: stamp failed", e.message); }
+  return { ok: true, to, filename, rowCount, sentAtIso };
+});
+
 // 2026-10-05, Jon — runs once a day, well before sendMouRemindersScheduled's
 // 08:00 slot, to clear whatever sendBulkComms above had to queue. Pulls
 // active comms_queue jobs oldest-first and sends up to COMMS_DAILY_SAFE_LIMIT

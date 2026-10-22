@@ -105,6 +105,15 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/monday-ready.js"></script>
 <script>
+// Course order everywhere (22 Oct, Jon): numbered courses in order, then the Catch-up night (after Course 6), then test courses last.
+function rmdCourseSort(a, b) {
+  const rank = n => { const s = String(n || ""), num = parseInt((s.match(/\d+/) || [])[0], 10);
+    if (/^test\b/i.test(s)) return [2, isNaN(num) ? 0 : num];
+    if (/^catch-?up/i.test(s)) return [1, 0];
+    return [0, isNaN(num) ? 9999 : num]; };
+  const x = rank(a), y = rank(b);
+  return (x[0] - y[0]) || (x[1] - y[1]) || String(a).localeCompare(String(b));
+}
 initFirebase();
 const fns = firebase.functions();
 const M = window.RMD_MONDAY;
@@ -189,11 +198,7 @@ function courseList() {
   const s = new Set();
   D.candidates.forEach(c => { if (c.course) s.add(c.course); });
   D.courses.forEach(c => { if (c && c.name) s.add(c.name); });
-  return Array.from(s).sort((a, b) => {
-    const na = parseInt((a.match(/\d+/) || [])[0], 10), nb = parseInt((b.match(/\d+/) || [])[0], 10);
-    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
-    return a.localeCompare(b);
-  });
+  return Array.from(s).sort(rmdCourseSort);
 }
 function renderAll() {
   [render1, render2, render3, render4, render5, render6, render7].forEach(f => { try { f(); } catch (e) { console.error(f.name, e); } });
