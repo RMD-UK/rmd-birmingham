@@ -3089,7 +3089,7 @@ function nextList() {
     const fl = r.flow || {}, nx = fl.next || {};
     if (nx.course && nx.course === S.course) return; // they are here as the destination of an earlier move
     const c = (N.cands || []).find(x => x.id === id), sc = (S.cands || []).find(x => x.id === id) || {}, kind = NEXT_KIND[Math.min(k, 4)];
-    out.push({ id, k, kind, name: (c && c.name) || r.candidateName || id, email: String(sc.email || nx.email || "").trim(), onCourse: !!c, nx, stamp: (fl.comms || {})[kind] || null });
+    out.push({ id, k, kind, degree: (c && c.degree) || sc.degree || "", res: a, name: (c && c.name) || r.candidateName || id, email: String(sc.email || nx.email || "").trim(), onCourse: !!c, nx, stamp: (fl.comms || {})[kind] || null });
   });
   return out.sort((x, y) => x.k - y.k || String(x.name).localeCompare(String(y.name)));
 }
@@ -3109,7 +3109,7 @@ function nextCard(no) {
     const nx = x.nx, seen = nx.seen && nx.seen.by ? `Seen face to face by ${esc(nx.seen.by)}${nx.seen.at ? " at " + esc(nbTime(nx.seen.at)) : ""}` : "";
     const cOpts = `<option value="">Choose the new course...</option>` + opts.map(c => `<option value="${esc(c.name)}"${nx.course === c.name ? " selected" : ""}>${esc(c.name)} (starts ${esc(longDate((weekDates(c.name) || [c.date])[0]))})</option>`).join("");
     const lock = x.stamp ? " disabled" : "";
-    let h = `<div class="lrow" style="align-items:flex-start"><span class="nm" style="flex-basis:100%">${esc(x.name)} <small>Not passed at attempt ${x.k}${x.k >= 4 ? ": final" : ""}</small></span>`;
+    let h = `<div class="lrow" style="align-items:flex-start"><span class="nm" style="flex-basis:100%">${esc(x.name)} <small>Not passed at attempt ${x.k}${x.k >= 4 ? ": final" : ""}${x.degree ? " &middot; " + esc(x.degree) : ""}</small></span>` + `<small style="flex-basis:100%">${esc(compsText((x.res || {})[String(x.k)] || {}))}</small>`;
     if (x.stamp) {
       h += `<small style="flex-basis:100%">Emailed ${esc(nbTime(x.stamp.at))} by ${esc(x.stamp.by || "someone")}${x.k < 4 && nx.course ? ". New course: " + esc(nx.course) : ""}.</small>`;
     } else {
@@ -3648,7 +3648,7 @@ function renderRetest() {
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
     `An assessor takes each one from the Assessor view. ` +
-    (simple ? "" : `Do <b>step 1</b> first: anyone referred needs a retest room.`);
+    (simple ? "" : `Anyone referred at attempt 1 needs a retest room: open <b>step 2</b>.`);
   const needRoom = c => effAttempt(c) === 2 && !resitRoom(c) && !(nres(c.id).claim && nres(c.id).claim.uid);
   const need = simple ? [] : pool.filter(needRoom), queue = simple ? pool : pool.filter(c => !needRoom(c));
   const has3 = pool.some(c => effAttempt(c) >= 3);
@@ -3676,16 +3676,17 @@ function renderRetest() {
   } else {
     // RMD faculty hub order: what needs input now first, then the queue, then information and admin.
     h += regCard();
-    h += `<div class="card"><h3><span class="stepno">1</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Referred at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
+    // Order (22 Oct, Jon): room first, then who the senior assessment team are, then the queue. The old "Not retested tonight" list is gone:
+    // the Not passed card below replaces it and is left to the end of the evening.
+    h += hereCard(pool, 1);
+    h += `<div class="card"><h3><span class="stepno">2</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Referred at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
       (need.length ? need.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is waiting for a room.</div>') + `</div>`;
-    const lead = teamCard(af, 2);
-    h += lead;
     h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
-    h += hereCard(pool, 4);
     nbLoad();
-    h += nextCard(5);
-    h += mailCard(nextList().length ? 6 : 5);
-    h += backupCard(nextList().length ? 7 : 6);
+    const hasNext = nextList().length > 0;
+    h += nextCard(4);
+    h += mailCard(hasNext ? 5 : 4);
+    h += backupCard(hasNext ? 6 : 5);
     if (stale.length) h += staleCard();
     const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
     h += more;
@@ -3837,8 +3838,9 @@ async function setPresent(list) {
   }
 }
 function hereCard(pool, no) {
-  const people = att3People(), open = N.hereOpen !== undefined ? N.hereOpen === true : (S.door === "assess" && S.drole === "plus" ? false : pool.some(c => effAttempt(c) >= 3)), n = people.filter(isHere).length;
-  const wrap = inner => `<details class="card" id="hereDetails"${open ? " open" : ""}><summary style="cursor:pointer;font-weight:800;font-size:17px"><span class="stepno">${no || 1}</span>Attempt 3 or later: who is here tonight${people.length ? ` <span class="hint" style="margin:0 0 0 8px;font-weight:600">${n} of ${people.length} here</span>` : ""}</summary><div style="margin-top:8px">${inner}</div></details>`;
+  // Collapsed by default (22 Oct, Jon); opens only when someone taps it.
+  const people = att3People(), open = N.hereOpen === true, n = people.filter(isHere).length;
+  const wrap = inner => `<details class="card" id="hereDetails"${open ? " open" : ""}><summary style="cursor:pointer;font-weight:800;font-size:17px"><span class="stepno">${no || 1}</span>Senior assessment team: who is here tonight${people.length ? ` <span class="hint" style="margin:0 0 0 8px;font-weight:600">${n} of ${people.length} here</span>` : ""}</summary><div style="margin-top:8px">${inner}</div></details>`;
   const wait3 = pool.filter(c => effAttempt(c) >= 3 && !(nres(c.id).claim && nres(c.id).claim.uid)).length;
   let h = `<div class="hint" style="margin:0 0 6px">Tap each person here tonight. Senior Faculty and extra named assessors only. Information only.</div>`;
   if (N.dir === null || N.dir === undefined) return wrap(h + '<div class="hint">Loading the list…</div>');
