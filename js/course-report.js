@@ -98,10 +98,22 @@
     keys.forEach(k => { perKey[k] = mean(items.map(i => i.likert && Number(i.likert[k])).filter(n => n > 0)); });
     const rec = {};
     items.forEach(i => { if (i.recommend) rec[i.recommend] = (rec[i.recommend] || 0) + 1; });
+    // By role (the form's Q1). Roles are shown in a fixed order; anything else, or a blank, goes under "Not stated".
+    const ROLES = [["Instructor Candidate", "Instructor Candidate"], ["Assessor / Senior Instructor", "Assessor / Senior Instructor"],
+      ["Instructor Trainer Candidate", "Instructor Trainer Candidate (ITC)"], ["Faculty", "Faculty / Observer"]];
+    const roleOf = i => { const r = ROLES.find(x => x[0] === i.stream); return r ? r[1] : "Not stated"; };
+    const order = ROLES.map(x => x[1]).concat(["Not stated"]);
+    const byRole = order.map(label => {
+      const g = items.filter(i => roleOf(i) === label);
+      if (!g.length) return null;
+      const rc = {}; g.forEach(i => { if (i.recommend) rc[i.recommend] = (rc[i.recommend] || 0) + 1; });
+      return { role: label, n: g.length, overall: mean(g.map(i => Number(i.averageScore)).filter(n => n > 0)), recommend: rc,
+        valuable: g.map(i => i.valuable).filter(Boolean), suggestions: g.map(i => i.suggestions).filter(Boolean) };
+    }).filter(Boolean);
     return {
       n: items.length,
       overall: mean(items.map(i => Number(i.averageScore)).filter(n => n > 0)),
-      perKey, recommend: rec,
+      perKey, recommend: rec, byRole,
       valuable: items.map(i => i.valuable).filter(Boolean),
       suggestions: items.map(i => i.suggestions).filter(Boolean)
     };
@@ -166,8 +178,22 @@
     else {
       b.push({ t: "p", runs: [{ text: `${f.n} response${f.n === 1 ? "" : "s"}. Mean score ${f.overall == null ? "n/a" : f.overall} (scale 1 to 5). Would recommend: ${["Definitely yes", "Probably yes", "Unsure", "No"].map(k => `${k} ${f.recommend[k] || 0}`).join(", ")}.` }] });
       b.push({ t: "table", headers: ["Area", "Mean"], weights: [4, 2], rows: Object.entries(f.perKey).map(([k, v]) => [k, v == null ? "n/a" : v]) });
-      if (f.valuable.length) { b.push({ t: "h3", text: "Most valuable" }); b.push({ t: "ul", items: f.valuable }); }
-      if (f.suggestions.length) { b.push({ t: "h3", text: "Suggestions" }); b.push({ t: "ul", items: f.suggestions }); }
+      const br = f.byRole || [];
+      if (br.length) {
+        b.push({ t: "h3", text: "By role" });
+        b.push({ t: "table", headers: ["Role", "Responses", "Mean score", "Definitely yes", "Probably yes", "Unsure", "No"], weights: [4, 1.6, 1.6, 1.8, 1.8, 1.4, 1],
+          rows: br.map(g => [g.role, g.n, g.overall == null ? "n/a" : g.overall, g.recommend["Definitely yes"] || 0, g.recommend["Probably yes"] || 0, g.recommend["Unsure"] || 0, g.recommend["No"] || 0]) });
+      }
+      const groupedComments = (title, key) => {
+        const withText = br.filter(g => g[key].length);
+        if (!withText.length) return;
+        b.push({ t: "h3", text: title });
+        withText.forEach(g => { b.push({ t: "p", runs: [{ text: `${g.role} (${g.n} ${g.n === 1 ? "response" : "responses"})`, bold: true }] }); b.push({ t: "ul", items: g[key] }); });
+      };
+      groupedComments("Most valuable", "valuable");
+      groupedComments("Suggestions", "suggestions");
+      if (br.some(g => g.n < 5 && (g.valuable.length || g.suggestions.length)))
+        b.push({ t: "p", runs: [{ text: "Note: some roles have fewer than 5 responses, so a comment may be traceable to one person. Check before sharing this report.", bold: true }] });
     }
     return b;
   }

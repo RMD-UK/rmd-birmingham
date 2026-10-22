@@ -174,6 +174,7 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .stchip.ok{background:var(--okbg);color:var(--ok)}.stchip.open{background:var(--org);color:#fff}.stchip.bad{background:var(--badbg);color:var(--bad)}
 .stbody.locked{opacity:.5;pointer-events:none}
 .lockmsg{font-size:13.5px;color:var(--mut);font-weight:600;margin:2px 0 6px}
+.card summary .stepno{margin-right:8px}
 .card .stepno{display:inline-grid;place-items:center;flex:none;width:26px;height:26px;border-radius:50%;background:var(--pur);color:#fff;font-size:14px;font-weight:800}
 .card .hint{font-size:13px;color:var(--mut);margin-top:6px}
 .card input[type=search],.card textarea,.card input[type=text]{width:100%;border:2px solid var(--line);border-radius:10px;padding:9px 12px;font-size:16px}
@@ -201,6 +202,8 @@ details.lst .in{padding:0 14px 12px}
 .lrow{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #F0F3F8;flex-wrap:wrap}
 .lrow .nm{flex:1;min-width:150px;font-weight:700;display:flex;gap:6px;align-items:center}
 .lrow small{color:var(--mut);font-weight:500}
+.agroup{margin:14px 0 2px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.lrow.arow2{display:grid;grid-template-columns:1fr auto;gap:5px 10px;align-items:center}.lrow.arow2 .nm{min-width:0}.lrow.arow2 .adeg{text-align:right}.lrow.arow2 .atl{grid-column:1/-1;display:flex;gap:6px;flex-wrap:wrap;align-items:center}.lrow.arow2 .atl i{font-style:normal;color:var(--mut)}
 .stepper{display:inline-flex;align-items:center;gap:6px}
 .stepper button{width:30px;height:30px;border-radius:8px;border:2px solid var(--pur);background:#fff;color:var(--pur);font-weight:800;font-size:16px;line-height:1}
 .emailbox{background:var(--bg);border-radius:10px;padding:10px 12px;margin-top:10px}
@@ -373,9 +376,10 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
 .rolepick button:nth-child(2){background:#1f6f5b}.rolepick button:nth-child(3){background:#17566a}
 .rolepick button:nth-child(4){background:#6d1f4f}.rolepick button:nth-child(5){background:#9a3d12}
 @media(min-width:1000px){.rolepick{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
-.rolepick [data-role=runner]{grid-column:1;grid-row:1}
+.rolepick [data-role=desk]{grid-column:1;grid-row:1}.rolepick [data-role=runner]{grid-column:1;grid-row:2}
 .rolepick [data-role=as1]{grid-column:2;grid-row:1}.rolepick [data-role=as2]{grid-column:2;grid-row:2}.rolepick [data-role=plus]{grid-column:2;grid-row:3}
-.rolepick [data-role=fac]{grid-column:3;grid-row:1}.rolepick [data-role=ascr]{grid-column:3;grid-row:2}}.rolepick button:nth-child(6){background:#3b4a63}
+.rolepick [data-role=fac]{grid-column:3;grid-row:1}.rolepick [data-role=ascr]{grid-column:3;grid-row:2}.rolepick [data-role=aflow]{grid-column:3;grid-row:3}}
+.rolepick button[data-role=runner]{background:var(--pur)}.rolepick button[data-role=desk]{background:#1f6f5b}.rolepick button:nth-child(6){background:#3b4a63}
 .rolepick button:focus-visible,.doorbar button:focus-visible,.rolebar .chg:focus-visible{outline:3px solid var(--org);outline-offset:2px}
 .stepcard.pin{border-color:var(--pur)}.stepcard.pin .no{background:var(--pur)}
 /* v26 check-in states (Jon, 20 Oct): Not here, Arrived, Collected, Being assessed, Assessed. Words as well as colour. */
@@ -456,8 +460,10 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
           <div class="pick hidden" id="aPick"></div>
           <div id="aMoveBody"></div>
         </div>
+        <div class="card hidden" id="aAdd"></div>
         <div id="aLists"></div>
       </div>
+      <div id="viewPlan" class="hidden"></div>
       <div id="viewRetest" class="hidden"></div>
       <div id="viewSetup" class="hidden"></div>
       <div id="viewRunner" class="hidden"></div>
@@ -557,6 +563,7 @@ auth.onAuthStateChanged(async user => {
         const [tm, nm0] = await Promise.all([db.collection("config").doc("stage1_assessors").get(), db.collection("config").doc("stage1_named_assessors").get()]);
         const has = d => d.exists && (d.data().emails || []).some(x => String(x).toLowerCase() === em);
         if (em && (has(tm) || has(nm0))) S.night = true;
+        S.teamOnly = !!(em && has(tm) && !has(nm0));   // 21 Oct (Jon): Senior Instructors are instructors only. On the night list for the runner view, never assessing.
       } catch (e) {}
     }
     if (S.isDirector) {
@@ -579,7 +586,7 @@ auth.onAuthStateChanged(async user => {
     if (!S.full && !S.mine.length) S.view = "runner";   // assessors with no room team land on the assessment night
     // Deep links (Readiness check, Director Box): phase1.html#setup, #alloc, #retest, #runner, #assessor, #register. Only honoured if this person may use that view.
     { const hv = (location.hash || "").replace("#", "");
-      if (hv === "setup" ? S.isDirector : (hv === "alloc" || hv === "retest") ? S.full : hv === "runner" ? S.run : hv === "assessor" ? S.night : hv === "register") S.view = hv; }
+      if (hv === "setup" ? S.isDirector : (hv === "alloc" || hv === "retest" || hv === "plan") ? S.full : hv === "runner" ? S.run : hv === "assessor" ? (S.night && !S.teamOnly) : hv === "register") S.view = hv; }
     const cfg = await db.collection("config").doc("stage1_course_dates").get();
     S.courseDates = ((cfg.exists && cfg.data().courses) || []).filter(c => c.name && c.date).sort((a, b) => a.date < b.date ? -1 : 1);
     try {
@@ -637,10 +644,12 @@ function renderSteps() {
     { no: 10, t: "Readiness check", s: "Ready for assessment night?", href: "admin-stage1-readiness.html", who: "director" },
     { no: 11, t: "Register live screen", s: "Big screen: teaching night", href: "register-live.html", who: "full" },
     { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" },
-    { no: 13, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" }
+    { no: 13, t: "Flow screen", s: "Big screen: who is where tonight (dots, no names)", href: "assessment-flow.html", who: "full" },
+    { no: 14, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" },
+    { no: 15, t: "Planning overview", s: "What to do before the night, in order", view: "plan", who: "full", onlyRole: true }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
-  let list = jobs.filter(ok), pin = "";
+  let list = jobs.filter(j => ok(j) && !j.onlyRole), pin = "";
   const sel = doorJobs();
   if (pickingRole()) { list = []; }
   else if (sel) {
@@ -665,20 +674,21 @@ function renderSteps() {
 const ROLE_DEFS = {
   teach: [
     { id: "tinst", t: "Instructor", s: "Your room: register and ratings", ok: () => S.mine.length > 0, view: "register", jobs: [{ no: 6 }, { no: 7 }] },
-    { id: "tass", t: "Assessor", s: "Not in a room on these evenings", ok: () => S.night && S.mine.length === 0 && (!S.full || S.isDirector), view: "tassinfo", info: true, jobs: [] },
+    { id: "tass", t: "Assessor", s: "Not in a room on these evenings", ok: () => S.night && !S.teamOnly && S.mine.length === 0 && (!S.full || S.isDirector), view: "tassinfo", info: true, jobs: [] },
     { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }] },
     { id: "tscr", t: "Big screen", s: "Live register", ok: () => S.full, href: "register-live.html" }
   ],
   assess: [
+    { id: "desk", t: "Check-in station", s: "Arrivals: check people in", ok: () => S.full, view: "checkin", jobs: [{ no: 14 }, { no: 4, s: "Runners: who has been collected" }] },
     { id: "runner", t: "Runner / instructor", s: "Who is due, who is done", ok: () => S.run, view: "runner", jobs: [{ no: 4 }] },
-    { id: "desk", t: "Check-in station", s: "Arrivals: check people in", ok: () => S.full, view: "checkin", jobs: [{ no: 13 }, { no: 4, s: "Runners: who has been collected" }] },
-    { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
-    { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
-    { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, s: "Give RAP and third sits a room" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Overview, moves, follow-ups", ok: () => S.full, view: "runner", jobs: [{ no: 13 }, { no: 4 }, { no: 2, s: "Move people between rooms" }, { no: 3 }, { no: 5, t: "Assess now", mode: "all", s: "Open the assessor view" }, { no: 12 }] },
-    { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" }
+    { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night && !S.teamOnly, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
+    { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && !S.teamOnly && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
+    { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
+    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 12 }, { no: 13 }] },
+    { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
+    { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
-  plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "alloc", jobs: [{ no: 1 }, { no: 2 }, { no: 8 }, { no: 10 }, { no: 9 }] }]
+  plan: [{ id: "plan", t: "Planning", ok: () => S.full, view: "plan", jobs: [{ no: 15 }, { no: 2, s: "Slots and times for everyone" }, { no: 9 }] }]
 };
 const DOOR_TITLE = { teach: "Teaching nights", assess: "Assessment night", plan: "Planning" };
 function doorAllowed(d) { return d === "teach" ? (S.full || S.mine.length > 0 || S.night) : d === "assess" ? S.run : d === "plan" ? S.full : false; }
@@ -719,7 +729,7 @@ function restoreDoor() {
 }
 function renderDoors() {
   const doors = ["teach", "assess", "plan"].filter(doorAllowed);
-  const sub = { teach: "Weeks 1 and 2", assess: "Pick your role", plan: "People, allocation, Comms" };
+  const sub = { teach: "Weeks 1 and 2", assess: "Pick your role", plan: "Before the night, in order" };
   $("doorBar").innerHTML = doors.length ? doors.map(d => `<button type="button" data-door="${d}" class="${S.door === d ? "on" : ""}">${DOOR_TITLE[d]}<small>${sub[d]}</small></button>`).join("") +
     `<button type="button" data-door="" class="all${S.door ? "" : " on"}">All jobs</button>` : "";
   $("doorBar").querySelectorAll("[data-door]").forEach(b => b.onclick = () => chooseDoor(b.dataset.door));
@@ -736,7 +746,7 @@ function chooseDoor(d) {
   S.door = d || ""; S.drole = ""; S.mode = "all";
   const wasInfo = S.view === "tassinfo";
   if (wasInfo) S.view = S.full || S.mine.length ? "register" : "runner";
-  if (S.door === "plan") { const r = ROLE_DEFS.plan[0]; S.drole = r.id; if (S.view !== "alloc" && S.view !== "setup") S.view = r.view; }
+  if (S.door === "plan") { const r = ROLE_DEFS.plan[0]; S.drole = r.id; if (S.view !== "alloc" && S.view !== "setup" && S.view !== "plan") S.view = r.view; }
   dsave(); renderSteps(); showView();
   if (S.door === "plan" || (wasInfo && !S.door)) enterView();
 }
@@ -814,8 +824,9 @@ function renderTassInfo() {
 async function enterView() {
   showView();
   if (S.view === "tassinfo") { renderTassInfo(); return; }
-  if (["alloc", "runner", "assessor", "retest", "checkin"].includes(S.view)) await ensureRooms();
+  if (["alloc", "plan", "runner", "assessor", "retest", "checkin"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
+  else if (S.view === "plan") renderPlan();
   else if (["retest", "runner", "assessor", "checkin"].includes(S.view)) renderNight();
   else if (S.view === "setup") await enterSetup();
   else render();
@@ -829,7 +840,7 @@ function attachListeners() {
   // register entries
   if (S.full) {
     S.unsubs.push(db.collection("stage1_register").where("course", "==", course).onSnapshot(snap => {
-      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render(); if (S.view === "alloc") renderAlloc();
+      S.reg = {}; snap.forEach(d => { S.reg[d.id] = d.data(); }); render(); if (S.view === "alloc") renderAlloc(); else if (S.view === "plan") renderPlan();
     }, err => onListenErr("register", err)));
   } else {
     S.cands.forEach(c => {
@@ -1372,6 +1383,8 @@ const ASSESS_SLOTS = (() => {
   while (h < 21 || (h === 21 && m <= 30)) { out.push(String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0")); m += 15; if (m >= 60) { m -= 60; h++; } }
   return out;
 })();
+// Rooms used for retests (attempt 2). Student Faculty pick from these when they confirm a retest. Empty = every assessment room is offered. Jon to confirm the list.
+const DEFAULT_RETEST_ROOMS = ["CM08", "CM09", "CM10", "CM11"];   // 21 Oct, Jon: the only rooms offered for retests (every retest attempt). RAP can use any room.
 const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
 const A = {
   rooms: [], loaded: false, sel: null, target: null, showGrid: false, busy: false, log: [],
@@ -1391,26 +1404,27 @@ async function ensureRooms() {
   try {
     const snap = await db.collection("config").doc("stage1_assessment_rooms").get();
     A.rooms = snap.exists ? (snap.data().rooms || []) : [];
-  } catch (e) { A.rooms = []; }
+    A.retestRooms = snap.exists && Array.isArray(snap.data().retestRooms) ? snap.data().retestRooms : [];
+  } catch (e) { A.rooms = []; A.retestRooms = []; }
   if (!A.rooms.length) A.rooms = DEFAULT_ASSESS_ROOMS;
   A.loaded = true;
 }
 function showView() {
   const picking = pickingRole();
   const info = !picking && S.view === "tassinfo" && S.drole === "tass";
-  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewSetup", "setup"]]
+  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewPlan", "plan"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewSetup", "setup"]]
     .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v || (v === "tassinfo" && !info)));
   $("plain").classList.toggle("hidden", picking || info); $("msgs").classList.toggle("hidden", picking || info);
   renderDoors();
 }
 async function setView(v) {
-  if ((v === "alloc" || v === "retest") && !S.full) return;
+  if ((v === "alloc" || v === "retest" || v === "plan") && !S.full) return;
   if (v === "runner" && !S.run) return;
-  if (v === "assessor" && !S.night) return;
+  if (v === "assessor" && (!S.night || S.teamOnly)) return;
   if (v === "checkin" && !S.full) return;
   if (v === "setup" && !S.isDirector) return;
   S.view = v; renderSteps();
-  if (NIGHT_VIEWS.includes(v)) { if (N.course !== S.course) attachNight(); loadNight(); }
+  if (NIGHT_VIEWS.includes(v) || (v === "alloc" && S.door === "assess")) { if (N.course !== S.course) attachNight(); loadNight(); }
   await enterView();
 }
 
@@ -1440,29 +1454,142 @@ function takenSet(exceptId) {
   S.cands.forEach(x => { if (x.id !== exceptId && hasSlot(x)) m.set(x.assessmentSlot + "|" + x.assessmentRoom, x.name || ""); });
   return m;
 }
-function freePairs(taken) {
+function freePairs(taken, rooms) {
   const out = [];
-  ASSESS_SLOTS.forEach(sl => A.rooms.forEach(r => { if (!taken.has(sl + "|" + r)) out.push({ slot: sl, room: r }); }));
+  ASSESS_SLOTS.forEach(sl => (rooms || A.rooms).forEach(r => { if (!taken.has(sl + "|" + r)) out.push({ slot: sl, room: r }); }));
   return out;
 }
 function logAdd(t) { A.log.unshift(t); A.log = A.log.slice(0, 8); }
 
+function nightAlloc() { return S.door === "assess"; }
 function renderAlloc() {
   if (!S.course || S.view !== "alloc") return;
-  const d = assessDate(), st = stats();
+  const d = assessDate(), st = stats(), night = nightAlloc();
   const cap = A.rooms.length * ASSESS_SLOTS.length;
   $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set, so the assessment night cannot be worked out.</div>`;
-  $("plain").innerHTML = '<span class="lbl">In plain English</span>' +
+  $("plain").innerHTML = '<span class="lbl">In plain English</span>' + (night ?
+    `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. Add someone from another course, move one person to a different slot, or place someone with a Reasonable Adjustments Pathway (RAP). <b>${st.rap.length}</b> RAP.` :
     `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. ` +
     `<b>${st.toDo.length}</b> ${st.toDo.length === 1 ? "person needs" : "people need"} a slot (automatic). ` +
-    `<b>${st.rap.length}</b> RAP and <b>${st.retest.length}</b> retest: place by hand below.` +
-    (st.notElig.length ? ` <b>${st.notElig.length}</b> absent in a teaching week: move to a new course (Course Allocation, then Comms).` : "");
+    `<b>${st.rap.length}</b> RAP: place by hand below. <b>${st.retest.length}</b> retest: managed on assessment night.` +
+    (st.notElig.length ? ` <b>${st.notElig.length}</b> absent in a teaching week: move to a new course (Course Allocation, then Comms).` : ""));
   const free = Math.max(0, cap - st.slotted.length);
   const tile = (n, l, warn) => `<div class="tile${warn ? " warn" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
-  $("aTiles").innerHTML = tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
+  $("aTiles").innerHTML = night ?
+    tile(S.cands.length, "On this course") + tile(st.slotted.length, "Have a slot") + tile(st.toDo.length, "Still need a slot", st.toDo.length > 0) + tile(st.rap.length, "RAP") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") :
+    tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
     tile(st.toDo.length, "Still need a slot", st.toDo.length > 0 && st.toDo.length > free) + tile(st.rap.length, "RAP: place by hand") +
     tile(st.retest.length, "Retest pool (attempt 2+)") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") + tile(free, "Free slots (" + A.rooms.length + " rooms)");
-  renderAAuto(st); renderAMove(); renderALists(st);
+  $("aAuto").classList.toggle("hidden", night);
+  $("aAdd").classList.toggle("hidden", !night);
+  $("aMove").querySelector("h3").innerHTML = night ? '<span class="stepno">1</span>Move one person to a different slot' : '<span class="stepno">+</span>Adjust: move one person';
+  if (!night) renderAAuto(st);
+  renderAMove(); renderALists(st); if (night) renderAAdd();
+}
+
+
+// ── Planning overview (21 Oct, Jon): one list, in the order the work happens, with a status on each part ──
+// Student and Senior Faculty see every step; Director-only ones are greyed. Allocation lives in Planning only.
+function renderPlan() {
+  if (!S.course || S.view !== "plan") return;
+  const d = weekDates(S.course), today = londonNow().date, st = stats(), gi = gateInfo(st), rv = reviewInfo(st), pend = pendingMail();
+  const days = d ? Math.round((Date.parse(d[2]) - Date.parse(today)) / 86400000) : null;
+  $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set. A Director sets it on Stage 1 Settings.</div>`;
+  $("plain").innerHTML = '<span class="lbl">Planning</span>' + `<b>${esc(S.course)}.</b> Assessment night ${d ? nice(d[2]) + (days > 0 ? ", " + days + (days === 1 ? " day" : " days") + " to go" : days === 0 ? ", tonight" : ", past") : "not set"}. Work down the list: each part shows what is left.`;
+  const unchecked = S.cands.filter(c => c.assessmentAbsent !== true && c.rap !== true && attemptOf(c) < 2 && !c.placementChecked && !placementClash(c)).length;
+  const clash = S.cands.filter(c => c.assessmentAbsent !== true && c.rap !== true && attemptOf(c) < 2 && placementClash(c)).length;
+  const dirOnly = (label) => S.isDirector ? "" : ` <span class="nchip bad">Director only</span>`;
+  const btn = (label, go, off, pri) => `<button type="button" class="btn sm${pri ? " pri" : ""}" data-pgo="${go}"${off ? " disabled" : ""}>${esc(label)}</button>`;
+  const lnk = (label, href, off) => off ? `<button type="button" class="btn sm" disabled>${esc(label)}</button>` : `<a class="btn sm" href="${esc(href)}" style="text-decoration:none;display:inline-block">${esc(label)} &#8599;</a>`;
+  const body = (inner, off) => `<div class="stbody${off ? " locked" : ""}" style="${off ? "opacity:.6" : ""}">${inner}</div>`;
+  let h = "";
+  // 1 people
+  const c1 = !S.cands.length ? ["No people", "bad"] : (clash || unchecked) ? [(clash + unchecked) + " to check", "open"] : ["Ready", "ok"];
+  h += `<div class="card">` + stepHd(1, "Before teaching starts: people", c1[0], c1[1]) +
+    body(`<div style="font-size:14px"><b>${S.cands.length}</b> on this course. ${clash ? `<b>${clash}</b> with a placement that overlaps. ` : ""}${unchecked ? `<b>${unchecked}</b> without placement dates checked.` : (clash ? "" : "Placement dates are checked.")}</div><div class="tools" style="margin:8px 0 0">${lnk("Open Stage 1 Candidates", "admin-stage1-candidates.html")}${lnk("Course Allocation", "course-allocation.html")}</div>`) + `</div>`;
+  // 2 setup
+  h += `<div class="card">` + stepHd(2, "Set up the night", S.isDirector ? "Set once" : "Director only", "") +
+    body(`<div style="font-size:14px">Who can assess, mark sheets and the Google Form link. Applies to every course. ${A.rooms && A.rooms.length ? `<b>${A.rooms.length}</b> assessment rooms.` : ""}</div><div class="tools" style="margin:8px 0 0">${btn("Open Assessment setup", "setup", !S.isDirector, true)}</div>`, !S.isDirector) + `</div>`;
+  // 3 allocation
+  let c3, t3;
+  if (!d) { c3 = ["No date", "bad"]; t3 = "This course has no assessment date."; }
+  else if (today < d[1] && !onCatchup()) { c3 = ["Opens " + nice(d[1]), ""]; t3 = "Allocate after teaching night 2 is finished, so nobody absent is given a slot."; }
+  else if (gi.blocks.length) { c3 = [gi.blocks.length + " to fix", "bad"]; t3 = gi.blocks.map(g => g.title).join(", ") + " need attention first."; }
+  else if (st.toDo.length) { c3 = [st.toDo.length + " need a slot", "open"]; t3 = `<b>${st.toDo.length}</b> eligible ${st.toDo.length === 1 ? "person has" : "people have"} no slot yet.`; }
+  else if (rv.has && !rv.ok) { c3 = ["Check schedule", "bad"]; t3 = rv.issues.join(" "); }
+  else if (pend.length) { c3 = [pend.length + " to email", "open"]; t3 = `<b>${pend.length}</b> ${pend.length === 1 ? "person has" : "people have"} not been emailed their time.${S.isDirector ? "" : " A Director sends the emails."}`; }
+  else if (rv.has) { c3 = ["Done", "ok"]; t3 = "Everyone has a slot and has been emailed their time."; }
+  else { c3 = ["Nothing yet", ""]; t3 = "Nobody is eligible for a slot yet."; }
+  h += `<div class="card">` + stepHd(3, "After teaching night 2: slots and times", c3[0], c3[1]) +
+    body(`<div style="font-size:14px">${t3}</div><div class="tools" style="margin:8px 0 0">${btn("Open Assessment allocation", "alloc", false, c3[1] === "open" || c3[1] === "bad")}</div>`) + `</div>`;
+  // 4 week of the night
+  h += `<div class="card">` + stepHd(4, "Week of the night", days === null ? "No date" : days > 0 ? days + (days === 1 ? " day to go" : " days to go") : days === 0 ? "Tonight" : "Past", days !== null && days <= 3 && days >= 0 ? "open" : "") +
+    body(`<div style="font-size:14px">Check the course is ready, then send reminders and follow-ups.${dirOnly()}</div><div class="tools" style="margin:8px 0 0">${lnk("Readiness check", "admin-stage1-readiness.html", !S.isDirector)}${lnk("Comms", "admin-comms.html")}</div>`) + `</div>`;
+  $("viewPlan").innerHTML = h;
+  $("viewPlan").querySelectorAll("[data-pgo]").forEach(b => b.onclick = () => setView(b.dataset.pgo));
+}
+
+// ── Add someone onto tonight (21 Oct, Jon) ──────────────────────────────────
+// Someone from another course who needs to sit tonight. Makes a NEW record on this course, linked to the old one (the old record is never
+// edited, same pattern as the catch-up night and repeat courses). Attempt = one more than their last referral, else their saved attempt.
+const AD = { loaded: false, loading: false, rows: [], q: "", busy: null, err: "" };
+function adTestMode() { return isTestCourse({ name: S.course, test: (S.courseDates.find(x => x.name === S.course) || {}).test }); }
+async function adLoad() {
+  AD.loading = true; AD.err = ""; renderAAdd();
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get(), tm = adTestMode(), rows = [];
+    snap.forEach(d => { const c = Object.assign({ id: d.id }, d.data()); if (c.course && c.course !== S.course && (tm ? c.isTest === true : c.isTest !== true)) rows.push(c); });
+    AD.rows = rows; AD.loaded = true;
+  } catch (e) { AD.err = "Could not look this up: " + ((e && e.message) || e); }
+  AD.loading = false; renderAAdd();
+}
+function adHere(c) { return S.cands.some(x => x.id === c.id || x.linkedCandidateId === c.id || (x.addedFrom && x.addedFrom.id === c.id)) || !!c.linkedCandidateId && S.cands.some(x => x.id === c.linkedCandidateId); }
+function renderAAdd() {
+  const box = $("aAdd"); if (!box || !nightAlloc()) return;
+  let h = '<h3><span class="stepno">2</span>Add someone from another course</h3>' +
+    '<div class="hint" style="margin:0 0 8px">For someone who needs to sit tonight but is on a different course. This makes a new record here, linked to their old one. Nothing is emailed. First sits then get a slot in box 1. Retests (attempt 2 or later) go to the Retest pool.</div>';
+  if (!AD.loaded) h += `<button type="button" class="btn sm" id="adLoad"${AD.loading ? " disabled" : ""}>${AD.loading ? "Looking..." : "Find someone on another course"}</button>`;
+  else {
+    const q = AD.q.trim().toLowerCase();
+    const hits = q.length < 2 ? [] : AD.rows.filter(c => String(c.name || "").toLowerCase().includes(q) || String(c.email || "").toLowerCase().includes(q)).slice(0, 8);
+    h += `<input type="search" id="adSearch" placeholder="Type a name or email (${AD.rows.length} people on other courses)" autocomplete="off" value="${esc(AD.q)}">`;
+    h += q.length < 2 ? '<div class="hint">Type at least 2 letters.</div>' : hits.length ? hits.map(c => `<div class="lrow"><span class="nm">${esc(c.name || "")}${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}</span><small>${esc(c.degree || "")} &middot; ${esc(c.course || "")}</small><span class="pact">${adHere(c) ? '<span class="nchip claim">Already here</span>' : `<button type="button" class="btn sm pri" data-adadd="${esc(c.id)}"${AD.busy ? " disabled" : ""}>${AD.busy === c.id ? "Adding..." : "Add to tonight"}</button>`}</span></div>`).join("") : '<div class="hint">Nobody found.</div>';
+  }
+  if (AD.err) h += `<div class="msg err" style="margin-top:8px">${esc(AD.err)}</div>`;
+  box.innerHTML = h;
+  if ($("adLoad")) $("adLoad").onclick = adLoad;
+  if ($("adSearch")) { const el = $("adSearch"); el.oninput = () => { AD.q = el.value; const pos = el.selectionStart; renderAAdd(); const n = $("adSearch"); n.focus(); try { n.setSelectionRange(pos, pos); } catch (e) {} }; }
+  box.querySelectorAll("[data-adadd]").forEach(b => b.onclick = () => adAdd(b.dataset.adadd));
+}
+async function adAdd(id) {
+  const old = AD.rows.find(x => x.id === id); if (!old || AD.busy) return;
+  let next = attemptOf(old), passed = false;
+  try {
+    const ad = await db.collection("stage1_assessments").doc(id).get(), a = (ad.exists ? ad.data().attempts : null) || {};
+    passed = Object.keys(a).some(k => a[k] && a[k].outcome === "pass");
+    const refers = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+    if (refers.length) next = Math.max(next, Math.max.apply(null, refers) + 1);
+  } catch (e) {}
+  if (passed) { toast(old.name + " has already passed, so is not added.", true); return; }
+  const ok = await askSheet("Add " + esc(old.name || "this person") + " to tonight?", `From ${esc(old.course || "another course")}. They join ${esc(S.course)} as <b>attempt ${next}</b> in a new linked record; the old record is not changed. Nothing is emailed. ` + (next >= 2 ? "They then appear in the Retest pool, where RMD faculty pick their room (no time slot)." : "After this, give them a slot in box 1."), "Add to tonight");
+  if (!ok) return;
+  AD.busy = id; renderAAdd();
+  try {
+    const data = {};
+    CU_COPY.forEach(k => { if (old[k] !== undefined && old[k] !== null) data[k] = old[k]; });
+    if (old.isTest === true) data.isTest = true;
+    Object.assign(data, { course: S.course, room: null, placementChecked: true, placementBlocks: [], assessmentAttempt: next, twoPlusAssessments: next >= 2, firstTimeAssessment: next === 1,
+      linkedCandidateId: old.id, addedFrom: { id: old.id, course: old.course || "" }, addedAt: new Date().toISOString(), addedBy: S.user.uid, addedByName: S.myName || "",
+      createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    const ref = db.collection(COLLECTIONS.stage1Candidates).doc();
+    await ref.set(data);
+    if (S.isDirector) { try { await db.collection(COLLECTIONS.stage1Candidates).doc(old.id).update({ linkedCandidateId: ref.id }); old.linkedCandidateId = ref.id; } catch (e) {} }
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", S.course).get();
+    S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); loadNight();
+    AD.q = ""; A.target = null; A.sel = next >= 2 ? null : ref.id;
+    toast((old.name || "Candidate") + " added to tonight as attempt " + next + (next >= 2 ? ". They are in the Retest pool." : ". Pick their slot in box 1."));
+  } catch (err) { toast("Not added: " + (err.code === "permission-denied" ? "you do not have permission (a Director can do this)." : err.message), true); }
+  AD.busy = null; renderAlloc();
 }
 
 // ── Step 1: automatic allocation ────────────────────────────────────────────
@@ -1512,7 +1639,7 @@ function reviewInfo(st) {
   const seen = new Set(), dups = [];
   st.slotted.forEach(x => { const k = x.assessmentSlot + "|" + x.assessmentRoom; if (seen.has(k)) dups.push(k); else seen.add(k); });
   if (dups.length) issues.push(dups.length + " room and time " + (dups.length === 1 ? "is" : "are") + " given to more than one person.");
-  const odd = st.slotted.filter(x => !ASSESS_SLOTS.includes(x.assessmentSlot) || !A.rooms.includes(x.assessmentRoom));
+  const odd = st.slotted.filter(x => !ASSESS_SLOTS.includes(x.assessmentSlot) || !(A.rooms.includes(x.assessmentRoom) || retestRoomList().includes(x.assessmentRoom)));
   if (odd.length) issues.push(odd.length + (odd.length === 1 ? " slot is" : " slots are") + " not a normal room or time for this night.");
   const sig = st.slotted.map(x => x.id + "@" + x.assessmentSlot + "@" + x.assessmentRoom).sort().join(",");
   return { has: true, issues, ok: issues.length === 0, sig, first: st.slotted.map(x => x.assessmentSlot).sort()[0], last: st.slotted.map(x => x.assessmentSlot).sort().slice(-1)[0], rooms: new Set(st.slotted.map(x => x.assessmentRoom)).size };
@@ -1650,19 +1777,19 @@ function selCand() { return A.sel ? S.cands.find(c => c.id === A.sel) : null; }
 function renderAMove() {
   const body = $("aMoveBody"), c = selCand();
   if (!c) { body.innerHTML = `<div class="hint">Search above, or press "Place / Move" beside a name.</div>${logHtml()}`; return; }
-  const taken = takenSet(c.id), free = freePairs(taken);
+  const rms = roomsFor(c), taken = takenSet(c.id), free = freePairs(taken, rms);
   const now = hasSlot(c) ? `${esc(c.assessmentSlot)} in ${esc(c.assessmentRoom)}` : "no slot yet";
   const tgt = A.target;
   let h = `<div class="selbox"><b>${esc(c.name)}</b>${c.rap === true ? RAPSVG : ""}${attBadge(attemptOf(c))}<span style="color:var(--mut);font-size:13px">${esc(c.degree || "")} · now: ${now}${c.assessmentAbsent === true ? " · marked unable to attend" : ""}</span></div>` +
-    `<div class="tools" style="margin:6px 0"><span class="tg">Attempt</span><span class="stepper"><button type="button" id="aDec"${attemptOf(c) <= 1 ? " disabled" : ""}>-</button><b>${attemptOf(c)}</b><button type="button" id="aInc"${attemptOf(c) >= 9 ? " disabled" : ""}>+</button></span><span class="hint" style="margin:0">Anyone on 2 or more is left out of the automatic allocation.</span></div>`;
+    `<div class="tools" style="margin:6px 0"><span class="tg">Attempt</span><b>${attemptOf(c)}</b><button type="button" class="btn sm" id="aEdit">Edit attempt</button><span class="hint" style="margin:0">Anyone on 2 or more is left out of the automatic allocation.</span></div>`;
   if (!free.length) h += `<div class="msg warn">No free slots left on ${esc(S.course)}'s assessment night.</div>`;
   else {
     h += `<div class="fieldlab" style="font-size:12px;font-weight:800;color:var(--mut);text-transform:uppercase;letter-spacing:.5px">Earliest free slots (same evening, ${d8()})</div><div class="chips">` +
       free.slice(0, 10).map(p => `<button type="button" class="slotchip${tgt && tgt.slot === p.slot && tgt.room === p.room ? " on" : ""}" data-slot="${p.slot}" data-room="${esc(p.room)}">${p.slot} · ${esc(p.room)}</button>`).join("") + `</div>` +
       `<button type="button" class="btn sm" id="aGrid">${A.showGrid ? "Hide" : "Show"} every slot and room</button>`;
     if (A.showGrid) {
-      h += `<div class="grid"><table><tr><th></th>${A.rooms.map(r => `<th>${esc(r)}</th>`).join("")}</tr>` +
-        ASSESS_SLOTS.map(sl => `<tr><td class="t">${sl}</td>${A.rooms.map(r => {
+      h += `<div class="grid"><table><tr><th></th>${rms.map(r => `<th>${esc(r)}</th>`).join("")}</tr>` +
+        ASSESS_SLOTS.map(sl => `<tr><td class="t">${sl}</td>${rms.map(r => {
           const who = taken.get(sl + "|" + r);
           if (who !== undefined) return `<td><span class="gx" title="${esc(who)}">${esc((who || "?").split(" ").map(w => w[0]).join("").slice(0, 3))}</span></td>`;
           return `<td><button type="button" class="gc${tgt && tgt.slot === sl && tgt.room === r ? " on" : ""}" data-slot="${sl}" data-room="${esc(r)}">free</button></td>`;
@@ -1670,14 +1797,14 @@ function renderAMove() {
     }
   }
   if (attemptOf(c) !== 2 && c.rap !== true && eligBlocked(c)) h += `<div class="msg err" style="margin-top:10px">${esc(c.name)} was absent in a teaching week. They should move to a new course, not take a slot.</div>`;
-  h += `<div class="hint" style="margin-top:10px">Changed times are emailed from step 4.</div>` +
+  h += (rms !== A.rooms ? `<div class="hint" style="margin-top:10px">Retests can only go in ${rms.map(esc).join(", ")}.</div>` : "") + `<div class="hint" style="margin-top:10px">Changed times are emailed from step 4.</div>` +
     `<div class="tools" style="margin:10px 0 0"><button class="btn pri" id="aMoveGo" type="button"${tgt ? "" : " disabled"}>${tgt ? "Move to " + tgt.slot + " in " + esc(tgt.room) : "Pick a slot first"}</button>` +
     `<button class="btn" id="aOff" type="button"${hasSlot(c) ? "" : " disabled"}>Take them off their slot</button></div>` + logHtml();
   body.innerHTML = h;
   body.querySelectorAll("[data-slot]").forEach(b => b.onclick = () => { A.target = { slot: b.dataset.slot, room: b.dataset.room }; renderAMove(); });
   if ($("aGrid")) $("aGrid").onclick = () => { A.showGrid = !A.showGrid; renderAMove(); };
   $("aMoveGo").onclick = moveOne; $("aOff").onclick = takeOff;
-  $("aDec").onclick = () => setAttempt(c, attemptOf(c) - 1); $("aInc").onclick = () => setAttempt(c, attemptOf(c) + 1);
+  $("aEdit").onclick = () => editAttempt(c.id);
 }
 function d8() { const d = assessDate(); return d ? nice(d) : ""; }
 function logHtml() { return A.log.length ? `<div class="log"><b>This visit:</b><br>${A.log.map(esc).join("<br>")}</div>` : ""; }
@@ -1774,8 +1901,7 @@ function renderALists(st) {
   const byName = (a, b) => String(a.name || "").localeCompare(String(b.name || ""));
   const sched = st.slotted.slice().sort((a, b) => a.assessmentSlot === b.assessmentSlot ? String(a.assessmentRoom).localeCompare(String(b.assessmentRoom)) : a.assessmentSlot.localeCompare(b.assessmentSlot));
   $("aLists").innerHTML =
-    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from the Adjust box when you are ready.") +
-    group("Retest pool: attempt 2 and above", st.retest.slice().sort(byName), true, "Managed by the organising team. Not allocated automatically. Set the attempt number in the Adjust box.") +
+    group("RAP: place by hand", st.rap.slice().sort(byName), true, "Not given a slot automatically. Place them from the Adjust box when you are ready. Retests and attempt 3 or later are on the Retest pool page.") +
     group("Has a slot but was absent in a teaching week", st.slottedBad.slice().sort(byName), true, "These people should move to a new course. Moving them in Course Allocation clears their slot.") +
     group("Absent in a teaching week: no slot given", st.notElig.slice().sort(byName), true, "Left out of the automatic allocation. They move to a new course unless a Director overrides.") +
     group("Eligible but no slot yet", st.toDo.slice().sort(byName), true, "") +
@@ -1838,6 +1964,11 @@ function passedAtKey(id) { const a = nattempts(id); return Object.keys(a).find(k
 function recordedAt(id, att) { return nattempts(id)[String(att)] || null; }
 function inPool(c) { if (c.absent || passedAtKey(c.id)) return false; const e = effAttempt(c); return e >= 2 && !recordedAt(c.id, e); }
 function isDoneN(c) { return Object.keys(nattempts(c.id)).length > 0; }
+// Done for the CURRENT attempt only (a candidate referred at attempt 1 who has come back for attempt 2 is not done). Runner, check-in and Not answering use this; isDoneN (any attempt on file) stays for the assessor room lists.
+function isDoneNow(c) { return !!(passedAtKey(c.id) || recordedAt(c.id, effAttempt(c))); }
+// Resit room (21 Oct, Jon): chosen by RMD faculty when a referred candidate is checked in again. Stored on flow["<attempt>"].room. A resit has a room but no time slot.
+function resitRoom(c) { const a = effAttempt(c); return a >= 2 ? String((nres(c.id).flow || {})[String(a)] && (nres(c.id).flow || {})[String(a)].room || "") : ""; }
+function slotLabel(c) { return resitRoom(c) ? "Resit" : (c.assessmentSlot || "-"); }
 function formAttemptOf(c) { const p = passedAtKey(c.id); return p ? Number(p) : effAttempt(c); }
 function firstNameOf(c) { return String(c.name || "").trim().split(/\s+/)[0] || "this candidate"; }
 function normId(t) { return String(t || "").toLowerCase().replace(/\s+/g, " ").trim(); }
@@ -1901,13 +2032,20 @@ function stepsFor(k) { const m = N.form && N.form.markSheet; return m && Array.i
 // What a retest includes, in words: BLS/AED, First aid, or BLS/AED & first aid
 function retestIncludes(keys) { const b = keys.includes("bls"), r = keys.includes("rec"); return b && r ? "BLS/AED & first aid" : b ? "BLS/AED" : r ? "First aid" : ""; }
 function compLabel(k) { return (COMPS.find(x => x.k === k) || {}).label || k; }
+// Parts attempt 1 left to retest (null when attempt 1 is not recorded here, e.g. it was on an earlier course)
+function derivedRetestComps(id) {
+  const all = COMPS.map(x => x.k), p1 = nattempts(id)["1"];
+  if (!p1 || !p1.components) return null;
+  const need = all.filter(k => p1.components[k] !== "pass");
+  return need.length ? need : all;
+}
+// Attempt 2 tests the parts not passed at attempt 1. The assessor confirms this on the Retest check (N.retest[id]) before the form shows. Attempts 3 and 4 use the whole form.
 function requiredComps(id, att) {
   const all = COMPS.map(x => x.k);
   if (att !== 2) return all;
-  const p1 = nattempts(id)["1"];
-  if (!p1 || !p1.components) return all;
-  const need = all.filter(k => p1.components[k] !== "pass");
-  return need.length ? need : all;
+  const o = (N.retest || {})[id];
+  if (o && o.confirmed && Array.isArray(o.parts) && o.parts.length) return all.filter(k => o.parts.includes(k));
+  return derivedRetestComps(id) || all;
 }
 function outcomeFor(marks, req) {
   // marks: {bls:"pass"|"fail"|"skip", rec:...}; returns "pass" | "refer" | null (incomplete)
@@ -1955,6 +2093,7 @@ function failCodes(id) {
 
 function canAssessCandidate(c, att) {
   const mine = S.user.uid;
+  if (S.teamOnly) return { ok: false, why: "Senior Instructors do not do assessments. Ask an assessor to take " + firstNameOf(c) + " on." };
   const cl = nres(c.id).claim;
   if (cl && cl.uid && cl.uid !== mine) return { ok: false, why: (cl.name || "Another assessor") + " has taken " + firstNameOf(c) + " on." };
   if (needsAttend(att) && !recordedAt(c.id, att)) {
@@ -1990,7 +2129,7 @@ function eligLocal(c) {
 function eligOf(c) { if (onCatchup()) return null; if (c.elig) return c.elig; if (N.usingFallback) return eligLocal(c); return null; }
 function eligCounts() {
   let bad = 0, ovr = 0, gap = 0;
-  N.cands.forEach(c => { if (isDoneN(c) || c.absent || !needsAttend(effAttempt(c))) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
+  N.cands.forEach(c => { if (isDoneNow(c) || c.absent || !needsAttend(effAttempt(c))) return; const e = eligOf(c); if (!e) return; if (e.state === "absent") { if (e.ov) ovr++; else bad++; } else if (e.state === "unmarked") gap++; });
   return { bad, ovr, gap };
 }
 async function saveEligOverride(c, d) {
@@ -2105,14 +2244,16 @@ function stateChips(c) {
   const r = nres(c.id), out = [];
   const a = nattempts(c.id);
   const keys = Object.keys(a).sort((x, y) => Number(x) - Number(y));
+  const backIn = effAttempt(c) >= 2 && ["arrived", "collected", "being"].includes(cstate(c));   // already seen by RMD faculty and checked in again: drop the "retest tonight" and "see RMD faculty" tags
   keys.forEach(k => {
     const o = a[k].outcome;
+    if (backIn && o === "refer" && Number(k) === effAttempt(c) - 1) return;
     out.push(`<span class="nchip ${o === "pass" ? "pass" : "refer"}">${esc(outcomeShort(o, Number(k)))}${keys.length > 1 || Number(k) > 1 ? " (attempt " + esc(k) + ")" : ""}</span>`);
   });
   { const lk = keys[keys.length - 1];
-    if (lk && a[lk].outcome === "refer" && !recordedAt(c.id, effAttempt(c)) && !passedAtKey(c.id)) out.push('<span class="nchip refer">See RMD faculty</span>'); }
-  if (r.notThere && r.notThere.flag && !isDoneN(c)) { const cn = flowOf(c).calls || 0; out.push('<span class="nchip bad">Not there' + (cn > 1 ? " (called " + cn + " times)" : "") + '</span>'); }
-  if (!isDoneN(c) && needsAttend(effAttempt(c))) {
+    if (lk && a[lk].outcome === "refer" && !recordedAt(c.id, effAttempt(c)) && !passedAtKey(c.id) && !backIn) out.push('<span class="nchip refer">See RMD faculty</span>'); }
+  if (r.notThere && r.notThere.flag && !isDoneNow(c)) { const cn = flowOf(c).calls || 0; out.push('<span class="nchip bad">Not there' + (cn > 1 ? " (called " + cn + " times)" : "") + '</span>'); }
+  if (!isDoneNow(c) && needsAttend(effAttempt(c))) {
     const e = eligOf(c);
     if (e && e.state === "absent") out.push(e.ov ? '<span class="nchip claim">Director override</span>' : '<span class="nchip bad">Not eligible</span>');
     else if (e && e.state === "unmarked") out.push('<span class="nchip claim" title="' + esc(e.why.join(", ")) + '">Register gap</span>');
@@ -2168,11 +2309,37 @@ function deskBlocked(c) {
   if (!needsAttend(att)) return false;
   const e = eligOf(c); return !!(e && e.state === "absent" && !e.ov);
 }
-function deskExpected(c) { return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || !!nres(c.id).flow); }
-function checkIn(c) {
+function deskExpected(c) { const f = nres(c.id).flow; return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || (!!f && Object.keys(f).some(k => /^\d+$/.test(k)))); }
+function retestRoomList() {
+  // Jon's list is the rule: offered as it stands, whether or not a room is also in the assessment rooms list. A saved list (config/stage1_assessment_rooms.retestRooms) overrides it.
+  return (A.retestRooms && A.retestRooms.length) ? A.retestRooms.slice() : DEFAULT_RETEST_ROOMS.slice();
+}
+// Rooms a person may be given in the Adjust box: RAP any room; every other retest (attempt 2 or later) only the retest rooms; first sits any assessment room.
+function roomsFor(c) { return (c && c.rap !== true && attemptOf(c) >= 2) ? retestRoomList() : A.rooms; }
+// Student Faculty step at the atrium hub: confirm the retest is tonight, pick a retest room (no time needed).
+// The room is a guide for the runner and assessor, not a rule. changeOnly = just move the room, no new check-in.
+function askResitRoom(c, changeOnly) {
+  const rooms = retestRoomList(), cur = resitRoom(c);
+  $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true"><h3>${changeOnly ? "Change retest room" : "Retest tonight"} for ${esc(c.name)}</h3>` +
+    `<div class="hint" style="margin:0 0 8px">${changeOnly ? "Pick the new room." : "Student Faculty: confirm " + esc(firstNameOf(c)) + " is retesting tonight, then pick a retest room. No time needed. Send them for their extra training; a runner collects them and takes them to the room."} The room is a guide: an assessor can take them to a different room.</div>` +
+    `<div class="fqo">${rooms.map(r => `<button type="button" class="fqb${r === cur ? " on" : ""}" data-rr="${esc(r)}">${esc(r)}</button>`).join("")}</div>` +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn" id="rrCancel">Cancel</button></div></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("rrCancel").onclick = close;
+  $("rrbg").onclick = e => { if (e.target.id === "rrbg") close(); };
+  $("overlay").querySelectorAll("[data-rr]").forEach(b => b.onclick = () => {
+    close();
+    if (changeOnly) return flowWrite(c, { room: b.dataset.rr }, c.name + ": retest room " + b.dataset.rr);
+    checkIn(c, true, b.dataset.rr);
+  });
+}
+function checkIn(c, roomAsked, room) {
   if (deskBlocked(c)) { toast(c.name + " is not eligible tonight. See RMD faculty.", true); return; }
   if (!deskExpected(c)) { toast(c.name + " has no slot tonight. See RMD faculty.", true); return; }
-  return flowWrite(c, { arrived: whoNow() }, c.name + " checked in").then(ok => {
+  if (effAttempt(c) >= 2 && !roomAsked) { toast(c.name + " is a retest. RMD faculty confirm the retest and pick the room from the Retest pool.", true); return; }
+  const patch = { arrived: whoNow() };
+  if (effAttempt(c) >= 2 && room) patch.room = room;
+  return flowWrite(c, patch, c.name + " checked in" + (patch.room ? " (retest room " + patch.room + ")" : "")).then(ok => {
     if (ok && S.view === "checkin") {
       N.undoBar = { id: c.id, name: c.name, until: Date.now() + 6000 };
       renderDeskUndo();
@@ -2184,6 +2351,8 @@ function checkIn(c) {
 function doAct(act, id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
   if (act === "checkin") return checkIn(c);
+  if (act === "changeroom") return askResitRoom(c, true);
+  if (act === "retestroom") return askResitRoom(c, false);
   if (act === "undo") { N.undoBar = null; renderDeskUndo(); return flowWrite(c, { arrived: null, collected: null }, c.name + ": check-in undone"); }
   if (act === "collect") return flowWrite(c, { collected: Object.assign(whoNow(), { override: false }) }, c.name + " collected");
   if (act === "collectnow") { N.confirmCollect = id; return renderNight(); }
@@ -2272,14 +2441,15 @@ function deskRow(c) {
   if (st === "nothere") {
     if (deskBlocked(c)) extra = '<span class="nchip bad">See RMD faculty</span>';
     else if (!deskExpected(c)) extra = '<span class="nchip bad">No slot: see RMD faculty</span>';
+    else if (att >= 2) extra = '<span class="nchip bad">Retest: RMD faculty pick the room</span>';
     else acts = `<button type="button" class="btn sm pri" data-act="checkin" data-id="${id}">Check in</button>`;
   } else if (st === "arrived") {
     acts = `<button type="button" class="btn sm" data-act="undo" data-id="${id}">Undo</button>` + (noSlot || att >= 2 ? `<button type="button" class="btn sm pri" data-act="collect" data-id="${id}">Collected</button>` : "");
   } else if (st === "collected") {
     acts = `<button type="button" class="btn sm" data-act="putback" data-id="${id}">Put back</button>`;
   }
-  const sub = [c.assessmentRoom, c.degree].filter(Boolean).join(" · ");
-  return `<div class="rrow act st-${st}${st === "assessed" ? " done" : ""}"><span class="rt">${esc(c.assessmentSlot || "-")}</span>` +
+  const rr = resitRoom(c), sub = [att >= 2 ? (rr ? "Retest room " + rr : "") : c.assessmentRoom, c.degree].filter(Boolean).join(" · ");
+  return `<div class="rrow act st-${st}${st === "assessed" ? " done" : ""}"><span class="rt">${esc(slotLabel(c))}</span>` +
     `<span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}${sub ? `<small>${esc(sub)}</small>` : ""}</span>` +
     `<span class="rs">${stChip(c)}${stateChips(c)}${extra}</span><span class="ract">${acts}</span></div>`;
 }
@@ -2310,14 +2480,38 @@ function renderDeskUndo() {
   u.innerHTML = `<div class="msg ok dundo"><span><b>${esc(b.name)}</b> checked in.</span><button type="button" class="btn sm" data-act="undo" data-id="${esc(b.id)}">Undo</button></div>`;
   bindActs(u);
 }
+function lastReferAt(id) { const a = nattempts(id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number); return ks.length ? Math.max.apply(null, ks) : 0; }
+// Names for RMD faculty: who is expected at their table (this is the page the flow screen points to; the flow screen itself never shows names)
+function facultyData() {
+  const refd = N.cands.filter(c => !c.absent && !passedAtKey(c.id) && lastReferAt(c.id) === 1 && cstate(c) === "nothere");
+  const refIds = new Set(refd.map(c => c.id));
+  const pool = poolList().filter(c => !refIds.has(c.id));
+  return { refd: refd.sort(bySurname), pool: pool.sort(bySurname), af: afterTonight() };
+}
+function renderFacultyTab() {
+  const f = facultyData(), af = f.af;
+  let h = `<div class="hint" style="margin:0 0 8px">Who RMD faculty are expected to see. Check people in here when they come back. Nothing is emailed from here.</div>`;
+  h += `<div class="dhead">Referred tonight, retest to arrange (${f.refd.length})<small>Not retested yet. Check them in when they return for attempt 2.</small></div>`;
+  h += f.refd.length ? f.refd.map(deskRow).join("") : `<div class="hint">Nobody yet.</div>`;
+  h += `<div class="dhead">Other people on the retest list (${f.pool.length})<small>Attempt 2 or later, not yet assessed at their current attempt.</small></div>`;
+  h += f.pool.length ? f.pool.map(deskRow).join("") : `<div class="hint">Nobody.</div>`;
+  const G = [["retrain", "Retrain after attempt 2"], ["leads", "Back to degree leads (attempt 3)"], ["final", "Final attempt not passed (attempt 4)"]];
+  G.forEach(g => {
+    const l = af[g[0]];
+    h += `<div class="dhead">${esc(g[1])} (${l.length})</div>`;
+    h += l.length ? l.map(x => `<div class="lrow"><span class="nm">${esc(x.c.name)}${attBadge(x.k)}</span><small>${esc(x.c.degree || "")}</small></div>`).join("") : `<div class="hint">Nobody.</div>`;
+  });
+  return h;
+}
 function renderDeskList() {
   const list = $("dList"), tabs = $("dTabs"); if (!list) return;
   const q = normId(N.dq || ""), tab = N.dtab || "due";
   const exp = N.cands.filter(deskExpected), k = deskCounts();
   const due = deskDue(), ns = deskNoSlot();
-  const T = [["due", "Due now", due.length + ns.length], ["nothere", "Not here yet", k.nothere], ["atrium", "Arrived", k.arrived], ["through", "Collected or with an assessor", k.collected + k.being], ["all", "Everyone", exp.length]];
+  const T = [["due", "Due now", due.length + ns.length], ["nothere", "Not here yet", k.nothere], ["atrium", "Arrived", k.arrived], ["through", "Collected or with an assessor", k.collected + k.being], ["all", "Everyone", exp.length], ["fac", "RMD faculty", (() => { const f = facultyData(); return f.refd.length + f.pool.length + f.af.retrain.length + f.af.leads.length + f.af.final.length; })()]];
   tabs.innerHTML = T.map(t => `<button type="button" class="rchip${tab === t[0] && !q ? " on" : ""}" data-dtab="${t[0]}"><b>${esc(t[1])}</b><small>${t[2]}</small></button>`).join("");
   tabs.querySelectorAll("[data-dtab]").forEach(b => b.onclick = () => { N.dtab = b.dataset.dtab; $("dQ").value = ""; N.dq = ""; renderDeskList(); });
+  if (!q && tab === "fac") { list.innerHTML = renderFacultyTab(); bindActs(list); return; }
   if (!q && tab === "due") {
     const lim = deskWindow();
     let h = "";
@@ -2335,10 +2529,10 @@ function renderDeskList() {
 }
 
 // ── Runner view: Not answering, Collect, Put back (v26) ─────────────────────
-function slottedByRoom() {
-  const by = {};
-  N.cands.filter(c => !c.absent && c.assessmentRoom && c.assessmentSlot).forEach(c => { (by[c.assessmentRoom] = by[c.assessmentRoom] || []).push(c); });
-  Object.keys(by).forEach(r => by[r].sort((x, y) => x.assessmentSlot < y.assessmentSlot ? -1 : x.assessmentSlot > y.assessmentSlot ? 1 : String(x.name).localeCompare(String(y.name))));
+function slottedByRoom(forRunner) {
+  const by = {}, key = c => (forRunner && resitRoom(c)) ? "99:99" : (c.assessmentSlot || "");
+  N.cands.filter(c => !c.absent && ((c.assessmentRoom && c.assessmentSlot) || (forRunner && resitRoom(c)))).forEach(c => { const r = (forRunner && resitRoom(c)) || c.assessmentRoom; (by[r] = by[r] || []).push(c); });
+  Object.keys(by).forEach(r => by[r].sort((x, y) => key(x) < key(y) ? -1 : key(x) > key(y) ? 1 : String(x.name).localeCompare(String(y.name))));
   return by;
 }
 function roomOrder(keys) {
@@ -2346,10 +2540,10 @@ function roomOrder(keys) {
 }
 function runnerRows(list, big) {
   const now = nightTimeNow();
-  const open = list.filter(c => !isDoneN(c)), done = list.filter(isDoneN);
+  const open = list.filter(c => !isDoneNow(c)), done = list.filter(isDoneNow);
   const row = c => {
-    const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneN(c), st = cstate(c), id = esc(c.id);
-    const due = !d && st === "nothere" && !flagged && now && c.assessmentSlot <= now;
+    const r = nres(c.id), flagged = !!(r.notThere && r.notThere.flag), d = isDoneNow(c), st = cstate(c), id = esc(c.id);
+    const due = !d && st === "nothere" && !flagged && now && effAttempt(c) < 2 && c.assessmentSlot <= now;
     const att = effAttempt(c);
     let acts = "";
     if (!d) {
@@ -2358,7 +2552,7 @@ function runnerRows(list, big) {
       else if (st === "collected") acts = `<button type="button" class="btn sm" data-act="putback" data-id="${id}">Put back</button>`;
     }
     return `<div class="rrow act st-${d ? "assessed" : st}${d ? " done" : ""}${flagged ? " flag" : ""}${due ? " due" : ""}${big ? " big" : ""}">` +
-      `<span class="rt">${esc(c.assessmentSlot)}</span><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${S.full || S.night ? attBadge(att) : ""}</span>` +
+      `<span class="rt">${esc(slotLabel(c))}</span><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${S.full || S.night ? attBadge(att) : ""}</span>` +
       `<span class="rs">${d ? "" : stChip(c)}${stateChips(c) || (due ? '<span class="nchip due">Due now</span>' : "")}</span><span class="ract">${acts}</span></div>`;
   };
   return open.map(row).join("") + (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
@@ -2366,17 +2560,17 @@ function runnerRows(list, big) {
 function renderRunner() {
   if (!S.course) return;
   const d = assessDate();
-  const by = slottedByRoom(), rooms = roomOrder(Object.keys(by));
+  const by = slottedByRoom(true), rooms = roomOrder(Object.keys(by));
   const all = rooms.reduce((a, r) => a.concat(by[r]), []);
-  const doneN = all.filter(isDoneN).length;
-  const flagged = all.filter(c => { const r = nres(c.id); return r.notThere && r.notThere.flag && !isDoneN(c); }).length;
+  const doneN = all.filter(isDoneNow).length;
+  const flagged = all.filter(c => { const r = nres(c.id); return r.notThere && r.notThere.flag && !isDoneNow(c); }).length;
   $("msgs").innerHTML = nightBanner();
   $("plain").innerHTML = '<span class="lbl">Runner view</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${doneN}</b> of <b>${all.length}</b> assessed` +
     (flagged ? `, <b>${flagged}</b> flagged as not there` : "") + `.`;
   const cards = rooms.map(r => {
-    const list = by[r], dn = list.filter(isDoneN).length;
-    const fl = list.filter(c => { const x = nres(c.id); return x.notThere && x.notThere.flag && !isDoneN(c); }).length;
+    const list = by[r], dn = list.filter(isDoneNow).length;
+    const fl = list.filter(c => { const x = nres(c.id); return x.notThere && x.notThere.flag && !isDoneNow(c); }).length;
     const isOpen = N.open.has(r);
     return `<div class="rcard${isOpen ? " open" : ""}"><div class="rhead"><button type="button" class="rmain" data-rroom="${esc(r)}"><b>${esc(r)}</b>` +
       `<span class="rmeta">${list.length} candidate${list.length === 1 ? "" : "s"} · ${dn} assessed${fl ? ` · <span class="bad">${fl} not there</span>` : ""}</span>` +
@@ -2400,13 +2594,13 @@ function renderRunner() {
 }
 function renderFull() {
   const r = N.fullRoom; if (!r) { $("nightFull").innerHTML = ""; return; }
-  const list = slottedByRoom()[r] || [];
-  $("nightFull").innerHTML = `<div class="fullscr"><div class="fullbar"><b>${esc(r)}</b><span>${esc(S.course)} · ${list.filter(isDoneN).length} of ${list.length} assessed</span><button type="button" class="btn" id="fullClose">Close</button></div><div class="fullbody">${runnerRows(list, true)}</div></div>`;
+  const list = slottedByRoom(true)[r] || [];
+  $("nightFull").innerHTML = `<div class="fullscr"><div class="fullbar"><b>${esc(r)}</b><span>${esc(S.course)} · ${list.filter(isDoneNow).length} of ${list.length} assessed</span><button type="button" class="btn" id="fullClose">Close</button></div><div class="fullbody">${runnerRows(list, true)}</div></div>`;
   $("fullClose").onclick = () => { N.fullRoom = null; renderFull(); };
   bindActs($("nightFull"));
 }
 async function toggleNotThere(id) {
-  const c = N.cands.find(x => x.id === id); if (!c || isDoneN(c)) return;
+  const c = N.cands.find(x => x.id === id); if (!c || isDoneNow(c)) return;
   const on = !(nres(id).notThere && nres(id).notThere.flag);
   try {
     await db.collection("stage1_assessments").doc(id).set({
@@ -2492,9 +2686,9 @@ function poolBody(pool) {
       : !chk.ok ? `<span class="why">${esc(chk.why)}</span>`
       : (N.gate && gst !== "collected") ? gnote + gbtn
       : gnote + `<button type="button" class="btn sm pri" data-claim="${esc(c.id)}">Take on</button>`;
-    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
+    return `<div class="prow"><span class="rn">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}<small>${esc(c.degree || "")}${resitRoom(c) ? " · Room " + esc(resitRoom(c)) + " (guide)" : ""}${needs ? " · " + esc(needs) : ""}${prev && prev.assessorName ? " · attempt 1 assessor: " + esc(prev.assessorName) : ""}</small></span><span class="pact">${action}</span></div>`;
   };
-  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2: Student or Senior Faculty, a different assessor. Attempt 3 and above: Senior Faculty or extra named assessors.</div>` + whoCanBox(pool) + pool.map(row).join("");
+  return `<h3 style="margin-bottom:6px">Retest pool</h3><div class="hint" style="margin:0 0 8px">Attempt 2: Student or Senior Faculty, a different assessor. Attempt 3 and above: Senior Faculty or extra named assessors. The room shown is Student Faculty\'s guide. You can take someone for a different room.</div>` + whoCanBox(pool) + pool.map(row).join("");
 }
 async function claimCand(id) {
   const c = N.cands.find(x => x.id === id); if (!c) return;
@@ -2517,13 +2711,18 @@ function openForm(id) {
   const att = formAttemptOf(c), chk = canAssessCandidate(c, att);
   const existing = nattempts(id)[att] || null;
   const prevKeys = Object.keys(nattempts(id)).filter(k => Number(k) !== att).sort((a, b) => a - b);
-  const req = requiredComps(id, att);
+  let req = requiredComps(id, att);
+  if (att === 2 && existing && existing.components) { const ks = COMPS.map(x => x.k).filter(k => existing.components[k]); if (ks.length) req = ks; }
+  N.retest = N.retest || {};
+  const gate = att === 2 && chk.ok && !existing && !(N.retest[id] && N.retest[id].confirmed);   // Retest check first (Jon, 21 Oct)
+  const derived = att === 2 ? derivedRetestComps(id) : null;
   const p1 = nattempts(id)["1"];
   const noHistory = att === 2 && !(p1 && p1.components);    // attempt 1 was on an earlier course: let the assessor leave a part out
   const qs = Array.isArray(N.form.questions) ? N.form.questions : [];
   const url = /^https:\/\//i.test(N.form.formUrl || "") ? N.form.formUrl : "";
   N.formOpen = true;
-  const hist = prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
+  const resTxt = v => v === "pass" ? "Passed" : v === "fail" ? "Not yet" : v === "skip" ? "Not tested" : "Not recorded";
+  const hist = att === 2 ? `<div class="hist">${p1 && p1.components ? "Attempt 1 result: " + COMPS.map(x => esc(x.label) + ": <b>" + resTxt(p1.components[x.k]) + "</b>").join(" &middot; ") : "Attempt 1 result: not recorded on this hub."}</div>` : prevKeys.map(k => { const a = nattempts(id)[k]; return `<div class="hist">Attempt ${esc(k)}: <b>${esc(outcomeLabel(a.outcome, Number(k)))}</b>${a.assessorName ? " by " + esc(a.assessorName) : ""}${compsText(a) ? ` <small>${esc(compsText(a))}</small>` : ""}${a.comment ? ` <small>${esc(a.comment)}</small>` : ""}</div>`; }).join("");
   const state = { exc: !!(existing && existing.excellent), excCrit: new Set((existing && existing.excellentCriteria) || []), cpr: { cycles: ((existing && existing.cpr && existing.cpr.cycles) || []).map(x => Object.assign({}, x)), cur: [] }, marks: {}, reasons: { bls: new Set(), rec: new Set() }, opts: { bls: new Set(), rec: new Set() }, other: {}, override: { bls: false, rec: false }, ovwhy: { bls: new Set(), rec: new Set() }, ovother: {}, confirm: { bls: false, rec: false }, answers: Object.assign({}, existing && existing.answers ? existing.answers : {}) };
   if (existing && existing.components) {
     req.forEach(k => { if (existing.components[k]) state.marks[k] = existing.components[k]; });
@@ -2536,6 +2735,14 @@ function openForm(id) {
     `<div class="cprrow"><div class="cprnum" id="cprN">0</div><div class="cprrate" id="cprRate">Tap to start</div></div><div class="cprcnt" id="cprCnt"></div>` +
     `<button type="button" class="cprbtn" id="cprTap">TAP</button>` +
     `<div class="tools" style="margin:8px 0 0"><button type="button" class="btn sm" id="cprUndo">Undo last tap</button><button type="button" class="btn sm" id="cprNext">End cycle</button><button type="button" class="btn sm" id="cprClear">Clear counter</button></div><div class="cpcyc" id="cprCycles"></div><div class="cprtot" id="cprTot"></div></div>`;
+  const rtOpts = [["bls"], ["rec"], ["bls", "rec"]];
+  const rtOk = o => !derived || derived.every(k => o.includes(k));   // never drop a part that was not passed at attempt 1
+  const rtIsDer = o => !!derived && o.length === derived.length && derived.every(k => o.includes(k));
+  let rtPick = derived ? derived.slice() : null;
+  const gateHtml = gate ? `<div class="card" id="rtGate" style="margin:8px 0"><h3 style="margin:0 0 4px">Retest check</h3>` +
+    `<div class="hint" style="margin:0 0 8px">${derived ? "Attempt 1 left " + esc(retestIncludes(derived)) + " to retest." : "Attempt 1 is not recorded on this hub."} Confirm with the candidate which parts they are being retested on. Only those parts will show on the form.</div>` +
+    `<div class="fqo">${rtOpts.map((o, i) => `<button type="button" class="fqb" data-rtp="${i}"${rtOk(o) ? "" : " disabled"}>${esc(retestIncludes(o))}${rtIsDer(o) ? " (from attempt 1)" : ""}</button>`).join("")}</div>` +
+    `<div class="row2" style="margin-top:10px"><button type="button" class="btn pri" id="rtGo" disabled>Confirm and start the retest</button><button type="button" class="btn" id="rtCancel">Cancel</button></div></div>` : "";
   const cmpHtml = COMPS.map(x => {
     if (!req.includes(x.k)) return `<div class="cmp off"><b>${esc(x.label)}</b> <span class="nchip pass">Passed at attempt 1</span></div>`;
     let lastCode = "";
@@ -2554,7 +2761,7 @@ function openForm(id) {
       `<div class="resbox"><div class="rlab">Result for ${esc(x.label)}</div><div class="fqo">` +
       `<button type="button" class="fqb out pass" data-mk="${x.k}" data-m="pass"${chk.ok ? "" : " disabled"}>Pass</button>` +
       `<button type="button" class="fqb out refer" data-mk="${x.k}" data-m="fail"${chk.ok ? "" : " disabled"}>Not yet</button>` +
-      (noHistory ? `<button type="button" class="fqb" data-mk="${x.k}" data-m="skip"${chk.ok ? "" : " disabled"}>Not retested</button>` : "") +
+      "" +
       `</div><div class="cfbar hidden" data-cf="${x.k}"><span data-cft="${x.k}"></span><div class="row2"><button type="button" class="btn pri" data-cfy="${x.k}">Yes, mark as Pass</button><button type="button" class="btn" data-cfn="${x.k}">No, keep Not yet</button></div></div>` +
       `<div class="rsn ovwhy hidden" data-ovw="${x.k}"><div class="rsnh">Why pass with a red step? <span>RMD faculty are told about this. Tick all that apply.</span></div><div class="rsnc">` +
       OV_WHY.map(o => `<button type="button" class="ropt" data-ovo="${x.k}" data-o="${esc(o)}">${esc(o)}</button>`).join("") +
@@ -2571,7 +2778,7 @@ function openForm(id) {
   }).join("");
   $("overlay").innerHTML = `<div class="modalbg" id="fbg"><div class="modal" role="dialog" aria-modal="true">` +
     `<h3>${esc(c.name)} ${c.rap ? RAPSVG : ""} ${attBadge(att)}</h3><div class="sub">${esc(S.course)} · ${esc(c.degree || "")}${c.assessmentRoom ? " · " + esc(c.assessmentRoom) + " at " + esc(c.assessmentSlot) : ""} · attempt ${att}</div>` +
-    `<div class="hint" style="margin:0 0 4px">Single rescuer. BLS + AED first, then recovery position.${att >= 2 ? " This retest includes: " + retestIncludes(req) + "." : ""}</div>` +
+    `<div class="hint" style="margin:0 0 4px">Single rescuer. BLS + AED first, then recovery position.${att >= 2 && !gate ? " This retest includes: " + retestIncludes(req) + "." : ""}</div>` +
     hist +
     (chk.ok ? "" : `<div class="msg err">${esc(chk.why)}</div>`) +
     (chk.elig && S.isDirector ? `<div class="card" id="elOv" style="margin:8px 0"><h3 style="margin:0 0 4px">Director override</h3><div class="hint" style="margin:0 0 8px">Only override if the candidate understands that sitting without the missed training raises the risk of not passing. Saved on their record.</div>` +
@@ -2580,15 +2787,25 @@ function openForm(id) {
       `<input type="text" id="elPresent" placeholder="Who was present (names)" style="margin-top:8px"><input type="text" id="elNote" placeholder="Short note (optional, no health detail)" style="margin-top:6px">` +
       `<div style="margin-top:10px"><button type="button" class="btn pri" id="elGo" disabled>Override and allow assessment</button> <span class="hint" id="elMsg"></span></div></div>` : "") +
     (existing ? `<div class="msg warn">Already recorded: ${esc(outcomeLabel(existing.outcome, att))}${existing.assessorName ? " by " + esc(existing.assessorName) : ""}. Saving again will amend it.</div>` : "") +
-    cmpHtml + qHtml +
+    gateHtml + `<div id="fBody"${gate ? ' class="hidden"' : ""}>` + cmpHtml + qHtml +
     `<div class="fq"><label>Comments</label><textarea id="fComment" style="min-height:80px;font-family:inherit" ${chk.ok ? "" : "disabled"}>${esc(existing ? existing.comment || "" : "")}</textarea></div>` +
     `<div class="resline" id="fRes">Mark each part to see the result.</div>` +
     `<div class="exc hidden" id="fExc"><button type="button" class="fqb exc-b" id="fExcBtn" ${chk.ok ? "" : "disabled"}>Excellent</button><span class="hint" style="margin-left:8px">Optional note for the team only. It does not change the result and the candidate does not see it.</span>` +
     `<div class="exc-c hidden" id="fExcCrit"><div class="hint" style="margin:8px 0 4px">Tap at least one that applies:</div>${EXC_CRITERIA.map((t, i) => `<button type="button" class="stp" data-exc="${i}"><span class="sn">${i + 1}</span>${esc(t)}</button>`).join("")}</div></div>` +
     (url ? `<div class="hint" style="margin:6px 0"><a href="${esc(url)}" target="_blank" rel="noopener">Open the Google Form instead</a> (fallback if this page has a problem).</div>` : "") +
     `<div class="row2"><button type="button" class="btn pri" id="fSave" disabled>Save result</button><button type="button" class="btn" id="fCancel">Cancel</button><span class="hint" id="fMsg"></span></div>` +
-    `</div></div>`;
+    `</div></div></div>`;
   const close = () => { $("overlay").innerHTML = ""; N.formOpen = false; };
+  if (gate) {
+    const updG = () => {
+      $("overlay").querySelectorAll("[data-rtp]").forEach(b => { const o = rtOpts[Number(b.dataset.rtp)]; b.classList.toggle("on", !!rtPick && o.length === rtPick.length && rtPick.every(k => o.includes(k))); });
+      $("rtGo").disabled = !rtPick;
+    };
+    $("overlay").querySelectorAll("[data-rtp]").forEach(b => b.onclick = () => { rtPick = rtOpts[Number(b.dataset.rtp)].slice(); updG(); });
+    $("rtGo").onclick = () => { N.retest[id] = { parts: rtPick.slice(), confirmed: true, by: S.user.uid }; openForm(id); };
+    $("rtCancel").onclick = close;
+    updG();
+  }
   { const elp = $("overlay").querySelector("#elOv");
     if (elp) {
       const es = { why: null, how: null };
@@ -2635,7 +2852,7 @@ function openForm(id) {
     const o = outcomeFor(state.marks, req);
     $("fRes").className = "resline" + (o === "pass" ? " pass" : o ? " refer" : "");
     $("fRes").textContent = o ? "Result: " + outcomeLabel(o, att) : "Mark each part to see the result.";
-    const showExc = o === "pass";
+    const showExc = o === "pass" && att < 2;   // Excellent is for first sits only (Jon, 21 Oct)
     $("fExc").classList.toggle("hidden", !showExc);
     $("fExcBtn").classList.toggle("on", showExc && state.exc);
     $("fExcCrit").classList.toggle("hidden", !(showExc && state.exc));
@@ -2739,7 +2956,7 @@ function openForm(id) {
     }
     for (const k of req) { if (state.marks[k] === "fail" && !state.reasons[k].size && !state.opts[k].size && !comment) { $("fMsg").textContent = "Tap at least one red step or reason for " + compLabel(k) + " (or add a comment)."; return; } }
     for (const q of qs) { if (q.required && !(state.answers[q.id] || ($("overlay").querySelector('[data-qt="' + q.id + '"]') || {}).value)) { $("fMsg").textContent = "Please answer: " + q.label; return; } }
-    const wantExc = out === "pass" && state.exc;
+    const wantExc = out === "pass" && state.exc && att < 2;
     if (wantExc && !state.excCrit.size) { $("fMsg").textContent = "Tap at least one reason for Excellent, or switch it off."; return; }
     $("overlay").querySelectorAll("[data-qt]").forEach(i => { state.answers[i.dataset.qt] = i.value.trim(); });
     if (state.cpr.cur.length >= 1) cprFinish();
@@ -2813,14 +3030,101 @@ function copyTxt(t) {
   const fb = () => { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} ta.remove(); };
   try { return navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(t).catch(fb) : Promise.resolve(fb()); } catch (e) { fb(); return Promise.resolve(); }
 }
-function teamCard(af) {
+
+// ── End-of-night emails (RMD faculty, Retest pool page; Jon 21 Oct) ──────────────────────────────
+// Sent through the same sendBulkComms function as the Comms page (so the daily limit, queue, log and
+// RMD copy all behave the same). Each person is stamped on stage1_assessments/{id}.flow.comms.<kind> so
+// nobody is emailed twice. Drafts are editable before sending.
+const NM_ADMIN = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
+const NM_SIGN = `Kind regards,\nBLS Administrative Team\nRMD Birmingham\n\nRMD Birmingham - Basic Life Support Faculty\n${NM_ADMIN}\nInstagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
+const NIGHT_MAIL = {
+  notpassed2: { title: "Not passed at attempt 2: further course, then attempt 3", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
+    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your second attempt.\n\nNext steps: a member of Student Faculty will explain what happens next. You will attend a further BLS course in full (all 3 evenings), in a different teaching room with different instructors from your first course, and then sit your third attempt with Senior Faculty. We will email you your new course and dates separately.\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
+  notpassed3: { title: "Not passed at attempt 3: further course, then attempt 4", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
+    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your third attempt.\n\nNext steps: a member of Senior Faculty will meet you to discuss your progress, anything that has made it harder to perform, and any extra support you may need. Your programme lead will be told about the additional requirements. You will then attend a further BLS course in full (all 3 evenings) before your fourth attempt. We will email you your new course and dates separately.\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
+  final: { title: "Final attempt (4) not passed", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result", body:
+    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry to tell you that you were not successful at your fourth and final attempt.\n\nThis means you have not completed the course and cannot gain the ERC qualification. Your programme lead will be told, and the effect on your degree programme is decided by the programme lead.\n\nIf you would like to talk this through, please email us (" + NM_ADMIN + ") and a member of Senior Faculty will be in touch.\n\n" + NM_SIGN },
+  notseen: { title: "Not seen tonight: absent, not there, or not assessed", subject: "Your BLS assessment evening", body:
+    "Dear {{first_name}},\n\nOur records show that we were not able to complete your BLS assessment on {{assessment_date}}.\n\nPlease email us (" + NM_ADMIN + ") as soon as you can so that we can let you know the next step.\n\n" + NM_SIGN }
+};
+function nmStamped(c, kind) { const f = (nres(c.id).flow || {}).comms; return !!(f && f[kind]); }
+function nmCands(kind) {
+  const af = afterTonight();
+  let l = [];
+  if (kind === "notpassed2") l = af.retrain.map(x => x.c);
+  else if (kind === "notpassed3") l = af.leads.map(x => x.c);
+  else if (kind === "final") l = af.final.map(x => x.c);
+  else if (kind === "notseen") {
+    const inAf = new Set([].concat(af.retrain, af.leads, af.final).map(x => x.c.id));
+    l = N.cands.filter(c => !c.absent && !inAf.has(c.id) && !passedAtKey(c.id) && (hasSlot(c) || effAttempt(c) >= 2) && !nattempts(c.id)[String(effAttempt(c))]);
+  }
+  return l.map(c => { const sc = (S.cands || []).find(x => x.id === c.id) || {}; return { id: c.id, name: c.name, email: String(sc.email || "").trim(), done: nmStamped(c, kind) }; });
+}
+function mailCard(no) {
+  const rows = Object.keys(NIGHT_MAIL).map(k => {
+    const l = nmCands(k), todo = l.filter(x => !x.done && x.email), done = l.filter(x => x.done).length, none = l.filter(x => !x.done && !x.email).length;
+    return `<div class="lrow"><span class="nm">${esc(NIGHT_MAIL[k].title)}</span>` +
+      `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to email${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}</small>` +
+      `<span class="pact"><button type="button" class="btn sm${todo.length ? " pri" : ""}" data-nmail="${k}"${todo.length ? "" : " disabled"}>Review and send (${todo.length})</button></span></div>`;
+  }).join("");
+  return `<div class="card"><h3><span class="stepno">${no || 5}</span>End of night: send emails</h3><div class="hint" style="margin:0 0 8px">Each email is shown for you to read and edit before it goes. Nobody is emailed twice. Sent emails are in Comms history.</div>${rows}</div>`;
+}
+function openNightMail(kind) {
+  const def = NIGHT_MAIL[kind], l = nmCands(kind), todo = l.filter(x => !x.done && x.email), noMail = l.filter(x => !x.done && !x.email);
+  if (!todo.length) return;
+  const lim = typeof MAIL_DAY_LIMIT === "number" ? MAIL_DAY_LIMIT : 85;
+  // Guarded emails (not passed): only people ticked as "seen face to face by RMD faculty" are emailed.
+  const who = def.guard
+    ? `<div class="hint" style="margin:0 0 4px"><b>Tick each person once RMD faculty have seen them face to face.</b> Only ticked people are emailed. Unticked people stay on the list for later.</div><div id="nmPeople" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:0 0 6px">` +
+      todo.map((x, i) => `<label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-weight:700"><input type="checkbox" data-nmp="${i}"> ${esc(x.name)} <small style="font-weight:500;color:var(--mut)">${esc(def.guard)}</small></label>`).join("") + `</div>` +
+      `<div class="tools" style="margin:0 0 6px"><button type="button" class="btn sm" id="nmAll">Tick everyone</button><button type="button" class="btn sm" id="nmNone">Untick everyone</button></div>`
+    : `<div class="hint" style="margin:0 0 6px"><b>${todo.length}</b> will be emailed: ${esc(todo.map(x => x.name).join(", "))}.${todo.length > lim ? ` ${todo.length - lim} are queued for the next days.` : ""}</div>`;
+  $("overlay").innerHTML = `<div class="modalbg" id="nmbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>${esc(def.title)}</h3>` + who +
+    (noMail.length ? `<div class="hint" style="margin:0 0 6px">No email address on file (not emailed): ${esc(noMail.map(x => x.name).join(", "))}.</div>` : "") +
+    `<input type="text" id="nmSub" value="${esc(def.subject)}" style="margin:6px 0"><textarea id="nmBody" style="min-height:240px">${esc(def.body)}</textarea>` +
+    `<div class="hint" style="margin:4px 0 0">{{first_name}} and {{assessment_date}} are filled in for each person.</div>` +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn pri" id="nmSend"></button><button type="button" class="btn" id="nmCancel">Cancel</button></div></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  const picked = () => def.guard ? todo.filter((x, i) => { const cb = $("overlay").querySelector(`[data-nmp="${i}"]`); return cb && cb.checked; }) : todo;
+  const refresh = () => { const n = picked().length; $("nmSend").disabled = n === 0; $("nmSend").textContent = n ? `Send ${n} email${n === 1 ? "" : "s"}` : "Tick at least one person"; };
+  $("nmCancel").onclick = close; $("nmbg").onclick = e => { if (e.target.id === "nmbg") close(); };
+  if (def.guard) {
+    $("overlay").querySelectorAll("[data-nmp]").forEach(cb => cb.onchange = refresh);
+    $("nmAll").onclick = () => { $("overlay").querySelectorAll("[data-nmp]").forEach(cb => { cb.checked = true; }); refresh(); };
+    $("nmNone").onclick = () => { $("overlay").querySelectorAll("[data-nmp]").forEach(cb => { cb.checked = false; }); refresh(); };
+  }
+  refresh();
+  $("nmSend").onclick = async () => {
+    const subject = $("nmSub").value.trim(), body = $("nmBody").value.trim(), list = picked();
+    if (!subject || !body) { toast("Subject and message are needed.", true); return; }
+    if (!list.length) return;
+    $("nmSend").disabled = true; $("nmSend").textContent = "Sending...";
+    await sendNightMail(kind, list, subject, body);
+    close(); renderRetest();
+  };
+}
+async function sendNightMail(kind, todo, subject, body) {
+  const d = assessDate(), dateTxt = d ? longDate(d) : "";
+  try {
+    const call = firebase.functions().httpsCallable("sendBulkComms");
+    const probe = await call({ recipients: [{ name: "x", email: "x@x.x" }], subject, message: body, groupLabel: "probe", dryRun: true });
+    if (!probe.data || probe.data.varsSupported !== true) { toast("Emails not sent: the updated functions have not been deployed yet.", true); return; }
+    const res = await call({ recipients: todo.map(x => ({ name: x.name, email: x.email, vars: { assessment_date: dateTxt } })), subject, message: body, groupLabel: "Assessment night - " + NIGHT_MAIL[kind].title + " - " + S.course, dryRun: false });
+    const r = res.data || {}, bad = new Set((r.failedEmails || []).map(x => String(x).toLowerCase()));
+    const ok = todo.filter(x => !bad.has(x.email.toLowerCase()));
+    const stamp = { at: new Date().toISOString(), by: S.myName || "" };
+    await Promise.all(ok.map(x => db.collection("stage1_assessments").doc(x.id).set({ course: S.course, candidateName: x.name || "", flow: { comms: { [kind]: stamp } }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => null)));
+    toast("Emailed " + (r.sent || 0) + " of " + todo.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + ".");
+  } catch (err) { toast("Email failed: " + (err.message || err), true); }
+}
+function teamCard(af, no) {
   const groups = [
     { key: "retrain", title: "Awaiting retraining (referred at attempt 2)", hint: "Not retested tonight. A Student Faculty member meets them, then they repeat all 3 evenings in a different room (different instructors) before attempt 3 with Senior Faculty." },
     { key: "leads", title: "Referred back to degree leads (attempt 3)", hint: "A Senior Faculty member meets them to discuss progress and support, and the programme lead is told. Further course in full, then attempt 4." },
     { key: "final", title: "Not passed - final attempt (attempt 4)", hint: "Course not completed. Refer back to the degree leads, inform the candidate they have not passed, and tell the programme lead." }
   ];
   const any = groups.some(g => af[g.key].length);
-  let h = `<div class="card"><h3><span class="stepno">3</span>After the night: who needs a follow-up</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 2 or later: not retested tonight. A faculty member speaks to each. Nothing is emailed from here: copy the note and send it yourself.</div>`;
+  let h = `<div class="card"><h3><span class="stepno">${no || 3}</span>Not retested tonight: who needs a follow-up</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 2 or later: not retested tonight. A faculty member speaks to each. Nothing is emailed from here: copy the note and send it yourself.</div>`;
   if (!any) return h + '<div class="hint">Nobody yet.</div></div>';
   groups.forEach(g => {
     const l = af[g.key]; if (!l.length) return;
@@ -2853,17 +3157,35 @@ function attemptStatus(c) {
   return { cls: "", text: "Not yet assessed" };
 }
 function attemptsOverview() {
-  const list = N.cands.filter(c => effAttempt(c) >= 2 || isDoneN(c))
-    .sort((a, b) => effAttempt(b) - effAttempt(a) || String(a.name).localeCompare(String(b.name)));
-  const body = list.length
-    ? list.map(c => {
-        const st = attemptStatus(c), a = nattempts(c.id);
-        const hist = Object.keys(a).sort((x, y) => x - y).map(k => "A" + k + " " + outcomeShort(a[k].outcome, Number(k))).join(" · ");
-        const exc = Object.keys(a).some(k => a[k] && a[k].excellent);
-        return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small>${esc(c.degree || "")}</small>` +
-          `<small style="flex-basis:100%">${hist ? esc(hist) + " · " : ""}<span class="nchip ${st.cls}">${esc(st.text)}</span>${exc ? ' <span class="nchip exc-chip">Excellent</span>' : ""}</small></div>`;
-      }).join("")
-    : '<div class="hint">Nobody has a result or a retest yet.</div>';
+  const list = N.cands.filter(c => effAttempt(c) >= 2 || isDoneN(c));
+  const groupOf = c => {
+    if (passedAtKey(c.id)) return "passed";
+    if (c.absent) return "absent";
+    if (inPool(c)) return "pool";
+    const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+    return ks.length ? "follow" : "notyet";
+  };
+  const GROUPS = [
+    ["pool", "In the retest pool", "Waiting for a retest tonight"],
+    ["passed", "Passed", ""],
+    ["follow", "Not passed: follow-up needed", "Not retested tonight"],
+    ["absent", "Not there", ""],
+    ["notyet", "Not yet assessed", ""]
+  ];
+  const row = c => {
+    const a = nattempts(c.id), ks = Object.keys(a).sort((x, y) => x - y), st = attemptStatus(c);
+    const exc = ks.some(k => a[k] && a[k].excellent);
+    const tl = ks.length ? ks.map(k => `<span class="nchip ${a[k].outcome === "pass" ? "pass" : "refer"}">Attempt ${esc(k)}: ${esc(outcomeShort(a[k].outcome, Number(k)))}</span>`).join('<i>&rarr;</i>') : '<span class="hint" style="margin:0">No result yet</span>';
+    return `<div class="lrow arow2"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(effAttempt(c))}</span><small class="adeg">${esc(c.degree || "")}</small>` +
+      `<span class="atl">${tl}${exc ? ' <span class="nchip exc-chip">Excellent</span>' : ""}</span></div>`;
+  };
+  let body = "";
+  GROUPS.forEach(g => {
+    const l = list.filter(c => groupOf(c) === g[0]).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    if (!l.length) return;
+    body += `<div class="agroup">${esc(g[1])} (${l.length})</div>` + l.map(row).join("");
+  });
+  if (!list.length) body = '<div class="hint">Nobody has a result or a retest yet.</div>';
   return `<details class="card" id="attDetails"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All attempts on this course (${list.length})</summary><div style="margin-top:8px">${body}</div></details>`;
 }
 // ── Catch-up night allocation (2026-10-18) ──────────────────────────────────
@@ -2930,6 +3252,8 @@ function catchupCard() {
 }
 function renderRetest() {
   if (!S.course || !S.full) return;
+  // Assessment night, Retest-plus & RAP: a short view (21 Oct, Jon). RMD faculty keep the full one.
+  const simple = S.door === "assess" && S.drole === "plus";
   const d = assessDate(), pool = poolList(), stale = staleAttempts();
   const waiting = pool.filter(c => !(nres(c.id).claim && nres(c.id).claim.uid));
   const withA = pool.length - waiting.length;
@@ -2939,38 +3263,58 @@ function renderRetest() {
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
     `An assessor takes each one from the Assessor view. ` +
-    `Not passed at attempt 2 or later: see <b>After the night</b> below.`;
-  let h = `<div class="sumstrip">${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}${nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0 && pool.some(c => effAttempt(c) >= 3))}` +
-    `${nightTile(af.retrain.length, "Awaiting retraining")}${nightTile(af.leads.length, "Back to degree leads")}${nightTile(af.final.length, "Not passed (final)", af.final.length > 0)}${nightTile(overrideEvents().length, "Passed with a red step", overrideEvents().length > 0)}</div>`;
-  h += overridesCard();
-  h += catchupCard();
-  if (stale.length) {
-    h += `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
-  }
-  const prow = c => {
+    (simple ? "" : `Do <b>step 1</b> first: anyone referred needs a retest room.`);
+  const needRoom = c => effAttempt(c) === 2 && !resitRoom(c) && !(nres(c.id).claim && nres(c.id).claim.uid);
+  const need = simple ? [] : pool.filter(needRoom), queue = simple ? pool : pool.filter(c => !needRoom(c));
+  const has3 = pool.some(c => effAttempt(c) >= 3);
+  let h = `<div class="sumstrip">` + (simple ? `${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}` :
+    `${nightTile(need.length, "Need a retest room", need.length > 0)}${nightTile(waiting.length - need.length, "Queued, waiting for an assessor")}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
+    (has3 ? nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0) : "") +
+    `${nightTile(af.retrain.length + af.leads.length + af.final.length, "Not retested tonight", af.retrain.length + af.leads.length + af.final.length > 0)}`) + `</div>`;
+  const staleCard = () => `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
+  const prow = (c, mode) => {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
-    const hist = Object.keys(nattempts(c.id)).sort((a, b) => a - b).map(k => { const a = nattempts(c.id)[k]; return `Attempt ${esc(k)}: ${esc(outcomeLabel(a.outcome, Number(k)))}${a.assessorName ? " (" + esc(a.assessorName) + ")" : ""}${compsText(a) ? " - " + esc(compsText(a)) : ""}`; }).join(" · ");
-    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") + (prev && prev.components ? " · retest includes " + retestIncludes(requiredComps(c.id, 2)) + (failCodes(c.id) ? " (failed " + failCodes(c.id) + ")" : "") : "") : "Senior Faculty or extra named assessor";
+    const sec = COMPS.map(x => { let r = ""; Object.keys(nattempts(c.id)).sort((a, b) => b - a).some(k => { const v = (nattempts(c.id)[k].components || {})[x.k]; if (v === "pass" || v === "fail") { r = v; return true; } return false; }); return esc(x.label) + ": <b>" + (r === "pass" ? "Pass" : r === "fail" ? "Fail" : "Not yet tested") + "</b>"; }).join(" &middot; ");
+    const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") : "Senior Faculty or extra named assessor";
+    const who = cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : (mode === "need" ? "" : '<span class="nchip bad">Waiting</span>');
+    const roomBits = (!simple && att === 2 && !cl) ? (resitRoom(c) ? `<span class="nchip claim">Room ${esc(resitRoom(c))}</span><button type="button" class="btn sm" data-act="changeroom" data-id="${esc(c.id)}">Change room</button>` : `<button type="button" class="btn sm pri" data-act="retestroom" data-id="${esc(c.id)}">Confirm retest + pick room</button>`) : "";
+    const ed = Object.values((nres(c.id).flow || {}).edits || {}).sort((a, b) => String(a.at).localeCompare(String(b.at))).pop();
+    const stepper = (simple || mode === "need") ? "" : `<button type="button" class="btn sm" data-patt="${esc(c.id)}">Edit attempt</button>`;
+    const edNote = (!stepper || !ed) ? "" : ` &middot; <i>Attempt edited ${esc(ed.from)} to ${esc(ed.to)} by ${esc(ed.byName || "someone")}</i>`;
     return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
-      `<small style="flex-basis:100%">${rule}${hist ? " · " + hist : " · no result recorded on the site yet"}</small>` +
-      `<span class="pact">${cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : '<span class="nchip bad">Waiting</span>'}` +
-      `<span class="stepper"><button type="button" data-patt="${esc(c.id)}" data-d="-1" aria-label="Lower attempt">-</button><button type="button" data-patt="${esc(c.id)}" data-d="1" aria-label="Raise attempt">+</button></span></span></div>`;
+      `<small style="flex-basis:100%">${sec}${simple || mode === "need" ? "" : " &middot; " + rule}${edNote}</small>` +
+      `<span class="pact">${who}${roomBits}${stepper}</span></div>`;
   };
-  h += hereCard(pool);
-  h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(prow).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them, or when you set their attempt to 2 or more.</div>') + `</div>`;
-  h += attemptsOverview();
-  h += teamCard(af);
-  if (S.isDirector) h += `<div class="card"><div class="hint" style="margin:0">Assessors, mark sheets and Google Form link: <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>`;
+  if (simple) {
+    h += hereCard(pool, 1);
+    h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(c => prow(c)).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them.</div>') + `</div>`;
+  } else {
+    // RMD faculty hub order: what needs input now first, then the queue, then information and admin.
+    h += `<div class="card"><h3><span class="stepno">1</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Referred at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
+      (need.length ? need.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is waiting for a room.</div>') + `</div>`;
+    const lead = teamCard(af, 2);
+    h += lead;
+    h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
+    h += hereCard(pool, 4);
+    h += mailCard(5);
+    if (stale.length) h += staleCard();
+    const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
+    h += more;
+  }
   const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
+  if (!simple && $("moreDetails")) {
+    const mb = $("moreDetails").lastElementChild;
+    mb.innerHTML = overridesCard() + catchupCard() + attemptsOverview() + (S.isDirector ? `<div class="card"><div class="hint" style="margin:0">Assessors, mark sheets and Google Form link: <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>` : "");
+    $("moreDetails").addEventListener("toggle", () => { N.moreOpen = $("moreDetails").open; });
+  }
   if (wasOpen && $("attDetails")) $("attDetails").open = true;
+  { const hd = $("hereDetails"); if (hd) hd.addEventListener("toggle", () => { N.hereOpen = hd.open; }); }
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
+  bindActs($("viewRetest"));
+  $("viewRetest").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
-  $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => {
-    const c = S.cands.find(x => x.id === b.dataset.patt), n = N.cands.find(x => x.id === b.dataset.patt);
-    if (!c || !n) { toast("Reload the page and try again.", true); return; }
-    setAttempt(c, effAttempt(n) + Number(b.dataset.d)).then(() => { n.attempt = attemptOf(c); renderRetest(); });
-  });
+  $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => editAttempt(b.dataset.patt));
   $("viewRetest").querySelectorAll("[data-here]").forEach(b => b.onclick = () => {
     const people = att3People(), name = people[Number(b.dataset.here)]; if (name === undefined) return;
     const cur = people.filter(isHere);
@@ -2988,6 +3332,50 @@ function renderRetest() {
     const l = af[b.dataset.copygroup] || [];
     copyTxt(l.map(x => noteFor(x.c, x.k)).join("\n\n")).then(() => toast("Copied " + l.length + " note" + (l.length === 1 ? "" : "s")));
   });
+}
+
+// Edit attempt (21 Oct, Jon): replaces the +/- buttons. Explains what the number does, never goes below what the results
+// on file imply, asks "are you sure" with the exact change, and logs who did it on stage1_assessments/{id}.flow.edits.
+async function editAttempt(id) {
+  const c = S.cands.find(x => x.id === id), n = N.cands.find(x => x.id === id);
+  if (!c) { toast("Reload the page and try again.", true); return; }
+  const cur = n ? effAttempt(n) : attemptOf(c), min = derivedAttempt(id), MAXA = 4;
+  let pick = null;
+  const close = () => { $("overlay").innerHTML = ""; };
+  const shell = inner => { $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true">${inner}</div></div>`; $("sbg").onclick = e => { if (e.target.id === "sbg") close(); }; };
+  const step1 = () => {
+    let opts = ""; for (let k = 1; k <= MAXA; k++) opts += `<button type="button" class="btn${k === pick ? " pri" : ""}" data-pk="${k}"${(k < min || k === cur) ? " disabled" : ""} style="min-width:48px">${k}</button> `;
+    shell(`<h3>Edit attempt number: ${esc(c.name)}</h3>` +
+      `<p>Now on <b>attempt ${cur}</b>. This number decides which attempt they sit next and who is allowed to assess them (attempt 2: a different assessor from attempt 1; attempt 3 or 4: Senior Faculty or a named assessor). It is also copied to the Master sheet.</p>` +
+      `<p>The hub sets attempt 2 by itself when someone is referred at attempt 1. Edit it only to correct a wrong number, for example someone who already had a third attempt on an earlier course. No results are deleted.</p>` +
+      (min > 1 ? `<p><b>Cannot go lower than ${min}</b>: a referral is already on file.</p>` : "") +
+      `<p style="margin:10px 0">New attempt: ${opts}</p>` +
+      `<div class="two"><button type="button" class="pri" id="epNext"${pick ? "" : " disabled"}>Continue</button><button type="button" id="epNo">Cancel</button></div>`);
+    $("overlay").querySelectorAll("[data-pk]").forEach(b => b.onclick = () => { pick = Number(b.dataset.pk); step1(); });
+    $("epNext").onclick = step2; $("epNo").onclick = close;
+  };
+  const step2 = () => {
+    shell(`<h3>Are you sure?</h3><p>Change <b>${esc(c.name)}</b> from <b>attempt ${cur}</b> to <b>attempt ${pick}</b>.</p>` +
+      `<p>${pick > cur ? "They will join the pool for attempt " + pick + " if they have no result on file for it." : "They go back to attempt " + pick + "; results already saved stay as they are."} Your name and the time are saved against this change.</p>` +
+      `<div class="two"><button type="button" class="pri" id="epYes">Yes, change to attempt ${pick}</button><button type="button" id="epBack">Go back</button></div>`);
+    $("epBack").onclick = step1; $("epYes").onclick = save;
+  };
+  const save = async () => {
+    if (!pick || pick === cur || pick < min || pick > MAXA) return;
+    $("epYes").disabled = true;
+    try {
+      await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ assessmentAttempt: pick, twoPlusAssessments: pick >= 2 });
+    } catch (err) { close(); toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission" : err.message), true); return; }
+    c.assessmentAttempt = pick; c.twoPlusAssessments = pick >= 2; if (n) n.attempt = pick;
+    let logged = true;
+    try {
+      const at = new Date().toISOString();
+      await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: c.name || "", flow: { edits: { ["e" + Date.now()]: { from: cur, to: pick, by: S.user.uid, byName: S.myName, at } } }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    } catch (err) { logged = false; }
+    close(); toast(c.name + " is now on attempt " + pick + (logged ? "." : ". The change was saved but could not be logged."), !logged);
+    renderRetest(); renderAlloc();
+  };
+  step1();
 }
 async function syncAttempts() {
   const list = staleAttempts(); if (!list.length) return;
@@ -3055,18 +3443,17 @@ async function setPresent(list) {
     toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true);
   }
 }
-function hereCard(pool) {
-  const people = att3People();
+function hereCard(pool, no) {
+  const people = att3People(), open = N.hereOpen !== undefined ? N.hereOpen === true : (S.door === "assess" && S.drole === "plus" ? false : pool.some(c => effAttempt(c) >= 3)), n = people.filter(isHere).length;
+  const wrap = inner => `<details class="card" id="hereDetails"${open ? " open" : ""}><summary style="cursor:pointer;font-weight:800;font-size:17px"><span class="stepno">${no || 1}</span>Attempt 3 or later: who is here tonight${people.length ? ` <span class="hint" style="margin:0 0 0 8px;font-weight:600">${n} of ${people.length} here</span>` : ""}</summary><div style="margin-top:8px">${inner}</div></details>`;
   const wait3 = pool.filter(c => effAttempt(c) >= 3 && !(nres(c.id).claim && nres(c.id).claim.uid)).length;
-  let h = `<div class="card"><h3><span class="stepno">1</span>Attempt 3 or later: who is here tonight</h3>` +
-    `<div class="hint" style="margin:0 0 6px">Tap each person here tonight. Senior Faculty and extra named assessors only. Information only.</div>`;
-  if (N.dir === null || N.dir === undefined) return h + '<div class="hint">Loading the list…</div></div>';
-  if (!people.length) return h + `<div class="hint">Nobody listed. Senior Faculty come from the faculty roster; extra assessors are added in Assessment setup.</div></div>`;
-  const n = people.filter(isHere).length;
+  let h = `<div class="hint" style="margin:0 0 6px">Tap each person here tonight. Senior Faculty and extra named assessors only. Information only.</div>`;
+  if (N.dir === null || N.dir === undefined) return wrap(h + '<div class="hint">Loading the list…</div>');
+  if (!people.length) return wrap(h + `<div class="hint">Nobody listed. Senior Faculty come from the faculty roster; extra assessors are added in Assessment setup.</div>`);
   if (wait3 && !n) h += `<div class="msg warn">${wait3} ${wait3 === 1 ? "person is" : "people are"} waiting for attempt 3 or later and nobody is marked as here to take them.</div>`;
   h += `<div class="hbtns">${people.map((x, i) => `<button type="button" class="hbtn${isHere(x) ? " on" : ""}" data-here="${i}" aria-pressed="${isHere(x)}">${isHere(x) ? "&#10003; " : ""}${esc(x)}</button>`).join("")}</div>` +
-    `<div class="tools" style="margin:6px 0 0"><span class="hint" style="margin:0"><b>${n}</b> of ${people.length} here</span><button type="button" class="btn sm" data-hereall="1">Everyone is here</button><button type="button" class="btn sm" data-hereall="0">Nobody is here</button></div></div>`;
-  return h;
+    `<div class="tools" style="margin:6px 0 0"><span class="hint" style="margin:0"><b>${n}</b> of ${people.length} here</span><button type="button" class="btn sm" data-hereall="1">Everyone is here</button><button type="button" class="btn sm" data-hereall="0">Nobody is here</button></div>`;
+  return wrap(h);
 }
 function whoCanBox(pool) {
   const atts = [...new Set(pool.map(c => effAttempt(c) >= 3 ? 3 : 2))].sort();
@@ -3107,8 +3494,8 @@ function suGroups() {
     dir: { label: "Directors", names: (SU.directors || []).map(String) },
     stu: { label: "Student Faculty", names: dirNames("student") },
     sen: { label: "Senior Faculty", names: dirNames("senior") },
-    fac: { label: "Faculty and Assessor Faculty (job roles)", names: fac },
-    team: { label: "Senior Instructors and others on the night list", names: N.team || [], ed: true },
+    fac: { label: "Faculty and Assessor cohort (job roles)", names: fac },
+    team: { label: "Senior Instructors on the night list (do not assess)", names: N.team || [], ed: true },
     named: { label: "Extra named assessors", names: N.named || [], ed: true }
   };
 }
@@ -3133,21 +3520,21 @@ function suWho() {
   const G = suGroups();
   const chip = g => `<span${g.ed ? ' class="ed"' : ""}>${esc(g.label.replace(" (job roles)", ""))} (${g.names.length})</span>`;
   const rows = [
-    ["1st sit", "", [G.dir, G.stu, G.sen, G.fac, G.team, G.named]],
+    ["1st sit", "", [G.dir, G.stu, G.sen, G.fac, G.named]],
     ["2nd sit", "not the same assessor as the 1st sit", [G.stu, G.sen, G.named]],
     ["3rd sit and later", "", [G.sen, G.named]]
   ];
   let h = `<div class="card"><h3>Who can assess what</h3><div class="hint" style="margin:0 0 8px">Grey groups are changed elsewhere (Student and Senior Faculty: <a href="admin-faculty-roster.html">faculty roster</a>). Purple groups are edited below.</div>` +
     `<table class="suwho"><tr><th>Sit</th><th>Who can assess</th></tr>` +
     rows.map(r => `<tr><td><b>${r[0]}</b>${r[1] ? `<br><small style="color:var(--mut)">${r[1]}</small>` : ""}</td><td><div class="names">${r[2].map(chip).join("")}</div></td></tr>`).join("") +
-    `</table><div class="hint" style="margin:8px 0 0">Directors take 2nd or later sits only if on the Student or Senior Faculty roster, or named below. Senior Instructors on the night list: first sits only.</div>`;
+    `</table><div class="hint" style="margin:8px 0 0">Directors take 2nd or later sits only if on the Student or Senior Faculty roster, or named below. Senior Instructors on the night list can use the runner view but do not assess at any sit.</div>`;
   h += `<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:800;color:var(--pur)">Show the names in each group</summary>` +
     Object.keys(G).map(k => { const g = G[k]; return `<div class="whorow"><b>${esc(g.label)} (${g.names.length})</b><div class="names">${g.names.length ? g.names.map(n => `<span${g.ed ? ' class="ed"' : ""}>${esc(n)}</span>`).join("") : '<span class="none">nobody listed</span>'}</div></div>`; }).join("") + `</details></div>`;
   const teamV = SU.teamDraft !== null ? SU.teamDraft : (N.team || []).join("\n");
   const namedV = SU.namedDraft !== null ? SU.namedDraft : (N.named || []).join("\n");
-  h += `<div class="card"><h3>Senior Instructors who can open assessment night</h3><div class="hint" style="margin:0 0 6px">Can open assessment night and record first sits, as well as Directors, Student and Senior Faculty, Faculty and Assessor Faculty. One sign-in email per line.</div>` +
+  h += `<div class="card"><h3>Senior Instructors who can open assessment night</h3><div class="hint" style="margin:0 0 6px">Can open assessment night and use the runner view. They do not assess at any sit. One sign-in email per line.</div>` +
     `<textarea id="teamTxt" placeholder="Email, one per line">${esc(teamV)}</textarea>` +
-    `<div class="tools" style="margin:6px 0 0"><button type="button" class="btn sm" id="pickAssessors">Add everyone whose role is Assessor</button><span class="hint" id="pickMsg"></span></div></div>`;
+    `</div>`;
   h += `<div class="card"><h3>Extra named assessors for retests</h3><div class="hint" style="margin:0 0 6px">Can take 2nd and later sits as well as first sits. One sign-in email per line.</div>` +
     `<textarea id="namedTxt" placeholder="Name or email, one per line">${esc(namedV)}</textarea>` +
     `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn pri" id="saveWho">Save both lists</button><span class="sumsg" id="whoMsg"></span></div><div class="hint">Saving needs a super-user account, the same as the other site settings.</div></div>`;
