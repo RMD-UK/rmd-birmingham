@@ -577,6 +577,9 @@
         <span class="nav-icon">⭐</span><span>Session quality</span>
         <span class="nav-badge hidden" id="navQualityBadge">0</span>
       </div>
+      <div class="nav-item" onclick="switchSection('pfeedback')" id="nav-pfeedback">
+        <span class="nav-icon">🗣️</span><span>Participant feedback</span>
+      </div>
       <div class="nav-item" onclick="window.location.href='assessment-development.html'" id="nav-development">
         <span class="nav-icon">📝</span><span>Development</span>
       </div>
@@ -868,6 +871,12 @@
       </div>
     </section>
 
+    <!-- ── PARTICIPANT FEEDBACK ── -->
+    <section class="section" id="section-pfeedback">
+      <div class="section-title">Participant Feedback</div>
+      <div id="pfBody"><div class="loading">Loading…</div></div>
+    </section>
+
     <!-- ── REPORT ── -->
     <section class="section" id="section-report">
       <div class="section-title">Course Report</div>
@@ -1003,7 +1012,7 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/rag-key.js?v=20261010"></script>
 <script src="js/course-result.js"></script>
-<script src="js/course-report.js"></script>
+<script src="js/course-report.js?v=20261022"></script>
 <script src="js/mini-docx.js"></script>
 <script src="js/programme-data.js?v=202610082100"></script>
 <script>
@@ -2751,6 +2760,18 @@ function exportReport() {
 // first, so they reflect any late changes, and the comments checkbox decides
 // whether free-text faculty comments (red session comments, development
 // notes) go into the file.
+// Participant feedback, live (22 Oct 2026, Jon): same numbers as the Word report, shown by role. Reads the participant_feedback collection (Directors only).
+async function renderParticipantFeedback() {
+  const box = document.getElementById("pfBody");
+  box.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const snap = await db.collection("participant_feedback").get();
+    const docs = []; snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    box.innerHTML = '<div class="text-sm text-muted" style="margin-bottom:10px">Live from the feedback form. Counts every response collected, not filtered by year.</div>' +
+      RMD_COURSE_REPORT.feedbackPanelHtml(RMD_COURSE_REPORT.summariseFeedback(docs));
+  } catch (e) { box.innerHTML = '<div class="text-muted">Could not load participant feedback: ' + esc(e.message) + '</div>'; }
+}
+
 async function gatherReportData() {
   const includeComments = !!document.getElementById("repIncludeComments")?.checked;
   const readAll = async name => {
@@ -2928,6 +2949,7 @@ function switchSection(name) {
   if (name === "rooms")      renderRooms();
   if (name === "feedback")   renderFeedback(currentFeedbackDay);
   if (name === "quality")    renderSessionQuality();
+  if (name === "pfeedback")  renderParticipantFeedback();
   if (name === "programme")  renderProgramme(currentProgDay);
   if (name === "faculty")    { loadFacultyResponses(); renderFacultyList(); }
 

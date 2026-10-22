@@ -89,6 +89,11 @@
     return "﻿" + lines.join("\r\n");   // BOM so Excel reads UTF-8
   }
 
+  // Wording of the form's rating questions (participant-feedback.html Q3 to Q11), for tables and the online panel.
+  const FB_LABELS = { precourse: "Pre-course information", organisation: "Course organisation", venue: "Venue and facilities", faculty: "Faculty quality",
+    methods: "Teaching methods", practice: "Practice opportunities", feedback: "Feedback quality", relevance: "Relevance", confidence: "Confidence in teaching BLS" };
+  const FB_LABEL = k => FB_LABELS[k] || k;
+
   function summariseFeedback(items) {
     items = items || [];
     if (!items.length) return null;
@@ -107,7 +112,8 @@
       const g = items.filter(i => roleOf(i) === label);
       if (!g.length) return null;
       const rc = {}; g.forEach(i => { if (i.recommend) rc[i.recommend] = (rc[i.recommend] || 0) + 1; });
-      return { role: label, n: g.length, overall: mean(g.map(i => Number(i.averageScore)).filter(n => n > 0)), recommend: rc,
+      const pk = {}; keys.forEach(k => { pk[k] = mean(g.map(i => i.likert && Number(i.likert[k])).filter(n => n > 0)); });
+      return { role: label, n: g.length, overall: mean(g.map(i => Number(i.averageScore)).filter(n => n > 0)), recommend: rc, perKey: pk,
         valuable: g.map(i => i.valuable).filter(Boolean), suggestions: g.map(i => i.suggestions).filter(Boolean) };
     }).filter(Boolean);
     return {
@@ -177,7 +183,7 @@
     if (!f) b.push({ t: "p", runs: [{ text: "No participant feedback recorded." }] });
     else {
       b.push({ t: "p", runs: [{ text: `${f.n} response${f.n === 1 ? "" : "s"}. Mean score ${f.overall == null ? "n/a" : f.overall} (scale 1 to 5). Would recommend: ${["Definitely yes", "Probably yes", "Unsure", "No"].map(k => `${k} ${f.recommend[k] || 0}`).join(", ")}.` }] });
-      b.push({ t: "table", headers: ["Area", "Mean"], weights: [4, 2], rows: Object.entries(f.perKey).map(([k, v]) => [k, v == null ? "n/a" : v]) });
+      b.push({ t: "table", headers: ["Area", "Mean"], weights: [4, 2], rows: Object.entries(f.perKey).map(([k, v]) => [FB_LABEL(k), v == null ? "n/a" : v]) });
       const br = f.byRole || [];
       if (br.length) {
         b.push({ t: "h3", text: "By role" });
@@ -226,7 +232,31 @@ h1 { font-size: 20pt; } h2 { font-size: 14pt; margin-top: 18pt; } h3 { font-size
 </style></head><body><div class="WordSection1">${parts.join("\n")}</div></body></html>`;
   }
 
-  const api = { buildResultRows, toCsv, buildReportModel, buildReportHtml, summariseFeedback, CSV_HEAD };
+  // Online panel for the Course Director dashboard. Same numbers as the report. Returns an HTML string (all text escaped).
+  function feedbackPanelHtml(f) {
+    if (!f) return '<div class="card"><div class="card-body"><div class="text-muted">No participant feedback recorded yet.</div></div></div>';
+    const REC = ["Definitely yes", "Probably yes", "Unsure", "No"], br = f.byRole || [];
+    const num = v => v == null ? "n/a" : v;
+    const stat = (n, l, cls) => `<div class="stat-card${cls ? " " + cls : ""}"><div class="stat-num">${esc(n)}</div><div class="stat-lbl">${esc(l)}</div></div>`;
+    let h = `<div class="stats-row">${stat(f.n, f.n === 1 ? "Response" : "Responses")}${stat(num(f.overall), "Mean score (of 5)")}` +
+      `${stat(f.recommend["Definitely yes"] || 0, "Definitely recommend", "green")}${stat(f.recommend["Probably yes"] || 0, "Probably recommend", "green")}` +
+      `${stat((f.recommend["Unsure"] || 0) + (f.recommend["No"] || 0), "Unsure or no", (f.recommend["Unsure"] || 0) + (f.recommend["No"] || 0) ? "amber" : "")}</div>`;
+    h += `<div class="card"><div class="card-header">By role</div><div class="card-body"><table class="cand-table"><thead><tr><th>Role</th><th>Responses</th><th>Mean score</th>${REC.map(k => `<th>${esc(k)}</th>`).join("")}</tr></thead><tbody>` +
+      br.map(g => `<tr><td>${esc(g.role)}</td><td>${g.n}</td><td>${esc(num(g.overall))}</td>${REC.map(k => `<td>${g.recommend[k] || 0}</td>`).join("")}</tr>`).join("") +
+      `</tbody></table><div class="text-sm text-muted" style="margin-top:8px">Role is what people chose on question 1 of the form. Small groups give unreliable averages: look at the number of responses.</div></div></div>`;
+    h += `<div class="card"><div class="card-header">By area (mean, 1 to 5)</div><div class="card-body"><table class="cand-table"><thead><tr><th>Area</th><th>All</th>${br.map(g => `<th>${esc(g.role)} (${g.n})</th>`).join("")}</tr></thead><tbody>` +
+      Object.entries(f.perKey).map(([k, v]) => `<tr><td>${esc(FB_LABEL(k))}</td><td>${esc(num(v))}</td>${br.map(g => `<td>${esc(num(g.perKey ? g.perKey[k] : null))}</td>`).join("")}</tr>`).join("") + `</tbody></table></div></div>`;
+    const grouped = (title, key) => {
+      const w = br.filter(g => g[key].length); if (!w.length) return "";
+      return `<div class="card"><div class="card-header">${esc(title)}</div><div class="card-body">` + w.map(g => `<div style="font-weight:700;margin:6px 0 2px">${esc(g.role)} <span class="text-sm text-muted">(${g.n} ${g.n === 1 ? "response" : "responses"})</span></div><ul style="margin:0 0 8px 18px">${g[key].map(t => `<li>${esc(t)}</li>`).join("")}</ul>`).join("") + `</div></div>`;
+    };
+    h += grouped("Most valuable", "valuable") + grouped("Suggestions", "suggestions");
+    if (br.some(g => g.n < 5 && (g.valuable.length || g.suggestions.length)))
+      h += '<div class="text-sm" style="color:#b7410e;font-weight:700;margin:4px 0 14px">Some roles have fewer than 5 responses, so a comment may be traceable to one person. Check before sharing.</div>';
+    return h;
+  }
+
+  const api = { feedbackPanelHtml, buildResultRows, toCsv, buildReportModel, buildReportHtml, summariseFeedback, CSV_HEAD };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.RMD_COURSE_REPORT = api;
 })(typeof window !== "undefined" ? window : globalThis);
