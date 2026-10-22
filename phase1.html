@@ -3328,6 +3328,21 @@ function nbBuild() {
     });
   });
   const csv = "﻿" + [NB_HEAD].concat(rows).map(r => r.map(nbCell).join(",")).join("\r\n") + "\r\n";
+  // Register of absences (22 Oct, Jon): everyone marked Absent in teaching week 1 or 2, whether or not they were assessed, with the reason on file.
+  const td = teachDates(S.course) || [], wk = n => "Week " + n + (td[n - 1] ? " (" + td[n - 1] + ")" : "");
+  const regRows = [], noMark = [];
+  cands.forEach(c => {
+    const sc = (S.cands || []).find(x => x.id === c.id) || {}, r = S.reg[c.id] || {}, w1 = r.w1 || {}, w2 = r.w2 || {}, s1 = w1.status || "", s2 = w2.status || "";
+    if (!s1 || !s2) noMark.push(c.name);
+    if (s1 !== "absent" && s2 !== "absent") return;
+    const why = x => x.absentReason || (x.review && x.review.why) || "", out = x => (x.outcome && x.outcome.type ? (SENT_LABEL[x.outcome.type] || x.outcome.type) : "");
+    const ov = sc.eligibilityOverride && sc.eligibilityOverride.by ? "Yes: " + [sc.eligibilityOverride.reason, sc.eligibilityOverride.how].filter(Boolean).join("; ") + " (by " + (sc.eligibilityOverride.byName || "someone") + ")" : "";
+    regRows.push([S.course, c.name, sc.email || "", c.degree || sc.degree || "", sc.yearOfStudy || "", sc.studentId || "",
+      s1 === "absent" && s2 === "absent" ? "Weeks 1 and 2" : s1 === "absent" ? "Week 1" : "Week 2",
+      reg(c.id, 1), why(w1), reg(c.id, 2), why(w2), [out(w1), out(w2)].filter(Boolean).join("; "), ov, nbState(c).text, c.id]);
+  });
+  const REG_HEAD = ["Course", "Candidate", "Email", "Degree", "Year", "Student ID", "Absent in", wk(1), "Week 1 reason", wk(2), "Week 2 reason", "What was decided", "Eligibility override", "Status at end of night", "Candidate ID"];
+  const regCsv = "﻿" + [REG_HEAD].concat(regRows).map(r => r.map(nbCell).join(",")).join("\r\n") + "\r\n";
   const summary = [
     "Candidates on the course: " + cands.length,
     "Results recorded: " + res.all + " (" + res.pass + " pass, " + res.notyet + " not yet)",
@@ -3335,9 +3350,10 @@ function nbBuild() {
     "Waiting for a retest or later attempt: " + cnt.pool,
     "Not passed at attempt 2 / 3 / final (4): " + cnt.r2 + " / " + cnt.r3 + " / " + cnt.r4,
     "Not there: " + cnt.absent,
-    "Not assessed: " + cnt.notassessed
+    "Not assessed: " + cnt.notassessed,
+    "Register: " + regRows.length + " absent in week 1 or 2 (second file)" + (noMark.length ? "; " + noMark.length + " with a week not marked" : "")
   ];
-  return { csv, rows, summary, cnt, res, cands: cands.length };
+  return { csv, rows, summary, cnt, res, cands: cands.length, regCsv, regRows };
 }
 async function nbLoad() {
   if (N.nb && N.nb.course === S.course) return;
@@ -3354,21 +3370,23 @@ function backupCard(no) {
   const b = nbBuild(), nb = N.nb || { to: NB_DEFAULT_TO, stamp: null }, st = nb.stamp;
   const chip = st ? `<span class="nchip claim">Sent ${esc(nbTime(st.sentAtIso))} by ${esc(st.byName || st.byEmail || "someone")}</span>` : '<span class="nchip bad">Not sent yet</span>';
   return `<div class="card"><h3><span class="stepno">${no || 6}</span>End of night: email the results backup</h3>` +
-    `<div class="hint" style="margin:0 0 8px">A spreadsheet (CSV) of the whole night's results is emailed to <b>${esc(nb.to.join(", "))}</b> as a backup. It does not replace the reports for the degree leads. Send it when the night is finished. You can send it again if anything changes.</div>` +
+    `<div class="hint" style="margin:0 0 8px">Two spreadsheets (CSV) are emailed to <b>${esc(nb.to.join(", "))}</b> as a backup: the whole night's results with each candidate's name, email and degree, and a register of who was absent in week 1 or 2. It does not replace the reports for the degree leads. Send it when the night is finished. You can send it again if anything changes.</div>` +
     `<div class="lrow"><span class="nm">${b.cands} candidates, ${b.res.all} result${b.res.all === 1 ? "" : "s"}</span>${chip}` +
     `<small style="flex-basis:100%">${esc(b.summary.slice(2).join(". "))}.</small>` +
     `<span class="pact"><button type="button" class="btn sm${st ? "" : " pri"}" data-nbopen="1">${st ? "Send again" : "Review and send"}</button><button type="button" class="btn sm" data-nbdl="1">Download a copy</button></span></div></div>`;
 }
-function nbDownload(b) {
-  const blob = new Blob([b.csv], { type: "text/csv;charset=utf-8" }), url = URL.createObjectURL(blob), a = document.createElement("a");
-  a.href = url; a.download = nbFile(); document.body.appendChild(a); a.click(); a.remove();
+function nbRegFile() { return "RMD_assessment_night_register_" + nbSlug(S.course) + "_" + (assessDate() || "undated") + ".csv"; }
+function nbSave(text, name) {
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" }), url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
+function nbDownload(b) { nbSave(b.csv, nbFile()); setTimeout(() => nbSave(b.regCsv, nbRegFile()), 400); }
 function openBackup() {
   const b = nbBuild(), nb = N.nb || { to: NB_DEFAULT_TO, stamp: null };
   const pend = b.cnt.pool + N.cands.filter(c => { const cl = nres(c.id).claim; return cl && cl.uid && !isDoneNow(c); }).length;
   $("overlay").innerHTML = `<div class="modalbg" id="nbbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:560px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>Email the results backup</h3>` +
-    `<div class="hint" style="margin:0 0 6px">To: <b>${esc(nb.to.join(", "))}</b><br>File: ${esc(nbFile())} (${b.rows.length} rows)</div>` +
+    `<div class="hint" style="margin:0 0 6px">To: <b>${esc(nb.to.join(", "))}</b><br>Files: ${esc(nbFile())} (${b.rows.length} rows: names, emails, degrees and results) and ${esc(nbRegFile())} (${b.regRows.length} absent in week 1 or 2)</div>` +
     `<div style="border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 8px">${b.summary.map(x => `<div>${esc(x)}</div>`).join("")}</div>` +
     (pend ? `<div class="hint" style="margin:0 0 8px;color:var(--bad,#b3261e)"><b>${pend}</b> ${pend === 1 ? "person is" : "people are"} still waiting for a retest or with an assessor. Wait until the night is finished, or send now and send again later.</div>` : "") +
     `<div class="hint" style="margin:0 0 8px">Backup only. It contains named results, so keep it within university systems.</div>` +
@@ -3383,7 +3401,7 @@ function openBackup() {
 }
 async function sendBackup(b) {
   try {
-    const res = await firebase.functions().httpsCallable("sendNightBackup")({ course: S.course, nightDate: assessDate() || "", csv: b.csv, rowCount: b.rows.length, summaryLines: b.summary, byName: S.myName || "" });
+    const res = await firebase.functions().httpsCallable("sendNightBackup")({ course: S.course, nightDate: assessDate() || "", csv: b.csv, registerCsv: b.regCsv, registerRows: b.regRows.length, rowCount: b.rows.length, summaryLines: b.summary, byName: S.myName || "" });
     const r = res.data || {};
     N.nb = { course: S.course, to: (r.to && r.to.length ? r.to : (N.nb && N.nb.to) || NB_DEFAULT_TO), stamp: { sentAtIso: r.sentAtIso || new Date().toISOString(), byName: S.myName || "", filename: r.filename || nbFile() } };
     toast("Backup emailed to " + N.nb.to.join(", ") + ".");
@@ -3687,7 +3705,7 @@ function renderRetest() {
   $("viewRetest").querySelectorAll("[data-nbopen]").forEach(b => b.onclick = openBackup);
   bindReg($("viewRetest"));
   nextBind($("viewRetest"));
-  $("viewRetest").querySelectorAll("[data-nbdl]").forEach(b => b.onclick = () => { nbDownload(nbBuild()); toast("Downloaded " + nbFile()); });
+  $("viewRetest").querySelectorAll("[data-nbdl]").forEach(b => b.onclick = () => { nbDownload(nbBuild()); toast("Downloaded " + nbFile() + " and " + nbRegFile()); });
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => editAttempt(b.dataset.patt));
   $("viewRetest").querySelectorAll("[data-here]").forEach(b => b.onclick = () => {

@@ -4220,12 +4220,16 @@ exports.sendNightBackup = onCall({ secrets: [resendApiKey], region: "us-central1
   if (!course) throw new HttpsError("invalid-argument", "Course is required.");
   if (csv.length < 20) throw new HttpsError("invalid-argument", "The results file is empty.");
   if (csv.length > 900000) throw new HttpsError("invalid-argument", "The results file is too large to email.");
+  const registerCsv = typeof request.data?.registerCsv === "string" ? request.data.registerCsv : "";
+  if (registerCsv.length > 900000) throw new HttpsError("invalid-argument", "The register file is too large to email.");
+  const registerRows = Math.max(0, Math.min(100000, Number(request.data?.registerRows) || 0));
   const rowCount = Math.max(0, Math.min(100000, Number(request.data?.rowCount) || 0));
   const summaryLines = (Array.isArray(request.data?.summaryLines) ? request.data.summaryLines : []).slice(0, 20).map(x => String(x).slice(0, 200));
   const rawDate = String(request.data?.nightDate || "");
   const nightDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
   const slug = course.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "course";
   const filename = "RMD_assessment_night_backup_" + slug + "_" + nightDate + ".csv";
+  const registerFilename = "RMD_assessment_night_register_" + slug + "_" + nightDate + ".csv";
   const byEmail = (auth.token.email || "").toLowerCase();
   const byName = String(request.data?.byName || auth.token.name || byEmail || "").slice(0, 80);
 
@@ -4239,6 +4243,7 @@ exports.sendNightBackup = onCall({ secrets: [resendApiKey], region: "us-central1
   // Server-side copy first, so the results exist somewhere even if the email fails.
   await db.collection("stage1_night_backups").add({
     course, nightDate, filename, csv, rowCount, summaryLines, to,
+    registerFilename: registerCsv ? registerFilename : null, registerCsv, registerRows,
     createdAt: admin.firestore.FieldValue.serverTimestamp(), byUid: auth.uid, byEmail
   });
 
@@ -4247,7 +4252,8 @@ exports.sendNightBackup = onCall({ secrets: [resendApiKey], region: "us-central1
     "Backup copy of the assessment night results for " + course + ", " + nightDate + ".",
     "Sent from the RMD hub by " + byName + (byEmail ? " (" + byEmail + ")" : "") + ".",
     "",
-    "Rows in the attached file: " + rowCount + ".",
+    "Rows in the results file: " + rowCount + ".",
+    ...(registerCsv ? ["Register file (absent in week 1 or 2): " + registerRows + " people."] : []),
     ...summaryLines,
     "",
     "This is a backup only. It does not replace what is sent to the degree leads.",
@@ -4258,7 +4264,7 @@ exports.sendNightBackup = onCall({ secrets: [resendApiKey], region: "us-central1
     from: FROM_EMAIL, to, replyTo: REPLY_TO, subject,
     text: lines.join("\n"),
     html: '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1a2233;max-width:640px;">' + lines.map(l => l ? "<p style=\"margin:0 0 6px;\">" + String(l).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</p>" : "<br>").join("") + "</div>",
-    attachments: [{ filename, content: Buffer.from(csv, "utf8") }]
+    attachments: [{ filename, content: Buffer.from(csv, "utf8") }].concat(registerCsv ? [{ filename: registerFilename, content: Buffer.from(registerCsv, "utf8") }] : [])
   });
   if (error) {
     console.error("sendNightBackup: email failed", error.message || error);
