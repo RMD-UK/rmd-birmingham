@@ -3038,6 +3038,8 @@ function copyTxt(t) {
 const NM_ADMIN = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
 const NM_SIGN = `Kind regards,\nBLS Administrative Team\nRMD Birmingham\n\nRMD Birmingham - Basic Life Support Faculty\n${NM_ADMIN}\nInstagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
 const NIGHT_MAIL = {
+  passed: { title: "Passed: result email (send 3 days after assessment)", delayDays: 3, subject: "Your BLS assessment: result", body:
+    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are pleased to tell you that you passed. Well done.\n\nIf you enjoyed the course and would like to train as an RMD instructor, you can register your interest here: https://rmd.uk.com/instructor-eoi.html (this does not guarantee a place).\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
   notpassed2: { title: "Not passed at attempt 2: further course, then attempt 3", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
     "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry that you were not successful at your second attempt.\n\nWhat happens next:\n- A member of Student Faculty will explain the next steps to you.\n- You will repeat the BLS course in full (all 3 evenings), in a different teaching room with different instructors from your first course.\n- You will then sit your third attempt, assessed by Senior Faculty.\n\nWe will email you your new course and dates separately. If you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
   notpassed3: { title: "Not passed at attempt 3: further course, then attempt 4", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
@@ -3047,11 +3049,20 @@ const NIGHT_MAIL = {
   notseen: { title: "Not seen tonight: absent, not there, or not assessed", subject: "Your BLS assessment: please get in touch", body:
     "Dear {{first_name}},\n\nOur records show that your BLS assessment was not completed on {{assessment_date}}, so you do not have a result yet.\n\nPlease email us (" + NM_ADMIN + ") as soon as you can and tell us what happened, so that we can let you know your next step.\n\n" + NM_SIGN }
 };
+// Not before: some emails wait N days after the assessment date so the key emails go first (passed = 3 days). Returns "" when free to send, else the first day it can go (YYYY-MM-DD).
+function nmNotBefore(kind) {
+  const def = NIGHT_MAIL[kind], d = assessDate();
+  if (!def || !def.delayDays || !d) return "";
+  const t = new Date(d + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + def.delayDays);
+  const iso = t.toISOString().slice(0, 10), today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+  return today >= iso ? "" : iso;
+}
 function nmStamped(c, kind) { const f = (nres(c.id).flow || {}).comms; return !!(f && f[kind]); }
 function nmCands(kind) {
   const af = afterTonight();
   let l = [];
-  if (kind === "notpassed2") l = af.retrain.map(x => x.c);
+  if (kind === "passed") l = N.cands.filter(c => passedAtKey(c.id));
+  else if (kind === "notpassed2") l = af.retrain.map(x => x.c);
   else if (kind === "notpassed3") l = af.leads.map(x => x.c);
   else if (kind === "final") l = af.final.map(x => x.c);
   else if (kind === "notseen") {
@@ -3062,16 +3073,16 @@ function nmCands(kind) {
 }
 function mailCard(no) {
   const rows = Object.keys(NIGHT_MAIL).map(k => {
-    const l = nmCands(k), todo = l.filter(x => !x.done && x.email), done = l.filter(x => x.done).length, none = l.filter(x => !x.done && !x.email).length;
+    const l = nmCands(k), wait = nmNotBefore(k), todo = l.filter(x => !x.done && x.email), done = l.filter(x => x.done).length, none = l.filter(x => !x.done && !x.email).length;
     return `<div class="lrow"><span class="nm">${esc(NIGHT_MAIL[k].title)}</span>` +
-      `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to email${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}</small>` +
-      `<span class="pact"><button type="button" class="btn sm${todo.length ? " pri" : ""}" data-nmail="${k}"${todo.length ? "" : " disabled"}>Review and send (${todo.length})</button></span></div>`;
+      `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to email${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}${wait ? ` <b>Can be sent from ${esc(longDate(wait))}.</b>` : ""}</small>` +
+      `<span class="pact"><button type="button" class="btn sm${todo.length && !wait ? " pri" : ""}" data-nmail="${k}"${todo.length && !wait ? "" : " disabled"}>${wait ? "Not before " + esc(longDate(wait).replace(/ \d{4}$/, "")) : `Review and send (${todo.length})`}</button></span></div>`;
   }).join("");
   return `<div class="card"><h3><span class="stepno">${no || 5}</span>End of night: send emails</h3><div class="hint" style="margin:0 0 8px">Each email is shown for you to read and edit before it goes. Nobody is emailed twice. Sent emails are in Comms history.</div>${rows}</div>`;
 }
 function openNightMail(kind) {
   const def = NIGHT_MAIL[kind], l = nmCands(kind), todo = l.filter(x => !x.done && x.email), noMail = l.filter(x => !x.done && !x.email);
-  if (!todo.length) return;
+  if (!todo.length || nmNotBefore(kind)) return;
   const lim = typeof MAIL_DAY_LIMIT === "number" ? MAIL_DAY_LIMIT : 85;
   // Guarded emails (not passed): only people ticked as "seen face to face by RMD faculty" are emailed.
   const who = def.guard
