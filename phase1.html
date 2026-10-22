@@ -3040,12 +3040,9 @@ const NM_SIGN = `Kind regards,\nBLS Administrative Team\nRMD Birmingham\n\nRMD B
 const NIGHT_MAIL = {
   passed: { title: "Passed: result email (send 3 days after assessment)", delayDays: 3, subject: "Your BLS assessment: result", body:
     "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are pleased to tell you that you passed. Well done.\n\nIf you enjoyed the course and would like to train as an RMD instructor, you can register your interest here: https://rmd.uk.com/instructor-eoi.html (this does not guarantee a place).\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
-  notpassed2: { title: "Not passed at attempt 2: further course, then attempt 3", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
-    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry that you were not successful at your second attempt.\n\nWhat happens next:\n- A member of Student Faculty will explain the next steps to you.\n- You will repeat the BLS course in full (all 3 evenings), in a different teaching room with different instructors from your first course.\n- You will then sit your third attempt, assessed by Senior Faculty.\n\nWe will email you your new course and dates separately. If you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
-  notpassed3: { title: "Not passed at attempt 3: further course, then attempt 4", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result and next steps", body:
-    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry that you were not successful at your third attempt.\n\nWhat happens next:\n- A member of Senior Faculty will meet you to talk about your progress, anything that has made it harder to perform, and any extra support you may need.\n- Your programme lead will be told about the additional requirements.\n- You will repeat the BLS course in full (all 3 evenings) and then sit your fourth attempt.\n\nWe will email you your new course and dates separately. If you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
-  final: { title: "Final attempt (4) not passed", guard: "Seen face to face by RMD faculty", subject: "Your BLS assessment: result", body:
-    "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry that you were not successful at your fourth and final attempt.\n\nThis means you have not completed the course and cannot gain the ERC qualification. Your programme lead will be told. The effect on your degree programme is decided by the programme lead.\n\nIf you would like to talk this through, please email us (" + NM_ADMIN + ") and a member of Senior Faculty will be in touch.\n\n" + NM_SIGN },
+  notpassed2: { hidden: true, title: "Not passed at attempt 2: new course email" },
+  notpassed3: { hidden: true, title: "Not passed at attempt 3: new course email" },
+  final: { hidden: true, title: "Not passed at attempt 4: final email" },
   notseen: { title: "Not seen tonight: absent, not there, or not assessed", subject: "Your BLS assessment: please get in touch", body:
     "Dear {{first_name}},\n\nOur records show that your BLS assessment was not completed on {{assessment_date}}, so you do not have a result yet.\n\nPlease email us (" + NM_ADMIN + ") as soon as you can and tell us what happened, so that we can let you know your next step.\n\n" + NM_SIGN }
 };
@@ -3071,8 +3068,137 @@ function nmCands(kind) {
   }
   return l.map(c => { const sc = (S.cands || []).find(x => x.id === c.id) || {}; return { id: c.id, name: c.name, email: String(sc.email || "").trim(), done: nmStamped(c, kind) }; });
 }
+// ── Not passed: meet face to face, move to a new course, then email (22 Oct, Jon) ──────────────────────
+// Attempt 2 or 3 not passed: seen face to face, new course chosen and confirmed, then a personal email with the new
+// course dates, how to look up the room and assessment time (candidate-resources page and access code). Attempt 4 not passed:
+// seen face to face, then an email saying the course is not passed and the degree module lead will be told. Nobody is emailed
+// until every check on that person is done. The checks are saved on stage1_assessments/{id}.flow.next so they survive a refresh.
+const NEXT_KIND = { 2: "notpassed2", 3: "notpassed3", 4: "final" };
+const NEXT_ORD = { 2: "second", 3: "third", 4: "fourth" };
+function nextList() {
+  const out = [];
+  Object.keys(N.results || {}).forEach(id => {
+    const r = N.results[id] || {}, a = r.attempts || {};
+    if (Object.keys(a).some(k => a[k] && a[k].outcome === "pass")) return;
+    const ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+    if (!ks.length) return;
+    const k = Math.max.apply(null, ks); if (k < 2) return;
+    const fl = r.flow || {}, nx = fl.next || {};
+    if (nx.course && nx.course === S.course) return; // they are here as the destination of an earlier move
+    const c = (N.cands || []).find(x => x.id === id), sc = (S.cands || []).find(x => x.id === id) || {}, kind = NEXT_KIND[Math.min(k, 4)];
+    out.push({ id, k, kind, name: (c && c.name) || r.candidateName || id, email: String(sc.email || nx.email || "").trim(), onCourse: !!c, nx, stamp: (fl.comms || {})[kind] || null });
+  });
+  return out.sort((x, y) => x.k - y.k || String(x.name).localeCompare(String(y.name)));
+}
+function nextCourseOptions() {
+  const cur = (S.courseDates || []).find(x => x.name === S.course), today = assessDate() || "";
+  return (S.courseDates || []).filter(c => c.name !== S.course && !isCatchupCourse(c) && (isTestCourse(cur) ? isTestCourse(c) : !isTestCourse(c)) && (!today || c.date > today));
+}
+function nextDatesText(name) {
+  const d = weekDates(name); if (!d) return "";
+  return "- " + longDate(d[0]) + "\n- " + longDate(d[1]) + "\n- " + longDate(d[2]) + " = Assessment night";
+}
+function nextOk(x) { return !x.stamp && !!x.email && !!(x.nx.seen && x.nx.seen.by) && (x.k >= 4 || (!!x.nx.course && !!(x.nx.confirmed && x.nx.confirmed.by))); }
+function nextCard(no) {
+  const l = nextList(); if (!l.length) return "";
+  const opts = nextCourseOptions(), ready = l.filter(nextOk).length;
+  const rows = l.map(x => {
+    const nx = x.nx, seen = nx.seen && nx.seen.by ? `Seen face to face by ${esc(nx.seen.by)}${nx.seen.at ? " at " + esc(nbTime(nx.seen.at)) : ""}` : "";
+    const cOpts = `<option value="">Choose the new course...</option>` + opts.map(c => `<option value="${esc(c.name)}"${nx.course === c.name ? " selected" : ""}>${esc(c.name)} (starts ${esc(longDate((weekDates(c.name) || [c.date])[0]))})</option>`).join("");
+    const lock = x.stamp ? " disabled" : "";
+    let h = `<div class="lrow" style="align-items:flex-start"><span class="nm" style="flex-basis:100%">${esc(x.name)} <small>Not passed at attempt ${x.k}${x.k >= 4 ? ": final" : ""}</small></span>`;
+    if (x.stamp) {
+      h += `<small style="flex-basis:100%">Emailed ${esc(nbTime(x.stamp.at))} by ${esc(x.stamp.by || "someone")}${x.k < 4 && nx.course ? ". New course: " + esc(nx.course) : ""}.</small>`;
+    } else {
+      h += `<label style="flex-basis:100%;display:flex;gap:8px;align-items:center"><input type="checkbox" data-nxseen="${esc(x.id)}"${nx.seen && nx.seen.by ? " checked" : ""}> <span><b>1.</b> Seen face to face by RMD faculty${seen ? ` <small>(${seen})</small>` : ""}</span></label>`;
+      if (x.k < 4) {
+        h += `<div style="flex-basis:100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span><b>2.</b> New course</span><select data-nxcourse="${esc(x.id)}"${lock} style="min-width:220px">${cOpts}</select></div>`;
+        h += `<label style="flex-basis:100%;display:flex;gap:8px;align-items:center"><input type="checkbox" data-nxconf="${esc(x.id)}"${nx.confirmed && nx.confirmed.by ? " checked" : ""}${nx.course ? "" : " disabled"}> <span><b>3.</b> Confirmed: allocated to this new course${nx.confirmed && nx.confirmed.by ? ` <small>(${esc(nx.confirmed.by)})</small>` : ""}</span></label>`;
+        if (!opts.length) h += `<small style="flex-basis:100%;color:var(--bad,#b3261e)">No later course is set up in Settings, so no new course can be chosen yet.</small>`;
+      }
+      if (!x.email) h += `<small style="flex-basis:100%;color:var(--bad,#b3261e)">No email address on file for this person.</small>`;
+      h += `<span class="pact" style="margin-left:auto"><button type="button" class="btn sm${nextOk(x) ? " pri" : ""}" data-nxsend="${esc(x.id)}"${nextOk(x) ? "" : " disabled"}>Review and send email</button></span>`;
+    }
+    if (x.k < 4 && nx.course && nx.confirmed && x.onCourse) h += `<small style="flex-basis:100%">Still listed on ${esc(S.course)} in the system. A Director moves them to ${esc(nx.course)} in Course Allocation.</small>`;
+    return h + `</div>`;
+  }).join("");
+  return `<div class="card"><h3><span class="stepno">${no}</span>Not passed: meet, move to a new course, then email (${ready} of ${l.filter(x => !x.stamp).length} ready)</h3><div class="hint" style="margin:0 0 8px">Do the checks for each person. The email can only be sent when they are all done. Attempt 2 and 3: a new course and the dates go in the email. Attempt 4: the email says the course is not passed and that the degree module lead will be told.</div>${rows}</div>`;
+}
+async function nextSave(id, name, patch) {
+  try { await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: name || "", flow: { next: patch }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); return true; }
+  catch (e) { toast("Could not save: " + ((e && e.message) || e), true); return false; }
+}
+function nextBind(root) {
+  const find = id => nextList().find(x => x.id === id);
+  root.querySelectorAll("[data-nxseen]").forEach(cb => cb.onchange = async () => {
+    const x = find(cb.dataset.nxseen); if (!x) return;
+    if (cb.checked) {
+      const ok = await askSheet("Seen face to face?", "Confirm that <b>" + esc(x.name) + "</b> has been seen face to face by a member of RMD faculty.", "Yes, seen");
+      if (!ok) { cb.checked = false; return; }
+      await nextSave(x.id, x.name, { seen: { by: S.myName || "", uid: S.user ? S.user.uid : "", at: new Date().toISOString() } });
+    } else await nextSave(x.id, x.name, { seen: null });
+    renderRetest();
+  });
+  root.querySelectorAll("[data-nxcourse]").forEach(sel => sel.onchange = async () => {
+    const x = find(sel.dataset.nxcourse); if (!x) return;
+    await nextSave(x.id, x.name, { course: sel.value || null, confirmed: null, email: x.email || null });
+    renderRetest();
+  });
+  root.querySelectorAll("[data-nxconf]").forEach(cb => cb.onchange = async () => {
+    const x = find(cb.dataset.nxconf); if (!x || !x.nx.course) { cb.checked = false; return; }
+    if (cb.checked) {
+      const ok = await askSheet("New course confirmed?", "Confirm that <b>" + esc(x.name) + "</b> has been allocated to <b>" + esc(x.nx.course) + "</b>.", "Yes, confirmed");
+      if (!ok) { cb.checked = false; return; }
+      await nextSave(x.id, x.name, { confirmed: { by: S.myName || "", uid: S.user ? S.user.uid : "", at: new Date().toISOString() }, email: x.email || null });
+    } else await nextSave(x.id, x.name, { confirmed: null });
+    renderRetest();
+  });
+  root.querySelectorAll("[data-nxsend]").forEach(b => b.onclick = () => openNextMail(b.dataset.nxsend));
+}
+function nextBuild(x, code) {
+  if (x.k >= 4) return {
+    subject: "Your BLS assessment: result",
+    body: ["Dear {{first_name}},",
+      "Thank you for attending your BLS assessment evening on {{assessment_date}}. We are sorry that you were not successful at your fourth and final attempt, so you have not passed the BLS course.",
+      "We will inform your degree module lead, who will be in touch with you. If you would like to talk this through in the meantime, please email us (" + NM_ADMIN + ").",
+      NM_SIGN].join("\n\n") };
+  const ord = NEXT_ORD[x.k], nord = NEXT_ORD[x.k + 1], course = x.nx.course;
+  return {
+    subject: "Your BLS assessment: result and your next course",
+    body: ["Dear {{first_name}},",
+      "Thank you for attending your BLS assessment evening on {{assessment_date}}, and for talking things through with us afterwards. We are sorry that you were not successful at your " + ord + " attempt.",
+      "What happens next:\n- You need to repeat the BLS course in full (all 3 evenings), in a different teaching room with different instructors from your last course.\n- You then sit your " + nord + " attempt on the assessment night at the end of that course, assessed by Senior Faculty.",
+      "Your new course: " + course + "\n" + nextDatesText(course),
+      "You can look up your course dates, your room and, once it has been set, your assessment time at " + CANDIDATE_RESOURCES_URL + ". The access code is " + code + ". Enter your degree, full name and email address, then select \"Find my course, room and assessment\". If nothing shows yet, please check back nearer the time.",
+      "If you cannot attend any of these dates, please email us (" + NM_ADMIN + ") as soon as you can.",
+      NM_SIGN].join("\n\n") };
+}
+const CANDIDATE_RESOURCES_URL = "https://rmd.uk.com/candidate-resources.html";
+async function openNextMail(id) {
+  const x = nextList().find(y => y.id === id); if (!x || !nextOk(x)) return;
+  let code = "";
+  if (x.k < 4) {
+    try { const s = await db.collection("config").doc("candidate_access").get(); code = s.exists ? String(s.data().code || "").trim() : ""; } catch (e) {}
+    if (!code) { toast("No candidate access code is set. A Director adds one on the Stage 1 Candidates page, then try again.", true); return; }
+  }
+  const m = nextBuild(x, code);
+  $("overlay").innerHTML = `<div class="modalbg" id="nmbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>Email to ${esc(x.name)}</h3>` +
+    `<div class="hint" style="margin:0 0 6px">To: ${esc(x.email)}. Seen face to face by ${esc(x.nx.seen.by)}${x.k < 4 ? `. New course: ${esc(x.nx.course)}, confirmed by ${esc(x.nx.confirmed.by)}` : ""}.</div>` +
+    `<input type="text" id="nmSub" value="${esc(m.subject)}" style="margin:6px 0"><textarea id="nmBody" style="min-height:300px">${esc(m.body)}</textarea>` +
+    `<div class="hint" style="margin:4px 0 0">{{first_name}} and {{assessment_date}} are filled in when it is sent. You can edit the text first.</div>` +
+    `<div class="row2" style="margin-top:12px"><button type="button" class="btn pri" id="nmSend">Send email</button><button type="button" class="btn" id="nmCancel">Cancel</button></div></div></div>`;
+  const close = () => { $("overlay").innerHTML = ""; };
+  $("nmCancel").onclick = close; $("nmbg").onclick = e => { if (e.target.id === "nmbg") close(); };
+  $("nmSend").onclick = async () => {
+    const subject = $("nmSub").value.trim(), body = $("nmBody").value.trim();
+    if (!subject || !body) { toast("Subject and message are needed.", true); return; }
+    $("nmSend").disabled = true; $("nmSend").textContent = "Sending...";
+    await sendNightMail(x.kind, [{ id: x.id, name: x.name, email: x.email }], subject, body);
+    close(); renderRetest();
+  };
+}
 function mailCard(no) {
-  const rows = Object.keys(NIGHT_MAIL).map(k => {
+  const rows = Object.keys(NIGHT_MAIL).filter(k => !NIGHT_MAIL[k].hidden).map(k => {
     const l = nmCands(k), wait = nmNotBefore(k), todo = l.filter(x => !x.done && x.email), done = l.filter(x => x.done).length, none = l.filter(x => !x.done && !x.email).length;
     return `<div class="lrow"><span class="nm">${esc(NIGHT_MAIL[k].title)}</span>` +
       `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to email${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}${wait ? ` <b>Can be sent from ${esc(longDate(wait))}.</b>` : ""}</small>` +
@@ -3531,8 +3657,9 @@ function renderRetest() {
     h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
     h += hereCard(pool, 4);
     nbLoad();
-    h += mailCard(5);
-    h += backupCard(6);
+    h += nextCard(5);
+    h += mailCard(nextList().length ? 6 : 5);
+    h += backupCard(nextList().length ? 7 : 6);
     if (stale.length) h += staleCard();
     const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
     h += more;
@@ -3551,6 +3678,7 @@ function renderRetest() {
   $("viewRetest").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));
   $("viewRetest").querySelectorAll("[data-nbopen]").forEach(b => b.onclick = openBackup);
   bindReg($("viewRetest"));
+  nextBind($("viewRetest"));
   $("viewRetest").querySelectorAll("[data-nbdl]").forEach(b => b.onclick = () => { nbDownload(nbBuild()); toast("Downloaded " + nbFile()); });
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => editAttempt(b.dataset.patt));
