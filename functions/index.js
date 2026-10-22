@@ -4097,7 +4097,40 @@ exports.sendBulkComms = onCall({ secrets: [resendApiKey], region: "us-central1" 
   if (!valid.length) throw new HttpsError("invalid-argument", "No recipients with an email address.");
 
   if (dryRun) {
-    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [], queued: 0, varsSupported: true };
+    return { dryRun: true, recipientCount: valid.length, sent: 0, failed: 0, failedEmails: [], queued: 0, varsSupported: true, scheduleSupported: true };
+  }
+
+  // 2026-10-22, Jon: some emails (assessment night "you have passed") must wait a set number of days after the night without anyone
+  // pressing anything later. The caller passes sendNotBefore = "YYYY-MM-DD" (London date). If that day is still in the future the
+  // whole send is parked in comms_queue with status "scheduled"; processCommsQueueDaily (06:00 London) releases it on that day.
+  // Status "scheduled" (not "active") on purpose: an old processCommsQueueDaily ignores it, so a missed deploy means the emails are
+  // late, never early. If the day has already come, this is an ordinary immediate send.
+  const sendNotBefore = String(request.data?.sendNotBefore || "").trim();
+  if (sendNotBefore) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(sendNotBefore)) throw new HttpsError("invalid-argument", "sendNotBefore must be YYYY-MM-DD.");
+    const todayLondon = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+    const limitD = new Date(); limitD.setUTCDate(limitD.getUTCDate() + 30);
+    if (sendNotBefore > limitD.toISOString().slice(0, 10)) throw new HttpsError("invalid-argument", "sendNotBefore is more than 30 days away.");
+    if (sendNotBefore > todayLondon) {
+      const queueDoc = await db.collection(COMMS_QUEUE_COLLECTION).add({
+        subject, message, groupLabel,
+        remaining: valid,
+        sentTo: [], failedEmails: [],
+        status: "scheduled", notBefore: sendNotBefore,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdByUid: auth.uid,
+        createdByEmail: (auth.token.email || "").toLowerCase(),
+      });
+      await db.collection("comms_log").add({
+        groupLabel, subject, message,
+        recipientCount: valid.length, sent: 0, failedEmails: [], sentTo: [],
+        queuedCount: valid.length, queueId: queueDoc.id, scheduledFor: sendNotBefore,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        sentByUid: auth.uid,
+        sentByEmail: (auth.token.email || "").toLowerCase()
+      });
+      return { sent: 0, failed: 0, failedEmails: [], queued: valid.length, queueId: queueDoc.id, scheduledFor: sendNotBefore };
+    }
   }
 
   const resend = new Resend(resendApiKey.value());
@@ -4256,7 +4289,11 @@ exports.processCommsQueueDaily = onSchedule(
     // via .orderBy(), which would need a composite index Firestore doesn't
     // have yet. This runs on a schedule with nobody around to click the
     // "create index" link a missing one would otherwise surface.
-    const snap = await db.collection(COMMS_QUEUE_COLLECTION).where("status", "==", "active").get();
+    const snapActive = await db.collection(COMMS_QUEUE_COLLECTION).where("status", "==", "active").get();
+    // 2026-10-22: jobs parked by sendBulkComms (sendNotBefore) are released once their day has come (London date).
+    const todayLondon = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+    const snapSched = await db.collection(COMMS_QUEUE_COLLECTION).where("status", "==", "scheduled").get();
+    const snap = { docs: snapActive.docs.concat(snapSched.docs.filter(d => String(d.data().notBefore || "") && String(d.data().notBefore) <= todayLondon)) };
     const docsOldestFirst = snap.docs.slice().sort((a, b) => {
       const at = a.data().createdAt?.toMillis?.() || 0;
       const bt = b.data().createdAt?.toMillis?.() || 0;

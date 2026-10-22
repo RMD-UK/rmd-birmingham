@@ -3038,7 +3038,7 @@ function copyTxt(t) {
 const NM_ADMIN = "colmds-c-rmdbirmingham@adf.bham.ac.uk";
 const NM_SIGN = `Kind regards,\nBLS Administrative Team\nRMD Birmingham\n\nRMD Birmingham - Basic Life Support Faculty\n${NM_ADMIN}\nInstagram: @RMDBirmingham (https://www.instagram.com/rmdbirmingham/)`;
 const NIGHT_MAIL = {
-  passed: { title: "Passed: result email (send 3 days after assessment)", delayDays: 3, subject: "Your BLS assessment: result", body:
+  passed: { title: "Passed: result email (goes out automatically 3 days after the night)", delayDays: 3, subject: "Your BLS assessment: result", body:
     "Dear {{first_name}},\n\nThank you for attending your BLS assessment evening on {{assessment_date}}. We are pleased to tell you that you passed. Well done.\n\nIf you enjoyed the course and would like to train as an RMD instructor, you can register your interest here: https://rmd.uk.com/instructor-eoi.html (this does not guarantee a place).\n\nIf you have any questions, please email us (" + NM_ADMIN + ").\n\n" + NM_SIGN },
   notpassed2: { hidden: true, title: "Not passed at attempt 2: new course email" },
   notpassed3: { hidden: true, title: "Not passed at attempt 3: new course email" },
@@ -3046,14 +3046,17 @@ const NIGHT_MAIL = {
   notseen: { title: "Not seen tonight: absent, not there, or not assessed", subject: "Your BLS assessment: please get in touch", body:
     "Dear {{first_name}},\n\nOur records show that your BLS assessment, which was scheduled to take place on {{assessment_date}}, was not completed as you did not attend.\n\nPlease email us (" + NM_ADMIN + ") as soon as you can and tell us what happened, so that we can let you know your next step. You will not be reallocated to another course until we have heard from you, and we hope that all is well, as you did not attend.\n\n" + NM_SIGN }
 };
-// Not before: some emails wait N days after the assessment date so the key emails go first (passed = 3 days). Returns "" when free to send, else the first day it can go (YYYY-MM-DD).
-function nmNotBefore(kind) {
+// Delayed emails: some groups wait N days after the assessment date (passed = 3 days). The hub does not hold the button back: the send
+// is handed to the server with sendNotBefore and goes out by itself at about 06:00 London on that day. Returns YYYY-MM-DD, or "".
+function nmSendDate(kind) {
   const def = NIGHT_MAIL[kind], d = assessDate();
   if (!def || !def.delayDays || !d) return "";
   const t = new Date(d + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + def.delayDays);
-  const iso = t.toISOString().slice(0, 10), today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
-  return today >= iso ? "" : iso;
+  return t.toISOString().slice(0, 10);
 }
+function nmToday() { return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" }); }
+// A stamp with scheduledFor in the future means "booked, not yet sent".
+function nmIsScheduled(c, kind) { const f = ((nres(c.id).flow || {}).comms || {})[kind]; return !!(f && f.scheduledFor && nmToday() < f.scheduledFor); }
 function nmStamped(c, kind) { const f = (nres(c.id).flow || {}).comms; return !!(f && f[kind]); }
 function nmCands(kind) {
   const af = afterTonight();
@@ -3066,7 +3069,7 @@ function nmCands(kind) {
     const inAf = new Set([].concat(af.retrain, af.leads, af.final).map(x => x.c.id));
     l = N.cands.filter(c => !c.absent && !inAf.has(c.id) && !passedAtKey(c.id) && (hasSlot(c) || effAttempt(c) >= 2) && !nattempts(c.id)[String(effAttempt(c))]);
   }
-  return l.map(c => { const sc = (S.cands || []).find(x => x.id === c.id) || {}; return { id: c.id, name: c.name, email: String(sc.email || "").trim(), done: nmStamped(c, kind) }; });
+  return l.map(c => { const sc = (S.cands || []).find(x => x.id === c.id) || {}; return { id: c.id, name: c.name, email: String(sc.email || "").trim(), done: nmStamped(c, kind), sched: nmIsScheduled(c, kind) }; });
 }
 // ── Not passed: meet face to face, move to a new course, then email (22 Oct, Jon) ──────────────────────
 // Attempt 2 or 3 not passed: seen face to face, new course chosen and confirmed, then a personal email with the new
@@ -3199,23 +3202,23 @@ async function openNextMail(id) {
 }
 function mailCard(no) {
   const rows = Object.keys(NIGHT_MAIL).filter(k => !NIGHT_MAIL[k].hidden).map(k => {
-    const l = nmCands(k), wait = nmNotBefore(k), todo = l.filter(x => !x.done && x.email), done = l.filter(x => x.done).length, none = l.filter(x => !x.done && !x.email).length;
+    const l = nmCands(k), todo = l.filter(x => !x.done && x.email), sched = l.filter(x => x.sched).length, done = l.filter(x => x.done && !x.sched).length, none = l.filter(x => !x.done && !x.email).length, due = nmSendDate(k);
     return `<div class="lrow"><span class="nm">${esc(NIGHT_MAIL[k].title)}</span>` +
-      `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to email${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}${wait ? ` <b>Can be sent from ${esc(longDate(wait))}.</b>` : ""}</small>` +
-      `<span class="pact"><button type="button" class="btn sm${todo.length && !wait ? " pri" : ""}" data-nmail="${k}"${todo.length && !wait ? "" : " disabled"}>${wait ? "Not before " + esc(longDate(wait).replace(/ \d{4}$/, "")) : `Review and send (${todo.length})`}</button></span></div>`;
+      `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to ${due ? "schedule" : "email"}${sched ? `, ${sched} scheduled` : ""}${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}${due ? ` <b>Press send tonight: it goes out by itself on ${esc(longDate(due))} at about 6am.</b>` : ""}</small>` +
+      `<span class="pact"><button type="button" class="btn sm${todo.length ? " pri" : ""}" data-nmail="${k}"${todo.length ? "" : " disabled"}>${due ? "Review and schedule" : "Review and send"} (${todo.length})</button></span></div>`;
   }).join("");
   return `<div class="card"><h3><span class="stepno">${no || 5}</span>End of night: send emails</h3><div class="hint" style="margin:0 0 8px">Each email is shown for you to read and edit before it goes. Nobody is emailed twice. Sent emails are in Comms history.</div>${rows}</div>`;
 }
 function openNightMail(kind) {
   const def = NIGHT_MAIL[kind], l = nmCands(kind), todo = l.filter(x => !x.done && x.email), noMail = l.filter(x => !x.done && !x.email);
-  if (!todo.length || nmNotBefore(kind)) return;
+  if (!todo.length) return;
   const lim = typeof MAIL_DAY_LIMIT === "number" ? MAIL_DAY_LIMIT : 85;
   // Guarded emails (not passed): only people ticked as "seen face to face by RMD faculty" are emailed.
   const who = def.guard
     ? `<div class="hint" style="margin:0 0 4px"><b>Tick each person once RMD faculty have seen them face to face.</b> Only ticked people are emailed. Unticked people stay on the list for later.</div><div id="nmPeople" style="border:1px solid var(--line);border-radius:10px;padding:4px 10px;margin:0 0 6px">` +
       todo.map((x, i) => `<label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-weight:700"><input type="checkbox" data-nmp="${i}"> ${esc(x.name)} <small style="font-weight:500;color:var(--mut)">${esc(def.guard)}</small></label>`).join("") + `</div>` +
       `<div class="tools" style="margin:0 0 6px"><button type="button" class="btn sm" id="nmAll">Tick everyone</button><button type="button" class="btn sm" id="nmNone">Untick everyone</button></div>`
-    : `<div class="hint" style="margin:0 0 6px"><b>${todo.length}</b> will be emailed: ${esc(todo.map(x => x.name).join(", "))}.${todo.length > lim ? ` ${todo.length - lim} are queued for the next days.` : ""}</div>`;
+    : `<div class="hint" style="margin:0 0 6px"><b>${todo.length}</b> will be ${nmSendDate(kind) ? "scheduled" : "emailed"}: ${esc(todo.map(x => x.name).join(", "))}.${nmSendDate(kind) ? ` <b>Nothing is sent now. These go out automatically on ${esc(longDate(nmSendDate(kind)))} at about 6am, with no further action.</b>` : (todo.length > lim ? ` ${todo.length - lim} are queued for the next days.` : "")}</div>`;
   $("overlay").innerHTML = `<div class="modalbg" id="nmbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>${esc(def.title)}</h3>` + who +
     (noMail.length ? `<div class="hint" style="margin:0 0 6px">No email address on file (not emailed): ${esc(noMail.map(x => x.name).join(", "))}.</div>` : "") +
     `<input type="text" id="nmSub" value="${esc(def.subject)}" style="margin:6px 0"><textarea id="nmBody" style="min-height:240px">${esc(def.body)}</textarea>` +
@@ -3223,7 +3226,7 @@ function openNightMail(kind) {
     `<div class="row2" style="margin-top:12px"><button type="button" class="btn pri" id="nmSend"></button><button type="button" class="btn" id="nmCancel">Cancel</button></div></div></div>`;
   const close = () => { $("overlay").innerHTML = ""; };
   const picked = () => def.guard ? todo.filter((x, i) => { const cb = $("overlay").querySelector(`[data-nmp="${i}"]`); return cb && cb.checked; }) : todo;
-  const refresh = () => { const n = picked().length; $("nmSend").disabled = n === 0; $("nmSend").textContent = n ? `Send ${n} email${n === 1 ? "" : "s"}` : "Tick at least one person"; };
+  const refresh = () => { const n = picked().length; $("nmSend").disabled = n === 0; $("nmSend").textContent = n ? `${nmSendDate(kind) ? "Schedule" : "Send"} ${n} email${n === 1 ? "" : "s"}` : "Tick at least one person"; };
   $("nmCancel").onclick = close; $("nmbg").onclick = e => { if (e.target.id === "nmbg") close(); };
   if (def.guard) {
     $("overlay").querySelectorAll("[data-nmp]").forEach(cb => cb.onchange = refresh);
@@ -3241,17 +3244,22 @@ function openNightMail(kind) {
   };
 }
 async function sendNightMail(kind, todo, subject, body) {
-  const d = assessDate(), dateTxt = d ? longDate(d) : "";
+  const d = assessDate(), dateTxt = d ? longDate(d) : "", due = nmSendDate(kind);
   try {
     const call = firebase.functions().httpsCallable("sendBulkComms");
     const probe = await call({ recipients: [{ name: "x", email: "x@x.x" }], subject, message: body, groupLabel: "probe", dryRun: true });
     if (!probe.data || probe.data.varsSupported !== true) { toast("Emails not sent: the updated functions have not been deployed yet.", true); return; }
-    const res = await call({ recipients: todo.map(x => ({ name: x.name, email: x.email, vars: { assessment_date: dateTxt } })), subject, message: body, groupLabel: "Assessment night - " + NIGHT_MAIL[kind].title + " - " + S.course, dryRun: false });
+    if (due && probe.data.scheduleSupported !== true) { toast("Not scheduled: the updated functions have not been deployed yet. Nothing was sent.", true); return; }
+    const payload = { recipients: todo.map(x => ({ name: x.name, email: x.email, vars: { assessment_date: dateTxt } })), subject, message: body, groupLabel: "Assessment night - " + NIGHT_MAIL[kind].title + " - " + S.course, dryRun: false };
+    if (due) payload.sendNotBefore = due;
+    const res = await call(payload);
     const r = res.data || {}, bad = new Set((r.failedEmails || []).map(x => String(x).toLowerCase()));
     const ok = todo.filter(x => !bad.has(x.email.toLowerCase()));
     const stamp = { at: new Date().toISOString(), by: S.myName || "" };
+    if (r.scheduledFor) stamp.scheduledFor = r.scheduledFor;
     await Promise.all(ok.map(x => db.collection("stage1_assessments").doc(x.id).set({ course: S.course, candidateName: x.name || "", flow: { comms: { [kind]: stamp } }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }).catch(() => null)));
-    toast("Emailed " + (r.sent || 0) + " of " + todo.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + ".");
+    if (r.scheduledFor) toast("Scheduled " + todo.length + " email" + (todo.length === 1 ? "" : "s") + " to go out on " + longDate(r.scheduledFor) + " at about 6am.");
+    else toast("Emailed " + (r.sent || 0) + " of " + todo.length + (r.queued ? " (" + r.queued + " queued for the next days)" : "") + (r.failed ? ", " + r.failed + " failed" : "") + ".");
   } catch (err) { toast("Email failed: " + (err.message || err), true); }
 }
 // ── End-of-night results backup (22 Oct, Jon) ───────────────────────────────────────────────────────
@@ -3302,7 +3310,7 @@ function nbBuild() {
     const ov = sc.eligibilityOverride && sc.eligibilityOverride.by ? sc.eligibilityOverride : null;
     const ovTxt = ov ? [ov.reason, ov.how, ov.present ? "present: " + ov.present : "", ov.note ? "note: " + ov.note : ""].filter(Boolean).join("; ") + " (by " + (ov.byName || "someone") + ", " + nbTime(ov.at) + ")" : "";
     const edits = Object.values(fl.edits || {}).sort((x, y) => String(x.at).localeCompare(String(y.at))).map(e => "Attempt " + e.from + " to " + e.to + " by " + (e.byName || "someone") + " (" + nbTime(e.at) + ")").join("; ");
-    const mails = Object.keys(fl.comms || {}).map(k => (NIGHT_MAIL[k] ? NIGHT_MAIL[k].title : k) + ": " + nbTime(fl.comms[k].at) + " by " + (fl.comms[k].by || "someone")).join("; ");
+    const mails = Object.keys(fl.comms || {}).map(k => (NIGHT_MAIL[k] ? NIGHT_MAIL[k].title : k) + ": " + nbTime(fl.comms[k].at) + (fl.comms[k].scheduledFor ? " (scheduled for " + fl.comms[k].scheduledFor + ")" : "") + " by " + (fl.comms[k].by || "someone")).join("; ");
     const who = [S.course, date, c.name, sc.email || "", c.degree || sc.degree || "", sc.yearOfStudy || "", sc.studentId || "", c.rap ? "Yes" : "", reg(c.id, 1), reg(c.id, 2), ovTxt];
     const tail = [st.text, edits, mails, c.id];
     const at = nattempts(c.id), keys = Object.keys(at).filter(k => at[k]).sort((x, y) => x - y);
