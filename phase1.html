@@ -981,19 +981,25 @@ function raRoom(course, c) {
   ROOMS.forEach(r => { const inRoom = on.filter(x => x.room === r); if (inRoom.length >= RA_ROOM_LIMIT) return; const same = inRoom.filter(x => raDegKey(x) === dk).length; if (!best || same < best.same || (same === best.same && inRoom.length < best.total)) best = { r, same, total: inRoom.length }; });
   return best ? best.r : null;
 }
-function raTeam(course, room) {
+async function raTeam(course, room) {
   const own = RA.ctx.docs.find(d => d.id === course.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || d.course === course);
   const has = t => !!t && Object.values(t).some(a => (a || []).length);
   const teams = own && has(own.instructorTeams) ? own.instructorTeams : (RA.ctx.def && RA.ctx.def.instructorTeams) || {};
   const uids = (teams[room] || []).slice(), nm = new Map();
   RA.ctx.cands.forEach(x => (x.instructorTeamUids || []).forEach((u, i) => { if ((x.instructorTeamNames || [])[i]) nm.set(u, x.instructorTeamNames[i]); }));
-  return { uids, names: uids.map(u => nm.get(u) || u) };
+  // Names for anyone not already named on another candidate: read the person's record, else a plain label (never the raw id).
+  for (const u of uids) {
+    if (nm.get(u)) continue;
+    try { const d = await db.collection("people").doc(u).get(), x = d.exists ? d.data() : null;
+      if (x) { const sur = x.passportLastName || (x.name ? x.name.trim().split(/\s+/).pop() : ""), first = x.preferredName ? x.preferredName.trim().split(/\s+/)[0] : (x.name ? x.name.trim().split(/\s+/)[0] : ""); nm.set(u, [first, sur].filter(Boolean).join(" ")); } } catch (e) {}
+  }
+  return { uids, names: uids.map(u => nm.get(u) || "Instructor") };
 }
 async function raMove(c, target, reason) {
   const full = RA.ctx.cands.find(x => x.id === c.id) || c, room = raRoom(target.name, full);
   if (!room) throw new Error("Every room on " + target.name + " is full.");
   if (isTestCourse(target) !== isTestCourse({ name: S.course, test: (S.courseDates.find(x => x.name === S.course) || {}).test })) throw new Error("Real and test courses must not mix.");
-  const team = raTeam(target.name, room), at = new Date().toISOString(), r = S.reg[c.id] || {};
+  const team = await raTeam(target.name, room), at = new Date().toISOString(), r = S.reg[c.id] || {};
   const entry = { course: S.course, at, room: full.room || null, teamUids: (full.instructorTeamUids || []).slice(), teamNames: (full.instructorTeamNames || []).slice(),
     w1: (r.w1 && r.w1.status) || null, w2: (r.w2 && r.w2.status) || null, w1reason: (r.w1 && r.w1.absentReason) || null, outcome: (r.w2 && r.w2.outcome && r.w2.outcome.type) || null, reason: reason || null, by: S.user.uid, byName: S.myName, via: "hub" };
   const upd = { course: target.name, room, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: null, allocatedAt: at, placementChecked: true, overCapacity: null,
