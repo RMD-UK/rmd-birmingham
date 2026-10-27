@@ -648,7 +648,8 @@ function renderSteps() {
     { no: 12, t: "Assessment night live screen", s: "Big screen: assessment night", href: "assessment-live.html", who: "full" },
     { no: 13, t: "Flow screen", s: "Big screen: who is where tonight (dots, no names)", href: "assessment-flow.html", who: "full" },
     { no: 14, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" },
-    { no: 15, t: "Planning overview", s: "What to do before the night, in order", view: "plan", who: "full", onlyRole: true }
+    { no: 15, t: "Planning overview", s: "What to do before the night, in order", view: "plan", who: "full", onlyRole: true },
+    { no: 16, t: "Assessment results", s: "Pass rates, retests and who has passed", href: "assessment-results.html", who: "full" }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
   let list = jobs.filter(j => ok(j) && !j.onlyRole), pin = "";
@@ -686,7 +687,7 @@ const ROLE_DEFS = {
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night && !S.teamOnly, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && !S.teamOnly && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 14, t: "Switch check-in ON", s: "First job of the night: assessors then take only collected people" }, { no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 12 }, { no: 13 }] },
+    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 14, t: "Switch check-in ON", s: "First job of the night: assessors then take only collected people" }, { no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 12 }, { no: 13 }, { no: 16 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
     { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
@@ -2747,7 +2748,7 @@ function facultyData() {
 function renderFacultyTab() {
   const f = facultyData(), af = f.af;
   let h = `<div class="hint" style="margin:0 0 8px">Who RMD faculty are expected to see. Check people in here when they come back. Nothing is emailed from here.</div>`;
-  h += `<div class="dhead">Referred tonight, retest to arrange (${f.refd.length})<small>Not retested yet. Check them in when they return for attempt 2.</small></div>`;
+  h += `<div class="dhead">Retest tonight, to arrange (${f.refd.length})<small>Not retested yet. Check them in when they return for attempt 2.</small></div>`;
   h += f.refd.length ? f.refd.map(deskRow).join("") : `<div class="hint">Nobody yet.</div>`;
   h += `<div class="dhead">Other people on the retest list (${f.pool.length})<small>Attempt 2 or later, not yet assessed at their current attempt.</small></div>`;
   h += f.pool.length ? f.pool.map(deskRow).join("") : `<div class="hint">Nobody.</div>`;
@@ -2883,7 +2884,7 @@ function renderAssessor() {
   $("msgs").innerHTML = nightBanner();
   $("plain").innerHTML = '<span class="lbl">Assessor view</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Pick your room, then tap a candidate. ` +
-    (showPool ? `Referred at attempt 1: <b>Retest pool</b>${pool.length ? ` (${pool.length})` : ""}.` : "");
+    (showPool ? `Retest tonight (not passed at attempt 1): <b>Retest pool</b>${pool.length ? ` (${pool.length})` : ""}.` : "");
   const chips = rooms.map(r => {
     const l = by[r], dn = l.filter(isDoneN).length;
     return `<button type="button" class="rchip${N.room === r ? " on" : ""}" data-aroom="${esc(r)}"><b>${esc(r)}</b><small>${dn}/${l.length} done</small></button>`;
@@ -2949,7 +2950,7 @@ function roomBody(room, list) {
     (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(legacy).join("") : "");
 }
 function poolBody(pool) {
-  if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody waiting. People appear when referred at attempt 1, or set to attempt 2 or more.</div>';
+  if (!pool.length) return '<h3>Retest pool</h3><div class="hint">Nobody waiting. People appear when they have a retest tonight (not passed at attempt 1), or are set to attempt 2 or more.</div>';
   const row = c => {
     const att = effAttempt(c), chk = canAssessCandidate(c, att), cl = nres(c.id).claim, mine = cl && cl.uid === S.user.uid;
     const prev = nattempts(c.id)["1"];
@@ -3277,7 +3278,7 @@ async function saveResult(c, att, outcome, d, amend) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
   if (outcome === "pass") toast("Saved: " + c.name + " passed.");
-  else if (att <= 1) toast(c.name + " is referred and now in the retest pool (attempt 2).");
+  else if (att <= 1) toast(c.name + " has a retest tonight and is now in the retest pool (attempt 2).");
   else toast("Saved: " + c.name + " - " + outcomeShort(outcome, att).toLowerCase() + ". Listed for the team on the Retest pool page.");
 }
 
@@ -3815,7 +3816,7 @@ function attemptStatus(c) {
   if (inPool(c)) return { cls: "bad", text: "In the retest pool" };
   const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
   const k = ks.length ? Math.max.apply(null, ks) : 0;
-  if (k === 1) return { cls: "bad", text: "Referred, due a retest tonight" };
+  if (k === 1) return { cls: "bad", text: "Retest tonight" };
   if (k === 2) return { cls: "", text: "Awaiting retraining (attempt 3 on a later course)" };
   if (k === 3) return { cls: "", text: "Back to degree leads" };
   if (k >= 4) return { cls: "bad", text: "Not passed (final)" };
@@ -3953,7 +3954,7 @@ function renderRetest() {
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
     `An assessor takes each one from the Assessor view. ` +
-    (simple ? "" : `Anyone referred at attempt 1 needs a retest room: open <b>step 2</b>.`);
+    (simple ? "" : `Anyone with a retest tonight needs a retest room: open <b>step 2</b>.`);
   const needRoom = c => effAttempt(c) === 2 && !resitRoom(c) && !(nres(c.id).claim && nres(c.id).claim.uid);
   const need = simple ? [] : pool.filter(needRoom), queue = simple ? pool : pool.filter(c => !needRoom(c));
   const has3 = pool.some(c => effAttempt(c) >= 3);
@@ -3961,7 +3962,7 @@ function renderRetest() {
     `${nightTile(need.length, "Need a retest room", need.length > 0)}${nightTile(waiting.length - need.length, "Queued, waiting for an assessor")}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
     (has3 ? nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0) : "") +
     `${nightTile(af.retrain.length + af.leads.length + af.final.length, "Not retested tonight", af.retrain.length + af.leads.length + af.final.length > 0)}`) + `</div>`;
-  const staleCard = () => `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> referred on the night, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
+  const staleCard = () => `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> have a retest tonight, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
   const prow = (c, mode) => {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
     const sec = COMPS.map(x => { let r = ""; Object.keys(nattempts(c.id)).sort((a, b) => b - a).some(k => { const v = (nattempts(c.id)[k].components || {})[x.k]; if (v === "pass" || v === "fail") { r = v; return true; } return false; }); return esc(x.label) + ": <b>" + (r === "pass" ? "Pass" : r === "fail" ? "Fail" : "Not yet tested") + "</b>"; }).join(" &middot; ");
@@ -3985,7 +3986,7 @@ function renderRetest() {
     // Order (22 Oct, Jon): room first, then who the senior assessment team are, then the queue. The old "Not retested tonight" list is gone:
     // the Not passed card below replaces it and is left to the end of the evening.
     h += hereCard(pool, 1);
-    h += `<div class="card"><h3><span class="stepno">2</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Referred at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
+    h += `<div class="card"><h3><span class="stepno">2</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
       (need.length ? need.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is waiting for a room.</div>') + `</div>`;
     h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
     nbLoad();
