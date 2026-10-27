@@ -2448,6 +2448,7 @@ function attachNight() {
   N.poll = setInterval(() => { if (!N.formOpen && ["retest", "runner", "assessor", "checkin"].includes(S.view)) loadNight(); }, 30000);
 }
 function renderNight() {
+  autoSyncAttempts();
   if (S.view === "retest") renderRetest();
   else if (S.view === "runner") renderRunner();
   else if (S.view === "assessor") renderAssessor();
@@ -4078,7 +4079,16 @@ async function editAttempt(id) {
   };
   step1();
 }
-async function syncAttempts() {
+// Automatic (27 Oct, Jon): the saved attempt number follows the results without anyone pressing a button. Assessors cannot write the candidate record,
+// so the first Director, Student or Senior Faculty member with the hub open does it, quietly, within seconds of a referral. The card below stays as the
+// fallback (and shows if the automatic update is refused, for example rules not deployed).
+async function autoSyncAttempts() {
+  if (!S.full || N.autoBusy || N.autoFail || !S.course || N.usingFallback && !N.cands.length) return;
+  if (!staleAttempts().length) return;
+  N.autoBusy = true;
+  try { await syncAttempts(true); } finally { N.autoBusy = false; }
+}
+async function syncAttempts(auto) {
   const list = staleAttempts(); if (!list.length) return;
   try {
     for (let i = 0; i < list.length; i += 400) {
@@ -4090,8 +4100,8 @@ async function syncAttempts() {
       await batch.commit();
     }
     list.forEach(c => { const n = derivedAttempt(c.id); c.attempt = n; const sc = S.cands.find(x => x.id === c.id); if (sc) { sc.assessmentAttempt = n; sc.twoPlusAssessments = n >= 2; } });
-    toast("Updated " + list.length + " attempt number" + (list.length === 1 ? "" : "s") + ".");
-  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+    if (!auto) toast("Updated " + list.length + " attempt number" + (list.length === 1 ? "" : "s") + ".");
+  } catch (err) { if (auto) N.autoFail = true; toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
   renderRetest();
 }
 async function pickAssessors() {
