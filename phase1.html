@@ -1690,7 +1690,10 @@ function stats() {
   const c = S.cands;
   const absent = c.filter(x => x.assessmentAbsent === true);
   const live = c.filter(x => x.assessmentAbsent !== true);
-  const rap = live.filter(x => x.rap === true);
+  const rapAll = live.filter(x => x.rap === true);
+  // RAP "place by hand" and "still need a slot" are only for people still waiting: not once they have a slot or a result on this course (27 Oct, Jon)
+  const doneHere = x => N.course === S.course && Object.keys(((N.results || {})[x.id] || {}).attempts || {}).length > 0;
+  const rap = rapAll.filter(x => !hasSlot(x) && !doneHere(x));
   const retest = live.filter(x => attemptOf(x) >= 2);
   const auto0 = live.filter(x => x.rap !== true && attemptOf(x) < 2);
   const late0 = live.filter(x => x.rap !== true && attemptOf(x) >= 3);   // third and fourth sits are placed by hand but follow the same attendance rule
@@ -1701,8 +1704,8 @@ function stats() {
   const gap = auto.filter(x => { const e = eligLocal(x); return !!(e && e.state === "unmarked"); });
   const slotted = c.filter(hasSlot);
   const slottedBad = slotted.filter(x => (attemptOf(x) < 2 || attemptOf(x) >= 3) && x.rap !== true && x.assessmentAbsent !== true && isBlocked(x));
-  const toDo = auto.filter(x => !hasSlot(x));
-  return { absent, live, rap, retest, auto, slotted, toDo, notElig, gap, slottedBad };
+  const toDo = auto.filter(x => !hasSlot(x) && !doneHere(x));
+  return { absent, live, rap, rapAll, retest, auto, slotted, toDo, notElig, gap, slottedBad };
 }
 function takenSet(exceptId) {
   const m = new Map();
@@ -1723,7 +1726,7 @@ function renderAlloc() {
   const cap = A.rooms.length * ASSESS_SLOTS.length;
   $("msgs").innerHTML = d ? "" : `<div class="msg err">${esc(S.course)} has no date set, so the assessment night cannot be worked out.</div>`;
   $("plain").innerHTML = '<span class="lbl">In plain English</span>' + (night ?
-    `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. Add someone from another course, move one person to a different slot, or place someone with a Reasonable Adjustments Pathway (RAP). <b>${st.rap.length}</b> RAP.` :
+    `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. Add someone from another course, move one person to a different slot, or place someone with a Reasonable Adjustments Pathway (RAP). <b>${st.rapAll.length}</b> RAP.` :
     `<b>${esc(S.course)}.</b> Assessment night: ${d ? nice(d) : "not set"}. ` +
     `<b>${st.toDo.length}</b> ${st.toDo.length === 1 ? "person needs" : "people need"} a slot (automatic). ` +
     `<b>${st.rap.length}</b> RAP: place by hand below. <b>${st.retest.length}</b> retest: managed on assessment night.` +
@@ -1731,7 +1734,7 @@ function renderAlloc() {
   const free = Math.max(0, cap - st.slotted.length);
   const tile = (n, l, warn) => `<div class="tile${warn ? " warn" : ""}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
   $("aTiles").innerHTML = night ?
-    tile(S.cands.length, "On this course") + tile(st.slotted.length, "Have a slot") + tile(st.toDo.length, "Still need a slot", st.toDo.length > 0) + tile(st.rap.length, "RAP") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") :
+    tile(S.cands.length, "On this course") + tile(st.slotted.length, "Have a slot") + tile(st.toDo.length, "Still need a slot", st.toDo.length > 0) + tile(st.rapAll.length, "RAP") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") :
     tile(S.cands.length, "On this course") + tile(st.auto.length, "Eligible for automatic") + tile(st.slotted.length, "Have a slot") +
     tile(st.toDo.length, "Still need a slot", st.toDo.length > 0 && st.toDo.length > free) + tile(st.rap.length, "RAP: place by hand") +
     tile(st.retest.length, "Retest pool (attempt 2+)") + tile(st.absent.length, "Cannot attend") + (st.notElig.length ? tile(st.notElig.length, "Absent in a teaching week: no slot", true) : "") + tile(free, "Free slots (" + A.rooms.length + " rooms)");
@@ -3941,6 +3944,59 @@ function findBind(refocus, pos) {
   renderFindList();
   if (refocus) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} }
 }
+// ── End of night tab (27 Oct, Jon): one list of everyone who needs a new course, and whether it has happened ────────────────────
+// Did not turn up (marked unable to attend, or never came) + did not pass tonight (attempt 2 or 3). "Moved" is read from the candidate
+// record (they have left this course after the assessment night date); "Not moved yet" is anyone still on this course.
+const EN = { loading: false, loaded: false, err: "", moved: [] };
+function enNeeds() {   // still on this course and needing a new course
+  const out = [], seen = new Set();
+  (N.cands || []).forEach(c => {
+    if (passedAtKey(c.id)) return;
+    const a = nattempts(c.id), ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number), k = ks.length ? Math.max.apply(null, ks) : 0;
+    if (k === 2 || k === 3) { out.push({ c, why: "Did not pass tonight", sub: "attempt " + k }); seen.add(c.id); return; }
+    if (k >= 4) return;
+    const e = effAttempt(c);
+    if (c.absent || (e < 3 && !recordedAt(c.id, e) && cstate(c) === "nothere")) { out.push({ c, why: "Did not turn up", sub: e >= 2 ? "retest" : "" }); seen.add(c.id); }
+  });
+  return out.sort((x, y) => String(x.c.name).localeCompare(String(y.c.name)));
+}
+async function enLoad() {
+  if (EN.loading) return;
+  EN.loading = true; EN.err = ""; if (S.view === "retest") renderRetest();
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get(), tm = adTestMode(), since = assessDate() || "", rows = [];
+    snap.forEach(d => {
+      const c = Object.assign({ id: d.id }, d.data()), m = mvLast(c);
+      if (!m || m.course !== S.course || c.course === S.course || !(tm ? c.isTest === true : c.isTest !== true)) return;
+      if (since && String(m.at || "").slice(0, 10) < since) return;   // moved earlier for a teaching-night absence, not tonight's
+      const a = ((N.results || {})[c.id] || {}).attempts || {}, ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
+      rows.push({ c, to: c.course || "", why: ks.length && Math.max.apply(null, ks) >= 2 ? "Did not pass tonight" : "Did not turn up" });
+    });
+    rows.sort((x, y) => String(x.c.name || "").localeCompare(String(y.c.name || ""), "en"));
+    EN.moved = rows; EN.loaded = true;
+  } catch (e) { EN.err = "Could not check: " + ((e && e.message) || e); }
+  EN.loading = false; if (S.view === "retest") renderRetest();
+}
+function endTabs() {
+  const n = EN.loaded || N.endTab === "end" ? enNeeds().length : null, cur = N.endTab || "work";
+  const T = [["work", "Tonight"], ["end", "End of night" + (n ? " (" + n + " to move)" : "")]];
+  return `<div class="sutabs" id="endTabs">` + T.map(t => `<button type="button" data-etab="${t[0]}" class="${cur === t[0] ? "on" : ""}">${esc(t[1])}</button>`).join("") + `</div>`;
+}
+function endTab() {
+  if (!EN.loaded && !EN.loading && !EN.err) setTimeout(enLoad, 0);
+  const need = enNeeds(), moved = EN.moved, tot = need.length + moved.length;
+  const row = (x, mv) => `<div class="lrow"><span class="nm">${esc(x.c.name || "")} ${x.c.rap ? RAPSVG : ""}</span><small>${esc(x.c.degree || "")}</small><span class="nchip ${x.why === "Did not turn up" ? "s-late" : "s-nothere"}">${esc(x.why)}</span>` +
+    (mv ? `<span class="nchip s-assessed">Moved to ${esc(x.to)}</span>` : `<span class="nchip s-nothere">Not moved yet</span>${S.isDirector ? `<span class="pact"><a class="btn sm" href="course-allocation.html?find=${encodeURIComponent(x.c.name || "")}" target="_blank" rel="noopener">Move</a></span>` : ""}`) + `</div>`;
+  let h = `<div class="card"><h3>Needs a new course (${EN.loaded ? tot : need.length})</h3>`;
+  if (EN.loading && !EN.loaded) h += `<div class="hint" style="margin:0">Checking who has already been moved...</div>`;
+  else if (EN.err) h += `<div class="hint" style="margin:0;color:var(--bad,#b3261e)">${esc(EN.err)}</div>`;
+  else if (!tot) h += `<div class="hint" style="margin:0">Nobody needs a new course.</div>`;
+  else h += `<div class="hint" style="margin:0"><b>${moved.length}</b> moved, <b>${need.length}</b> ${need.length === 1 ? "is" : "are"} not moved yet.${need.length ? (S.isDirector ? " Press Move to open Course Allocation for that person." : " A Director moves them in Course Allocation.") : " All done."}</div>`;
+  h += `<div style="margin-top:8px"><button type="button" class="btn sm" data-etab="end" data-enrefresh="1">Check again</button></div></div>`;
+  if (need.length) h += `<div class="card"><h3>Not moved yet (${need.length})</h3>` + need.map(x => row(x, false)).join("") + `</div>`;
+  if (moved.length) h += `<div class="card"><h3>Moved (${moved.length})</h3>` + moved.map(x => row(x, true)).join("") + `</div>`;
+  return h;
+}
 function renderRetest() {
   if (!S.course || !S.full) return;
   // Assessment night, Retest-plus & RAP: a short view (21 Oct, Jon). RMD faculty keep the full one.
@@ -3976,6 +4032,10 @@ function renderRetest() {
       `<small style="flex-basis:100%">${sec}${simple || mode === "need" ? "" : " &middot; " + rule}${edNote}</small>` +
       `<span class="pact">${who}${roomBits}${stepper}</span></div>`;
   };
+  if (!simple) h += endTabs();
+  if (!simple && N.endTab === "end") {
+    h += endTab();
+  } else {
   h += findCard();
   if (simple) {
     h += hereCard(pool, 1);
@@ -3998,6 +4058,7 @@ function renderRetest() {
     const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
     h += more;
   }
+  }
   const fHad = !!($("fQ") && document.activeElement === $("fQ")), fPos = fHad ? $("fQ").selectionStart : 0;
   const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
@@ -4010,6 +4071,7 @@ function renderRetest() {
   if (wasOpen && $("attDetails")) $("attDetails").open = true;
   { const hd = $("hereDetails"); if (hd) hd.addEventListener("toggle", () => { N.hereOpen = hd.open; }); }
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
+  $("viewRetest").querySelectorAll("[data-etab]").forEach(b => b.onclick = () => { N.endTab = b.dataset.etab; if (b.dataset.enrefresh) { EN.loaded = false; EN.err = ""; setTimeout(enLoad, 0); } renderRetest(); });
   bindActs($("viewRetest"));
   $("viewRetest").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));
   $("viewRetest").querySelectorAll("[data-nbopen]").forEach(b => b.onclick = openBackup);
