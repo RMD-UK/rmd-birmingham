@@ -3635,6 +3635,31 @@ function catchupCard() {
   if (CU.err) h += `<div class="msg err" style="margin-top:8px">${esc(CU.err)}</div>`;
   return h + "</div>";
 }
+// Find a student (27 Oct, Jon): RMD faculty search for one person on tonight's course. Shows time or retest room, degree, attempt and status.
+// The night list carries no emails; Directors, Student and Senior Faculty can read them from the course list.
+function findEmail(c) { const x = S.cands.find(y => y.id === c.id); return x && x.email ? String(x.email) : ""; }
+function findRow(c) {
+  const att = effAttempt(c), rr = resitRoom(c);
+  const where = c.absent ? "Cannot attend tonight" : att >= 2 ? (rr ? "Retest room " + rr : "Retest: no room yet") : (hasSlot(c) ? c.assessmentSlot + " in room " + c.assessmentRoom : "No slot yet");
+  return `<div class="frow">${deskRow(c)}<div class="hint" style="margin:0 0 10px 4px">${esc(where)}${findEmail(c) ? " &middot; " + esc(findEmail(c)) : ""}</div></div>`;
+}
+function renderFindList() {
+  const box = $("fList"); if (!box) return;
+  const q = normId(N.fq || "");
+  if (q.length < 2) { box.innerHTML = '<div class="hint">Type at least 2 letters of a name or email.</div>'; return; }
+  const rows = N.cands.filter(c => normId(c.name).includes(q) || normId(findEmail(c)).includes(q)).sort(bySurname).slice(0, 12);
+  box.innerHTML = rows.length ? rows.map(findRow).join("") : '<div class="hint">Nobody on this course matches that.</div>';
+  bindActs(box);
+}
+function findCard() {
+  return `<div class="card"><h3>Find a student</h3><input type="search" id="fQ" placeholder="Type a name or email to see their time, room and status..." autocomplete="off" value="${esc(N.fq || "")}"><div id="fList" style="margin-top:8px"></div></div>`;
+}
+function findBind(refocus, pos) {
+  const el = $("fQ"); if (!el) return;
+  el.oninput = () => { N.fq = el.value; renderFindList(); };
+  renderFindList();
+  if (refocus) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} }
+}
 function renderRetest() {
   if (!S.course || !S.full) return;
   // Assessment night, Retest-plus & RAP: a short view (21 Oct, Jon). RMD faculty keep the full one.
@@ -3670,6 +3695,7 @@ function renderRetest() {
       `<small style="flex-basis:100%">${sec}${simple || mode === "need" ? "" : " &middot; " + rule}${edNote}</small>` +
       `<span class="pact">${who}${roomBits}${stepper}</span></div>`;
   };
+  h += findCard();
   if (simple) {
     h += hereCard(pool, 1);
     h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(c => prow(c)).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them.</div>') + `</div>`;
@@ -3691,8 +3717,10 @@ function renderRetest() {
     const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
     h += more;
   }
+  const fHad = !!($("fQ") && document.activeElement === $("fQ")), fPos = fHad ? $("fQ").selectionStart : 0;
   const wasOpen = !!($("attDetails") && $("attDetails").open);
   $("viewRetest").innerHTML = h;
+  findBind(fHad, fPos);
   if (!simple && $("moreDetails")) {
     const mb = $("moreDetails").lastElementChild;
     mb.innerHTML = overridesCard() + catchupCard() + attemptsOverview() + (S.isDirector ? `<div class="card"><div class="hint" style="margin:0">Assessors, mark sheets and Google Form link: <b>Assessment setup</b>. <button type="button" class="btn sm" data-gosetup="1">Open Assessment setup</button></div></div>` : "");
