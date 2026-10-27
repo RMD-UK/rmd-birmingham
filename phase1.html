@@ -684,7 +684,7 @@ const ROLE_DEFS = {
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night && !S.teamOnly, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && !S.teamOnly && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 12 }, { no: 13 }] },
+    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 14, t: "Switch check-in ON", s: "First job of the night: assessors then take only collected people" }, { no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 12 }, { no: 13 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
     { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
@@ -2232,6 +2232,7 @@ function nightBanner() {
     if (q.bad) h += `<div class="msg err"><b>${q.bad} candidate${q.bad === 1 ? " is" : "s are"} not eligible tonight</b> (absent in a teaching week). Their result form is locked. ${S.isDirector ? "A Director can override from the candidate's form." : "Ask a Director."}${S.full ? ' <button type="button" class="btn sm" data-regreview="1">Show who</button>' : ""}</div>`;
     if (S.full && q.ovr) h += `<div class="msg warn"><b>${q.ovr} Director override${q.ovr === 1 ? "" : "s"}</b> for someone who was absent in a teaching week. The reason and how they agreed are saved on the candidate.</div>`;
     if (S.full && q.gap) h += `<div class="msg warn">${q.gap} candidate${q.gap === 1 ? " has" : "s have"} a missing register mark in week 1 or 2 ("Register gap" chip). Not blocked, but worth a look. <button type="button" class="btn sm" data-regreview="1">Show who</button></div>`; }
+  if (S.full && nightTimeNow() != null && !N.gate && !N.usingFallback) h += `<div class="msg warn"><b>Check-in is OFF tonight.</b> The flow screen cannot show who is waiting or collected, and assessors can pick anyone. Open <b>Switch check-in ON</b> (Check-in station) and press Turn on.</div>`;
   if (N.err) h += `<div class="msg err">${esc(N.err)}</div>`;
   if (N.resErr) h += `<div class="msg err">${esc(N.resErr)}</div>`;
   if (N.usingFallback) h += `<div class="msg warn">The assessment night function is not deployed yet, so this page is using the full candidate list instead. Everything still works for you.</div>`;
@@ -2411,7 +2412,7 @@ function renderDeskGate() {
   const txt = N.gate
     ? "Assessors can only pick people who have been collected. If someone is in the atrium but not yet collected, an assessor can use Collect now."
     : "Assessors see everyone in their room and can pick anyone, exactly as before. Turn this on when the check-in station is running.";
-  if (!S.isDirector) { g.innerHTML = `<div class="msg ${N.gate ? "ok" : "warn"}"><b>Check-in required tonight: ${N.gate ? "ON" : "OFF"}.</b> ${txt} A Director turns this on or off.</div>`; return; }
+  if (!S.full) { g.innerHTML = `<div class="msg ${N.gate ? "ok" : "warn"}"><b>Check-in required tonight: ${N.gate ? "ON" : "OFF"}.</b> ${txt} RMD faculty or a Director turns this on or off.</div>`; return; }
   const ask = N.gateAsk
     ? `<div class="msg warn" style="margin:8px 0 0">${N.gate ? "Turn it off? Assessors will see and can pick everyone again." : "Turn it on? From now on assessors can only pick people who have been collected. Check people in first."}</div><div class="row2" style="margin-top:8px"><button type="button" class="btn pri" id="dGateYes">Yes, turn ${N.gate ? "off" : "on"}</button><button type="button" class="btn" id="dGateNo">No</button></div>`
     : `<div class="row2" style="margin-top:8px"><button type="button" class="btn${N.gate ? "" : " pri"}" id="dGateBtn">${N.gate ? "Turn off" : "Turn on"}</button></div>`;
@@ -2640,10 +2641,32 @@ function renderAssessor() {
   $("viewAssessor").innerHTML = `<div class="rchips">${chips}</div><div class="card">${body}</div>`;
   const wd = $("whoDetails"); if (wd) wd.ontoggle = () => { N.whoOpen = wd.open; };
   $("viewAssessor").querySelectorAll("[data-aroom]").forEach(b => b.onclick = () => { N.room = b.dataset.aroom; renderAssessor(); });
-  $("viewAssessor").querySelectorAll("[data-aopen]").forEach(b => b.onclick = () => openForm(b.dataset.aopen));
+  $("viewAssessor").querySelectorAll("[data-aopen]").forEach(b => b.onclick = () => openFirstSit(b.dataset.aopen));
   $("viewAssessor").querySelectorAll("[data-claim]").forEach(b => b.onclick = e => { e.stopPropagation(); claimCand(b.dataset.claim); });
   bindActs($("viewAssessor"));
   $("viewAssessor").querySelectorAll("[data-release]").forEach(b => b.onclick = e => { e.stopPropagation(); releaseCand(b.dataset.release); });
+}
+// Flow screen (27 Oct, Jon): with check-in off, opening a first sit left no mark, so the flow screen never showed a first sit as "Being assessed" (only
+// retests, which are claimed with Take on). Opening the form now notes who has the person. It never blocks anyone; Cancel or Save clears it.
+async function openFirstSit(id) {
+  const c = N.cands.find(x => x.id === id);
+  if (c && !N.gate && effAttempt(c) < 2 && !isDoneN(c)) {
+    const cl = nres(id).claim;
+    if (!(cl && cl.uid === S.user.uid)) {
+      try {
+        await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: c.name || "", claim: { uid: S.user.uid, name: S.myName, at: new Date().toISOString() }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        N.softClaim = N.softClaim || {}; N.softClaim[id] = true;
+      } catch (e) { /* not saved: the form still opens, the flow screen just will not show them as being assessed */ }
+    }
+  }
+  openForm(id);
+}
+async function softRelease(id) {
+  if (!(N.softClaim && N.softClaim[id])) return;
+  delete N.softClaim[id];
+  const cl = nres(id).claim; if (!(cl && cl.uid === S.user.uid)) return;
+  const c = N.cands.find(x => x.id === id);
+  try { await db.collection("stage1_assessments").doc(id).set({ course: S.course, candidateName: (c && c.name) || "", claim: null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }); } catch (e) {}
 }
 function roomBody(room, list) {
   const open = list.filter(c => !isDoneN(c)), done = list.filter(isDoneN);
@@ -2796,6 +2819,7 @@ function openForm(id) {
     `<div class="row2"><button type="button" class="btn pri" id="fSave" disabled>Save result</button><button type="button" class="btn" id="fCancel">Cancel</button><span class="hint" id="fMsg"></span></div>` +
     `</div></div></div>`;
   const close = () => { $("overlay").innerHTML = ""; N.formOpen = false; };
+  const closeCancel = () => { close(); softRelease(id); };
   if (gate) {
     const updG = () => {
       $("overlay").querySelectorAll("[data-rtp]").forEach(b => { const o = rtOpts[Number(b.dataset.rtp)]; b.classList.toggle("on", !!rtPick && o.length === rtPick.length && rtPick.every(k => o.includes(k))); });
@@ -2860,8 +2884,8 @@ function openForm(id) {
     $("fSave").textContent = o ? "Save: " + outcomeShort(o, att) : "Save result";
     $("fSave").disabled = !o || !chk.ok;
   };
-  $("fCancel").onclick = close;
-  $("fbg").onclick = e => { if (e.target.id === "fbg") close(); };
+  $("fCancel").onclick = closeCancel;
+  $("fbg").onclick = e => { if (e.target.id === "fbg") closeCancel(); };
   $("overlay").querySelectorAll("[data-mk]").forEach(b => b.onclick = () => {
     const k = b.dataset.mk, m = b.dataset.m;
     if (m === "pass" && state.reasons[k].size && !state.override[k]) { state.confirm[k] = true; refresh(); return; }   // red steps present: ask first
@@ -2983,6 +3007,7 @@ function openForm(id) {
   };
 }
 async function saveResult(c, att, outcome, d, amend) {
+  if (N.softClaim) delete N.softClaim[c.id];
   const entry = { outcome, assessorUid: S.user.uid, assessorName: S.myName, room: c.assessmentRoom || null, slot: c.assessmentSlot || null, comment: d.comment || "", answers: d.answers || {}, components: d.components || {}, reasons: d.reasons || {}, at: new Date().toISOString() };
   if (amend) entry.amended = true;
   if (d.overrides && Object.keys(d.overrides).length) entry.overrides = d.overrides;

@@ -133,7 +133,7 @@ main{max-width:1500px;margin:0 auto;padding:16px}
 </div>
 <script>
 initFirebase();
-const S = { user: null, courseDates: [], course: null, cands: [], res: {}, unsubs: [], err: "", tick: null, wake: null, dots: new Map(), d: 0 };
+const S = { user: null, courseDates: [], course: null, cands: [], res: {}, gate: false, unsubs: [], err: "", tick: null, wake: null, dots: new Map(), d: 0 };
 const $ = id => document.getElementById(id);
 const esc = v => (v == null ? "" : String(v)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -164,7 +164,7 @@ function cstate(c) {
   const f = flowOf(c, att);
   return f.collected ? "collected" : f.arrived ? "arrived" : "nothere";
 }
-const expected = c => !isAbsent(c) && (hasSlot(c) || effAttempt(c) >= 2 || (!!nres(c.id).flow && Object.keys(nres(c.id).flow).some(k => /^\d+$/.test(k))));
+const expected = c => !isAbsent(c) && (hasSlot(c) || effAttempt(c) >= 2 || Object.keys(nattempts(c.id)).length > 0 || (!!nres(c.id).flow && Object.keys(nres(c.id).flow).some(k => /^\d+$/.test(k))));
 const clampA = n => Math.min(4, Math.max(1, Number(n) || 1));
 const lastReferAt = id => { const a = nattempts(id); const ks = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number); return ks.length ? Math.max.apply(null, ks) : 0; };
 
@@ -207,7 +207,6 @@ auth.onAuthStateChanged(async user => {
     $("fullBtn2").onclick = () => setFull(true);
     selectCourse(first.name);
     S.tick = setInterval(() => { clock(); }, 20000);
-    setInterval(reloadCands, 5 * 60 * 1000);
     if (window.ResizeObserver) new ResizeObserver(() => layout(true)).observe($("field"));
     window.addEventListener("resize", () => layout(true));
   } catch (err) {
@@ -217,18 +216,16 @@ auth.onAuthStateChanged(async user => {
 });
 
 function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
-async function loadCands(name) {
-  const snap = await db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).get();
-  S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
-}
-async function reloadCands() { if (!S.course) return; try { await loadCands(S.course); render(); } catch (e) {} }
 async function selectCourse(name) {
   detach();
-  S.course = name; S.res = {}; S.cands = []; S.err = "";
+  S.course = name; S.res = {}; S.cands = []; S.err = ""; S.gate = false;
   clearDots();
   $("ttl").textContent = "Opening " + name + "...";
-  try { await loadCands(name); }
-  catch (err) { S.err = "Could not load the candidates: " + (err.message || err); render(); return; }
+  // Live, so a person added, moved or marked not coming at the hub shows here straight away (it used to refresh every 5 minutes).
+  S.unsubs.push(db.collection(COLLECTIONS.stage1Candidates).where("course", "==", name).onSnapshot(snap => {
+    S.cands = snap.docs.map(d => Object.assign({ id: d.id }, d.data())); S.err = ""; render();
+  }, err => { S.err = "Could not load the candidates: " + (err.message || err); render(); }));
+  S.unsubs.push(db.collection("stage1_checkin").doc(name).onSnapshot(d => { S.gate = !!(d.exists && d.data().on === true); render(); }, () => {}));
   S.unsubs.push(db.collection("stage1_assessments").where("course", "==", name).onSnapshot(snap => {
     S.res = {}; snap.forEach(d => { S.res[d.id] = d.data(); });
     S.err = ""; render();
@@ -246,7 +243,10 @@ function render() {
   const d = assessDate(S.course);
   $("ttl").textContent = S.course + " · Assessment night" + (d ? " · " + nice(d) : "");
   clock();
-  const list = S.cands.filter(expected);
+  // Anyone with a result on this course stays on the screen even if they have since been moved to another course (a Director moves people who did not pass).
+  const have = new Set(S.cands.map(c => c.id));
+  const gone = Object.keys(S.res).filter(id => !have.has(id) && Object.keys(nattempts(id)).length).map(id => ({ id }));
+  const list = S.cands.concat(gone).filter(expected);
   const absent = S.cands.filter(isAbsent).length;
   // Opaque dot keys: position in a stable order, never the id or the name.
   const ordered = list.slice().sort((a, b) => (a.assessmentSlot || "99:99").localeCompare(b.assessmentSlot || "99:99") || String(a.id).localeCompare(String(b.id)));
@@ -278,6 +278,7 @@ function render() {
     `<div class="stat g"><b>${passed}</b><span>Passed</span></div>` +
     `<div class="stat o"><b>${refd}</b><span>Referred</span></div>` +
     `<div class="legend">` +
+    `<span class="lk" style="opacity:.8">Check-in ${S.gate ? "on" : "off"}</span>` +
     [1, 2, 3, 4].map(n => `<span class="lk"><i style="background:var(--a${n})">${n}</i>attempt ${n} <em>${att[n]}</em></span>`).join("") +
     `<span class="ntk"><i></i>can't find</span>` +
     (absent ? `<span class="lk" style="opacity:.8">${absent} not coming</span>` : "") +
