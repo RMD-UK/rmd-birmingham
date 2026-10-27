@@ -143,7 +143,7 @@ async function init() {
     (candidatesByEmail[email] = candidatesByEmail[email] || []).push(c);
   });
 
-  // Excellent pass notes recorded on the Phase 1 assessor form. Internal note: only read here, never shown to candidates.
+  // Excellent pass notes recorded on the Monday Night assessor form. Internal note: only read here, never shown to candidates.
   excellentByEmail = {}; excellentErr = "";
   try {
     const asSnap = await db.collection("stage1_assessments").get();
@@ -288,7 +288,7 @@ function candidateCardHtml(r, i) {
           ${recordsHtml}
         </div>
         <div class="detail-section">
-          <div class="detail-label">Assessment notes (Phase 1 assessor form)</div>
+          <div class="detail-label">Assessment notes (Monday Night assessor form)</div>
           ${excellentErr ? `<div class="no-ratings">Could not read assessment notes: ${esc(excellentErr)}</div>` : (r.excellent && r.excellent.length
             ? r.excellent.map(x => `<div style="margin-bottom:6px;"><span class="pill pill-exc" style="margin-left:0;">Excellent pass</span> <span style="color:var(--rmd-muted);">${esc(x.course)} · attempt ${esc(x.attempt)}${x.assessor ? " · assessor " + esc(x.assessor) : ""}${x.at ? " · " + esc(String(x.at).slice(0, 10)) : ""}</span><ul style="margin:4px 0 0 18px;font-size:13px;">${x.criteria.map(c => `<li>${esc(c)}</li>`).join("")}</ul></div>`).join("")
             : `<div class="no-ratings">No Excellent pass note recorded. This only exists for assessments recorded on the site's assessor form, so earlier courses will not have one.</div>`)}
