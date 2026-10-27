@@ -26,6 +26,12 @@ button:focus-visible, select:focus-visible, svg [tabindex]:focus-visible, .lane:
 .stage > div > .card:last-child { margin-bottom:0; }
 .card h2 { margin:0 0 2px; font-size:15.5px; } .card .cap { margin:0 0 10px; font-size:13px; color:var(--mut); }
 .det { position:sticky; top:10px; }
+.cm { border-top:1px solid var(--line); padding:10px 0; } .cm:first-child { border-top:0; }
+.cm .who { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; } .cm .who b { font-size:14.5px; }
+.cm .sub { font-size:12px; color:var(--mut); margin:2px 0 4px; }
+.cm blockquote { margin:6px 0 0; padding:6px 10px; border-left:3px solid var(--ora); background:#fbf8f1; font-size:13.5px; line-height:1.45; white-space:pre-wrap; }
+.cm blockquote small { display:block; font-size:11px; font-weight:800; color:var(--mut); text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
+.cmtools { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:6px 0 10px; } .cmtools input[type=search] { font:inherit; font-size:14px; padding:7px 10px; border:1.5px solid var(--line); border-radius:10px; min-width:220px; }
 .det h3 { margin:0 0 2px; font-size:15px; } .crumb { font-size:11.5px; color:var(--mut); margin-bottom:8px; }
 .det .empty { color:var(--mut); font-size:13px; line-height:1.5; border:1.5px dashed var(--line); border-radius:12px; padding:14px; }
 .tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px; margin-bottom:14px; }
@@ -146,7 +152,7 @@ function degreeOf(raw, groupMode) {
 }
 
 // ---------- data ----------
-let COURSES = [], TESTS = [], DATA = {}, LOADED_AT = null, LOAD_ERRORS = [];
+let COURSES = [], TESTS = [], DATA = {}, LOADED_AT = null, LOAD_ERRORS = [], QLAB = {};
 const UI = { test:false, course:"all", tab:"home", mode:"course", view:"chart", group:false };
 async function getDoc(path) { const [col, id] = path.split("/"); try { const s = await db.collection(col).doc(id).get(); return s.exists ? (s.data() || {}) : null; } catch (e) { return null; } }
 async function getCol(col, course) { try { const s = await db.collection(col).where("course", "==", course).get(); return s.docs.map(d => Object.assign({ id:d.id }, d.data())); } catch (e) { LOAD_ERRORS.push(col + " for " + course + ": " + (e.code || e.message || e)); return null; } }
@@ -156,6 +162,7 @@ async function load() {
   const allC = ((cfg && cfg.courses) || []).filter(c => c.name).sort((a, b) => String(a.date || "9") < String(b.date || "9") ? -1 : 1);
   COURSES = allC.filter(c => !c.test); TESTS = S.isDir ? allC.filter(c => c.test) : [];
   const pairs = await Promise.all(COURSES.concat(TESTS).map(async c => [c.name, await Promise.all([getCol("stage1_candidates", c.name), getCol("stage1_assessments", c.name)])]));
+  try { const f = await getDoc("config/stage1_assessment_form"); QLAB = {}; ((f && f.questions) || []).forEach(q => { if (q && q.id) QLAB[q.id] = q.label || q.id; }); } catch (e) {}
   DATA = {}; pairs.forEach(([name, [cands, ass]]) => { DATA[name] = { cands:cands || [], ass:ass || [] }; });
   LOADED_AT = new Date();
 }
@@ -309,6 +316,44 @@ function viewFollow() {
   return h;
 }
 
+// ---------- comments (assessor leads: Directors and Senior Faculty) ----------
+// Every free-text box on the mark sheet, with who was assessed, who assessed them and the result.
+const CM = { q:"", all:false };
+function commentBits(rec) {
+  const out = [], t = v => String(v == null ? "" : v).trim();
+  if (t(rec.comment)) out.push(["Assessor comment", t(rec.comment)]);
+  Object.keys(rec.answers || {}).forEach(id => { const v = t(rec.answers[id]); if (v) out.push([QLAB[id] || "Form answer", v]); });
+  if ((rec.excellentCriteria || []).length) out.push(["Marked excellent", rec.excellentCriteria.join("; ")]);
+  Object.keys(rec.reasonOther || {}).forEach(k => { const v = t(rec.reasonOther[k]); if (v) out.push(["Other reason (" + k + ")", v]); });
+  Object.keys(rec.overrideWhy || {}).forEach(ck => { const v = t((rec.overrideWhy[ck] || {}).other); if (v) { const c = COMPS.find(x => x.k === ck); out.push(["Passed with a red step: other reason (" + (c ? c.label : ck) + ")", v]); } });
+  return out;
+}
+function viewComments() {
+  if (!canNames()) return `<div class="empty2">Comments are shown to Directors and Senior Faculty only.</div>`;
+  return `<div class="card"><h2>Assessor comments</h2><p class="cap">The free-text boxes from the mark sheet, with who was assessed, who assessed them and the result. For assessor leads. They can name candidates, so do not share them outside the assessor leads.</p>
+  <div class="cmtools"><input type="search" id="cmQ" placeholder="Search name, assessor or text" value="${esc(CM.q)}" aria-label="Search comments"><label><input type="checkbox" id="cmAll"${CM.all ? " checked" : ""}> Show everyone assessed, not only those with comments</label></div>
+  <div id="cmCount" class="cap" style="margin:0 0 4px"></div><div id="cmList"></div></div>`;
+}
+function drawComments() {
+  const list = $("cmList"); if (!list) return;
+  const go = () => {
+    const q = CM.q.trim().toLowerCase();
+    let rows = scope().attempts.map(a => ({ a, bits: commentBits(a.rec) })).filter(r => CM.all || r.bits.length);
+    if (q) rows = rows.filter(r => (r.a.p.c.name + " " + (r.a.rec.assessorName || "") + " " + r.bits.map(b => b[1]).join(" ")).toLowerCase().includes(q));
+    rows.sort((x, y) => String(y.a.rec.at || "").localeCompare(String(x.a.rec.at || "")) || String(x.a.p.c.name || "").localeCompare(String(y.a.p.c.name || "")));
+    $("cmCount").textContent = plural(rows.length, "record", "records") + (UI.course === "all" ? " across all courses" : " on " + UI.course) + ".";
+    list.innerHTML = rows.length ? rows.map(r => {
+      const a = r.a, pass = a.rec.outcome === "pass", when = a.rec.at ? new Date(a.rec.at).toLocaleString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) : "";
+      return `<div class="cm"><div class="who"><b>${esc(a.p.c.name || "")}</b><span class="chip ${pass ? "g" : "r"}">${pass ? "Passed" : "Not passed"}</span><span class="chip">Attempt ${a.n}</span></div>
+      <div class="sub">${esc(a.p.degreeExact)} &middot; ${esc(a.p.course)} &middot; Assessor: ${esc(a.rec.assessorName || "unknown")}${a.rec.room ? " &middot; Room " + esc(a.rec.room) : ""}${when ? " &middot; " + esc(when) : ""}</div>
+      ${r.bits.map(b => `<blockquote><small>${esc(b[0])}</small>${esc(b[1])}</blockquote>`).join("") || `<div class="sub">No comments written.</div>`}</div>`;
+    }).join("") : `<div class="empty2" style="margin:0">${CM.all ? "Nothing matches." : "No comments written yet."}</div>`;
+  };
+  $("cmQ").oninput = () => { CM.q = $("cmQ").value; go(); };
+  $("cmAll").onchange = () => { CM.all = $("cmAll").checked; go(); };
+  go();
+}
+
 function viewWrong() {
   return `<div class="card"><h2>Where people go wrong</h2><p class="cap">Share of each degree's first sits marked down on a section. Darker means more. Small groups swing a lot, so check the number of people.</p><div class="row"><div class="seg" id="segView"><button data-v="chart" class="${UI.view === "chart" ? "on" : ""}">Chart</button><button data-v="table" class="${UI.view === "table" ? "on" : ""}">Table</button></div><label><input type="checkbox" id="chkGroup"${UI.group ? " checked" : ""}> Combine similar degrees</label></div><div id="c3"></div></div>
   <div class="card"><h2>Steps most often missed</h2><p class="cap">Red steps on the mark sheet, as a share of all first sits.</p><div id="c4"></div></div>`;
@@ -380,12 +425,13 @@ function drawAssess() {
 }
 
 // ---------- shell ----------
-const TABS = [["home","Home"],["follow","Follow-up"],["wrong","What goes wrong"],["courses","Courses and degrees"],["assess","Assessors"]];
-const VIEWS = { home:viewHome, follow:viewFollow, wrong:viewWrong, courses:viewCourses, assess:viewAssess };
-const DRAWS = { home:drawHome, wrong:drawWrong, courses:drawCourses, assess:drawAssess };
+const TABS = [["home","Home"],["follow","Follow-up"],["wrong","What goes wrong"],["courses","Courses and degrees"],["assess","Assessors"],["comments","Comments"]];
+const VIEWS = { home:viewHome, follow:viewFollow, wrong:viewWrong, courses:viewCourses, assess:viewAssess, comments:viewComments };
+const DRAWS = { home:drawHome, wrong:drawWrong, courses:drawCourses, assess:drawAssess, comments:drawComments };
+const tabList = () => TABS.filter(t => t[0] !== "comments" || canNames());
 function paint() {
   $("courses").innerHTML = `<button class="cbtn${UI.course === "all" ? " on" : ""}" data-c="all">All courses<small>${plural(COURSES.length, "course", "courses")}</small></button>` + COURSES.map(c => `<button class="cbtn${UI.course === c.name ? " on" : ""}" data-c="${esc(c.name)}">${esc(c.name)}<small>${c.date ? esc(niceDate(c.date)) : "no date"}</small></button>`).join("") + (TESTS.length ? `<label class="tk"><input type="checkbox" id="chkTest"${UI.test ? " checked" : ""}> Rehearsal data</label>` + (UI.test ? TESTS.map(c => `<button class="cbtn tst${UI.course === c.name ? " on" : ""}" data-c="${esc(c.name)}">${esc(c.name)}<small>rehearsal, not real</small></button>`).join("") : "") : "");
-  $("tabs").innerHTML = TABS.map(t => `<button class="tab${UI.tab === t[0] ? " on" : ""}" role="tab" data-t="${t[0]}">${t[1]}</button>`).join("");
+  $("tabs").innerHTML = tabList().map(t => `<button class="tab${UI.tab === t[0] ? " on" : ""}" role="tab" data-t="${t[0]}">${t[1]}</button>`).join("");
   $("warn").innerHTML = TESTS.some(c => c.name === UI.course) ? `<div class="warnbox">This is rehearsal data from the test course. It is not included in All courses and is not a real result.</div>` : LOAD_ERRORS.length ? `<div class="warnbox">Some data could not be read, so the numbers below may be short: ${esc(LOAD_ERRORS.slice(0, 3).join("; "))}</div>` : "";
   $("main").innerHTML = COURSES.length ? VIEWS[UI.tab]() : `<div class="empty2">No courses are set up yet. Add them in <a href="admin-stage1-settings.html">Course settings</a>.</div>`;
   if (COURSES.length && DRAWS[UI.tab]) DRAWS[UI.tab]();
