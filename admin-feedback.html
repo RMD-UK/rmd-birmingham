@@ -61,6 +61,7 @@
       <select id="fArea" aria-label="Area"><option value="">Any area</option></select>
       <select id="fRole" aria-label="Role"><option value="">Any role</option></select>
       <button class="btn sec" id="copyBtn" type="button">Copy open list</button>
+      <button class="btn sec" id="csvBtn" type="button">Download CSV</button>
     </div>
     <textarea id="copyOut" class="hidden" readonly></textarea>
     <div id="list"></div>
@@ -157,6 +158,33 @@
     var done = function () { $("copyBtn").textContent = "Copied"; };
     var legacy = function () { try { box.select(); document.execCommand("copy"); done(); } catch (e2) {} };
     try { navigator.clipboard.writeText(out).then(done, legacy); } catch (e) { legacy(); }
+  };
+
+  // Download CSV (23 Oct, Jon): exactly the notes the filters above are showing, for Excel or Numbers. Opens with a BOM so accents show correctly.
+  function csvCell(v) {
+    var s = v == null ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function whenFull(ts) {
+    try { var d = ts && ts.toDate ? ts.toDate() : null; return d ? d.toLocaleString("sv-SE", { timeZone: "Europe/London" }) : ""; } catch (e) { return ""; }
+  }
+  $("csvBtn").onclick = function () {
+    var rows = filtered();
+    if (!rows.length) { $("csvBtn").textContent = "Nothing to download"; setTimeout(function () { $("csvBtn").textContent = "Download CSV"; }, 2000); return; }
+    var head = ["Date", "Status", "Type", "Area", "Page", "Where on the page", "Feedback", "Impact", "From", "Role", "Device", "Page address", "Note", "ID"];
+    var statusName = {}; STATUS.forEach(function (s) { statusName[s[0]] = s[1]; });
+    var lines = [head].concat(rows.map(function (r) {
+      return [whenFull(r.createdAt), statusName[r.status || "new"] || r.status, TYPE_NAMES[r.type] || r.type, AREA_NAMES[r.area] || r.area || "", r.pageLabel || "", r.ctx || "",
+        r.text || "", IMPACT_NAMES[r.impact] || r.impact || "", r.anon ? "Anonymous" : (r.name || "Unknown"), r.roleLabel || "", r.device || "", r.url || "", r.note || "", r.id];
+    }));
+    var csv = "\uFEFF" + lines.map(function (l) { return l.map(csvCell).join(","); }).join("\r\n") + "\r\n";
+    var d = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8" }), url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = "RMD_site_feedback_" + d + ".csv"; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 3000);
+    $("csvBtn").textContent = "Downloaded " + rows.length;
+    setTimeout(function () { $("csvBtn").textContent = "Download CSV"; }, 2500);
   };
 
   requireDirector("timetable.html").then(async function () {
