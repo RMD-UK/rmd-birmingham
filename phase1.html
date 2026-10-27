@@ -444,6 +444,8 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
         <div class="tools" id="tools"></div>
         <div class="rooms" id="rooms"></div>
         <div id="sentWrap"></div>
+        <div id="absWrap"></div>
+        <div id="movedWrap"></div>
         <div class="sumstrip" id="sum"></div>
         <div class="weeks" id="weeks"></div>
         <div class="sched hidden" id="schedWrap">
@@ -785,6 +787,7 @@ function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsu
 async function selectCourse(name) {
   detach();
   S.course = name; S.reg = {}; S.staff = {}; S.cands = [];
+  MV.loaded = false; MV.rows = []; MV.err = ""; MV.busy = null; RA.ctx = null; RA.err = "";
   renderCourseTabs();
   $("plain").innerHTML = '<span class="lbl">Loading</span>Opening ' + esc(name) + '...';
   try {
@@ -930,6 +933,251 @@ function renderSent() {
   }
   el.innerHTML = h + "</div>";
 }
+// ── All absences, with Reallocate (27 Oct, Jon) ──────────────────────────────
+// One list, each teaching night: everyone absent in week 1 or 2 who is not overridden by a Director, with Reallocate next to each name.
+// Reallocate does what Course Allocation does for one person (next course that fits their programme deadline and placement dates and has room;
+// room by programme balance; room team; old marks cleared; the move kept on the record) so nobody waits for a Director. Real and test never mix.
+// RMD faculty (Student, Senior) and Directors. A wrong absence can be corrected to Here instead; a wrong move can be put back (card below).
+const RA = { open: false, loading: false, ctx: null, err: "", busy: false };
+const RA_ROOM_LIMIT = 12;
+function raAbsent() { return S.cands.filter(c => { const e = eligLocal(c); return !!(e && e.state === "absent" && !e.ov); }).sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "en")); }
+function raWeeks(c) { return [1, 2].filter(n => statusOf(c.id, n) === "absent"); }
+function raDeg(c) { return (resolveStage1Degree(c.degree) || {}).exact || null; }
+function raDegKey(c) { const m = resolveStage1Degree(c.degree); return m ? "group:" + m.group : "raw:" + String(c.degree || "").trim().toLowerCase(); }
+function raMondays(date) { return [-14, -7, 0].map(k => { const d = new Date(date + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + k); return d.toISOString().slice(0, 10); }); }
+function raClash(c, date) { const ms = raMondays(date); return (c.placementBlocks || []).find(b => b.start && b.end && ms.some(m => m >= b.start && m <= b.end)) || null; }
+async function raLoad() {
+  if (RA.ctx || RA.loading) return;
+  RA.loading = true; RA.err = ""; renderAbs();
+  try {
+    const [cs, dl, al] = await Promise.all([
+      db.collection(COLLECTIONS.stage1Candidates).get(),
+      db.collection("config").doc("stage1_programme_deadlines").get().catch(() => null),
+      db.collection("course_allocations").get().catch(() => null)
+    ]);
+    const docs = al ? al.docs.map(d => Object.assign({ id: d.id }, d.data())) : [];
+    RA.ctx = { cands: cs.docs.map(d => Object.assign({ id: d.id }, d.data())), deadlines: dl && dl.exists ? (dl.data().deadlines || {}) : {}, def: docs.find(d => d.id === "_default") || null, docs: docs.filter(d => d.id !== "_default") };
+  } catch (e) { RA.err = "Could not load what is needed to reallocate: " + ((e && e.message) || e); }
+  RA.loading = false; renderAbs();
+}
+// Sessions someone from this course can move to: later, same kind (real or test), in date order, with their effective room capacity.
+function raSessions() {
+  const here = S.courseDates.find(x => x.name === S.course), tm = isTestCourse(here || { name: S.course }), all = S.courseDates.filter(x => x.date && isTestCourse(x) === tm).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  return all.map((s, i) => Object.assign({}, s, { cap: ((s.capacity || s.capacity === 0) ? s.capacity : (i === 0 ? 12 : 10)) * ROOMS.length })).filter(s => here && s.date > here.date);
+}
+function raCount(name) { return RA.ctx.cands.filter(x => x.course === name).length; }
+function raOptions(c) {
+  const ex = raDeg(c), dl = ex ? RA.ctx.deadlines[ex] : null, out = [];
+  let why = null;
+  if (!ex) why = "no recognised programme to look up a deadline for";
+  else if (!dl) why = "no assessment deadline is set for " + ex;
+  else raSessions().forEach(s => { if (s.date <= dl && !raClash(c, s.date) && raCount(s.name) < s.cap) out.push(s); });
+  if (!out.length && !why) why = "no later course fits their deadline and placement dates and has room";
+  return { opts: out, why };
+}
+function raRoom(course, c) {
+  const on = RA.ctx.cands.filter(x => x.course === course && x.id !== c.id), dk = raDegKey(c);
+  let best = null;
+  ROOMS.forEach(r => { const inRoom = on.filter(x => x.room === r); if (inRoom.length >= RA_ROOM_LIMIT) return; const same = inRoom.filter(x => raDegKey(x) === dk).length; if (!best || same < best.same || (same === best.same && inRoom.length < best.total)) best = { r, same, total: inRoom.length }; });
+  return best ? best.r : null;
+}
+function raTeam(course, room) {
+  const own = RA.ctx.docs.find(d => d.id === course.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || d.course === course);
+  const has = t => !!t && Object.values(t).some(a => (a || []).length);
+  const teams = own && has(own.instructorTeams) ? own.instructorTeams : (RA.ctx.def && RA.ctx.def.instructorTeams) || {};
+  const uids = (teams[room] || []).slice(), nm = new Map();
+  RA.ctx.cands.forEach(x => (x.instructorTeamUids || []).forEach((u, i) => { if ((x.instructorTeamNames || [])[i]) nm.set(u, x.instructorTeamNames[i]); }));
+  return { uids, names: uids.map(u => nm.get(u) || u) };
+}
+async function raMove(c, target, reason) {
+  const full = RA.ctx.cands.find(x => x.id === c.id) || c, room = raRoom(target.name, full);
+  if (!room) throw new Error("Every room on " + target.name + " is full.");
+  if (isTestCourse(target) !== isTestCourse({ name: S.course, test: (S.courseDates.find(x => x.name === S.course) || {}).test })) throw new Error("Real and test courses must not mix.");
+  const team = raTeam(target.name, room), at = new Date().toISOString(), r = S.reg[c.id] || {};
+  const entry = { course: S.course, at, room: full.room || null, teamUids: (full.instructorTeamUids || []).slice(), teamNames: (full.instructorTeamNames || []).slice(),
+    w1: (r.w1 && r.w1.status) || null, w2: (r.w2 && r.w2.status) || null, w1reason: (r.w1 && r.w1.absentReason) || null, outcome: (r.w2 && r.w2.outcome && r.w2.outcome.type) || null, reason: reason || null, by: S.user.uid, byName: S.myName, via: "hub" };
+  const upd = { course: target.name, room, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: null, allocatedAt: at, placementChecked: true, overCapacity: null,
+    instructorTeamUids: team.uids, instructorTeamNames: team.names, assessmentRoom: null, assessmentSlot: null, assessmentEmailedSlot: null, previousCourses: (full.previousCourses || []).concat([entry]) };
+  const batch = db.batch();
+  batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), upd);
+  batch.set(db.collection("stage1_register").doc(c.id), { course: target.name, room, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });   // fresh start: the old marks go
+  await batch.commit();
+  Object.assign(full, upd);
+  S.cands = S.cands.filter(x => x.id !== c.id); delete S.reg[c.id];
+  return { room, target };
+}
+function renderAbs() {
+  const el = $("absWrap"); if (!el) return;
+  if (!el._bound) { el._bound = true; el.addEventListener("click", onAbsClick); }
+  const dates = S.full && S.course ? teachDates(S.course) : null;
+  if (!dates || (S.door === "teach" && S.drole === "tinst")) { el.innerHTML = ""; return; }
+  const list = raAbsent();
+  let h = `<details class="card" id="absCard"${RA.open ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">All absences${list.length ? ` (${list.length})` : ""}</summary><div style="margin-top:8px">`;
+  h += `<div class="hint" style="margin:0 0 8px">Everyone absent in week 1 or 2 on ${esc(S.course)}, except people a Director has overridden. Check each one first: <b>Was here</b> corrects a wrong mark. <b>Reallocate</b> moves them to the next course that fits.</div>`;
+  if (!list.length) h += `<div class="hint" style="margin:0">Nobody is absent on ${esc(S.course)} at the moment.</div>`;
+  else {
+    h += list.map(c => { const w = raWeeks(c), why = [1, 2].map(n => { const e = entryOf(c.id, n); return e && e.status === "absent" && e.absentReason ? "week " + n + ": " + e.absentReason : ""; }).filter(Boolean);
+      return `<div class="srow"><div class="snm"><b>${esc(c.name || "(no name)")}</b> <small>${esc(c.room || "no room")} &middot; ${esc(c.degree || "")} &middot; absent ${esc(w.map(n => "week " + n).join(" and "))}${why.length ? " &middot; " + esc(why.join("; ")) : ""}</small></div>` +
+        `<span><button type="button" class="btn sm" data-ab="here" data-id="${esc(c.id)}">Was here</button> <button type="button" class="btn sm pri" data-ab="re" data-id="${esc(c.id)}"${RA.busy ? " disabled" : ""}>Reallocate</button></span></div>`; }).join("");
+    h += `<div class="tools" style="margin:10px 0 0"><button type="button" class="btn" data-ab="all"${RA.busy ? " disabled" : ""}>Reallocate all ${list.length}...</button> <a class="btn sm" href="admin-comms.html" style="text-decoration:none;display:inline-block">Email moved people (Comms) &#8599;</a></div>`;
+  }
+  if (RA.loading) h += `<div class="hint" style="margin-top:8px">Loading courses and rooms...</div>`;
+  if (RA.err) h += `<div class="msg err" style="margin-top:8px">${esc(RA.err)}</div>`;
+  el.innerHTML = h + "</div></details>";
+  const d = $("absCard"); if (d) d.ontoggle = () => { RA.open = d.open; if (RA.open) raLoad(); };
+}
+function onAbsClick(e) {
+  const b = e.target.closest("[data-ab]"); if (!b) return;
+  const a = b.dataset.ab;
+  if (a === "re") raOne(b.dataset.id); else if (a === "all") raAll(); else if (a === "here") raHere(b.dataset.id);
+}
+const RA_WHY = ["Unwell", "Authorised by the university", "No reason given", "Other"];
+function raSheet(title, bodyHtml, yes, onDraw) {
+  return new Promise(res => {
+    const st = {};
+    const draw = () => {
+      const o = onDraw ? onDraw(st) : { html: bodyHtml, ok: true };
+      $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true" style="max-height:88vh;overflow:auto"><h3>${esc(title)}</h3><p>${o.html}</p><div class="two"><button type="button" class="pri" id="shYes"${o.ok ? "" : " disabled"}>${esc(yes)}</button><button type="button" id="shNo">Cancel</button></div></div></div>`;
+      const done = v => { $("overlay").innerHTML = ""; res(v); };
+      $("shYes").onclick = () => done(st); $("shNo").onclick = () => done(null); $("sbg").onclick = ev => { if (ev.target.id === "sbg") done(null); };
+      $("overlay").querySelectorAll("[data-pick]").forEach(x => x.onclick = () => { st[x.dataset.k] = x.dataset.pick; draw(); });
+    };
+    draw();
+  });
+}
+async function raEnsure() { await raLoad(); while (RA.loading) await new Promise(r => setTimeout(r, 100)); return !!RA.ctx; }
+async function raOne(id) {
+  const c = candById(id); if (!c || RA.busy) return;
+  if (!(await raEnsure())) return;
+  const { opts, why } = raOptions(c);
+  const chips = (k, list, cur) => list.map(o => `<button type="button" class="ropt${cur === o ? " on" : ""}" data-pick="${esc(o)}" data-k="${k}">${esc(o)}</button>`).join("");
+  const res = await raSheet("Reallocate " + (c.name || "this person") + "?", "", "Reallocate", st => {
+    if (!opts.length) return { ok: false, html: `Cannot be placed automatically: ${esc(why)}. A Director places them in Course Allocation.` };
+    if (!st.c) st.c = opts[0].name;
+    const t = opts.find(s => s.name === st.c) || opts[0], room = raRoom(t.name, c);
+    return { ok: !!room && !!st.why, html: `Moving from <b>${esc(S.course)}</b> (absent ${esc(raWeeks(c).map(n => "week " + n).join(" and "))}) to a whole new course, assessed in week 3 of it.` +
+      (opts.length > 1 ? `<div class="lb" style="margin-top:8px">Course</div>` + chips("c", opts.map(s => s.name), t.name) : `<br>Course: <b>${esc(t.name)}</b>`) +
+      `<br>Dates: <b>${esc(raMondays(t.date).map(d => nice(d)).join(", "))}</b><br>Room: <b>${esc(room || "none free")}</b>` +
+      `<div class="lb" style="margin-top:8px">Why were they absent</div>` + chips("why", RA_WHY, st.why) + `<div class="hint" style="margin-top:8px">They then appear in Comms under the new course ("Moved here after missing teaching"). Their old marks here are cleared.</div>` };
+  });
+  if (!res) return;
+  RA.busy = true; renderAbs();
+  try { const r = await raMove(c, opts.find(s => s.name === res.c) || opts[0], res.why); toast((c.name || "They") + " is on " + r.target.name + ", room " + r.room + ". Email them from Comms."); }
+  catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+  RA.busy = false; renderAbs(); if (S.view === "register") render();
+}
+async function raAll() {
+  if (RA.busy) return; if (!(await raEnsure())) return;
+  const list = raAbsent(), plan = [], stuck = [];
+  list.forEach(c => { const { opts, why } = raOptions(c); if (!opts.length) { stuck.push({ c, why }); return; } const t = opts[0], room = raRoom(t.name, c); if (!room) { stuck.push({ c, why: "every room on " + t.name + " is full" }); return; }
+    plan.push({ c, t, room }); const full = RA.ctx.cands.find(x => x.id === c.id); if (full) { full._pc = full.course; full._pr = full.room; full.course = t.name; full.room = room; } });
+  plan.forEach(p => { const full = RA.ctx.cands.find(x => x.id === p.c.id); if (full) { full.course = full._pc; full.room = full._pr; } });   // planning only: the counts above include earlier people in this list
+  const rows = plan.map(p => `<div>${esc(p.c.name)} &rarr; <b>${esc(p.t.name)}</b>, room ${esc(p.room)}</div>`).join("") + (stuck.length ? `<div style="margin-top:8px"><b>Cannot place (a Director does these):</b></div>` + stuck.map(x => `<div>${esc(x.c.name)}: ${esc(x.why)}</div>`).join("") : "");
+  if (!plan.length) { await raSheet("Reallocate all", `Nobody can be placed automatically.<div style="margin-top:8px">${rows}</div>`, "OK"); return; }
+  const ok = await raSheet("Reallocate " + plan.length + " " + (plan.length === 1 ? "person" : "people") + "?", `Each goes to the next course that fits, as in Course Allocation. Check each one is really absent first.<div style="margin:8px 0;max-height:40vh;overflow:auto;font-size:14px">${rows}</div>`, "Reallocate " + plan.length);
+  if (!ok) return;
+  RA.busy = true; renderAbs();
+  let done = 0, failed = [];
+  for (const p of plan) { try { const t = raOptions(p.c).opts[0]; if (!t) throw new Error("no course has room now"); await raMove(p.c, t, null); done++; } catch (err) { failed.push(p.c.name + " (" + ((err && err.code === "permission-denied") ? "rules not deployed yet?" : (err && err.message) || err) + ")"); } }
+  RA.busy = false; renderAbs(); if (S.view === "register") render();
+  toast(done + " reallocated." + (failed.length ? " Not done: " + failed.join("; ") : " Email them from Comms."), failed.length > 0);
+}
+async function raHere(id) {
+  const c = candById(id); if (!c) return;
+  const ws = raWeeks(c); if (!ws.length) return;
+  const res = await raSheet("Mark " + (c.name || "this person") + " as here?", "", "Correct to Here", st => ({ ok: !!st.why, html: `Absent ${esc(ws.map(n => "week " + n).join(" and "))} becomes <b>Here</b>, shown as corrected. They stay on ${esc(S.course)}.<div class="lb" style="margin-top:8px">Why was it wrong</div>` + PRES_WHY.map(o => `<button type="button" class="ropt${st.why === o ? " on" : ""}" data-pick="${esc(o)}" data-k="why">${esc(o)}</button>`).join("") }));
+  if (!res) return;
+  const who = { by: S.user.uid, byName: S.myName, at: new Date().toISOString() }, payload = { course: S.course, room: c.room || null, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  ws.forEach(n => { payload["w" + n] = Object.assign({}, entryOf(c.id, n) || {}, { status: "here", corrected: Object.assign({ from: "absent", reason: res.why }, who) }); });
+  try { await db.collection("stage1_register").doc(c.id).set(payload, { merge: true }); toast(c.name + ": corrected to Here."); }
+  catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+}
+// ── Moved off this course by mistake (27 Oct, Jon) ──────────────────────────
+// An absence recorded in error can get someone moved to a new course (Course Allocation clears their marks and room). RMD faculty can put them back
+// here: same course, original room (saved at the move, or picked now for older moves), wrong absent week(s) corrected to Here.
+const MV = { loaded: false, loading: false, rows: [], err: "", busy: null, open: false };
+function mvLast(c) { const a = c.previousCourses; return Array.isArray(a) && a.length ? a[a.length - 1] : null; }
+async function mvLoad() {
+  if (MV.loading) return;
+  MV.loading = true; MV.err = ""; MV.open = true; renderMoved();
+  try {
+    const snap = await db.collection(COLLECTIONS.stage1Candidates).get(), tm = adTestMode(), rows = [];
+    snap.forEach(d => { const c = Object.assign({ id: d.id }, d.data()), m = mvLast(c); if (m && m.course === S.course && c.course !== S.course && (tm ? c.isTest === true : c.isTest !== true)) rows.push(c); });
+    rows.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "en"));
+    MV.rows = rows; MV.loaded = true;
+  } catch (e) { MV.err = "Could not look this up: " + ((e && e.message) || e); }
+  MV.loading = false; renderMoved();
+}
+function renderMoved() {
+  const el = $("movedWrap"); if (!el) return;
+  if (!el._bound) { el._bound = true; el.addEventListener("click", onMovedClick); }
+  const dates = S.full && S.course ? teachDates(S.course) : null;
+  if (!dates || (S.door === "teach" && S.drole === "tinst")) { el.innerHTML = ""; return; }
+  let h = `<details class="card" id="mvCard"${MV.open ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">Moved off this course by mistake?</summary><div style="margin-top:8px">`;
+  h += `<div class="hint" style="margin:0 0 8px">If an absence was recorded wrongly and the person was moved to another course, put them back here in their original room.</div>`;
+  if (!MV.loaded) h += `<button type="button" class="btn sm" data-mv="load"${MV.loading ? " disabled" : ""}>${MV.loading ? "Looking..." : "Find people moved off " + esc(S.course)}</button>`;
+  else if (!MV.rows.length) h += `<div class="hint" style="margin:0">Nobody has been moved off ${esc(S.course)}.</div> <button type="button" class="btn sm" data-mv="load">Look again</button>`;
+  else h += MV.rows.map(c => {
+    const m = mvLast(c), wk = [1, 2].filter(n => m["w" + n] === "absent").map(n => "week " + n);
+    return `<div class="srow"><div class="snm"><b>${esc(c.name || "")}</b> <small>${esc(c.degree || "")} &middot; now ${esc(c.course ? c.course + (c.room ? ", room " + c.room : "") : "waiting for a course")} &middot; was ${esc(m.room ? "room " + m.room : "room not saved")}${wk.length ? " &middot; absent " + esc(wk.join(" and ")) : ""}</small></div>` +
+      `<button type="button" class="btn sm pri" data-mv="back" data-id="${esc(c.id)}"${MV.busy ? " disabled" : ""}>Put back</button></div>`;
+  }).join("");
+  if (MV.err) h += `<div class="msg err" style="margin-top:8px">${esc(MV.err)}</div>`;
+  el.innerHTML = h + "</div></details>";
+  const d = $("mvCard"); if (d) d.ontoggle = () => { MV.open = d.open; };
+}
+function onMovedClick(e) {
+  const b = e.target.closest("[data-mv]"); if (!b) return;
+  if (b.dataset.mv === "load") mvLoad(); else if (b.dataset.mv === "back") mvPutBack(b.dataset.id);
+}
+function mvAsk(c, m, rooms, newMarks) {
+  return new Promise(res => {
+    let room = m.room || null;
+    const wk = [1, 2].filter(n => m["w" + n] === "absent");
+    const draw = () => {
+      let p = `Now: <b>${esc(c.course ? c.course + (c.room ? ", room " + c.room : "") : "waiting for a course")}</b>. They go back to <b>${esc(S.course)}</b>${room ? ", room <b>" + esc(room) + "</b> (their original room)" : ""}.`;
+      if (wk.length) p += `<br>Absent ${wk.map(n => "week " + n).join(" and ")} is corrected to <b>Here</b> and shown as corrected.`;
+      if (newMarks) p += `<br>They already have ${newMarks} register mark${newMarks === 1 ? "" : "s"} on ${esc(c.course || "the new course")}. ${newMarks === 1 ? "It is" : "Those are"} replaced.`;
+      p += `<br>They may already have been emailed about the new course, so tell them.`;
+      if (!m.room) p += `<br><b>The original room was not saved for this move.</b> Pick the room:` + `<div class="fqo" style="margin-top:8px">${rooms.map(r => `<button type="button" class="fqb${r === room ? " on" : ""}" data-mvr="${esc(r)}">${esc(r)}</button>`).join("")}</div>`;
+      $("overlay").innerHTML = `<div class="sheetbg" id="sbg"><div class="sheet" role="dialog" aria-modal="true"><h3>Put ${esc(c.name || "this person")} back on ${esc(S.course)}?</h3><p>${p}</p>` +
+        `<div class="two"><button type="button" class="pri" id="shYes"${room ? "" : " disabled"}>Put back</button><button type="button" id="shNo">Cancel</button></div></div></div>`;
+      const done = v => { $("overlay").innerHTML = ""; res(v); };
+      $("shYes").onclick = () => done(room); $("shNo").onclick = () => done(null);
+      $("sbg").onclick = ev => { if (ev.target.id === "sbg") done(null); };
+      $("overlay").querySelectorAll("[data-mvr]").forEach(x => x.onclick = () => { room = x.dataset.mvr; draw(); });
+    };
+    draw();
+  });
+}
+async function mvPutBack(id) {
+  const c = MV.rows.find(x => x.id === id), m = c && mvLast(c);
+  if (!c || !m || m.course !== S.course || MV.busy) return;
+  let newMarks = 0;
+  try { const rs = await db.collection("stage1_register").doc(id).get(); if (rs.exists && rs.data().course !== S.course) newMarks = [1, 2].filter(n => rs.data()["w" + n] && rs.data()["w" + n].status).length; } catch (e) {}
+  const room = await mvAsk(c, m, roomList(), newMarks); if (!room) return;
+  MV.busy = id; renderMoved();
+  const at = new Date().toISOString(), who = { by: S.user.uid, byName: S.myName, at }, ts = () => firebase.firestore.FieldValue.serverTimestamp();
+  // Team: saved with the move; for older moves, the same room's team on this course.
+  let uids = Array.isArray(m.teamUids) ? m.teamUids.slice() : null, names = Array.isArray(m.teamNames) ? m.teamNames.slice() : [];
+  if (!uids || (room !== m.room)) { const mate = S.cands.find(x => x.room === room && Array.isArray(x.instructorTeamUids) && x.instructorTeamUids.length); uids = mate ? mate.instructorTeamUids.slice() : []; names = mate ? (mate.instructorTeamNames || []).slice() : []; }
+  const reg = { course: S.course, room, updatedAt: ts() };
+  [1, 2].forEach(n => {
+    const st = m["w" + n]; if (!st) return;
+    reg["w" + n] = st === "absent"
+      ? { status: "here", by: S.user.uid, byName: S.myName, at: ts(), corrected: Object.assign({ from: "absent", reason: "Absence recorded in error, put back on the course" }, who) }
+      : { status: st, by: S.user.uid, byName: S.myName, at: ts(), restored: true };
+  });
+  try {
+    const batch = db.batch();
+    batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(id), { course: S.course, room, instructorTeamUids: uids, instructorTeamNames: names, previousCourses: (c.previousCourses || []).slice(0, -1), assessmentRoom: null, assessmentSlot: null, assessmentEmailedSlot: null, reallocEmailedCourse: null, lastPutBack: { from: c.course || null, by: S.user.uid, byName: S.myName, at } });
+    batch.set(db.collection("stage1_register").doc(id), reg);
+    await batch.commit();
+    MV.rows = MV.rows.filter(x => x.id !== id);
+    toast((c.name || "They") + " is back on " + S.course + ", room " + room + ".");
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : err.message), true); }
+  MV.busy = null; renderMoved();
+}
 function onSentClick(e) {
   const b = e.target.closest("[data-s]"); if (!b) return;
   const a = b.dataset.s, v = b.dataset.v;
@@ -1013,7 +1261,7 @@ function render() {
   if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
   if (!dates) msgs += onCatchup() ? `<div class="msg ok"><b>${esc(S.course)}</b> is an assessment-only night. There are no teaching evenings, so there is no register. Use <b>Assessment night</b> above.</div>` : `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
   $("msgs").innerHTML = msgs;
-  renderSent();
+  renderSent(); renderAbs(); renderMoved();
 
   // tools
   let tools = "";

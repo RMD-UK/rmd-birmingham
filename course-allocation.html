@@ -212,6 +212,7 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
       <div class="hint" id="searchHint" style="margin:-2px 0 12px"></div>
       <div class="plain" id="plain"></div>
       <div class="sumstrip" id="sum"></div>
+      <div id="strayBox"></div>
       <div id="msgs"></div>
       <div class="rooms" id="rooms"></div>
       <div class="tools">
@@ -252,6 +253,10 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 // ───────────────────────────────────────────────────────────────────────────
 initFirebase();
 
+// 2026-10-27 (Jon): real and test never mix. Test courses are left out of every allocation here, and test candidates are never listed.
+const isTestName = n => /^TEST\b/i.test(n || "");
+const isTestSess = s => !!s && (s.test === true || isTestName(s.name));
+let strays = [], testOnReal = [];   // real people sitting on a test course, and test people sitting on a real course (both are mistakes)
 let allCandidates = [];
 let programmeDeadlines = {};
 let courseSessions = [];
@@ -854,8 +859,9 @@ function attemptNo(c) {
 // carry over (for example an old "absent" showing in week 1 or 2 of the new course). So when the course
 // changes we clear the old register marks, clear an assessment record that has no results in it (a result is never
 // deleted), and keep a short summary on the candidate as previousCourses so the reason for the move is not lost.
-async function clearOldCourseRecords(id, oldCourse) {
-  const out = { course: oldCourse, at: now() };
+async function clearOldCourseRecords(id, oldCourse, oldCand) {
+  // 2026-10-27 (Jon): also keep the original room and team, so RMD faculty can put someone back (phase1.html, Register) if the absence was wrong.
+  const out = { course: oldCourse, at: now(), room: (oldCand && oldCand.room) || null, teamUids: ((oldCand && oldCand.instructorTeamUids) || []).slice(), teamNames: ((oldCand && oldCand.instructorTeamNames) || []).slice() };
   const regRef = db.collection("stage1_register").doc(id);
   const rs = await regRef.get();
   if (rs.exists && rs.data().course === oldCourse) {
@@ -873,7 +879,7 @@ async function clearOldCourseRecords(id, oldCourse) {
     if (a.notThere && a.notThere.flag) out.notThere = true;
     if (Object.keys(a.attempts || {}).length) out.keptAssessment = true; else await asRef.delete();
   }
-  return (out.w1 || out.w2 || out.outcome || out.notThere || out.keptAssessment) ? out : null;
+  return out;
 }
 
 async function applyNow() {
@@ -904,8 +910,8 @@ async function applyNow() {
     await ref.update(upd);
     if ((sel.mode === "course" || sel.mode === "off") && oldCourse && oldCourse !== upd.course) {
       try {
-        const moved = await clearOldCourseRecords(c.id, oldCourse);
-        if (moved) { await ref.update({ previousCourses: firebase.firestore.FieldValue.arrayUnion(moved) }); addLog(`${c.name}: old register marks from ${oldCourse} cleared and summarised on the record.`); }
+        const moved = await clearOldCourseRecords(c.id, oldCourse, c);
+        if (moved) { await ref.update({ previousCourses: firebase.firestore.FieldValue.arrayUnion(moved) }); addLog(`${c.name}: old register marks and room from ${oldCourse} cleared and summarised on the record (faculty can put them back).`); }
       } catch (e2) { addLog(`${c.name}: moved, but the old ${oldCourse} register marks could not be cleared (${e2.message}). Tell Jon.`); }
     }
     Object.assign(c, upd);
@@ -992,7 +998,36 @@ function renderPane(keepMsgs) {
   if (pl && pl.ok) { a.disabled = false; a.textContent = pl.btn; a.className = "btn pri" + (pl.ovr ? " ovr" : ""); $("barTxt").textContent = "Applies straight away: course and room together, no separate allocate step."; }
   else { a.disabled = true; a.textContent = "Apply"; a.className = "btn pri"; $("barTxt").textContent = pl ? "Finish the choices on the left. Nothing changes until you press the button." : "Pick a person and say what you want to do. Nothing changes until you press the button."; }
 }
+function renderStrays() {
+  const el = document.getElementById("strayBox"); if (!el) return;
+  const n = strays.length + testOnReal.length;
+  if (!n) { el.innerHTML = ""; return; }
+  const names = list => list.slice(0, 12).map(c => esc(c.name || "(no name)") + " (" + esc(c.course) + ")").join(", ") + (list.length > 12 ? " and " + (list.length - 12) + " more" : "");
+  el.innerHTML = `<div class="msg err"><b>Real and test are mixed up.</b> ` +
+    (strays.length ? `${strays.length} real ${strays.length === 1 ? "student is" : "students are"} on a test course: ${names(strays)}. ` : "") +
+    (testOnReal.length ? `${testOnReal.length} test ${testOnReal.length === 1 ? "person is" : "people are"} on a real course: ${names(testOnReal)}. ` : "") +
+    `<div style="margin-top:8px"><button type="button" class="btn" id="strayFix">Take them off (back to the waiting list)</button></div></div>`;
+  document.getElementById("strayFix").onclick = fixStrays;
+}
+async function fixStrays() {
+  const list = strays.concat(testOnReal); if (!list.length) return;
+  const btn = document.getElementById("strayFix"); if (btn) btn.disabled = true;
+  const clear = { course: null, room: null, instructorTeamUids: [], instructorTeamNames: [], assessmentRoom: null, assessmentSlot: null, assessmentEmailedSlot: null, allocatedAt: null, overCapacity: null, eligibilityOverrideCourse: null, reallocEmailedCourse: null, allocationEmailedCourse: null };
+  try {
+    for (const c of list) {
+      const old = c.course;
+      await db.collection(COLLECTIONS.stage1Candidates).doc(c.id).update(clear);
+      try { await clearOldCourseRecords(c.id, old, c); } catch (e) {}
+      Object.assign(c, clear);
+      addLog(`${c.name}: taken off ${old} (real and test must not mix). Now waiting.`);
+    }
+    strays = []; testOnReal = [];
+    $("msgs").innerHTML = `<div class="msg ok">Done. ${list.length} ${list.length === 1 ? "person is" : "people are"} back on the waiting list. Place them again with Step 1 or by hand.</div>`;
+    renderAll(true); syncSheetSoon();
+  } catch (err) { $("msgs").innerHTML = `<div class="msg err">Could not save: ${esc(err.message)}. Some may not have been moved.</div>`; renderStrays(); }
+}
 function renderAll(keepMsgs) {
+  renderStrays();
   attnList = computeAttention();
   renderTabs(); renderWait(); renderMail(); renderSide(); renderPane(keepMsgs);
 }
@@ -1018,9 +1053,15 @@ async function boot() {
     ]);
     if (al) { const docs = al.docs.map(d => ({ id: d.id, ...d.data() })); defaultDoc = docs.find(d => d.id === "_default") || null; allocDocs = docs.filter(d => d.id !== "_default"); }
     if (pe) pe.docs.forEach(d => { const x = d.data(); const surname = x.passportLastName || (x.name ? x.name.trim().split(/\s+/).pop() : ""); const first = x.preferredName ? x.preferredName.trim().split(/\s+/)[0] : null; instrNames.set(d.id, first ? [first, surname].filter(Boolean).join(" ") : (x.name || d.id)); });
-    allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const everyone = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     programmeDeadlines = dl && dl.exists ? (dl.data().deadlines || {}) : {};
-    courseSessions = cs && cs.exists ? (cs.data().courses || []) : [];
+    const allSessions = cs && cs.exists ? (cs.data().courses || []) : [];
+    const testNames = new Set(allSessions.filter(isTestSess).map(s => s.name));
+    const onTest = c => !!c.course && (testNames.has(c.course) || isTestName(c.course));
+    courseSessions = allSessions.filter(s => !isTestSess(s));
+    allCandidates = everyone.filter(c => c.isTest !== true);
+    strays = allCandidates.filter(onTest);
+    testOnReal = everyone.filter(c => c.isTest === true && c.course && !onTest(c));
     confirmAccessCode = ca && ca.exists ? (ca.data().code || "") : "";
     view = defaultView();
     $("gate").classList.add("hidden");

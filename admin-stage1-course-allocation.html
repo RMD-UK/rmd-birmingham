@@ -108,6 +108,9 @@
 initFirebase();
 requireDirector("timetable.html");
 
+// 2026-10-27 (Jon): real and test never mix. Test courses are left out of every allocation here, and test candidates are never listed.
+const isTestName = n => /^TEST\b/i.test(n || "");
+const isTestSess = s => !!s && (s.test === true || isTestName(s.name));
 let allCandidates = [];
 // STAGE1_TEACHING_ROOMS is declared once in js/firebase-config.js — do not
 // duplicate the list here, same rule admin-course-room-allocation.html and
@@ -118,7 +121,7 @@ function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").repl
 
 async function loadCandidates() {
   const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
-  allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.isTest !== true && !isTestName(c.course));
   renderAllocationSummary();
   renderDeadlineFeasibility();
   renderOverCapCard();
@@ -152,7 +155,7 @@ async function loadAutoFitSettings() {
   } catch (err) { programmeDeadlines = {}; }
   try {
     const cSnap = await db.collection("config").doc("stage1_course_dates").get();
-    courseSessions = cSnap.exists ? (cSnap.data().courses || []) : [];
+    courseSessions = (cSnap.exists ? (cSnap.data().courses || []) : []).filter(s => !isTestSess(s));
   } catch (err) { courseSessions = []; }
   renderAllocationSummary();
   renderDeadlineFeasibility();

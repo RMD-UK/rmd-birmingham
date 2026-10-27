@@ -46,7 +46,11 @@
     .room-id { font-size:15px; font-weight:800; letter-spacing:.5px; }
     .room-count { font-size:11px; opacity:.55; }
     .room-body { padding:5px; }
-    .pcard { border:1.5px solid #dde2ed; border-radius:6px; padding:6px 8px; margin-bottom:3px; font-size:13px; font-family:var(--font); display:flex; align-items:center; gap:8px; background:#f7f9fc; }
+    .pcard { border:1.5px solid #dde2ed; border-radius:6px; padding:6px 8px; margin-bottom:3px; font-size:13px; font-family:var(--font); display:flex; align-items:center; gap:8px; background:#f7f9fc; flex-wrap:wrap; }
+    .pcard[data-cid] { cursor:pointer; }
+    .pcard-more { display:none; flex:1 0 100%; font-size:12px; color:#3b4a6b; border-top:1px dashed #d0d5e0; padding-top:5px; margin-top:2px; word-break:break-all; }
+    .pcard.open .pcard-more { display:block; }
+    .pcard-more b { color:#1f2540; }
     .pcard.highlight { outline:3px solid #f5a623; outline-offset:1px; }
     .pcard-main { flex:1; min-width:0; display:flex; flex-direction:column; }
     .pcard-name { overflow:hidden; text-overflow:ellipsis; color:#1f2540; }
@@ -312,12 +316,16 @@ function teamsFor(course) {
 // Same look as the Instructor Weekend room allocation: a role tag, the name,
 // and nothing else but the assessment slot. Email and degree are
 // deliberately not shown on this view-only page.
+// 27 Oct (Jon): tap or click a candidate card to see their degree and email; hover shows the same. Open cards stay open when the page redraws.
+const openCards = new Set();
 function personCard(name, kind, id, sub, cand) {
   const pip = kind === "instr"
     ? `<span class="role-pip pip-inst">Instr</span>`
     : `<span class="role-pip pip-cand">Cand</span>`;
   const tagHtml = cand ? (RMD_TAGS.toggles(cand)) : "";
-  return `<div class="pcard"${id ? ` data-cid="${esc(id)}"` : ""}>${pip}<div class="pcard-main"><span class="pcard-name">${esc(name)}</span>${sub ? `<span class="pcard-sub">${esc(sub)}</span>` : ""}</div>${tagHtml ? `<span class="pcard-tags">${tagHtml}</span>` : ""}</div>`;
+  const more = cand ? `<div class="pcard-more"><b>Degree:</b> ${esc(cand.degree || "not recorded")}<br><b>Email:</b> ${cand.email ? `<a href="mailto:${esc(cand.email)}">${esc(cand.email)}</a>` : "not recorded"}</div>` : "";
+  const tip = cand ? ` title="${esc(name + "\nDegree: " + (cand.degree || "not recorded") + "\nEmail: " + (cand.email || "not recorded"))}"` : "";
+  return `<div class="pcard${id && openCards.has(id) ? " open" : ""}"${id ? ` data-cid="${esc(id)}"` : ""}${tip}>${pip}<div class="pcard-main"><span class="pcard-name">${esc(name)}</span>${sub ? `<span class="pcard-sub">${esc(sub)}</span>` : ""}</div>${tagHtml ? `<span class="pcard-tags">${tagHtml}</span>` : ""}${more}</div>`;
 }
 
 function selectCourse(course) {
@@ -526,6 +534,15 @@ document.addEventListener("click", async (e) => {
     c[key] = !next;
     selectCourse(currentCourse);
     RMD_TAGS.toast("Could not save the tag: " + (err.message || err), true);
+  }
+});
+
+document.addEventListener("click", (e) => {
+  const card = e.target.closest && e.target.closest(".pcard[data-cid]");
+  if (card && !e.target.closest("button, a, .pcard-tags, [data-rtag], [data-attstep]")) {
+    const id = card.dataset.cid;
+    if (openCards.has(id)) openCards.delete(id); else openCards.add(id);
+    card.classList.toggle("open", openCards.has(id));
   }
 });
 

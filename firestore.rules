@@ -752,7 +752,12 @@ service cloud.firestore {
         || (isSignedIn() && resource.data.get("instructorTeamUids", []).hasAny([request.auth.uid]));
       // Full write (add/edit/delete a candidate, change course, etc.)
       // stays director-only — admin-stage1-candidates.html is unaffected.
-      allow write: if isDirector();
+      // 2026-10-27 (Jon): real and test never mix. A write that would leave a real person on a test course (a course named
+      // Test..., which is how every test course is named) or a test person (isTest) on a real course is refused.
+      allow create, update: if isDirector()
+        && !(request.resource.data.get('course', null) is string
+             && (request.resource.data.course.matches('(?i)^test([^a-z0-9_].*)?$') != (request.resource.data.get('isTest', false) == true)));
+      allow delete: if isDirector();
       // Write widened 2026-10-01 (Jon: "anyone on RMD student faculty &
       // RMD senior faculty" should be able to use the room-allocation
       // page) but deliberately scoped to ONLY the room field — this is
@@ -783,6 +788,28 @@ service cloud.firestore {
       // 2026-10-13 (Jon): assessmentAttempt added (the attempt number circle that replaces the two-plus lightbulb).
       allow update: if (isStudentFaculty() || isSeniorFaculty()) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['room', 'instructorTeamUids', 'instructorTeamNames', 'firstTimeAssessment', 'assessmentAbsent', 'assessmentRoom', 'assessmentSlot', 'rap', 'twoPlusAssessments', 'assessmentAttempt']);
+      // 2026-10-27 (Jon): RMD faculty reallocate someone who is marked absent (phase1.html, Register, "All absences"). Student and Senior Faculty may
+      // move a person who has an absent week 1 or 2 mark on their CURRENT course to another course of the same kind (real or test, never mixed),
+      // set the room and team, and add exactly one previousCourses entry naming the course they left. Those fields only.
+      allow update: if (isStudentFaculty() || isSeniorFaculty())
+        && resource.data.get("course", null) is string && request.resource.data.get("course", null) is string
+        && request.resource.data.course != resource.data.course
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['course', 'room', 'instructorTeamUids', 'instructorTeamNames', 'previousCourses', 'preferredCourse', 'avoidCourse', 'overridePreferred', 'eligibilityOverrideCourse', 'allocatedAt', 'placementChecked', 'overCapacity', 'assessmentRoom', 'assessmentSlot', 'assessmentEmailedSlot'])
+        && request.resource.data.previousCourses.size() == resource.data.get("previousCourses", []).size() + 1
+        && request.resource.data.previousCourses[request.resource.data.previousCourses.size() - 1].course == resource.data.course
+        && (request.resource.data.course.matches('(?i)^test([^a-z0-9_].*)?$') == (resource.data.get('isTest', false) == true))
+        && exists(/databases/$(database)/documents/stage1_register/$(docId))
+        && (get(/databases/$(database)/documents/stage1_register/$(docId)).data.get('w1', {}).get('status', '') == 'absent'
+            || get(/databases/$(database)/documents/stage1_register/$(docId)).data.get('w2', {}).get('status', '') == 'absent');
+
+      // 2026-10-27 (Jon): "put back" after a wrong absent mark moved someone to a new course. Student and Senior Faculty may move a person
+      // back to the course they were last moved FROM (the newest previousCourses entry), restore the room and team, and drop that entry.
+      // Nothing else on the record can change in the same write. Used by phase1.html, Register, "Moved off this course by mistake?".
+      allow update: if (isStudentFaculty() || isSeniorFaculty())
+        && resource.data.get("previousCourses", []).size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['course', 'room', 'instructorTeamUids', 'instructorTeamNames', 'previousCourses', 'assessmentRoom', 'assessmentSlot', 'assessmentEmailedSlot', 'reallocEmailedCourse', 'lastPutBack'])
+        && request.resource.data.previousCourses.size() == resource.data.previousCourses.size() - 1
+        && request.resource.data.course == resource.data.previousCourses[resource.data.previousCourses.size() - 1].course;
     }
 
     // ── Phase 1 weekly register (2026-10-13, Jon) ───────────────────────────
