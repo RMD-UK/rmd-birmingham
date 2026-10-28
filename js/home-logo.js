@@ -29,7 +29,15 @@
       var logos = document.querySelectorAll('img[src*="rmd-logo"]');
       for (var i = 0; i < logos.length; i++) {
         var a = logos[i].closest("a");
-        if (!a || isGate(logos[i])) continue;
+        if (isGate(logos[i])) continue;
+        if (!a && logos[i].closest(BARS)) {                        // a logo already in the top bar but not linked: link it, do not add a second logo
+          a = document.createElement("a");
+          a.href = HOME;
+          a.style.cssText = "display:inline-flex;align-items:center;flex:0 0 auto;text-decoration:none;line-height:0";
+          logos[i].parentNode.insertBefore(a, logos[i]);
+          a.appendChild(logos[i]);
+        }
+        if (!a) continue;
         if ((a.getAttribute("href") || "") !== HOME) a.setAttribute("href", HOME);
         a.title = a.title || "Back to the welcome page";
         linked = true;

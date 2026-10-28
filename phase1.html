@@ -1652,7 +1652,7 @@ const ASSESS_SLOTS = (() => {
 })();
 // Rooms used for retests (attempt 2). Student Faculty pick from these when they confirm a retest. Empty = every assessment room is offered. Jon to confirm the list.
 const DEFAULT_RETEST_ROOMS = ["CM07", "CM08", "CM09", "CM10"];   // 28 Oct, Jon: how faculty run resits. Rooms open from the start of the night. RAP can use any room.
-const LATE_RETEST_ROOMS = ["CM06", "CM11"];                        // 28 Oct, Jon: open once the last first sit has finished (the picker asks before using them earlier)
+const PRIORITY_RESIT_ROOMS = ["CM06", "CM11"];                     // 28 Oct, Jon: listed first among the other rooms once free; otherwise treated like any other assessment room
 const RESIT_WAIT = 2;                                              // 28 Oct, Jon: one student inside a resit room and two waiting outside
 const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
 const A = {
@@ -2622,10 +2622,10 @@ function deskBlocked(c) {
 function deskExpected(c) { const f = nres(c.id).flow; return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || (!!f && Object.keys(f).some(k => /^\d+$/.test(k)))); }
 function retestRoomList() {
   // Jon's list is the rule: offered as it stands, whether or not a room is also in the assessment rooms list. A saved list (config/stage1_assessment_rooms.retestRooms) overrides it.
-  return (A.retestRooms && A.retestRooms.length) ? A.retestRooms.slice() : DEFAULT_RETEST_ROOMS.concat(LATE_RETEST_ROOMS);
+  return (A.retestRooms && A.retestRooms.length) ? A.retestRooms.slice() : DEFAULT_RETEST_ROOMS.slice();
 }
 // Rooms a person may be given in the Adjust box: RAP any room; every other retest (attempt 2 or later) only the retest rooms; first sits any assessment room.
-function roomsFor(c) { return (c && c.rap !== true && attemptOf(c) >= 2) ? retestRoomList() : A.rooms; }
+function roomsFor(c) { return (c && c.rap !== true && attemptOf(c) >= 2) ? retestRoomList().concat(PRIORITY_RESIT_ROOMS.filter(r => !retestRoomList().includes(r))) : A.rooms; }
 // Student Faculty step at the atrium hub: confirm the retest is tonight, pick a retest room (no time needed).
 // The room is a guide for the runner and assessor, not a rule. changeOnly = just move the room, no new check-in.
 function askResitRoom(c, changeOnly) {
@@ -2633,15 +2633,16 @@ function askResitRoom(c, changeOnly) {
   // 28 Oct, Jon: start with the set resit rooms, then any other assessment room once its first sits are done (free) can be used as a resit room.
   const others = (A.rooms || []).filter(r => !rooms.includes(r)).concat(cur && !rooms.includes(cur) && !(A.rooms || []).includes(cur) ? [cur] : []);
   const btn = r => {
-    const L = roomLoad(r), left = roomFirstSitsLeft(r), busy = left > 0 && (LATE_RETEST_ROOMS.includes(r) || !rooms.includes(r)), full = L.inside >= 1 && L.wait >= RESIT_WAIT;
-    const note = busy ? left + " first sit" + (left === 1 ? "" : "s") + " still due" : (!rooms.includes(r) || LATE_RETEST_ROOMS.includes(r) ? "free" : "");
+    const L = roomLoad(r), left = roomFirstSitsLeft(r), busy = left > 0 && !rooms.includes(r), full = L.inside >= 1 && L.wait >= RESIT_WAIT;
+    const note = busy ? left + " first sit" + (left === 1 ? "" : "s") + " still due" : (!rooms.includes(r) ? "free" : "");
     return `<button type="button" class="fqb rr${r === cur ? " on" : ""}${full ? " rfull" : ""}${busy ? " rlate" : ""}" data-rr="${esc(r)}" data-in="${L.inside}" data-wait="${L.wait}" data-late="${busy ? 1 : 0}" data-left="${left}"><b>${esc(r)}</b><small>${L.inside} in, ${L.wait} waiting${full ? " (full)" : ""}${note ? " &middot; " + note : ""}</small></button>`;
   };
-  const free = others.filter(r => roomFirstSitsLeft(r) === 0), inUse = others.filter(r => roomFirstSitsLeft(r) > 0);
+  const pri = r => PRIORITY_RESIT_ROOMS.includes(r) ? 0 : 1, byPri = (a, b) => pri(a) - pri(b);   // CM06 and CM11 first, otherwise the usual order
+  const free = others.filter(r => roomFirstSitsLeft(r) === 0).sort(byPri), inUse = others.filter(r => roomFirstSitsLeft(r) > 0).sort(byPri);
   $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true"><h3>${changeOnly ? "Change retest room" : "Send to a room"} for ${esc(c.name)}</h3>` +
     `<div class="hint" style="margin:0 0 8px">${changeOnly ? "Pick the new room." : esc(firstNameOf(c)) + " is ready to sit. Pick a room: one student inside and two waiting outside. They walk there themselves."} The room is a guide: an assessor can take them to a different room.</div>` +
     `<div class="fqo">${rooms.map(btn).join("")}</div>` +
-    (others.length ? `<div class="hint" style="margin:12px 0 6px"><b>Other assessment rooms.</b> Free once their first sits are done.</div>` +
+    (others.length ? `<div class="hint" style="margin:12px 0 6px"><b>Other assessment rooms.</b> Free once their first sits are done (CM06 and CM11 first).</div>` +
       `<div class="fqo" id="rrOther">${free.map(btn).join("")}${inUse.map(btn).join("")}</div>` : "") +
     `<div class="row2" style="margin-top:12px"><button type="button" class="btn" id="rrCancel">Cancel</button></div></div></div>`;
   const close = () => { $("overlay").innerHTML = ""; };
