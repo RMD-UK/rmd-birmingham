@@ -219,7 +219,7 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
         <div class="seg" id="filterTabs"></div>
         <button class="btn" id="toggleList" type="button"></button>
       </div>
-      <div class="hint hidden" id="legend" style="margin:0 0 8px"><b>Status tags:</b> <b>Waiting</b> = no course yet · <b>Dates not checked</b> = placement dates not checked yet · <b>Not emailed</b> = placed or moved, and their email has not been sent (Step 3) · <b>Placement clash</b> = one of the course Mondays falls inside their placement dates · <b>Changed now</b> = changed during this visit. <b>RAP</b> and <b>2+ assessments</b> are tags you set (Step 2) that also go to the sheet. Blank = nothing to do.</div>
+      <div class="hint hidden" id="legend" style="margin:0 0 8px"><b>Status tags:</b> <b>Waiting</b> = no course yet · <b>Dates not checked</b> = placement dates not checked yet · <b>Not emailed</b> = placed or moved, and their email has not been sent (Step 3) · <b>Told in person</b> = placed or moved, and you chose not to email them · <b>Placement clash</b> = one of the course Mondays falls inside their placement dates · <b>Changed now</b> = changed during this visit. <b>RAP</b> and <b>2+ assessments</b> are tags you set (Step 2) that also go to the sheet. Blank = nothing to do.</div>
       <div class="sched hidden" id="schedWrap">
         <div class="rowhead"><div>Room</div><div>Name</div><div>Programme</div><div>Status</div></div>
         <div id="rows"></div>
@@ -768,7 +768,7 @@ function renderPick() {
 }
 function choose(id) {
   const c = byId(id); if (!c) return;
-  sel = { id, mode: c.course ? null : "course", target: null, override: false };
+  sel = { id, mode: c.course ? null : "course", target: null, override: false, noEmail: false };
   if (c.course) view = c.course;
   renderAll();
 }
@@ -799,6 +799,13 @@ function renderSide() {
       const r = reasonsFor(c, sel.target);
       if (r.length) body.insertAdjacentHTML("beforeend", `<div class="over-box"><b>Not normally an option for ${esc(firstName(c))}:</b><ul>${r.map(x => `<li>${esc(x)}</li>`).join("")}</ul><label><input type="checkbox" id="ovr" ${sel.override ? "checked" : ""}> Voluntary override: place them on ${esc(sel.target)} anyway</label></div>`);
       const o = $("ovr"); if (o) o.onchange = e => { sel.override = e.target.checked; renderAll(); };
+      // 2026-10-28 (Jon): choose at the time whether to email, because many moves are already talked through in person.
+      if (c.email) {
+        body.insertAdjacentHTML("beforeend", `<div class="fieldlab" style="margin-top:10px">Email ${esc(firstName(c))} about this?</div>
+          <div class="radio ${sel.noEmail ? "" : "on"}" data-em="yes"><b>Yes, email them</b><small>They go on the email list in Step 3. You check the email before it is sent.</small></div>
+          <div class="radio ${sel.noEmail ? "on" : ""}" data-em="no"><b>No, I have already told them</b><small>No email is sent and they are not on the email list. It is recorded as told in person.</small></div>`);
+        body.querySelectorAll("[data-em]").forEach(el => el.onclick = () => { sel.noEmail = el.dataset.em === "no"; renderAll(true); });
+      }
     }
   }
   if (sel.mode === "tags") {
@@ -832,7 +839,7 @@ function plan() {
     if (r.length && !sel.override) return { ok: false, warn: true, text: `<span class="lbl">Blocked</span>Putting <b>${esc(c.name)}</b> on <b>${esc(sel.target)}</b> is not normally allowed. Tick the voluntary override if you want to go ahead.` };
     if (!room) return { ok: false, warn: true, text: `<span class="lbl">No room</span>Every room on <b>${esc(sel.target)}</b> is full.` };
     return { ok: true, ovr: r.length > 0, warn: r.length > 0, btn: r.length ? `Override and move to ${sel.target}` : `Move to ${sel.target}`,
-      text: `<span class="lbl">Ready to apply</span>${c.course ? `Move <b>${esc(c.name)}</b> from <b>${esc(c.course)}</b> to` : `Place <b>${esc(c.name)}</b> on`} <b>${esc(sel.target)}</b> (${fmt(sess(sel.target).date)}). They get room <b>${esc(room)}</b> straight away and go on the email list.${r.length ? `<br><span class="mut">Override recorded: ${esc(r.join("; "))}.</span>` : ""}` };
+      text: `<span class="lbl">Ready to apply</span>${c.course ? `Move <b>${esc(c.name)}</b> from <b>${esc(c.course)}</b> to` : `Place <b>${esc(c.name)}</b> on`} <b>${esc(sel.target)}</b> (${fmt(sess(sel.target).date)}). They get room <b>${esc(room)}</b> straight away. ${sel.noEmail && c.email ? "<b>No email is sent</b> (you have told them in person)." : "They go on the email list."}${r.length ? `<br><span class="mut">Override recorded: ${esc(r.join("; "))}.</span>` : ""}` };
   }
   if (sel.mode === "room" && sel.target) return { ok: true, btn: `Move to room ${sel.target}`, text: `<span class="lbl">Ready to apply</span>Move <b>${esc(c.name)}</b> from room <b>${esc(c.room || "none")}</b> to room <b>${esc(sel.target)}</b> on ${esc(c.course)}. Their course does not change, so no email is needed.` };
   if (sel.mode === "tags") {
@@ -890,7 +897,10 @@ async function applyNow() {
   if (sel.mode === "course") {
     const r = reasonsFor(c, sel.target), room = pickRoom(sel.target, c);
     upd = { course: sel.target, room, preferredCourse: null, avoidCourse: null, overridePreferred: null, eligibilityOverrideCourse: r.length ? sel.target : null, allocatedAt: now(), placementChecked: true, overCapacity: null, ...teamFields(sel.target, room) };
-    logText = `${c.name}: ${c.course || "waiting"} → ${sel.target}, room ${room}${r.length ? " (voluntary override: " + r.join("; ") + ")" : ""}.`;
+    const skipMail = !!(sel.noEmail && c.email);
+    upd.allocationEmailSkipped = skipMail ? true : null;
+    if (skipMail) { upd.allocationEmailedCourse = sel.target; upd.allocationEmailedAt = now(); }
+    logText = `${c.name}: ${c.course || "waiting"} → ${sel.target}, room ${room}${r.length ? " (voluntary override: " + r.join("; ") + ")" : ""}${skipMail ? ". Not emailed, told in person" : ""}.`;
     goView = sel.target;
   } else if (sel.mode === "tags") {
     upd = { rap: !!sel.rap, assessmentAttempt: sel.att, twoPlusAssessments: sel.att >= 2 };
@@ -920,7 +930,7 @@ async function applyNow() {
     if (goView) { view = goView; filter = "course"; } else if (sel.mode === "off") filter = "wait";
     const mode = sel.mode;
     sel = null;
-    $("msgs").innerHTML = `<div class="msg ok">Done. ${esc(logText)}${mode === "course" ? " They are now on the email list (Step 3)." : ""}</div>`;
+    $("msgs").innerHTML = `<div class="msg ok">Done. ${esc(logText)}${mode === "course" ? (c.allocationEmailSkipped ? " No email will be sent." : " They are now on the email list (Step 3).") : ""}</div>`;
     renderAll(true);
     syncSheetSoon();
   } catch (err) {
@@ -987,6 +997,7 @@ function renderPane(keepMsgs) {
     if (!p.course && !p.placementChecked) st.push(`<span class="pill clash">Dates not checked</span>`);
     if (clash) st.push(`<span class="pill clash">Placement clash ${esc(fmtShort(clash.start))} to ${esc(fmtShort(clash.end))}</span>`);
     if (isPending(p)) st.push(`<span class="pill mail">Not emailed</span>`);
+    else if (p.allocationEmailSkipped && p.course && p.allocationEmailedCourse === p.course) st.push(`<span class="pill tag">Told in person</span>`);
     if (p.rap) st.push(`<span class="pill tag">RAP</span>`);
     if (attemptNo(p) >= 2) st.push(`<span class="pill tag">Attempt ${attemptNo(p)}</span>`);
     if (touched.has(p.id)) st.push(`<span class="pill new">Changed now</span>`);
