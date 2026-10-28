@@ -57,6 +57,15 @@
     .strip span { font-size: 14px; font-weight: 600; }
     .strip:hover { box-shadow: 0 3px 10px rgba(68,36,124,0.15); }
 
+    /* ── To do banner (29 Oct 2026, Jon: tell people what is outstanding) ── */
+    .todo { background: #FFF6E5; border: 1px solid #F0C36D; border-radius: 12px; padding: 12px 14px; margin: 0 0 10px; }
+    .todo h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; color: #7a4b00; }
+    .todo a { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--rmd-text); padding: 6px 0; }
+    .todo a + a { border-top: 1px solid #F3DCA6; }
+    .todo a b { font-size: 14px; display: block; }
+    .todo a small { color: var(--rmd-muted); font-size: 12px; display: block; }
+    .todo a .go { margin-left: auto; color: #7a4b00; font-size: 18px; }
+
     /* ── Cards ── */
     .cards { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
     .card {
@@ -292,6 +301,7 @@
   const ctx = { role: null, studentFac: false, seniorFac: false, menuAssessor: false, sfrOpen: false };
   let weekEvent = null;      // { diff, dt, label, name } or null
   let feedbackNew = null;    // number or null
+  let todo = [];             // things this member still has to do: [{ title, text, href }]
 
   const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const val = (v, c) => typeof v === "function" ? v(c) : v;
@@ -324,6 +334,19 @@
   }
 
   const footHtml = `<div class="foot"><a href="mailto:colmds-c-rmdbirmingham@adf.bham.ac.uk">Contact RMD Birmingham</a> &middot; general enquiries, monitored year-round</div>`;
+
+  // Only things the member can check about themselves. Add a rule to buildTodo() to add an item.
+  function todoHtml() {
+    if (!todo.length) return "";
+    return `<div class="todo" id="todoBox"><h3>To do (${todo.length})</h3>${todo.map(t => `<a href="${esc(t.href)}"><div><b>${esc(t.title)}</b><small>${esc(t.text)}</small></div><span class="go">&rsaquo;</span></a>`).join("")}</div>`;
+  }
+  function buildTodo(person) {
+    const list = [];
+    if (person && !(String(person.passportFirstName || "").trim() && String(person.passportLastName || "").trim())) {
+      list.push({ title: "Add your passport name", text: "It fills in your MOU and faculty forms for you. Takes a minute.", href: "my-account.html" });
+    }
+    return list;
+  }
 
   function stripHtml() {
     if (!weekEvent) return "";
@@ -358,7 +381,7 @@
     const g = vis.find(x => x.id === key);
     if (!g) {
       const pins = CARDS.filter(k => k.pin && k.show(ctx));
-      root.innerHTML = `${stripHtml()}
+      root.innerHTML = `${todoHtml()}${stripHtml()}
         <div class="section-label">Use most</div>
         <div class="cards">${pins.map(cardHtml).join("")}</div>
         <div class="section-label">Everything else</div>
@@ -371,7 +394,7 @@
       return;
     }
     root.innerHTML = `<div class="crumb"><button type="button" class="back" id="backBtn">&lsaquo; Menu</button><h2>${esc(groupName(g))}</h2></div>
-      <p class="group-line">${esc(groupLine(g))}</p>${cardsBlock(cardsFor(g.id))}${footHtml}`;
+      <p class="group-line">${esc(groupLine(g))}</p>${g.id === "me" ? todoHtml() : ""}${cardsBlock(cardsFor(g.id))}${footHtml}`;
     document.getElementById("backBtn").onclick = () => { location.hash = ""; };
   }
   window.addEventListener("hashchange", () => { render(); window.scrollTo(0, 0); });
@@ -399,8 +422,10 @@
 
     let roleLabel = null;
     let menuAssessor = false;
+    let personRead = false, personData = null;
     try {
       const snap = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      personRead = true; personData = snap.exists ? snap.data() : {};
       if (snap.exists) {
         const data = snap.data();
         if (data.name) {
@@ -411,6 +436,7 @@
       }
     } catch (e) { /* keep generic welcome */ }
 
+    todo = personRead ? buildTodo(personData) : [];   // a failed read shows nothing, never a false reminder
     ctx.role = role; ctx.studentFac = studentFac; ctx.seniorFac = seniorFac; ctx.menuAssessor = menuAssessor;
     document.getElementById("rolePill").textContent =
       customRoleLabel(roleLabel) || (menuAssessor && !isDir(ctx) && !isSF(ctx) ? "Assessor" : null) || ROLE_LABELS[role] || role;
