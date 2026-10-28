@@ -1396,11 +1396,12 @@ function renderTeamsNote() {
 function clearWindow() {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
   const june = today.slice(0, 4) + "-06-01";
-  if (!courseDatesLoaded) return { open: false, why: "Could not read the course dates, so this stays locked." };
-  if (today < june) return { open: false, why: "Opens on 1 June." };
-  if (!firstCourseDate || firstCourseDate < june) return { open: false, why: "Enter this year's course dates first (First year candidates, Course dates and rooms). This unlocks once Course 1 has a date after 1 June." };
-  if (today >= firstCourseDate) return { open: false, why: "Closed: Course 1 has started (" + firstCourseDate + ")." };
-  return { open: true, why: "Open until Course 1 starts on " + firstCourseDate + "." };
+  const nice = d => new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  if (!courseDatesLoaded) return { open: false, why: "Locked: could not read the course dates, so it stays shut to be safe." };
+  if (today < june) return { open: false, why: "Locked until 1 June. Last year's teams stay in place until then." };
+  if (!firstCourseDate || firstCourseDate < june) return { open: false, why: "Locked: enter this year's course dates first (First year candidates, Course dates and rooms). It opens once Course 1 has a date after 1 June." };
+  if (today >= firstCourseDate) return { open: false, why: "Locked: courses are running (Course 1 started on " + nice(firstCourseDate) + "). The saved teams cannot be cleared while courses are active. It opens again on 1 June next year." };
+  return { open: true, why: "Open until Course 1 starts on " + nice(firstCourseDate) + "." };
 }
 function renderStartIntro() {
   const el = document.getElementById("startIntro");
