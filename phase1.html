@@ -478,6 +478,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
       <div id="viewAssessor" class="hidden"></div>
       <div id="viewCheckin" class="hidden"></div>
       <div id="viewResit" class="hidden"></div>
+      <div id="viewAbsences" class="hidden"></div>
       <div id="viewEnd" class="hidden"></div>
     </section>
   </div>
@@ -659,6 +660,7 @@ function renderSteps() {
     { no: 15, t: "Planning overview", s: "What to do before the night, in order", view: "plan", who: "full", onlyRole: true },
     { no: 16, t: "Assessment results", s: "Pass rates, retests and who has passed", href: "assessment-results.html", who: "full" },
     { no: 18, t: "Resit teaching", s: "Mark who is ready to sit a resit", view: "resit", who: "run" },
+    { no: 19, t: "Instructor absences", s: "Who has told us they cannot teach, by evening", view: "absences", who: "full" },
     { no: 17, t: "End of night", s: "Did not turn up, did not pass, and moved to a new course?", view: "endnight", who: "full" }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
@@ -688,7 +690,7 @@ const ROLE_DEFS = {
   teach: [
     { id: "tinst", t: "Instructor", s: "Your room: register and ratings", ok: () => S.mine.length > 0, view: "register", jobs: [{ no: 6 }, { no: 7 }] },
     { id: "tass", t: "Assessor", s: "Not in a room on these evenings", ok: () => S.night && !S.teamOnly && S.mine.length === 0 && (!S.full || S.isDirector), view: "tassinfo", info: true, jobs: [] },
-    { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 8 }, { no: 11 }] },
+    { id: "tfac", t: "RMD faculty", s: "Any room, follow-ups, Comms", ok: () => S.full, view: "register", jobs: [{ no: 6 }, { no: 7 }, { no: 19 }, { no: 8 }, { no: 11 }] },
     { id: "tscr", t: "Big screen", s: "Live register", ok: () => S.full, href: "register-live.html" }
   ],
   assess: [
@@ -698,7 +700,7 @@ const ROLE_DEFS = {
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night && !S.teamOnly, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && !S.teamOnly && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 14, t: "Switch check-in ON", s: "First job of the night: assessors then take only collected people" }, { no: 3 }, { no: 18 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 17 }, { no: 12 }, { no: 13 }, { no: 16 }] },
+    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 14, t: "Switch check-in ON", s: "First job of the night: assessors then take only collected people" }, { no: 3 }, { no: 18 }, { no: 19 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 17 }, { no: 12 }, { no: 13 }, { no: 16 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
     { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
@@ -825,6 +827,19 @@ async function selectCourse(name) {
   if (NIGHT_VIEWS.includes(S.view)) { attachNight(); loadNight(); }
   enterView();
 }
+// 29 Oct 2026 (Jon): the instructor absence review (admin-absences.html) as an RMD faculty tab on every evening.
+// It is the same page, shown inside the hub (same sign-in), so the two never drift apart. The page tells the hub its height.
+function renderAbsences() {
+  const box = $("viewAbsences");
+  if (box.dataset.ready) return;
+  box.dataset.ready = "1";
+  box.innerHTML = '<div style="margin:0 0 8px;text-align:right"><a href="admin-absences.html" style="font-size:14px;font-weight:700;color:var(--pur)">Open on its own page &#8599;</a></div>' +
+    '<iframe id="absFrame" src="admin-absences.html?embed=1" title="Instructor absences" style="width:100%;height:900px;border:0;background:transparent"></iframe>';
+}
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || typeof e.data.rmdAbsHeight !== "number") return;
+  const f = $("absFrame"); if (f) f.style.height = Math.max(420, Math.ceil(e.data.rmdAbsHeight) + 24) + "px";
+});
 // 2026-10-19 (Jon): an assessor with no room has nothing to use on the teaching evenings, so say so and point them at the test course.
 function renderTassInfo() {
   const t = (S.courseDates || []).find(isTestCourse);
@@ -840,6 +855,7 @@ function renderTassInfo() {
 async function enterView() {
   showView();
   if (S.view === "tassinfo") { renderTassInfo(); return; }
+  if (S.view === "absences") { renderAbsences(); return; }
   if (["alloc", "plan", "runner", "assessor", "retest", "checkin", "endnight", "resit"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
   else if (S.view === "plan") renderPlan();
@@ -1681,7 +1697,7 @@ async function ensureRooms() {
 function showView() {
   const picking = pickingRole();
   const info = !picking && S.view === "tassinfo" && S.drole === "tass";
-  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewPlan", "plan"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewResit", "resit"], ["viewEnd", "endnight"], ["viewSetup", "setup"]]
+  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewPlan", "plan"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewResit", "resit"], ["viewAbsences", "absences"], ["viewEnd", "endnight"], ["viewSetup", "setup"]]
     .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v || (v === "tassinfo" && !info)));
   $("plain").classList.toggle("hidden", picking || info); $("msgs").classList.toggle("hidden", picking || info);
   renderDoors();
@@ -1689,6 +1705,7 @@ function showView() {
 async function setView(v) {
   if ((v === "alloc" || v === "retest" || v === "plan") && !S.full) return;
   if ((v === "runner" || v === "resit") && !S.run) return;
+  if (v === "absences" && !S.full) return;
   if (v === "assessor" && (!S.night || S.teamOnly)) return;
   if ((v === "checkin" || v === "endnight") && !S.full) return;
   if (v === "setup" && !S.isDirector) return;

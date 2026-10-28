@@ -61,6 +61,10 @@
     th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
     th { font-size: 11.5px; text-transform: uppercase; color: var(--rmd-muted); }
     .scroll { overflow-x: auto; }
+    /* Shown inside the Monday Night hub (?embed=1): no top bar, hub background */
+    body.embed { background: transparent; padding-bottom: 12px; min-height: 0; height: auto; }
+    body.embed .top-bar { display: none; }
+    body.embed .wrap { padding-top: 0; max-width: none; padding-left: 0; padding-right: 0; }
   </style>
 </head>
 <body>
@@ -95,6 +99,13 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const $ = id => document.getElementById(id);
 
+  const EMBED = /[?&]embed=1/.test(location.search) && window.self !== window.top;
+  if (EMBED) {
+    document.body.classList.add("embed");
+    const tell = () => { try { parent.postMessage({ rmdAbsHeight: Math.ceil(document.querySelector(".wrap").getBoundingClientRect().height) }, location.origin); } catch (e) {} };
+    if (window.ResizeObserver) new ResizeObserver(tell).observe(document.querySelector(".wrap")); else setInterval(tell, 800);
+    window.addEventListener("load", tell);
+  }
   let me = { uid: null, name: "RMD faculty" };
   let calendar = [];          // evenings from the course calendar
   let notices = [];           // every active notice
