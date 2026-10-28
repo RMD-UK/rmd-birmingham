@@ -3,6 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>
+// This page is now the "Visitor export" tab of the MOU dashboard. Opened on its own (old links), it goes there.
+if (window.top === window.self && !/[?&]embed\b/.test(location.search)) location.replace("admin-mou-dashboard.html#visitors");
+if (/[?&]embed\b/.test(location.search)) document.documentElement.classList.add("embed");
+</script>
 <title>Visitor Request Export — RMD</title>
 <link rel="stylesheet" href="css/rmd.css">
 <style>
@@ -62,6 +67,15 @@
   .row-email { color: var(--rmd-muted); font-size: 12px; }
 
   .loading { text-align: center; padding: 40px; color: var(--rmd-muted); }
+
+  /* look in step with the hub pages */
+  .card { border-radius: 14px; border: 1px solid #E2E8ED; box-shadow: none; }
+  .warn-banner { border-radius: 12px; border: 1px solid #FFD700; border-left: 1px solid #FFD700; background: #FFF3CD; color: #856404; }
+  .btn-action { border-radius: 8px; }
+  .btn-action.secondary { border: 1.5px solid #D5DEE8; }
+  html.embed body { background: transparent; padding: 0 0 8px; }
+  html.embed .top-bar { display: none; }
+  html.embed .content { padding: 0; max-width: none; }
 </style>
 </head>
 <body>
@@ -164,6 +178,14 @@
  */
 
 initFirebase();
+
+// Tell the MOU dashboard how tall this page is (used when shown as its Visitor export tab).
+(function () {
+  if (window.top === window.self || !window.ResizeObserver) return;
+  const post = () => parent.postMessage({ type: "rmd-embed-height", h: Math.ceil(document.getElementById("pageContent").getBoundingClientRect().height) }, location.protocol === "file:" ? "*" : location.origin);
+  new ResizeObserver(post).observe(document.getElementById("pageContent"));
+  window.addEventListener("load", post);
+})();
 
 let roster = [];         // mou_roster docs
 let submissions = [];    // mou_responses for CURRENT_MOU_YEAR

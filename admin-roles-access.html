@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roles and access - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <link rel="stylesheet" href="css/hub.css">
+  <style>
+    .hub .person-row { border: 1px solid #E2E8ED; border-radius: 12px; margin-bottom: 10px; overflow: hidden; background: #fff; }
+    .hub .person-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #F7F9FB; flex-wrap: wrap; }
+    .hub .person-head .name { font-weight: 800; color: var(--rmd-navy); }
+    .hub .person-head .meta { color: var(--rmd-muted); font-size: 12px; }
+    .hub .person-head .actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+    .hub .history-list { padding: 6px 12px; }
+    .hub .history-entry { display: flex; gap: 10px; align-items: center; padding: 5px 0; font-size: 12px; border-top: 1px solid #F1F4F7; flex-wrap: wrap; }
+    .hub .history-entry:first-child { border-top: none; }
+    .hub .history-entry .role { font-weight: 800; color: var(--rmd-navy); min-width: 140px; }
+    .hub .history-entry .span { color: var(--rmd-muted); font-family: ui-monospace, Menlo, monospace; }
+    .hub .history-entry .open-tag { background: #E2EBF4; color: #2F5A8A; font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 99px; }
+    .hub .history-entry .src { margin-left: auto; color: #AAB8C2; font-size: 11px; }
+    .hub .no-history { color: #AAB8C2; font-size: 12px; font-style: italic; padding: 4px 0; }
+    .hub .preview-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-top: 1px solid #EEF2F6; font-size: 13px; flex-wrap: wrap; }
+    .hub .preview-row .name { font-weight: 800; color: var(--rmd-navy); min-width: 160px; }
+    .hub .preview-row .meta { color: var(--rmd-muted); font-size: 12px; }
+    .hub .preview-row .will-add { margin-left: auto; font-size: 11px; color: #1A6E31; background: #E1EFE3; padding: 2px 8px; border-radius: 99px; font-weight: 800; }
+    .hub .rat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 12px; }
+    .hub .rat-table th { text-align: left; padding: 6px 8px; background: #F5F7FA; color: var(--rmd-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .4px; }
+    .hub .rat-table td { padding: 6px 8px; border-top: 1px solid #E8EDF2; vertical-align: top; }
+    .hub .rat-group { font-weight: 800; color: var(--rmd-navy); margin: 14px 0 6px; }
+    .hub .rat-note { background: #FFF3CD; border: 1px solid #FFD700; border-radius: 10px; padding: 10px 14px; font-size: 13px; color: #856404; margin: 0 0 12px; line-height: 1.5; }
+  </style>
+</head>
+<body class="hub">
+
+<div class="top-bar">
+  <a href="admin-global-tools.html" title="Back to Global tools" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Roles and access<span class="top-bar-sub">Director only</span></div>
+  <a class="top-link" href="admin-global-tools.html">Global tools</a>
+</div>
+
+<div class="wrap">
+  <div class="crumb"><a class="back" href="admin-global-tools.html#access" style="text-decoration:none;">&lsaquo; Global tools</a><h2>Roles and access</h2></div>
+  <p class="group-line">Who has director access, and the dated history of every person's role.</p>
+  <div class="tabbar" id="tabbar"></div>
+
+  <!-- ── Access ── -->
+  <section class="tabpanel" data-tab="access">
+    <details class="about"><summary>About director access</summary><div class="abody">
+      <p>This is the year-round place to grant or remove <b>director-level platform access</b> (see all data, manage the platform). It is separate from the <b>Course Director</b> tag used for Instructor Weekend: someone can have one without the other.</p>
+      <p>It is also separate from <a href="admin-faculty-responses.html">Faculty Responses, Directors and roles</a>, which only lists people who sent this year's weekend RSVP. The lists below are the full annual roster.</p>
+    </div></details>
+    <div id="superUserPanel" style="display:none;"></div>
+    <div id="rosterEmailWarning"></div>
+    <div id="rosterContent"><div class="empty">Loading roster...</div></div>
+  </section>
+
+  <!-- ── Role history ── -->
+  <section class="tabpanel" data-tab="history">
+    <details class="about"><summary>About role history</summary><div class="abody">
+      <p>Every promotion, stand-down or renewal is recorded as a dated period on the person's own record, instead of overwriting one "current role" field. The eligibility shortlist, CPD certificate and annual review read from this.</p>
+      <p>Adding a period never deletes or edits an earlier one: it closes whatever period was open and starts a new one. Nothing here is automatic, so use the buttons when a role actually changes.</p>
+      <p>The CPD certificate year and open/closed switch is in <a href="admin-global-tools.html#switches">Global tools, Switches and dates</a>.</p>
+    </div></details>
+    <div class="box">
+      <input class="searchbox" type="text" id="searchBox" placeholder="Search by name, email or role..." oninput="renderPeople()">
+      <div class="sum" id="summaryLine"></div>
+      <div id="peopleList"><div class="empty">Loading people...</div></div>
+    </div>
+    <details class="about"><summary>One-time backfill (rarely needed)</summary><div class="abody">
+      <div class="rat-note" style="background:#FCE8E6;border-color:#F5B8B0;color:#8F3309;"><strong>Use "Set roles from the MOU roster" instead.</strong> This backfill copies each person's <code>people.role</code>, which also holds their Instructor Weekend job (such as faculty or itc), and the Standing display ignores most of those values. Only use it if you understand that.</div>
+      <p>People who have a current role but no role history can be given one open period starting from their current role. The start date is not known, so it is recorded as "from: unknown" rather than guessed.</p>
+      <button class="btn-primary" id="scanBtn" onclick="scanBackfill()">Scan for people missing role history</button>
+      <div id="backfillResults" style="margin-top:14px;"></div>
+    </div></details>
+  </section>
+
+  <!-- ── Ratify ── -->
+  <section class="tabpanel" data-tab="ratify">
+    <div class="box">
+      <h3>Set permanent roles from the MOU roster</h3>
+      <p class="hint">Sets each person's permanent role (Instructor, Senior Instructor or Assessor) from this year's MOU roster, using the exact spellings the Standing display reads. Student and Senior Faculty are skipped because their standing comes from the faculty roster. Nothing is written until you review the list and confirm. Earlier role periods are closed, never deleted.</p>
+      <div class="rat-note">People registered as <strong>Instructor Candidate</strong> for this Instructor Weekend are left out and listed separately, because they only become Instructors through <a href="admin-iw-pass-confirmation.html">Pass Confirmation</a>.</div>
+      <div class="fieldrow"><label for="ratDate">Start date for these roles</label><input type="date" id="ratDate" value="2026-10-11"></div>
+      <button class="btn-primary" id="ratScanBtn" onclick="ratScan()">Compare roster with role history</button>
+      <div id="ratResults" style="margin-top:14px;"></div>
+    </div>
+  </section>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
+<script src="js/admin-shell.js"></script>
+<script>
+initFirebase();
+var TABS = ADMIN_TABS.start({ bar: document.getElementById("tabbar"), def: "access", tabs: [
+  { id: "access", label: "Director access" },
+  { id: "history", label: "Role history" },
+  { id: "ratify", label: "Set roles from MOU roster" }
+] });
+window.addEventListener("load", () => {
+  requireDirector("member-menu.html").then((user) => { loadAll(user); loadPeople(); });
+});
+
+// ── Director access (from admin-director-access.html, unchanged apart from the look) ──
+
+
+var directorEmails  = [];
+var superUserEmails = [];
+var iAmSuperUser     = false;
+var rosterMembers    = []; // faculty_roster docs, group "student"/"senior"
+
+async function loadAll(user) {
+  await Promise.all([loadConfig(), loadRoster()]);
+  iAmSuperUser = await isSuperUser(user && user.email);
+  renderSuperUserPanel();
+  renderRoster();
+}
+
+async function loadConfig() {
+  try {
+    const snap = await db.collection("config").doc("platform").get();
+    directorEmails  = snap.exists ? (snap.data().directors  || []) : [];
+    superUserEmails = snap.exists ? (snap.data().superUsers || []) : [];
+  } catch (e) {
+    directorEmails  = [];
+    superUserEmails = [];
+  }
+}
+
+async function loadRoster() {
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyRoster).get();
+    rosterMembers = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(m => m.group === "student" || m.group === "senior")
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
+  } catch (e) {
+    rosterMembers = [];
+  }
+
+  // Section 0.1 (platform workplan): look up each person's canonical name
+  // from their own people/{uid} doc, in parallel, purely to surface drift —
+  // this doesn't change what's stored or displayed as primary, see
+  // renderNameCell() below. A null result (no people doc, e.g. no login yet)
+  // is expected and not treated as a problem.
+  await Promise.all(rosterMembers.map(async (m) => {
+    m.canonical = await resolveCanonicalName(m.email);
+  }));
+}
+
+// Compares the roster's typed name against the person's canonical
+// people/{uid} displayName (their preferredName if they have one set, else
+// their account name — see resolveCanonicalName()/setPreferredName() in
+// firebase-config.js) and flags a mismatch rather than silently picking
+// one — same "flag it, don't guess" principle used elsewhere on this
+// platform. Whitespace/case-only differences aren't flagged, only genuine
+// drift. A "✎ preferred name" action sits alongside sync so a director can
+// fix the account side (set what this person actually goes by) instead of
+// always pushing the account's legal/registered name onto the roster.
+function renderNameCell(m) {
+  const rosterName = m.name || "(no name)";
+  if (!m.canonical || !m.canonical.displayName) return rosterName;
+  const norm = s => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const editLink = m.canonical.uid
+    ? ` <a href="#" onclick="event.preventDefault();editPreferredName('${m.canonical.uid}','${(m.canonical.preferredName || "").replace(/'/g, "\\'")}')" style="font-size:11px;" title="Set the first name this person actually goes by (their surname is always kept as-is) — sync, here and everywhere else on the site, offers that instead of their account's legal/registered first name.">✎ preferred name</a>`
+    : "";
+  if (norm(m.canonical.displayName) === norm(rosterName)) return rosterName + editLink;
+  const safeCanonical = m.canonical.displayName.replace(/'/g, "\\'");
+  return `${rosterName} <span style="color:#b7410e;font-size:11px;" title="Roster says \"${rosterName}\", their account record says \"${m.canonical.displayName}\" — worth checking which is current.">⚠ differs from account: ${m.canonical.displayName}</span> <a href="#" onclick="event.preventDefault();syncNameToAccount('${m.id}','${safeCanonical}')" style="font-size:11px;" title="Overwrite this roster entry's name with the account record's name.">⟳ sync</a>${editLink}`;
+}
+
+// Section 0.1 follow-up (2026-09-06): lets a director set people/{uid}.preferredName
+// directly from wherever the drift warning/edit link shows, so "sync" starts
+// offering the name someone actually goes by instead of always their account's
+// legal/registered name. Same prompt()-based pattern as editKnownAs() in
+// admin-faculty-responses.html. Re-resolves and re-renders afterward so the
+// warning/sync link reflect the change immediately, without a page reload.
+async function editPreferredName(uid, currentPreferred) {
+  if (!uid) return;
+  const value = prompt("What FIRST name should this person actually go by (e.g. 'Becca' for Rebecca)?\n\nTheir surname is always taken from their account record automatically — this only replaces the first name, never the whole name. Leave blank to clear and fall back to their account's registered first name.", currentPreferred || "");
+  if (value === null) return;
+  try {
+    await setPreferredName(uid, value);
+    await Promise.all(rosterMembers.filter(x => x.canonical && x.canonical.uid === uid).map(async (x) => {
+      x.canonical = await resolveCanonicalName(x.email);
+    }));
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update preferred name: " + err.message);
+  }
+}
+
+// Section 0.1: the deliberate "fix" half of the flag-it-don't-guess pattern —
+// a director-driven action, not an automatic one. Only ever copies the
+// account's (people/{uid}) name into this roster entry, never the reverse:
+// if the roster name is actually the correct one and the account is wrong,
+// that's a different fix (edit their account), not this button.
+async function syncNameToAccount(docId, canonicalName) {
+  const m = rosterMembers.find(x => x.id === docId);
+  if (!m) return;
+  if (!confirm(`Update this roster entry's name from "${m.name || ""}" to "${canonicalName}" (their account record)?`)) return;
+  try {
+    await db.collection(COLLECTIONS.facultyRoster).doc(docId).update({ name: canonicalName });
+    m.name = canonicalName;
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update name: " + err.message);
+  }
+}
+
+function isDirectorEmail(email) {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return directorEmails.map(x => x.toLowerCase()).includes(e);
+}
+function isSuperUserEmail(email) {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return superUserEmails.map(x => x.toLowerCase()).includes(e);
+}
+
+async function makeDirector(email, name) {
+  if (!email) return;
+  if (!iAmSuperUser) { alert("Only a super-user can grant director access."); return; }
+  if (!confirm(`Designate ${name} as a director?\n\nThey will be able to log in with director-level access.`)) return;
+  try {
+    const e = email.toLowerCase();
+    const updated = [...new Set([...directorEmails, e])];
+    await db.collection("config").doc("platform").set({ directors: updated }, { merge: true });
+    directorEmails = updated;
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update directors: " + err.message);
+  }
+}
+
+async function removeDirector(email, name) {
+  if (!email) return;
+  if (!iAmSuperUser) { alert("Only a super-user can remove director access."); return; }
+  if (!confirm(`Remove director access from ${name}?\n\nThey will revert to faculty-level access on their next login.`)) return;
+  try {
+    const e = email.toLowerCase();
+    const updated = directorEmails.filter(x => x.toLowerCase() !== e);
+    await db.collection("config").doc("platform").set({ directors: updated }, { merge: true });
+    directorEmails = updated;
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update directors: " + err.message);
+  }
+}
+
+// ── Roster rendering ────────────────────────────────────────────────────────
+function makeRow(m) {
+  const name = m.name || "(no name)";
+  const email = (m.email || "").trim();
+  const dir = isDirectorEmail(email);
+  const su  = isSuperUserEmail(email);
+
+  let access;
+  if (!email) {
+    access = `<span class="muted">No email on file - add one via Faculty Roster upload</span>`;
+  } else if (su) {
+    access = `<span class="chip su">Super-user</span>`;
+  } else if (dir) {
+    access = iAmSuperUser
+      ? `<button class="btn-danger" onclick="removeDirector('${email}','${name}')">Remove director</button>`
+      : `<span class="chip dir">Director</span>`;
+  } else {
+    access = iAmSuperUser
+      ? `<button class="btn-primary sm" onclick="makeDirector('${email}','${name}')">Make director</button>`
+      : `<span class="muted">Not a director</span>`;
+  }
+
+  return `<tr>
+    <td style="font-weight:700;color:var(--rmd-navy);">${renderNameCell(m)}</td>
+    <td style="color:var(--rmd-muted);font-size:12px;">${email || "–"}</td>
+    <td style="color:var(--rmd-muted);font-size:12px;">${m.team || ""}${m.role ? " · " + m.role : ""}</td>
+    <td>${access}</td>
+  </tr>`;
+}
+
+function renderRoster() {
+  const student = rosterMembers.filter(m => m.group === "student");
+  const senior   = rosterMembers.filter(m => m.group === "senior");
+  const noEmailCount = rosterMembers.filter(m => !(m.email || "").trim()).length;
+
+  document.getElementById("rosterEmailWarning").innerHTML = noEmailCount
+    ? `<div class="note">${noEmailCount} of ${rosterMembers.length} roster members have no email on file, so they can't be granted access from here yet. Add emails on the <a href="admin-faculty-roster.html">Faculty Roster — Bulk Upload</a> page, then come back.</div>`
+    : "";
+
+  const section = (title, badgeClass, members) => `
+    <p class="subhead"><span class="${badgeClass}">${title}</span> &nbsp;${members.length}</p>
+    <div class="tblwrap" style="margin-bottom:16px;"><table class="tbl">
+        <thead><tr><th>Name</th><th>Email</th><th>Team / role</th><th>Platform access</th></tr></thead>
+        <tbody>${
+          members.length
+            ? members.map(makeRow).join("")
+            : `<tr><td colspan="4" class="empty">No one on file</td></tr>`
+        }</tbody>
+    </table></div>`;
+
+  document.getElementById("rosterContent").innerHTML =
+    section("RMD Senior Faculty", "chip sen", senior) +
+    section("RMD Student Faculty", "chip stu", student);
+}
+
+// ── Super-user panel ─────────────────────────────────────────────────────
+// Only rendered/usable for the signed-in user's own super-user status —
+// Firestore rules are the real gate, this is just so a non-super-user
+// doesn't see controls that would fail.
+function renderSuperUserPanel() {
+  const el = document.getElementById("superUserPanel");
+  if (!iAmSuperUser) { el.style.display = "none"; el.innerHTML = ""; return; }
+  el.style.display = "block";
+  const rows = superUserEmails.map(e => `
+    <tr>
+      <td>${e}</td>
+      <td style="text-align:right;"><button class="btn-danger" onclick="removeSuperUser('${e}')">Remove</button></td>
+    </tr>`).join("") || `<tr><td colspan="2" class="empty">No super-users on file</td></tr>`;
+  el.innerHTML = `
+    <div class="box">
+      <h3>Super-users <span class="chip su">can grant director access</span></h3>
+      <p class="hint">Keep this list short. Anyone here can do anything a director can, plus add or remove other directors and super-users. It cannot change the site's code or hosting.</p>
+      <div class="tblwrap"><table class="tbl">
+        <thead><tr><th>Email</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="fieldrow" style="margin-top:12px;">
+        <input id="newSuperUserEmail" type="email" placeholder="email@example.com" style="flex:1;min-width:200px;">
+        <button class="btn-primary sm" onclick="addSuperUser()">Add super-user</button>
+      </div>
+    </div>`;
+}
+
+async function addSuperUser() {
+  const input = document.getElementById("newSuperUserEmail");
+  const email = (input.value || "").trim().toLowerCase();
+  if (!email) return;
+  if (!confirm(`Make ${email} a super-user?\n\nThey will be able to do anything a director can, and will also be able to grant or remove director/super-user access for anyone, including you.`)) return;
+  try {
+    const updated = [...new Set([...superUserEmails, email])];
+    await db.collection("config").doc("platform").set({ superUsers: updated }, { merge: true });
+    superUserEmails = updated;
+    input.value = "";
+    renderSuperUserPanel();
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update super-users: " + err.message);
+  }
+}
+
+async function removeSuperUser(email) {
+  const selfEmail = (auth.currentUser && auth.currentUser.email || "").toLowerCase();
+  if (email.toLowerCase() === selfEmail) {
+    if (!confirm("This is your own account. Remove your own super-user access? You will need another super-user to restore it.")) return;
+  } else if (!confirm(`Remove super-user access from ${email}?`)) {
+    return;
+  }
+  try {
+    const updated = superUserEmails.filter(x => x.toLowerCase() !== email.toLowerCase());
+    await db.collection("config").doc("platform").set({ superUsers: updated }, { merge: true });
+    superUserEmails = updated;
+    iAmSuperUser = await isSuperUser(auth.currentUser && auth.currentUser.email);
+    renderSuperUserPanel();
+    renderRoster();
+  } catch (err) {
+    alert("Failed to update super-users: " + err.message);
+  }
+}
+
+// ── Role history and ratify (from admin-role-history.html, unchanged apart from the look) ──
+
+
+const SUGGESTED_ROLES = ["Instructor", "Assessor", "Senior Instructor", "Student Faculty", "Senior Faculty", "Director"];
+
+let allPeople = [];
+
+function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+async function loadPeople() {
+  const snap = await db.collection(COLLECTIONS.people).get();
+  allPeople = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  renderPeople();
+}
+
+function fmtDate(d) { return d ? d : "unknown"; }
+
+function historyHtml(p) {
+  const history = Array.isArray(p.roleHistory) ? p.roleHistory : [];
+  if (!history.length) return `<div class="no-history">No role history recorded yet.</div>`;
+  return history.map(h => `
+    <div class="history-entry">
+      <span class="role">${h.role || "(no role)"}</span>
+      <span class="span">${fmtDate(h.from)} – ${h.to ? h.to : "present"}</span>
+      ${!h.to ? `<span class="open-tag">OPEN</span>` : ""}
+      <span class="src">${h.source || ""}</span>
+    </div>`).join("");
+}
+
+function renderPeople() {
+  const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
+  const filtered = q
+    ? allPeople.filter(p => RMD_FUZZY.score(q, [p.name, p.email, p.role]) > 0)
+    : allPeople;
+
+  document.getElementById("summaryLine").textContent =
+    `${filtered.length} of ${allPeople.length} people`;
+
+  document.getElementById("peopleList").innerHTML = filtered.length
+    ? filtered.map(p => `
+      <div class="person-row">
+        <div class="person-head">
+          <span class="name">${p.name || "(no name)"}</span>
+          <span class="meta">${p.email || "–"} · current: ${p.role || "–"}</span>
+          <div class="actions">
+            <button class="btn-sec" onclick="promptAddRole('${p.id}')">+ Add role period</button>
+            <button class="btn-danger" onclick="promptCloseRole('${p.id}')">Close current period</button>
+          </div>
+        </div>
+        <div class="history-list">${historyHtml(p)}</div>
+      </div>`).join("")
+    : `<div class="empty">No matches.</div>`;
+}
+
+async function promptAddRole(uid) {
+  const p = allPeople.find(x => x.id === uid);
+  if (!p) return;
+  const suggestion = SUGGESTED_ROLES.join(" / ");
+  const role = prompt(`Role for ${p.name || p.email} (suggested: ${suggestion} — or type any other role):`, "");
+  if (role === null) return;
+  const roleTrimmed = role.trim();
+  if (!roleTrimmed) { alert("Role can't be blank."); return; }
+  const fromDate = prompt(`Starting date for "${roleTrimmed}" (YYYY-MM-DD):`, todayIso());
+  if (fromDate === null) return;
+  if (!confirm(`Add "${roleTrimmed}" starting ${fromDate.trim() || "unknown date"} for ${p.name || p.email}?\n\nThis will close whatever role period is currently open for them.`)) return;
+  try {
+    const history = await addRoleHistoryEntry(uid, roleTrimmed, fromDate.trim() || null, "manual");
+    p.roleHistory = history;
+    renderPeople();
+  } catch (err) {
+    alert("Failed to add role period: " + err.message);
+  }
+}
+
+async function promptCloseRole(uid) {
+  const p = allPeople.find(x => x.id === uid);
+  if (!p) return;
+  const hasOpen = Array.isArray(p.roleHistory) && p.roleHistory.some(h => !h.to);
+  if (!hasOpen) { alert(`${p.name || p.email} has no open role period to close.`); return; }
+  const toDate = prompt(`Closing date for ${p.name || p.email}'s current role period (YYYY-MM-DD):`, todayIso());
+  if (toDate === null) return;
+  const note = prompt(`Optional note (e.g. "stood down"):`, "") || "";
+  if (!confirm(`Close ${p.name || p.email}'s current role period as of ${toDate.trim() || "unknown date"}? This does not start a new period.`)) return;
+  try {
+    const history = await closeRoleHistory(uid, toDate.trim() || null, note.trim());
+    p.roleHistory = history;
+    renderPeople();
+  } catch (err) {
+    alert("Failed to close role period: " + err.message);
+  }
+}
+
+// ── Backfill ──────────────────────────────────────────────────────────────
+let backfillCandidates = [];
+
+async function scanBackfill() {
+  const btn = document.getElementById("scanBtn");
+  btn.disabled = true;
+  btn.textContent = "Scanning…";
+  try {
+    if (!allPeople.length) await loadPeople();
+    backfillCandidates = allPeople.filter(p =>
+      p.role && (!Array.isArray(p.roleHistory) || p.roleHistory.length === 0));
+
+    const el = document.getElementById("backfillResults");
+    if (!backfillCandidates.length) {
+      el.innerHTML = `<div class="empty">Everyone with a current role already has role history. Nothing to backfill.</div>`;
+    } else {
+      el.innerHTML = `
+        <div class="sum">${backfillCandidates.length} people have a current role but no history yet:</div>
+        ${backfillCandidates.map(p => `
+          <div class="preview-row">
+            <span class="name">${p.name || "(no name)"}</span>
+            <span class="meta">${p.email || "–"}</span>
+            <span class="will-add">will add: ${p.role} (from: unknown)</span>
+          </div>`).join("")}
+        <div style="margin-top:14px;">
+          <button class="btn-primary" onclick="confirmBackfill()">Add role history for ${backfillCandidates.length} people</button>
+        </div>`;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔍 Scan for people missing role history";
+  }
+}
+
+async function confirmBackfill() {
+  if (!backfillCandidates.length) return;
+  if (!confirm(`Add a single open role-history period to ${backfillCandidates.length} people, seeded from their current role field?\n\nThis only adds data — it never changes anyone's current role, and can be corrected later by adding a new period.`)) return;
+
+  const batch = db.batch();
+  const source = "backfill-" + todayIso();
+  backfillCandidates.forEach(p => {
+    const ref = db.collection(COLLECTIONS.people).doc(p.id);
+    batch.update(ref, {
+      roleHistory: [{
+        role: p.role,
+        from: null,
+        to: null,
+        source: source,
+        note: "Seeded from their role field at the time role history was introduced; exact start date unknown."
+      }]
+    });
+  });
+
+  try {
+    await batch.commit();
+    backfillCandidates.forEach(p => {
+      p.roleHistory = [{ role: p.role, from: null, to: null, source: source, note: "Seeded from their role field at the time role history was introduced; exact start date unknown." }];
+    });
+    document.getElementById("backfillResults").innerHTML =
+      `<div class="empty">Done - role history added for ${backfillCandidates.length} people.</div>`;
+    backfillCandidates = [];
+    renderPeople();
+  } catch (err) {
+    alert("Backfill failed: " + err.message);
+  }
+}
+
+// ── Ratify permanent roles from the MoU roster ───────────────────────────────
+// Added 2026-10-04. Writes the exact strings resolveAxisAStanding() reads
+// (AXIS_A_TIER_LABELS in firebase-config.js): "Instructor", "Assessor",
+// "Senior Instructor". Student/Senior Faculty standing comes from faculty_roster,
+// so they are skipped. IW Instructor Candidates are left to Pass Confirmation.
+const RAT_TARGETS = { "instructor": "Instructor", "senior instructor": "Senior Instructor", "assessor": "Assessor" };
+let ratPlan = [];
+
+function ratEsc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function ratNorm(v) { return (v || "").trim().toLowerCase(); }
+function ratNameKey(v) { return ratNorm(v).replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim(); }
+function ratOpenRole(p) {
+  const h = Array.isArray(p.roleHistory) ? p.roleHistory : [];
+  const open = h.filter(x => x.to === null || x.to === undefined);
+  return open.length ? (open[open.length - 1].role || "(blank)") : null;
+}
+
+async function ratScan() {
+  const btn = document.getElementById("ratScanBtn");
+  const out = document.getElementById("ratResults");
+  btn.disabled = true; btn.textContent = "Comparing…";
+  out.innerHTML = "";
+  try {
+    const [rosterSnap, peopleSnap, regSnap] = await Promise.all([
+      db.collection(COLLECTIONS.mouRoster).get(),
+      db.collection(COLLECTIONS.people).get(),
+      db.collection(COLLECTIONS.iwRegistrations).get()
+    ]);
+    const people = peopleSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const byEmail = new Map(), byName = new Map();
+    people.forEach(p => {
+      const e = ratNorm(p.email); if (e) { if (!byEmail.has(e)) byEmail.set(e, []); byEmail.get(e).push(p); }
+      const k = ratNameKey(p.name); if (k) { if (!byName.has(k)) byName.set(k, []); byName.get(k).push(p); }
+    });
+    const candidateEmails = new Set();
+    regSnap.forEach(d => { const r = d.data(); if (r.role === "Instructor Candidate" && r.status !== "declined") candidateEmails.add(ratNorm(r.email)); });
+
+    ratPlan = [];
+    const groups = { change: [], ok: [], pass: [], unmatched: [], dup: [], skipped: 0 };
+    rosterSnap.forEach(d => {
+      const m = d.data();
+      const target = RAT_TARGETS[ratNorm(m.role)];
+      if (!target) { groups.skipped++; return; }
+      const email = ratNorm(m.email || d.id);
+      let matches = byEmail.get(email) || [];
+      let how = "email";
+      if (!matches.length) { matches = byName.get(ratNameKey(m.name)) || []; how = "name"; }
+      const row = { name: m.name || email, email, target, how };
+      if (matches.length > 1) { groups.dup.push(row); return; }
+      if (!matches.length) { groups.unmatched.push(row); return; }
+      const p = matches[0];
+      row.uid = p.id; row.current = ratOpenRole(p); row.personName = p.name || p.email || p.id;
+      if (row.current === target) { groups.ok.push(row); return; }
+      if (target === "Instructor" && candidateEmails.has(email)) { groups.pass.push(row); return; }
+      groups.change.push(row);
+    });
+    ratPlan = groups.change;
+    renderRat(groups);
+  } catch (e) {
+    out.innerHTML = '<div class="empty">Could not compare: ' + ratEsc(e.message) + '</div>';
+  }
+  btn.disabled = false; btn.textContent = "🔍 Compare roster with role history";
+}
+
+function ratTable(rows, withBox) {
+  return '<table class="rat-table"><thead><tr>' + (withBox ? '<th></th>' : '') + '<th>Person</th><th>Current open role</th><th>Roster says</th><th>Matched by</th></tr></thead><tbody>'
+    + rows.map((r, i) => '<tr>' + (withBox ? '<td><input type="checkbox" class="ratBox" data-i="' + i + '"' + (r.how === "email" ? ' checked' : '') + ' onchange="ratCount()"></td>' : '')
+      + '<td><strong>' + ratEsc(r.name) + '</strong><br><span style="color:#637282;font-size:11.5px;">' + ratEsc(r.email) + '</span></td>'
+      + '<td>' + (r.current === undefined ? '' : (r.current ? ratEsc(r.current) : '<span style="color:#aab8c2;">none</span>')) + '</td>'
+      + '<td>' + ratEsc(r.target) + '</td><td>' + ratEsc(r.how || "") + '</td></tr>').join("") + '</tbody></table>';
+}
+
+function renderRat(g) {
+  const out = document.getElementById("ratResults");
+  let h = '<div class="sum">' + g.change.length + ' to change, ' + g.ok.length + ' already correct, ' + g.pass.length + ' left to Pass Confirmation, ' + g.unmatched.length + ' with no people record, ' + g.dup.length + ' duplicated' + (g.skipped ? ', ' + g.skipped + ' Student/Senior Faculty skipped' : '') + '.</div>';
+  if (g.change.length) {
+    h += '<div class="rat-group">Proposed changes (untick any you do not want; rows matched by name only start unticked, so check them first)</div>' + ratTable(g.change, true)
+      + '<button class="btn-primary" id="ratApplyBtn" onclick="ratApply()">Apply 0 changes</button><div id="ratLog" style="margin-top:12px;font-size:13px;"></div>';
+  }
+  if (g.pass.length) h += '<div class="rat-group">Left to Pass Confirmation (registered as Instructor Candidate)</div>' + ratTable(g.pass, false);
+  if (g.unmatched.length) h += '<div class="rat-group">On the roster but no people record found (nothing written)</div>' + ratTable(g.unmatched.map(r => ({ ...r, current: undefined })), false);
+  if (g.dup.length) h += '<div class="rat-group">More than one people record matches (nothing written, sort out duplicates first)</div>' + ratTable(g.dup.map(r => ({ ...r, current: undefined })), false);
+  if (g.ok.length) h += '<details style="margin-top:12px;"><summary style="cursor:pointer;font-weight:700;color:var(--rmd-navy);">Already correct (' + g.ok.length + ')</summary>' + ratTable(g.ok, false) + '</details>';
+  out.innerHTML = h;
+  ratCount();
+}
+
+function ratChosen() {
+  return Array.from(document.querySelectorAll(".ratBox")).filter(b => b.checked).map(b => ratPlan[Number(b.dataset.i)]);
+}
+function ratCount() {
+  const btn = document.getElementById("ratApplyBtn"); if (!btn) return;
+  const n = ratChosen().length;
+  btn.textContent = "Apply " + n + " change" + (n === 1 ? "" : "s");
+  btn.disabled = n === 0;
+}
+
+async function ratApply() {
+  const date = document.getElementById("ratDate").value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert("Enter a start date first."); return; }
+  const rows = ratChosen();
+  if (!rows.length) return;
+  if (!confirm("Set " + rows.length + " permanent role(s) from " + date + "?\n\nEach person's currently open role period is closed on that date and the roster role is started. Earlier periods are kept. Continue?")) return;
+  const btn = document.getElementById("ratApplyBtn"); btn.disabled = true; btn.textContent = "Saving…";
+  const log = document.getElementById("ratLog"); log.innerHTML = "";
+  let done = 0, skipped = 0, failed = 0;
+  const line = (t, c) => { const d = document.createElement("div"); d.style.color = c || "inherit"; d.textContent = t; log.appendChild(d); };
+  for (const r of rows) {
+    try {
+      const ref = db.collection(COLLECTIONS.people).doc(r.uid);
+      const result = await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) throw new Error("record no longer exists");
+        const hist = Array.isArray(snap.data().roleHistory) ? snap.data().roleHistory.map(x => ({ ...x })) : [];
+        const open = hist.filter(x => x.to === null || x.to === undefined);
+        if (open.length && open[open.length - 1].role === r.target) return "skipped";
+        hist.forEach(x => { if (x.to === null || x.to === undefined) x.to = date; });
+        hist.push({ role: r.target, from: date, to: null, source: "mou-roster-ratify", note: "Ratified from the MoU roster" });
+        tx.update(ref, { roleHistory: hist });
+        return "done";
+      });
+      if (result === "done") { done++; line("✓ " + r.name + " → " + r.target, "#1a6e31"); }
+      else { skipped++; line("= " + r.name + " already " + r.target + ", unchanged", "#637282"); }
+    } catch (e) { failed++; line("✗ " + r.name + ": " + e.message, "#b7410e"); }
+  }
+  line(done + " saved, " + skipped + " unchanged, " + failed + " failed.", failed ? "#b7410e" : "#1a6e31");
+  btn.textContent = "Done";
+  loadPeople();
+}
+
+
+
+</script>
+</body>
+</html>

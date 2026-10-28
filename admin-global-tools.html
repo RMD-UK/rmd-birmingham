@@ -38,7 +38,7 @@ initFirebase();
 
 const GROUPS = [
   { id: "access",    name: "Access and roles",     line: "Who can do what, and the record of who held which role" },
-  { id: "people",    name: "People and accounts",  line: "Onboarding, MOU, logins, clean-up and reminders" },
+  { id: "people",    name: "People and accounts",  line: "Onboarding, logins, clean-up and reminders" },
   { id: "firstyear", name: "First year courses",   line: "Candidates, course and room allocation, settings" },
   { id: "annual",    name: "Annual processes",     line: "Once-a-year reviews, rosters and confirmations" },
   { id: "switches",  name: "Switches and dates",   line: "Open and close the certificate, the Expression of Interest form and the Senior Faculty review" }
@@ -101,17 +101,13 @@ function showSfrGate() { setChip("sfrChip", sfrWindowOpen(), "Open to Senior Fac
 
 const ITEMS = [
   // Access and roles
-  { id: "directorAccess", g: "access", icon: "🔑", title: "Director & Access Management", text: "Grant or remove director-level access across all RMD Student and Senior Faculty. Separate from the Instructor Weekend Course Director tag.", href: () => "admin-director-access.html" },
+  { id: "rolesAccess", g: "access", icon: "🔑", title: "Roles and access", text: "Director access, each person's dated role history, and setting permanent roles from the MOU roster", href: () => "admin-roles-access.html" },
   { id: "menuAssessors", g: "access", icon: "🎯", title: "Menu assessors", text: "Mark who is an Assessor so their member menu hides the OPIS rating card", href: () => "admin-menu-assessors.html" },
-  { id: "roleHistory", g: "access", icon: "🕰️", title: "Role History", text: "Dated role periods per person, feeding the eligibility shortlist and CPD certificate eligibility", href: () => "admin-role-history.html" },
 
   // People and accounts
   { id: "onboarding", g: "people", icon: "🧭", title: "Faculty Onboarding Wizard", text: "New applicant, login account, IW registration, step by step in one place", href: () => "admin-faculty-onboarding.html" },
-  { id: "mou", g: "people", icon: "📑", title: "MOU Dashboard", text: "Annual Memorandum of Understanding: roster status, submissions, reminders", href: () => "admin-mou-dashboard.html" },
-  { id: "bulkUsers", g: "people", icon: "👥", title: "Bulk User Setup", text: "Create Firebase login accounts for faculty or MOU roster members", href: () => "admin-bulk-users.html" },
-  { id: "dedupe", g: "people", icon: "🧹", title: "Duplicate People & Account Cleanup", text: "Find and remove duplicate records in the People collection (attendance, room allocation, etc.)", href: () => "admin-dedupe-people.html" },
-  { id: "reminders", g: "people", icon: "🔔", title: "Reminder Hub", text: "See everyone outstanding across account sign-in, MOU, senior faculty review, IW RSVP and the faculty form. Bulk-send a whole category, or look up one person and send just what's needed.", href: () => "admin-reminder-hub.html" },
-  { id: "visitors", g: "people", icon: "🛂", title: "Visitor Request Export", text: "RMD Senior Faculty (annual) and external Instructor Weekend faculty, formatted for UoB's Visiting Personnel form", href: () => "admin-visitor-request-export.html" },
+  { id: "bulkUsers", g: "people", icon: "👥", title: "Accounts", text: "Create login accounts for faculty or MOU roster members, and find and remove duplicate records", href: () => "admin-bulk-users.html" },
+  { id: "reminders", g: "people", icon: "🔔", title: "Reminders", text: "See everyone outstanding across account sign-in, MOU, senior faculty review, IW RSVP and the faculty form. Bulk-send a whole category, or look up one person and send just what's needed.", href: () => "admin-reminder-hub.html" },
 
   // First year courses
   { id: "fyCands", g: "firstyear", icon: "🎓", title: "First year candidates", text: "Taught first-year records: bulk import, duplicate flagging, promote to Instructor", href: () => "admin-stage1-candidates.html" },
@@ -120,7 +116,8 @@ const ITEMS = [
   { id: "fySettings", g: "firstyear", icon: "⚙️", title: "First year settings", text: "This year's programme deadlines and course session dates", href: () => "admin-stage1-settings.html" },
 
   // Annual processes
-  { id: "sfrDash", g: "annual", icon: "📊", title: "Senior Faculty Review Dashboard", text: "Roster status, responses, and reminder emails", href: () => "admin-senior-faculty-review.html" },
+  { id: "mou", g: "annual", icon: "📑", title: "MOU", text: "This year's Memorandum of Understanding: who has signed, reminders, and the UoB visitor requests", href: () => "admin-mou-dashboard.html" },
+  { id: "sfrDash", g: "annual", icon: "📊", title: "Senior Faculty review", text: "Roster status, responses, and reminder emails", href: () => "admin-senior-faculty-review.html" },
   { id: "iwPass", g: "annual", icon: "🎓", title: "Instructor Weekend: Pass Confirmation", text: "Confirm which Instructor Candidates passed, at the end of the weekend", href: () => "admin-iw-pass-confirmation.html" },
   { id: "facRoster", g: "annual", icon: "📇", title: "Faculty Roster: Bulk Upload", text: "Annual paste that populates the public faculty pages and the senior review roster", href: () => "admin-faculty-roster.html" },
 
@@ -132,7 +129,7 @@ const ITEMS = [
       <label style="display:flex;align-items:center;gap:8px;margin:12px 0;"><input type="checkbox" id="eoiOpenCheckbox" style="width:auto;"> Open: accepting expressions of interest now</label>
       <button class="btn-primary" type="button" onclick="saveEoiSettings()">Save</button><div class="hint" id="eoiAdminStatus"></div></div>`, mount: loadEoiSettings },
   { id: "pCpd", g: "switches", panel: () => `<div class="panel"><h3>CPD certificate ${chip("cpdChip", null)}</h3>
-      <p class="hint">This is the one place the "Download your CPD certificate" link on everyone's My Account page is switched on or off. Set the academic year it's for, then tick Open once you're confident <a href="admin-role-history.html">Role History</a> is accurate for everyone who delivered that year. Closing it again hides the download for everyone until you reopen it. There's no per-person override: if someone left or didn't do the job, delete their account instead, which already removes them from eligibility.</p>
+      <p class="hint">This is the one place the "Download your CPD certificate" link on everyone's My Account page is switched on or off. Set the academic year it's for, then tick Open once you're confident <a href="admin-roles-access.html#history">Role History</a> is accurate for everyone who delivered that year. Closing it again hides the download for everyone until you reopen it. There's no per-person override: if someone left or didn't do the job, delete their account instead, which already removes them from eligibility.</p>
       <label style="display:block;font-weight:700;color:var(--rmd-navy);margin-bottom:4px;">Academic year</label>
       <input type="text" id="cpdYearInput" placeholder="e.g. 2026/27" style="max-width:160px;">
       <label style="display:flex;align-items:center;gap:8px;margin:12px 0;"><input type="checkbox" id="cpdOpenCheckbox" style="width:auto;"> Open: this year's certificates are downloadable now</label>
