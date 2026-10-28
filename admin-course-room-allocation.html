@@ -137,6 +137,15 @@
     .unplaced-bar .cra-btn:hover { background:#2e1856; }
     body.start-mode .unplaced-bar { display:none !important; }
 
+    /* ---- lock (28 Oct, Jon): Start of year is view-only once Course 1 has started; saving is blocked if the saved teams or course results did not load ---- */
+    body.start-locked #autoInstrBtn, body.start-locked #restoreBtn, body.start-locked #resetInstrBtn, body.start-locked #saveBtn,
+    body.save-blocked #saveBtn { display:none !important; }
+    body.start-locked .cra-layout { pointer-events:none; opacity:.88; }
+    .start-lock { background:#FFF3E0; border:1.5px solid #F0C98A; border-radius:10px; padding:10px 14px; font-size:13px; line-height:1.55; color:#4a3000; }
+    .start-lock b.hd { color:#8a4b00; }
+    .start-lock .chk-btn { margin-top:6px; }
+    .load-warn { margin:10px 14px 0; background:#FDECEC; border:1.5px solid #E7A5A5; border-radius:10px; padding:10px 14px; font-size:13px; line-height:1.55; color:#7a1414; font-weight:700; }
+
     /* ---- empty state (28 Oct): two clear starting points ---- */
     .no-course { padding:36px 16px; }
     .nc-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; max-width:820px; margin:0 auto; text-align:left; }
@@ -199,6 +208,7 @@
 </div>
 
 <div id="allocationUI" style="display:none">
+  <div class="load-warn" id="loadWarn" style="display:none"></div>
   <div class="start-intro" id="startIntro" style="display:none"></div>
   <div class="teams-note" id="teamsNote" style="display:none"></div>
   <details class="chk" id="chkPanel" open></details>
@@ -282,6 +292,8 @@ let dragging = null;   // {id, source, kind}
 let selected = null;   // {kind:"candidate"|"instructor", id}
 let crFails = {};            // uid -> {source:'cd'|'auto', reasons:[]} for people whose final course result (as on Assessment Development) is FAIL
 let crLoaded = false;
+let allocLoadFailed = false; // course_allocations could not be read: saving is blocked so nothing is overwritten
+let startUnlocked = false;  // typed UNLOCK on the Start of year screen, this visit only
 let gwByUid = {};            // gateway_assessments by candidate (people) id
 let gwLoaded = false;
 let excludedUids = new Set(); // left out of this allocation (on screen only; nothing is written)
@@ -420,7 +432,8 @@ async function loadData() {
     const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     defaultAllocDoc = docs.find(d => d.id === "_default") || null;
     allAllocDocs = docs.filter(d => d.id !== "_default");
-  } catch(e) { console.warn("course_allocations load failed:", e.message); }
+    allocLoadFailed = false;
+  } catch(e) { allocLoadFailed = true; console.warn("course_allocations load failed:", e.message); }
 
   populateCourseDropdown();
 }
@@ -488,6 +501,7 @@ function selectCourse(course) {
   document.getElementById("resetInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("saveBtn").style.display  = currentCourse ? "" : "none";
   document.body.classList.toggle("start-mode", isStart());
+  applyLock();
   document.getElementById("saveBtn").textContent = isStart() ? "💾 Save as this year's teams" : "💾 Save all";
   document.getElementById("noCourse").style.display  = currentCourse ? "none" : "";
   document.getElementById("allocationUI").style.display = currentCourse ? "" : "none";
@@ -1185,6 +1199,7 @@ async function syncStage1Sheet() {
 
 // ── Save ─────────────────────────────────────────────────────────────────
 async function saveStartOfYear() {
+  const blk = saveBlock(); if (blk) { showStatus(blk, "err"); return; }
   const todo = checklistOutstanding();
   if (todo.length && !confirm("The start-of-year checklist is not finished:\n\n- " + todo.join("\n- ") + "\n\nSave these as this year's instructor teams anyway?")) return;
   const already = allAllocDocs.filter(d => d.instructorTeams && Object.values(d.instructorTeams).some(a => (a || []).length)).map(d => d.course || d.id);
@@ -1235,6 +1250,7 @@ async function clearCourseTeams() {
 
 async function saveAll() {
   if (!currentCourse) return;
+  { const blk = saveBlock(); if (blk) { showStatus(blk, "err"); return; } }
   if (isStart()) return saveStartOfYear();
   const todo = checklistOutstanding();
   repeatWarn = repeatConflicts();
@@ -1334,6 +1350,38 @@ function showStatus(msg, cls, keep) {
   if (cls === "ok" && !keep) setTimeout(() => { el.textContent = ""; el.className = ""; }, 3000);
 }
 
+// Start of year lock (28 Oct, Jon): once Course 1 has started the year's teams are view-only. Changes after that are made per course.
+// A new teaching year unlocks by itself when Course 1 gets a date in the future (First year candidates, Course dates and rooms).
+function startLock() {
+  if (!isStart() || startUnlocked) return { locked: false };
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+  const nice = d => { const p = d.split("-"); return parseInt(p[2], 10) + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(p[1], 10) - 1] + " " + p[0]; };
+  if (!courseDatesLoaded) return { locked: true, why: "Could not read the course dates, so this stays view-only to be safe." };
+  if (firstCourseDate && today >= firstCourseDate) return { locked: true, why: "Courses are running (Course 1 started on " + nice(firstCourseDate) + "). These are this year's saved teams, shown for reference. To change a team for one course, open that course. For a new teaching year, enter the new course dates first (First year candidates, Course dates and rooms) and this unlocks by itself." };
+  return { locked: false };
+}
+function saveBlock() {
+  if (allocLoadFailed) return "Could not read the saved instructor teams, so saving is blocked to stop anything being overwritten. Refresh the page. If this keeps happening, tell Claude.";
+  if (isStart() && !crLoaded) return "Could not read the final course results, so saving is blocked. Refresh the page. If this keeps happening, tell Claude.";
+  const l = startLock();
+  if (l.locked) return "Locked: " + l.why;
+  return "";
+}
+function applyLock() {
+  const l = startLock(), blk = saveBlock();
+  document.body.classList.toggle("start-locked", !!l.locked);
+  document.body.classList.toggle("save-blocked", !!blk);
+  const w = document.getElementById("loadWarn");
+  if (w) { const hard = (allocLoadFailed || (isStart() && !crLoaded)) ? blk : ""; w.textContent = hard; w.style.display = hard ? "" : "none"; }
+}
+function unlockStart() {
+  if (!confirm("Unlock Start of year while courses are running?\n\nOnly do this to rebuild the whole year's teams. Saving changes the teams for every course that has not saved its own, and those courses will get different instructors.")) return;
+  if (prompt("Type UNLOCK to confirm") !== "UNLOCK") { showStatus("Not unlocked", "err"); return; }
+  startUnlocked = true;
+  applyLock(); renderChecklist();
+  showStatus("Unlocked for this visit. Refreshing the page locks it again.", "ok");
+}
+
 // ── Instructor allocation checklist ─────────────────────────────────────
 function applyExclusions() {                       // take left-out people out of any team they sit in
   ROOMS.forEach(r => { if (roomTeams[r]) roomTeams[r].uids = roomTeams[r].uids.filter(u => !excludedUids.has(u)); });
@@ -1396,7 +1444,7 @@ function renderTeamsNote() {
 function clearWindow() {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
   const june = today.slice(0, 4) + "-06-01";
-  const nice = d => new Date(d + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const nice = d => { const p = d.split("-"); return parseInt(p[2], 10) + " " + ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(p[1], 10) - 1] + " " + p[0]; };
   if (!courseDatesLoaded) return { open: false, why: "Locked: could not read the course dates, so it stays shut to be safe." };
   if (today < june) return { open: false, why: "Locked until 1 June. Last year's teams stay in place until then." };
   if (!firstCourseDate || firstCourseDate < june) return { open: false, why: "Locked: enter this year's course dates first (First year candidates, Course dates and rooms). It opens once Course 1 has a date after 1 June." };
@@ -1406,12 +1454,15 @@ function clearWindow() {
 function renderStartIntro() {
   const el = document.getElementById("startIntro");
   const own = allAllocDocs.filter(d => d.instructorTeams && Object.values(d.instructorTeams).some(a => (a || []).length)).map(d => d.course || d.id);
+  const lk = startLock();
+  const lockedHtml = lk.locked ? `<div class="start-lock"><b class="hd">Locked.</b> ${escH(lk.why)}<br><button class="chk-btn" onclick="unlockStart()">Unlock to rebuild the year's teams</button></div>` : "";
   el.innerHTML = `<h3>★ Start of year: instructor teams</h3>
-    <dl>
+    ${lockedHtml}
+    ${lk.locked ? "" : `<dl>
       <dt>What</dt><dd>Builds the instructor team for each room, once, for the whole teaching year. Every course then starts from these teams. No candidates are involved here.</dd>
       <dt>When</dt><dd>Once at the start of the teaching year: after the Instructor Weekend ratings are in and the gateway and final course results are signed off, and before you place candidates on Course 1. Do it again only to rebuild the teams.</dd>
       <dt>How</dt><dd>Work down the checklist below, steps 1 to 6, then press <b>Save as this year's teams</b>. After that, open each course in the list above, place its candidates, and press Save all.</dd>
-    </dl>
+    </dl>`}
     ${own.length ? `<div class="chk-warn">These courses already have their own saved teams, so they will not pick up this year's teams until you open them and save again: ${own.map(escH).join(", ")}.</div><div class="chk-note" style="margin-top:4px">New teaching year? Clear them so every course starts from this year's teams. This only empties the instructor teams saved on those courses. No candidates change.</div><button class="chk-btn" onclick="clearCourseTeams()" ${clearWindow().open ? "" : "disabled"}>Clear last year's saved course teams</button> <span class="chk-note">${escH(clearWindow().why)}</span>` : ""}`;
 }
 function renderChecklist() {
@@ -1420,9 +1471,11 @@ function renderChecklist() {
   const startMode = isStart();
   document.getElementById("startIntro").style.display = startMode ? "" : "none";
   document.getElementById("teamsNote").style.display = startMode ? "none" : "";
-  el.style.display = startMode ? "" : "none";
+  el.style.display = startMode && !startLock().locked ? "" : "none";
+  applyLock();
   if (!startMode) { renderTeamsNote(); return; }
   renderStartIntro();
+  if (startLock().locked) return;
   const live = allInstructors.filter(i => !excludedUids.has(i.uid));
   const n = t => live.filter(i => i.iwTier === t).length;
   const unrated = live.filter(i => i.iwTier !== "weak" && i.iwTier !== "strong" && i.iwTier !== "standard").length;
