@@ -4007,7 +4007,10 @@ function renderRetest() {
   if (!S.course || !S.full) return;
   // Assessment night, Retest-plus & RAP: a short view (21 Oct, Jon). RMD faculty keep the full one.
   const simple = S.door === "assess" && S.drole === "plus";
-  const d = assessDate(), pool = poolList(), stale = staleAttempts();
+  // 28 Oct (Jon): the retest hub is for the evening. Before the assessment night, people carried onto this course at attempt 2 are
+  // not retesting yet, so they are held back until the night (or until they check in). From the night onwards everyone shows, as before.
+  const d = assessDate(), allPool = poolList(), future = !!d && d > londonNow().date;
+  const pool = future ? allPool.filter(c => derivedAttempt(c.id) >= 2 || cstate(c) !== "nothere") : allPool, notHere = allPool.length - pool.length, stale = staleAttempts();
   const waiting = pool.filter(c => !(nres(c.id).claim && nres(c.id).claim.uid));
   const withA = pool.length - waiting.length;
   const passedRetest = N.cands.filter(c => passedAtKey(c.id) && Number(passedAtKey(c.id)) >= 2).length;
@@ -4016,6 +4019,7 @@ function renderRetest() {
   $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
     `An assessor takes each one from the Assessor view. ` +
+    (notHere ? `<b>${notHere}</b> more on a second attempt or later ${notHere === 1 ? "is" : "are"} due on the night and will appear here then. ` : "") +
     (simple ? "" : `Anyone with a retest tonight needs a retest room: open <b>step 2</b>.`);
   const needRoom = c => effAttempt(c) === 2 && !resitRoom(c) && !(nres(c.id).claim && nres(c.id).claim.uid);
   const need = simple ? [] : pool.filter(needRoom), queue = simple ? pool : pool.filter(c => !needRoom(c));
