@@ -27,6 +27,11 @@
     a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--rmd-blue); outline-offset: 2px; }
     .card { background:white; border:1px solid #E2E8ED; border-radius:14px; margin-bottom:14px; overflow:hidden; scroll-margin-top: 70px; }
     .card-header { color:var(--rmd-navy); padding:16px 16px 0; font-size:17px; font-weight:800; display:flex; align-items:center; gap:10px; }
+    details.card > summary.card-header { padding:16px; cursor:pointer; list-style:none; }
+    details.card > summary.card-header::-webkit-details-marker { display:none; }
+    details.card > summary.card-header::after { content:"\25BE"; margin-left:auto; color:var(--rmd-muted); font-size:14px; transition:transform .15s; }
+    details.card:not([open]) > summary.card-header::after { transform:rotate(-90deg); }
+    details.card > summary.card-header:hover { background:#F7F9FB; }
     .card-body { padding:16px; }
     .hint { font-size:12px; color:var(--rmd-muted); margin:4px 0 10px; line-height:1.5; }
     select, input[type=text], textarea {
@@ -46,30 +51,40 @@
     .recipient-row:first-child { border-top:none; }
     .recipient-row .name { font-weight:700; color:var(--rmd-navy); }
     .recipient-row .email { color:var(--rmd-muted); font-family:monospace; font-size:11px; margin-left:8px; }
-    .group-list { max-height:520px; overflow-y:auto; border:1px solid #e8edf2; border-radius:6px; }
-    .group-row { display:flex; align-items:flex-start; gap:10px; padding:9px 12px; font-size:13px; border-top:1px solid #f0f3f6; cursor:pointer; }
-    .group-row:first-child { border-top:none; }
-    .group-row:hover { background:#f8fafc; }
-    .group-row input[type=checkbox] { width:16px; height:16px; margin:2px 0 0; flex-shrink:0; }
-    .group-row .glabel { color:var(--rmd-navy); }
-    .group-row.combo { background:#f4f8fc; }
-    .group-row.combo .glabel { font-weight:700; }
-    .group-divider { padding:7px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); background:#f8fafc; border-top:1px solid #f0f3f6; }
-    .group-divider:first-child { border-top:none; }
-    .group-category { border-top:1px solid #f0f3f6; }
-    .group-category:first-child { border-top:none; }
-    .group-category > summary { padding:7px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--rmd-muted); background:#f8fafc; cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
+    /* Group picker (28 Oct 2026, Jon: "do not like this appearance"): three sections, courses as rows with counts, groups as selectable cards. */
+    .group-list { display:flex; flex-direction:column; gap:10px; }
+    .group-category { border:1px solid #E2E8ED; border-radius:14px; background:#fff; overflow:hidden; }
+    .group-category > summary { padding:14px 16px; font-size:15px; font-weight:800; color:var(--rmd-navy); cursor:pointer; list-style:none; display:flex; align-items:center; gap:10px; }
     .group-category > summary::-webkit-details-marker { display:none; }
-    .group-category > summary::before { content:"\25B8"; font-size:10px; }
-    .group-category[open] > summary::before { content:"\25BE"; }
-    .group-subcat { margin-left:16px; border-top:1px solid #f0f3f6; }
-    .group-subcat:first-of-type { border-top:none; }
-    .group-subcat > summary { padding:6px 12px; font-size:12px; font-weight:600; color:var(--rmd-navy); cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; }
+    .group-category > summary::after { content:"\25BE"; margin-left:auto; color:var(--rmd-muted); font-size:14px; transition:transform .15s; }
+    .group-category:not([open]) > summary::after { transform:rotate(-90deg); }
+    .group-category > summary:hover { background:#F7F9FB; }
+    .group-category[open] > summary { border-bottom:1px solid #EEF1F6; }
+    .gcat-n { font-size:12px; font-weight:700; color:var(--rmd-muted); background:#EEF2F6; border-radius:99px; padding:2px 9px; }
+    .gcat-body { padding:8px 10px 10px; display:grid; gap:8px; }
+    .gcat-body.cols { grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); }
+    .group-row { display:flex; align-items:center; gap:12px; padding:12px 14px; font-size:14px; border:1.5px solid #E4E9EF; border-radius:10px; background:#fff; cursor:pointer; }
+    .group-row:hover { border-color:#CBB9E8; background:#FBF9FE; }
+    .group-row:has(input:checked) { background:#F1EAFB; border-color:var(--rmd-navy); }
+    .group-row input[type=checkbox] { width:20px; height:20px; margin:0; flex-shrink:0; accent-color:var(--rmd-navy); }
+    .group-row .glabel { color:var(--rmd-navy); font-weight:600; flex:1; min-width:0; }
+    .gcount { font-size:12px; font-weight:800; color:var(--rmd-navy); background:#EEF2F6; border-radius:99px; padding:2px 10px; flex-shrink:0; font-variant-numeric:tabular-nums; }
+    .group-row:has(input:checked) .gcount { background:#fff; }
+    .group-row.combo { background:#F4F8FC; }
+    .group-row.combo .glabel { font-weight:800; }
+    .group-row.combo:has(input:checked) { background:#F1EAFB; }
+    .group-subcat { border:1px solid #E4E9EF; border-radius:12px; background:#FAFBFD; overflow:hidden; }
+    .group-subcat[open] { background:#fff; border-color:#CBB9E8; }
+    .group-subcat > summary { padding:12px 14px; font-size:14px; font-weight:800; color:var(--rmd-navy); cursor:pointer; list-style:none; display:flex; align-items:center; gap:10px; }
     .group-subcat > summary::-webkit-details-marker { display:none; }
-    .group-subcat > summary::before { content:"\25B8"; font-size:9px; }
-    .group-subcat[open] > summary::before { content:"\25BE"; }
+    .group-subcat > summary::after { content:"\25BE"; margin-left:auto; color:var(--rmd-muted); font-size:13px; transition:transform .15s; }
+    .group-subcat:not([open]) > summary::after { transform:rotate(-90deg); }
+    .group-subcat > summary:hover { background:#F3F0F9; }
+    .group-subcat > .group-row { margin:0 10px 8px; }
+    .group-subcat > .group-row:first-of-type { margin-top:2px; }
+    .group-subcat-body { padding:2px 0 4px; }
     .selected-summary { font-size:12px; color:var(--rmd-muted); margin:6px 0 2px; }
-    .template-actions { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 10px 38px; border-top:1px solid #f0f3f6; margin-top:-1px; background:#fafbfd; }
+    .template-actions { display:flex; flex-wrap:wrap; gap:6px; padding:4px 10px 12px; }
     .tmpl-btn { padding:5px 10px; font-size:11.5px; font-weight:700; border-radius:6px; border:1.5px solid #ccd6dd; background:#fff; color:var(--rmd-navy); cursor:pointer; font-family:var(--font); }
     .tmpl-btn:hover { background:#eef2f6; border-color:var(--rmd-blue); }
     .tmpl-btn:disabled { color:#b0b8cc; border-color:#e8edf2; cursor:default; background:#fff; }
@@ -97,7 +112,7 @@
     <a href="#stepGroups"><span class="stepno">1</span>Choose groups</a>
     <a href="#stepMessage"><span class="stepno">2</span>Write the message</a>
     <a href="#stepSend"><span class="stepno">3</span>Review and send</a>
-    <a href="#stepHistory"><span class="stepno alt">&#8635;</span>Sent history</a>
+    <a href="#stepHistory" onclick="document.getElementById('stepHistory').open = true"><span class="stepno alt">&#8635;</span>Sent history</a>
   </nav>
 
   <div class="card" id="stepGroups">
@@ -154,14 +169,14 @@
     </div>
   </div>
 
-  <div class="card" id="stepHistory">
-    <div class="card-header"><span class="stepno alt">&#8635;</span>Sent history</div>
+  <details class="card" id="stepHistory">
+    <summary class="card-header"><span class="stepno alt">&#8635;</span>Sent history</summary>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">The last 40 sends from this tool, newest first. Open one to see the message, who it went to, and anything that failed or is still queued.</p>
       <button class="btn-secondary" type="button" onclick="loadHistory()" id="histBtn">Refresh history</button>
       <div id="histList" style="margin-top:12px;"></div>
     </div>
-  </div>
+  </details>
 
 </div>
 
@@ -316,8 +331,8 @@ function courseStem(courseName) {
   return stripped || courseName;
 }
 
-function categorySection(title, innerHtml, open) {
-  return `<details class="group-category"${open ? " open" : ""}><summary>${title}</summary>${innerHtml}</details>`;
+function categorySection(title, innerHtml, open, count, cols) {
+  return `<details class="group-category"${open ? " open" : ""}><summary><span>${title}</span><span class="gcat-n">${count}</span></summary><div class="gcat-body${cols ? " cols" : ""}">${innerHtml}</div></details>`;
 }
 
 function renderGroupList() {
@@ -332,11 +347,11 @@ function renderGroupList() {
   let s1 = "";
   courseGroups.forEach(g => {
     const sit = groups.filter(x => x.category === "sit" && x.sitFor === g.courseName).map(groupRowHtml).join("");
-    s1 += `<details class="group-subcat"><summary>${esc(g.courseName)}</summary>${groupRowHtml(g)}${sit}${templateActionsHtml(g)}</details>`;
+    s1 += `<details class="group-subcat"><summary><span>${esc(g.courseName)}</span><span class="gcount">${g.people ? g.people.length : 0}</span></summary>${groupRowHtml(g)}${sit}${templateActionsHtml(g)}</details>`;
   });
-  let html = categorySection("\uD83D\uDCCB Stage 1 (Monday evening) courses", s1, true);
-  html += categorySection("\uD83D\uDC65 RMD staff groups", staff.map(groupRowHtml).join(""), true);
-  html += categorySection("\uD83C\uDF93 Instructor weekend", iw.map(groupRowHtml).join(""), true);
+  let html = categorySection("\uD83D\uDCCB First year (Monday evening) courses", s1, true, courseGroups.length + (courseGroups.length === 1 ? " course" : " courses"), false);
+  html += categorySection("\uD83D\uDC65 RMD staff groups", staff.map(groupRowHtml).join(""), true, staff.length + (staff.length === 1 ? " group" : " groups"), true);
+  html += categorySection("\uD83C\uDF93 Instructor Weekend", iw.map(groupRowHtml).join(""), true, iw.length + (iw.length === 1 ? " group" : " groups"), false);
   list.innerHTML = html;
 }
 
@@ -493,9 +508,10 @@ function applyCourseTemplate(kind, groupId, courseName) {
 }
 
 function groupRowHtml(g) {
+  const m = String(g.label || "").match(/^(.*?)\s*\((\d+)\)\s*$/), name = m ? m[1] : g.label, cnt = m ? m[2] : "";
   return `<label class="group-row${g.combo ? " combo" : ""}">
     <input type="checkbox" value="${esc(g.id)}" onchange="onGroupChange()">
-    <span class="glabel">${esc(g.label)}</span>
+    <span class="glabel">${esc(name)}</span>${cnt !== "" ? `<span class="gcount">${cnt}</span>` : ""}
   </label>`;
 }
 
