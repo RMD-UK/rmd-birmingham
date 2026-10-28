@@ -229,7 +229,7 @@
       href: () => "faculty.html?group=student&from=members", show: () => true },
     { id: "sfrLink", g: "people", icon: "📝", title: "Senior Faculty review and future plans",
       text: "Annual reflection and plans for next academic year",
-      href: () => "senior-faculty-review.html", show: isDir },
+      href: () => "senior-faculty-review.html", show: c => isDir(c) && c.sfrOpen },   // Director only, and only while the review window is open (config/senior_faculty_review_window)
     { id: "instructorReviewLink", g: "people", icon: "🔎", title: "Instructor potential review",
       text: "EOI details, OPIS scores and assessment outcome together, per candidate",
       href: () => "admin-instructor-review.html", show: isDir },
@@ -285,7 +285,7 @@
       href: () => "cd-dashboard.html", show: isDir }
   ];
 
-  const ctx = { role: null, studentFac: false, seniorFac: false, menuAssessor: false };
+  const ctx = { role: null, studentFac: false, seniorFac: false, menuAssessor: false, sfrOpen: false };
   let weekEvent = null;      // { diff, dt, label, name } or null
   let feedbackNew = null;    // number or null
 
@@ -419,6 +419,11 @@
       if (weekEvent) render();
     } catch (e) { /* no strip */ }
     if (isDir(ctx)) {
+      try {
+        const w = await db.collection("config").doc("senior_faculty_review_window").get();
+        const d = w.exists ? w.data() : {}, today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+        if (d.open && d.close && today >= d.open && today <= d.close) { ctx.sfrOpen = true; render(); }
+      } catch (e) { /* link stays hidden */ }
       try {
         const s = await db.collection("site_feedback").where("status", "==", "new").limit(100).get();
         feedbackNew = s.size;

@@ -36,13 +36,13 @@
       <div class="top-bar-title">Course Allocation</div>
       <div class="top-bar-sub">RMD Birmingham · Director only</div>
     </div>
-    <a href="admin-stage1-candidates.html" class="top-bar-link">👤 Stage 1 Candidates</a>
+    <a href="admin-stage1-candidates.html" class="top-bar-link">👤 First year candidates</a>
     <a href="admin-stage1-assessment-allocation.html" class="top-bar-link">🗓 Assessment allocation</a>
     <a href="admin-stage1-settings.html" class="top-bar-link">⚙️ Settings</a>
   </div>
 
   <div class="director-note">
-    Gives every checked candidate (added in Step 1, checked in Step 2 on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a>) a course session and a teaching room in one go. Run this once everyone for the round is in and checked — anyone added afterwards just needs another pass. Flagged candidates link straight back to their row on Stage 1 Candidates.
+    Gives every checked candidate (added in Step 1, checked in Step 2 on <a href="admin-stage1-candidates.html">First year candidates</a>) a course session and a teaching room in one go. Run this once everyone for the round is in and checked — anyone added afterwards just needs another pass. Flagged candidates link straight back to their row on First year candidates.
   </div>
 
   <div class="card">
@@ -67,11 +67,11 @@
   <div class="card">
     <div class="card-header">Step 3 — Allocate to courses</div>
     <div class="card-body">
-      <p class="hint" style="margin-top:0;">Tick the box below and click "Allocate now" to give every checked candidate a course and a room in one go. Only candidates checked in Step 2 on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a> are included (real placement-dates match, or ticked "no placement dates"). Anyone not yet checked is left alone — check them there first if they're missing from the result. Anyone the system can't fit within capacity comes back named below — Step 4 below handles placing them over capacity; anyone stuck for another reason (deadline, programme, clash) still needs fixing by hand.</p>
+      <p class="hint" style="margin-top:0;">Tick the box below and click "Allocate now" to give every checked candidate a course and a room in one go. Only candidates checked in Step 2 on <a href="admin-stage1-candidates.html">First year candidates</a> are included (real placement-dates match, or ticked "no placement dates"). Anyone not yet checked is left alone — check them there first if they're missing from the result. Anyone the system can't fit within capacity comes back named below — Step 4 below handles placing them over capacity; anyone stuck for another reason (deadline, programme, clash) still needs fixing by hand.</p>
       <div id="allocationSummary"></div>
       <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:700; color:var(--rmd-navy); cursor:pointer; background:#f4f6fa; border:1.5px solid #e0e4ee; border-radius:10px; padding:12px 14px; margin:4px 0 14px;">
         <input type="checkbox" id="confirmAllAddedCheckbox" onchange="updateAllocateButtonState()" style="margin-top:2px; width:16px; height:16px;">
-        I confirm every candidate for this round has been added on Stage 1 Candidates — nobody known about is still missing.
+        I confirm every candidate for this round has been added on First year candidates — nobody known about is still missing.
       </label>
       <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <button class="btn-primary" id="allocateNowBtn" onclick="allocateAllNow()" disabled>Allocate now</button>
@@ -140,7 +140,7 @@ async function loadCandidates() {
 //   config/stage1_programme_deadlines.deadlines  { "Nursing MSc": "2027-03-01", ... }
 //   config/stage1_course_dates.courses            [{ name, date }, ...]
 // Only ever called from allocateAllNow() (Step 3) — importing a candidate
-// (Step 1, on Stage 1 Candidates) always leaves them unallocated, so
+// (Step 1, on First year candidates) always leaves them unallocated, so
 // placement dates get a chance to be checked (Step 2) first. If no
 // deadline is set for that programme, or no session falls on/before the
 // deadline, the candidate is left unallocated and flagged with the reason
@@ -537,7 +537,7 @@ async function allocateAllNow() {
     .sort((a, b) => (hasPref(a) - hasPref(b)) || (eligibleCourseCountFor(a) - eligibleCourseCountFor(b)));
 
   if (!ready.length) {
-    alert(`${notChecked.length} unallocated candidate(s), but none have been checked for placement dates yet. Check them on Stage 1 Candidates before allocating.`);
+    alert(`${notChecked.length} unallocated candidate(s), but none have been checked for placement dates yet. Check them on First year candidates before allocating.`);
     return;
   }
 
@@ -596,7 +596,7 @@ async function allocateAllNow() {
     }
     if (flagged.length) {
       summaryHtml += `<div style="background:#fff3cd;border:1px solid #ffd700;border-radius:8px;padding:12px 14px;margin-bottom:12px;">
-        <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${flagged.length} couldn't be auto-fit — pick a course for ${flagged.length === 1 ? "this one" : "these"} by hand on Stage 1 Candidates, or see Step 4 below if it's a capacity problem:</div>
+        <div style="font-weight:700;color:#856404;margin-bottom:8px;font-size:13px;">${flagged.length} couldn't be auto-fit — pick a course for ${flagged.length === 1 ? "this one" : "these"} by hand on First year candidates, or see Step 4 below if it's a capacity problem:</div>
         <div style="display:flex;flex-direction:column;gap:6px;">
           ${flagged.map(f => `<a href="javascript:void(0)" onclick="reviewFlaggedCandidate('${f.c.id}')" style="color:#856404;font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer;">${esc(f.c.name)}</a><span style="font-size:11px;color:#856404;margin:-4px 0 2px;">${esc(f.reason)}</span>`).join("")}
         </div>
@@ -871,7 +871,7 @@ function renderConfirmEmailCard() {
   }
   const movedTotal = groups.filter(g => g.kind === "moved").reduce((n, g) => n + g.people.length, 0);
   let html = `<p style="margin:0 0 12px;font-size:13px;font-weight:700;color:var(--rmd-navy);">${total} ${total === 1 ? "person" : "people"} not yet emailed${movedTotal ? ` (${movedTotal} moved to a different course: they get an email saying their course has changed)` : ""}</p>`;
-  if (!confirmAccessCode) html += `<p class="hint" style="margin:0 0 12px;color:#b00020;">No candidate access code is set, so emails can't be sent yet. Add one on the "Candidate resource access code" card on Stage 1 Candidates.</p>`;
+  if (!confirmAccessCode) html += `<p class="hint" style="margin:0 0 12px;color:#b00020;">No candidate access code is set, so emails can't be sent yet. Add one on the "Candidate resource access code" card on First year candidates.</p>`;
   groups.forEach((g, i) => {
     const dates = computeCourseSessionDates(g.course);
     const canSend = !!(dates && confirmAccessCode);
@@ -935,7 +935,7 @@ async function sendConfirmationEmails(groupIndex) {
   wrap.insertAdjacentHTML("afterbegin", resultHtml);
 }
 
-// Jumps to a flagged candidate on Stage 1 Candidates — that page now holds
+// Jumps to a flagged candidate on First year candidates — that page now holds
 // the only "All candidates" list (2026-10-03, split into separate
 // allocation subpages), so this opens it with ?find= set to their email
 // (falls back to name) rather than filling a search box in place.

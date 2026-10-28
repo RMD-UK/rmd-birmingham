@@ -18,12 +18,12 @@
   var full = false;   // set true by pages where the viewer has full access
   var state = { degrees: {}, degOpen: false, tags: {}, retest: false };
 
-  // Attempt number: the saved number if there is one, otherwise 2 for anyone already
+  // Attempt number: the saved number if there is one, otherwise 3 (a retest on a later course is attempt 3 or 4) for anyone already
   // flagged as a repeat (firstTimeAssessment false) or two-plus, otherwise 1.
   function attemptOf(c) {
     if (!c) return 1;
     if (typeof c.assessmentAttempt === "number" && isFinite(c.assessmentAttempt) && c.assessmentAttempt >= 1) return Math.floor(c.assessmentAttempt);
-    return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1;
+    return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 3 : 1;
   }
   function attCls(n) { return n >= 3 ? "a3" : n === 2 ? "a2" : "a1"; }
   function circle(n, extra) {

@@ -423,7 +423,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
     <div class="seg" id="courseTabs" role="tablist" aria-label="Course"></div>
     <div class="grow"></div>
     <div class="seg test hidden" id="testTabs" role="tablist" aria-label="Test courses"></div>
-    <a class="tbtn dir-only" href="admin-stage1-candidates.html">Stage 1 Candidates</a>
+    <a class="tbtn dir-only" href="admin-stage1-candidates.html">First year candidates</a>
     <a class="tbtn dir-only" href="admin-comms.html">Comms</a>
   </div>
 
@@ -1650,7 +1650,7 @@ const A = {
   body: "Dear {{first_name}},\n\nYour BLS assessment is on {{assessment_date}}. Your time is {{assessment_time}} in room {{assessment_room}}.\n\nPlease arrive a few minutes early. If you cannot attend, email us as soon as possible at " + BLS_ADMIN_EMAIL + ".\n\nThe RMD Birmingham team"
 };
 
-function attemptOf(c) { return Number.isFinite(c.assessmentAttempt) ? c.assessmentAttempt : (c.firstTimeAssessment === false || c.twoPlusAssessments === true ? 2 : 1); }
+function attemptOf(c) { return Number.isFinite(c.assessmentAttempt) ? c.assessmentAttempt : (c.firstTimeAssessment === false || c.twoPlusAssessments === true ? 3 : 1); }
 function attBadge(n) { return '<span class="att ' + (n >= 3 ? "a3" : "a" + n) + '" title="Assessment attempt ' + n + '" aria-label="Attempt ' + n + '">' + n + "</span>"; }
 function assessDate() { const d = weekDates(S.course); return d ? d[2] : null; }
 function longDate(iso) { return new Date(iso + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }); }
@@ -1767,7 +1767,7 @@ function renderPlan() {
   // 1 people
   const c1 = !S.cands.length ? ["No people", "bad"] : (clash || unchecked) ? [(clash + unchecked) + " to check", "open"] : ["Ready", "ok"];
   h += `<div class="card">` + stepHd(1, "Before teaching starts: people", c1[0], c1[1]) +
-    body(`<div style="font-size:14px"><b>${S.cands.length}</b> on this course. ${clash ? `<b>${clash}</b> with a placement that overlaps. ` : ""}${unchecked ? `<b>${unchecked}</b> without placement dates checked.` : (clash ? "" : "Placement dates are checked.")}</div><div class="tools" style="margin:8px 0 0">${lnk("Open Stage 1 Candidates", "admin-stage1-candidates.html")}${lnk("Course Allocation", "course-allocation.html")}</div>`) + `</div>`;
+    body(`<div style="font-size:14px"><b>${S.cands.length}</b> on this course. ${clash ? `<b>${clash}</b> with a placement that overlaps. ` : ""}${unchecked ? `<b>${unchecked}</b> without placement dates checked.` : (clash ? "" : "Placement dates are checked.")}</div><div class="tools" style="margin:8px 0 0">${lnk("Open First year candidates", "admin-stage1-candidates.html")}${lnk("Course Allocation", "course-allocation.html")}</div>`) + `</div>`;
   // 2 setup
   h += `<div class="card">` + stepHd(2, "Set up the night", S.isDirector ? "Set once" : "Director only", "") +
     body(`<div style="font-size:14px">Who can assess, mark sheets and the Google Form link. Applies to every course. ${A.rooms && A.rooms.length ? `<b>${A.rooms.length}</b> assessment rooms.` : ""}</div><div class="tools" style="margin:8px 0 0">${btn("Open Assessment setup", "setup", !S.isDirector, true)}</div>`, !S.isDirector) + `</div>`;
@@ -1829,7 +1829,7 @@ async function adAdd(id) {
     const ad = await db.collection("stage1_assessments").doc(id).get(), a = (ad.exists ? ad.data().attempts : null) || {};
     passed = Object.keys(a).some(k => a[k] && a[k].outcome === "pass");
     const refers = Object.keys(a).filter(k => a[k] && a[k].outcome === "refer").map(Number);
-    if (refers.length) next = Math.max(next, Math.max.apply(null, refers) + 1);
+    if (refers.length) next = Math.max(3, next, Math.max.apply(null, refers) + 1); // a retest on a later course is attempt 3 or 4, never 2 (Jon, 28 Oct)
   } catch (e) {}
   if (passed) { toast(old.name + " has already passed, so is not added.", true); return; }
   const ok = await askSheet("Add " + esc(old.name || "this person") + " to tonight?", `From ${esc(old.course || "another course")}. They join ${esc(S.course)} as <b>attempt ${next}</b> in a new linked record; the old record is not changed. Nothing is emailed. ` + (next >= 2 ? "They then appear in the Retest pool, where RMD faculty pick their room (no time slot)." : "After this, give them a slot in box 1."), "Add to tonight");
@@ -1875,7 +1875,7 @@ function gateInfo(st) {
   // placement
   const clash = pop.filter(placementClash), unchecked = pop.filter(c => !c.placementChecked && !placementClash(c));
   if (clash.length) add("block", "Placement dates", plural2(clash.length, "person has", "people have") + " a placement that overlaps this course.", nm(clash).map((n, k) => n), 'Confirm they can attend, or move them in <a href="course-allocation.html">Course Allocation</a>. If they can attend, tick "allocate anyway".');
-  else if (unchecked.length) add("warn", "Placement dates", plural2(unchecked.length, "person has", "people have") + " not had placement dates checked.", nm(unchecked), 'Check them on <a href="admin-stage1-candidates.html">Stage 1 Candidates</a> (step 2).');
+  else if (unchecked.length) add("warn", "Placement dates", plural2(unchecked.length, "person has", "people have") + " not had placement dates checked.", nm(unchecked), 'Check them on <a href="admin-stage1-candidates.html">First year candidates</a> (step 2).');
   else add("ok", "Placement dates", "Nobody on this course has a placement that overlaps it.");
   // register (the catch-up night has no teaching weeks, so nothing to check)
   if (d && !onCatchup()) {
@@ -3470,7 +3470,7 @@ async function openNextMail(id) {
   let code = "";
   if (x.k < 4) {
     try { const s = await db.collection("config").doc("candidate_access").get(); code = s.exists ? String(s.data().code || "").trim() : ""; } catch (e) {}
-    if (!code) { toast("No candidate access code is set. A Director adds one on the Stage 1 Candidates page, then try again.", true); return; }
+    if (!code) { toast("No candidate access code is set. A Director adds one on the First year candidates page, then try again.", true); return; }
   }
   const m = nextBuild(x, code);
   $("overlay").innerHTML = `<div class="modalbg" id="nmbg"><div class="modal" role="dialog" aria-modal="true" style="max-width:640px;width:calc(100% - 24px);max-height:92vh;overflow:auto"><h3>Email to ${esc(x.name)}</h3>` +
@@ -3495,7 +3495,7 @@ function mailCard(no) {
       `<small style="flex-basis:100%">${l.length ? `<b>${todo.length}</b> to ${due ? "schedule" : "email"}${sched ? `, ${sched} scheduled` : ""}${done ? `, ${done} already emailed` : ""}${none ? `, <span style="color:var(--bad,#b3261e)">${none} with no email address</span>` : ""}` : "Nobody in this group yet."}${due ? ` <b>Press send tonight: it goes out by itself on ${esc(longDate(due))} at about 6am.</b>` : ""}</small>` +
       `<span class="pact"><button type="button" class="btn sm${todo.length ? " pri" : ""}" data-nmail="${k}"${todo.length ? "" : " disabled"}>${due ? "Review and schedule" : "Review and send"} (${todo.length})</button></span></div>`;
   }).join("");
-  return `<div class="card"><h3><span class="stepno">${no || 5}</span>End of night: send emails</h3><div class="hint" style="margin:0 0 8px">Each email is shown for you to read and edit before it goes. Nobody is emailed twice. Sent emails are in Comms history.</div>${rows}</div>`;
+  return `<div class="card"><h3>${no === 0 ? "" : `<span class="stepno">${no || 5}</span>`}End of night: send emails</h3><div class="hint" style="margin:0 0 8px">Each email is shown for you to read and edit before it goes. Nobody is emailed twice. Sent emails are in Comms history.</div>${rows}</div>`;
 }
 function openNightMail(kind) {
   const def = NIGHT_MAIL[kind], l = nmCands(kind), todo = l.filter(x => !x.done && x.email), noMail = l.filter(x => !x.done && !x.email);
@@ -3653,11 +3653,12 @@ async function nbLoad() {
     if (c2.exists) mine.stamp = c2.data();
   } catch (e) { /* default address, no stamp */ }
   if (N.nb === mine && S.view === "retest") renderRetest();
+  if (N.nb === mine && S.view === "endnight") renderEnd();
 }
 function backupCard(no) {
   const b = nbBuild(), nb = N.nb || { to: NB_DEFAULT_TO, stamp: null }, st = nb.stamp;
   const chip = st ? `<span class="nchip claim">Sent ${esc(nbTime(st.sentAtIso))} by ${esc(st.byName || st.byEmail || "someone")}</span>` : '<span class="nchip bad">Not sent yet</span>';
-  return `<div class="card"><h3><span class="stepno">${no || 6}</span>End of night: email the results backup</h3>` +
+  return `<div class="card"><h3>${no === 0 ? "" : `<span class="stepno">${no || 6}</span>`}End of night: email the results backup</h3>` +
     `<div class="hint" style="margin:0 0 8px">Two spreadsheets (CSV) are emailed to <b>${esc(nb.to.join(", "))}</b> as a backup: the whole night's results with each candidate's name, email and degree, and a register of who was absent in week 1 or 2. It does not replace the reports for the degree leads. Send it when the night is finished. You can send it again if anything changes.</div>` +
     `<div class="lrow"><span class="nm">${b.cands} candidates, ${b.res.all} result${b.res.all === 1 ? "" : "s"}</span>${chip}` +
     `<small style="flex-basis:100%">${esc(b.summary.slice(2).join(". "))}.</small>` +
@@ -3994,6 +3995,8 @@ function endTab() {
   h += `<div style="margin-top:8px"><button type="button" class="btn sm" data-enrefresh="1">Check again</button></div></div>`;
   if (need.length) h += `<div class="card"><h3>Not moved yet (${need.length})</h3>` + need.map(x => row(x, false)).join("") + `</div>`;
   if (moved.length) h += `<div class="card"><h3>Moved (${moved.length})</h3>` + moved.map(x => row(x, true)).join("") + `</div>`;
+  nbLoad();
+  h += mailCard(0) + backupCard(0);
   return h;
 }
 function renderEnd() {
@@ -4002,6 +4005,9 @@ function renderEnd() {
   $("plain").innerHTML = '<span class="lbl">End of night</span>' + `<b>${esc(S.course)}.</b> Who was expected but did not turn up, and who did not pass tonight. Each needs a new course.`;
   $("viewEnd").innerHTML = endTab();
   $("viewEnd").querySelectorAll("[data-enrefresh]").forEach(b => b.onclick = () => { EN.loaded = false; EN.err = ""; setTimeout(enLoad, 0); renderEnd(); });
+  $("viewEnd").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));
+  $("viewEnd").querySelectorAll("[data-nbopen]").forEach(b => b.onclick = openBackup);
+  $("viewEnd").querySelectorAll("[data-nbdl]").forEach(b => b.onclick = () => { nbDownload(nbBuild()); toast("Downloaded " + nbFile() + " and " + nbRegFile()); });
 }
 function renderRetest() {
   if (!S.course || !S.full) return;
@@ -4017,11 +4023,12 @@ function renderRetest() {
   const passedRetest = N.cands.filter(c => passedAtKey(c.id) && Number(passedAtKey(c.id)) >= 2).length;
   $("msgs").innerHTML = nightBanner();
   const af = afterTonight();
-  $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
+  $("plain").classList.toggle("hidden", !simple);   // 28 Oct (Jon): RMD faculty view has no intro box; the tiles below carry the counts
+  if (simple) $("plain").innerHTML = '<span class="lbl">Retest pool</span>' +
     `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>${pool.length}</b> ${pool.length === 1 ? "person is" : "people are"} waiting for their next attempt. ` +
     `An assessor takes each one from the Assessor view. ` +
-    (notHere ? `<b>${notHere}</b> more on a second attempt or later ${notHere === 1 ? "is" : "are"} due on the night and will appear here then. ` : "") +
-    (simple ? "" : `Anyone with a retest tonight needs a retest room: open <b>step 2</b>.`);
+    (notHere ? `<b>${notHere}</b> more on a second attempt or later ${notHere === 1 ? "is" : "are"} due on the night and will appear here then. ` : "");
+  const heldNote = notHere ? `<div class="hint" style="margin:0 0 8px"><b>${notHere}</b> more on a second attempt or later ${notHere === 1 ? "is" : "are"} due on the night and will appear here then.</div>` : "";
   const needRoom = c => effAttempt(c) === 2 && !resitRoom(c) && !(nres(c.id).claim && nres(c.id).claim.uid);
   const need = simple ? [] : pool.filter(needRoom), queue = simple ? pool : pool.filter(c => !needRoom(c));
   const has3 = pool.some(c => effAttempt(c) >= 3);
@@ -4054,14 +4061,12 @@ function renderRetest() {
     // Order (22 Oct, Jon): room first, then who the senior assessment team are, then the queue. The old "Not retested tonight" list is gone:
     // the Not passed card below replaces it and is left to the end of the evening.
     h += hereCard(pool, 1);
-    h += `<div class="card"><h3><span class="stepno">2</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` +
+    h += `<div class="card"><h3><span class="stepno">2</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` + heldNote +
       (need.length ? need.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is waiting for a room.</div>') + `</div>`;
-    h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + (queue.length ? queue.map(c => prow(c)).join("") : '<div class="hint">Nobody in the queue yet.</div>') + `</div>`;
-    nbLoad();
-    const hasNext = nextList().length > 0;
-    h += nextCard(4);
-    h += mailCard(hasNext ? 5 : 4);
-    h += backupCard(hasNext ? 6 : 5);
+    // 28 Oct (Jon): the queue is the list behind the "Queued" and "With an assessor" tiles (room confirmed, waiting for or with an assessor),
+    // so it only shows when someone is in it. The end of night emails and results backup now live on the End of night tab.
+    if (queue.length) h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + queue.map(c => prow(c)).join("") + `</div>`;
+    h += nextCard(queue.length ? 4 : 3);
     if (stale.length) h += staleCard();
     const more = `<details class="card" id="moreDetails"${N.moreOpen ? " open" : ""}><summary style="cursor:pointer;font-weight:700;color:var(--pur)">More: passes with a red step, catch-up night, all attempts${S.isDirector ? ", setup" : ""}</summary><div style="margin-top:8px"></div></details>`;
     h += more;
@@ -4135,6 +4140,7 @@ async function acLoad() {
         else why = "Linked to an earlier course with no retest result";
       } catch (e) { why = "Could not read the earlier course"; }
     }
+    if (sug === 1 && sc.firstTimeAssessment === false) { sug = 3; why = "Marked as a repeat, no earlier course linked"; }
     rows.push({ c, sug, why });
   }
   AC.rows = rows; AC.loading = false; renderRetest();

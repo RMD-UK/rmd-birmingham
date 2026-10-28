@@ -209,7 +209,7 @@ async function loadGroups() {
     candidateAccessCode = "";
   }
 
-  // Stage 1 candidates, grouped by course. 2026-10-05, Jon: Courses 1-6 are
+  // First year candidates, grouped by course. 2026-10-05, Jon: Courses 1-6 are
   // listed from Settings (stage1_course_dates) as well as from candidate
   // records, so every course shows up as its own stem even before anyone has
   // been allocated to it.
@@ -226,7 +226,7 @@ async function loadGroups() {
   //    summary of the move on the record (previousCourses) and not yet emailed from here (reallocEmailedCourse).
   let regByCand = {};
   try { const rsnap = await db.collection("stage1_register").get(); rsnap.docs.forEach(d => { regByCand[d.id] = d.data(); }); } catch (err) { regByCand = {}; }
-  const attemptNo = c => (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1) ? Math.floor(c.assessmentAttempt) : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1);
+  const attemptNo = c => (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1) ? Math.floor(c.assessmentAttempt) : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 3 : 1);
   const wkSt = (r, n) => (r && r["w" + n] && r["w" + n].status) || null;
   courses.forEach(course => {
     const people = stage1.filter(c => c.course === course && c.email).map(c => ({ name: c.name, email: c.email }));
@@ -451,7 +451,7 @@ function applyCourseTemplate(kind, groupId, courseName) {
     return;
   }
   if (!candidateAccessCode) {
-    alert('No candidate access code is set — add one on the "Candidate resource access code" card on Stage 1 Candidates first, then try this template again.');
+    alert('No candidate access code is set — add one on the "Candidate resource access code" card on First year candidates first, then try this template again.');
     return;
   }
   // 2026-10-05: untick every other group first - the template is for ONE

@@ -294,7 +294,7 @@ exports.getAssessmentNight = onCall({ region: "us-central1" }, async (request) =
     const c = d.data();
     const attempt = (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1)
       ? Math.floor(c.assessmentAttempt)
-      : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1);
+      : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 3 : 1);
     return {
       id: d.id,
       name: c.name || "",

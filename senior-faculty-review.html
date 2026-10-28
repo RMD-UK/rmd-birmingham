@@ -128,6 +128,8 @@
 This review is for RMD Birmingham senior faculty. We don't have your email on the senior faculty roster &mdash; if that's wrong, contact RMD Birmingham. You're welcome to submit anyway if you believe this applies to you.
   </div>
 
+  <div class="not-eligible-box" id="sfrClosedBox"></div>
+
   <form id="sfrForm">
 
     <div class="field">
@@ -225,6 +227,21 @@ auth.onAuthStateChanged(async function (user) {
     } catch (e) { onRoster = false; }
     const eligible = currentRole === "director" || onRoster;
     document.getElementById("notEligibleBox").style.display = eligible ? "none" : "block";
+
+    // Open only for a period of the year (Jon, 28 Oct): a Director sets the dates in Global admin tools (config/senior_faculty_review_window).
+    // Outside it the form is hidden for everyone except Directors, who still see it with a note. This is a screen gate, not a rules gate.
+    let win = {};
+    try { const w = await db.collection("config").doc("senior_faculty_review_window").get(); win = w.exists ? w.data() : {}; } catch (e) { win = {}; }
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+    const windowOpen = !!win.open && !!win.close && today >= win.open && today <= win.close;
+    if (!windowOpen) {
+      const box = document.getElementById("sfrClosedBox");
+      box.style.display = "block";
+      box.textContent = currentRole === "director"
+        ? "This review is closed to Senior Faculty at the moment" + (win.open && win.close ? " (open " + win.open + " to " + win.close + ")" : " (no dates set)") + ". You can still see it as a Director. Set the dates in Global admin tools."
+        : "The Senior Faculty review is not open at the moment. You will be emailed when it opens.";
+      if (currentRole !== "director") document.getElementById("sfrForm").style.display = "none";
+    }
 
     // Pre-fill from an existing submission for this cycle, if any (lets
     // someone revisit and edit their answer before Jon follows up).

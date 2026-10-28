@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stage 1 Candidates — RMD Birmingham</title>
+  <title>First year candidates — RMD Birmingham</title>
   <link rel="stylesheet" href="css/rmd.css">
   <style>
     * { box-sizing: border-box; }
@@ -153,7 +153,7 @@
   <div class="top-bar">
     <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
     <div style="flex:1;">
-      <div class="top-bar-title">Stage 1 Candidates</div>
+      <div class="top-bar-title">First year candidates</div>
       <div class="top-bar-sub">RMD Birmingham · Director only</div>
     </div>
     <a href="admin-stage1-settings.html" class="top-bar-link">⚙️ Settings</a>
@@ -887,7 +887,7 @@ async function confirmImport() {
     if (!confirm(`${unrecognized.length} candidate${unrecognized.length === 1 ? "" : "s"} ${unrecognized.length === 1 ? "has" : "have"} a degree that doesn't match any of the 9 standard names:\n\n${list}\n\nImport anyway with this text as typed?`)) return;
   }
 
-  if (!confirm(`Add ${parsedRows.length} candidate${parsedRows.length === 1 ? "" : "s"} to Stage 1 Candidates?\n\nFlagged possible duplicates above are NOT blocked — review them yourself before or after importing.`)) return;
+  if (!confirm(`Add ${parsedRows.length} candidate${parsedRows.length === 1 ? "" : "s"} to First year candidates?\n\nFlagged possible duplicates above are NOT blocked — review them yourself before or after importing.`)) return;
 
   const CHUNK = 400; // Firestore batch limit is 500 writes; leave headroom
   try {
@@ -1754,7 +1754,7 @@ function possibleRepeatBadgeHtml(c) {
 // assessment night for it, plus one. The director can overwrite the suggestion.
 function recordedAttemptOf(c) {
   if (Number.isInteger(c.assessmentAttempt) && c.assessmentAttempt >= 1) return c.assessmentAttempt;
-  return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1;
+  return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 3 : 1;
 }
 async function suggestedAttemptFor(earlier) {
   let n = recordedAttemptOf(earlier);
@@ -1765,7 +1765,7 @@ async function suggestedAttemptFor(earlier) {
       Object.keys(att).forEach(k => { const v = parseInt(k, 10); if (v > n) n = v; });
     }
   } catch (e) { /* no permission or no record: fall back to the saved number */ }
-  return n + 1;
+  return Math.max(3, n + 1); // attempt 2 is the same-night retest, so a later course is attempt 3 or 4
 }
 // Which of two linked records is the earlier attempt, judged by course date.
 // Returns [earlier, later], or null when it cannot be told.
@@ -1787,10 +1787,10 @@ async function linkWithAttempt(a, b, hintLaterId) {
   }
   const [earlier, later] = pair;
   const suggested = await suggestedAttemptFor(earlier);
-  const ans = prompt(`Link these as the same person's attempts.\n\nEarlier: ${earlier.name} - ${earlier.course || "no course"}\nLater:   ${later.name} - ${later.course || "no course"}\n\nAttempt number for the later record (suggested ${suggested}: earlier result plus one).\nThis decides who may assess them, so check it. Press OK to accept or change the number:`, String(suggested));
+  const ans = prompt(`Link these as the same person's attempts.\n\nEarlier: ${earlier.name} - ${earlier.course || "no course"}\nLater:   ${later.name} - ${later.course || "no course"}\n\nAttempt number for the later record (suggested ${suggested}: a later course is attempt 3 or 4).\nThis decides who may assess them, so check it. Press OK to accept or change the number:`, String(suggested));
   if (ans === null) return false;
   const n = parseInt(ans, 10);
-  if (!(n >= 2 && n <= 9)) { alert("Enter a whole number from 2 upwards. Nothing linked."); return false; }
+  if (!(n >= 3 && n <= 9)) { alert("Enter 3 or more: attempt 2 is the retest on the same night as attempt 1, so a later course is attempt 3 or 4. Nothing linked."); return false; }
   const linkedAt = firebase.firestore.FieldValue.serverTimestamp();
   const batch = db.batch();
   batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(later.id), { linkedCandidateId: earlier.id, linkedAt, firstTimeAssessment: false, assessmentAttempt: n, twoPlusAssessments: true });
@@ -2184,7 +2184,7 @@ async function promoteToInstructor(candidateId) {
     }, { merge: true });
 
     await addRoleHistoryEntry(uid, "Instructor", todayIso(), "promoted-from-stage1",
-      `Promoted from Stage 1 candidate record (${c.course || "course unknown"} / ${c.room || "room unknown"}).`);
+      `Promoted from first year candidate record (${c.course || "course unknown"} / ${c.room || "room unknown"}).`);
 
     await db.collection(COLLECTIONS.stage1Candidates).doc(candidateId).update({
       promotedToUid: uid, promotedAt: firebase.firestore.FieldValue.serverTimestamp()

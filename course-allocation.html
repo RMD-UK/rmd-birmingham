@@ -171,7 +171,7 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
     <div class="seg" id="courseTabs" role="tablist" aria-label="Course"></div>
     <div class="grow"></div>
     <span class="sheetstat" id="sheetStat"></span>
-    <a class="tbtn" href="admin-stage1-candidates.html">Stage 1 Candidates</a>
+    <a class="tbtn" href="admin-stage1-candidates.html">First year candidates</a>
     <a class="tbtn" href="admin-stage1-assessment-allocation.html">Assessment allocation</a>
     <a class="tbtn" href="admin-stage1-course-allocation.html" title="The previous allocation page, kept for the over-capacity step">Older page</a>
   </div>
@@ -580,7 +580,7 @@ function reasonsFor(c, courseName) {
   else if (s.date > deadline) r.push(`${courseName} (${fmt(s.date)}) is after the ${exact} deadline of ${fmt(deadline)}`);
   const clash = (c.placementBlocks || []).find(b => b.start && b.end && placementClashesWithCourse([b], s.date));
   if (clash) r.push(`${courseName} clashes with a placement block (${fmtShort(clash.start)} to ${fmtShort(clash.end)})`);
-  if (!c.course && !c.placementChecked) r.push("their placement dates have not been checked yet (Stage 1 Candidates, Step 2)");
+  if (!c.course && !c.placementChecked) r.push("their placement dates have not been checked yet (First year candidates, Step 2)");
   return r;
 }
 
@@ -704,7 +704,7 @@ function renderMail() {
   const total = groups.reduce((n, g) => n + g.people.length, 0);
   if (!total) { box.innerHTML = `<div class="msg ok" style="margin:0">Nobody is waiting for an email. People placed or moved here show up below until they have been emailed.</div>`; return; }
   if (total >= EMAIL_CARD_MAX) { box.innerHTML = `<div style="font-size:14px">${total} people are waiting for an email. Send these from <a href="admin-comms.html" style="color:var(--pur);font-weight:700">Bulk Comms</a> using the Allocation template on each course.</div>`; return; }
-  let html = confirmAccessCode ? "" : `<div class="msg err">No candidate access code is set, so emails cannot be sent yet. Add one on Stage 1 Candidates.</div>`;
+  let html = confirmAccessCode ? "" : `<div class="msg err">No candidate access code is set, so emails cannot be sent yet. Add one on First year candidates.</div>`;
   groups.forEach((g, i) => {
     const dates = computeCourseSessionDates(g.course);
     const ok = !!(dates && confirmAccessCode);
@@ -850,7 +850,7 @@ function plan() {
 // Assessment attempt number: saved number, else 2 for anyone already flagged repeat / two-plus, else 1.
 function attemptNo(c) {
   if (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1) return Math.floor(c.assessmentAttempt);
-  return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 2 : 1;
+  return (c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 3 : 1;
 }
 
 // ── Old-course records (2026-10-16, Jon) ────────────────────────────────────

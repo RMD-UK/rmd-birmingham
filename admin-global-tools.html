@@ -153,7 +153,7 @@
   <a class="action-card" href="admin-stage1-candidates.html">
     <div class="action-card-icon">🎓</div>
     <div class="action-card-text">
-      <div class="action-card-title">Stage 1 Candidates</div>
+      <div class="action-card-title">First year candidates</div>
       <div class="action-card-sub">Taught first-year records: bulk import, duplicate flagging, promote to Instructor</div>
     </div>
     <div class="action-card-arrow">›</div>
@@ -217,10 +217,10 @@
   <div class="section-label">Stage 1 evening courses</div>
 
   <div class="card">
-    <div class="card-header">Stage 1 candidates, rooms &amp; settings</div>
+    <div class="card-header">First year candidates, rooms &amp; settings</div>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">Manage the taught first-year candidate roster, allocate them to teaching rooms, and set this year's programme deadlines and course session dates.</p>
-      <a href="admin-stage1-candidates.html" class="btn-secondary" style="display:inline-block;text-decoration:none;margin-right:8px;">👤 Stage 1 Candidates</a>
+      <a href="admin-stage1-candidates.html" class="btn-secondary" style="display:inline-block;text-decoration:none;margin-right:8px;">👤 First year candidates</a>
       <a href="admin-course-room-allocation.html" class="btn-secondary" style="display:inline-block;text-decoration:none;margin-right:8px;">🏫 Room allocation</a>
       <a href="course-allocation.html" class="btn-secondary" style="display:inline-block;text-decoration:none;margin-right:8px;">🔀 Re-allocate a candidate</a>
       <a href="admin-stage1-settings.html" class="btn-secondary" style="display:inline-block;text-decoration:none;">⚙️ Settings</a>
@@ -243,6 +243,19 @@
   </div>
 
   <div class="section-label">Annual faculty processes</div>
+
+  <div class="card">
+    <div class="card-header">Senior Faculty review: open and close dates</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">The <a href="senior-faculty-review.html">Senior Faculty review</a> form and its link on the Director menu are only available between these two dates (both days included). Outside them Senior Faculty see a "not open" message, and Directors can still view the form. With no dates set it is closed.</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin:12px 0;">
+        <label style="font-size:13px;">Opens<br><input type="date" id="sfrOpenDate"></label>
+        <label style="font-size:13px;">Closes<br><input type="date" id="sfrCloseDate"></label>
+      </div>
+      <button class="btn-primary" onclick="saveSfrWindow()">Save</button>
+      <div class="hint" id="sfrWindowStatus" style="margin-top:10px;"></div>
+    </div>
+  </div>
 
   <a class="action-card" href="admin-senior-faculty-review.html">
     <div class="action-card-icon">📊</div>
@@ -344,8 +357,28 @@ async function saveEoiSettings() {
   }
 }
 
+async function loadSfrWindow() {
+  const st = document.getElementById("sfrWindowStatus");
+  try {
+    const s = await db.collection("config").doc("senior_faculty_review_window").get();
+    const d = s.exists ? s.data() : {};
+    document.getElementById("sfrOpenDate").value = d.open || "";
+    document.getElementById("sfrCloseDate").value = d.close || "";
+    st.textContent = d.open && d.close ? "Currently set: open " + d.open + " to " + d.close + "." : "No dates set, so the review is closed.";
+  } catch (err) { st.textContent = "Couldn't load the current dates, reload and try again."; }
+}
+async function saveSfrWindow() {
+  const o = document.getElementById("sfrOpenDate").value, c = document.getElementById("sfrCloseDate").value, st = document.getElementById("sfrWindowStatus");
+  if ((o && !c) || (!o && c)) { st.textContent = "Set both dates, or clear both to close the review."; return; }
+  if (o && c && c < o) { st.textContent = "The close date is before the open date."; return; }
+  try {
+    await db.collection("config").doc("senior_faculty_review_window").set({ open: o || null, close: c || null });
+    st.textContent = o ? "Saved. Open " + o + " to " + c + "." : "Saved. The review is closed.";
+  } catch (err) { st.textContent = "Couldn't save that. This needs super-user access, not just director."; }
+}
 loadCpdSettings();
 loadEoiSettings();
+loadSfrWindow();
 </script>
 </body>
 </html>
