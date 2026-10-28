@@ -265,6 +265,12 @@ details.lst .in{padding:0 14px 12px}
 .fqb.out.pass.on{background:var(--ok);border-color:var(--ok);color:#fff}
 .fqb.out.refer.on{background:var(--org);border-color:var(--org);color:#fff}
 .fqb:disabled{opacity:.4}
+.fqb.rr{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:118px}
+.fqb.rr small{font-size:11px;font-weight:600;color:var(--mut)}
+.fqb.rfull{border-color:var(--org)}
+.fqb.rlate{opacity:.65;border-style:dashed}
+.rsq{width:100%;box-sizing:border-box;border:2px solid var(--line);border-radius:12px;padding:12px 14px;font-size:16px}
+.rsbig{padding:12px 20px;font-size:16px}
 .rsn{margin:6px 0 10px;padding:10px 12px;border:2px solid #F3C9C5;background:#FFF6F5;border-radius:10px}
 .rsn .rsnh{font-weight:800;font-size:13px;color:var(--bad);margin-bottom:6px}.rsn .rsnh span{font-weight:600;color:var(--mut)}
 .rsn .rsnc{display:flex;flex-wrap:wrap;gap:6px}
@@ -471,6 +477,7 @@ details.whocan summary{cursor:pointer;font-weight:800;color:var(--pur);font-size
       <div id="viewRunner" class="hidden"></div>
       <div id="viewAssessor" class="hidden"></div>
       <div id="viewCheckin" class="hidden"></div>
+      <div id="viewResit" class="hidden"></div>
       <div id="viewEnd" class="hidden"></div>
     </section>
   </div>
@@ -651,6 +658,7 @@ function renderSteps() {
     { no: 14, t: "Check-in station", s: "Assessment night: arrivals", view: "checkin", who: "full" },
     { no: 15, t: "Planning overview", s: "What to do before the night, in order", view: "plan", who: "full", onlyRole: true },
     { no: 16, t: "Assessment results", s: "Pass rates, retests and who has passed", href: "assessment-results.html", who: "full" },
+    { no: 18, t: "Resit teaching", s: "Mark who is ready to sit a resit", view: "resit", who: "run" },
     { no: 17, t: "End of night", s: "Did not turn up, did not pass, and moved to a new course?", view: "endnight", who: "full" }
   ];
   const ok = j => j.who === "director" ? S.isDirector : j.who === "full" ? S.full : j.who === "run" ? S.run : j.who === "night" ? S.night : (S.full || S.mine.length > 0);
@@ -685,11 +693,12 @@ const ROLE_DEFS = {
   ],
   assess: [
     { id: "desk", t: "Check-in station", s: "Arrivals: check people in", ok: () => S.full, view: "checkin", jobs: [{ no: 14 }, { no: 4, s: "Runners: who has been collected" }] },
+    { id: "resit", t: "Resit teaching (LDLT)", s: "Mark students ready to sit", ok: () => S.run, view: "resit", jobs: [{ no: 18 }] },
     { id: "runner", t: "Runner / instructor", s: "Who is due, who is done", ok: () => S.run, view: "runner", jobs: [{ no: 4 }] },
     { id: "as1", t: "Assessor (first sit)", s: "Assess first attempts", ok: () => S.night && !S.teamOnly, view: "assessor", mode: "first", jobs: [{ no: 5, mode: "first", s: "First sits: record results" }] },
     { id: "as2", t: "Assessor (second sit)", s: "Same-evening retests", ok: () => S.night && !S.teamOnly && (S.full || amNamed()), view: "assessor", mode: "second", jobs: [{ no: 5, mode: "second", s: "Second sits: record results" }] },
     { id: "plus", t: "Retest-plus & RAP", s: "Third sits and later, RAP", ok: () => S.full, view: "retest", jobs: [{ no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 5, t: "Assess", mode: "plus", s: "Third sits and later, RAP" }] },
-    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 14, t: "Switch check-in ON", s: "First job of the night: assessors then take only collected people" }, { no: 3 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 17 }, { no: 12 }, { no: 13 }, { no: 16 }] },
+    { id: "fac", t: "RMD faculty", s: "Retest rooms, follow-ups, emails", ok: () => S.full, view: "retest", jobs: [{ no: 14, t: "Switch check-in ON", s: "First job of the night: assessors then take only collected people" }, { no: 3 }, { no: 18 }, { no: 2, t: "Add or move someone", s: "Onto tonight, a different slot, RAP" }, { no: 17 }, { no: 12 }, { no: 13 }, { no: 16 }] },
     { id: "ascr", t: "Big screen", s: "Live pass / refer overview", ok: () => S.full, href: "assessment-live.html" },
     { id: "aflow", t: "Flow screen", s: "Big screen: dots moving through the night", ok: () => S.full, href: "assessment-flow.html" }
   ],
@@ -831,10 +840,10 @@ function renderTassInfo() {
 async function enterView() {
   showView();
   if (S.view === "tassinfo") { renderTassInfo(); return; }
-  if (["alloc", "plan", "runner", "assessor", "retest", "checkin", "endnight"].includes(S.view)) await ensureRooms();
+  if (["alloc", "plan", "runner", "assessor", "retest", "checkin", "endnight", "resit"].includes(S.view)) await ensureRooms();
   if (S.view === "alloc") renderAlloc();
   else if (S.view === "plan") renderPlan();
-  else if (["retest", "runner", "assessor", "checkin", "endnight"].includes(S.view)) renderNight();
+  else if (["retest", "runner", "assessor", "checkin", "endnight", "resit"].includes(S.view)) renderNight();
   else if (S.view === "setup") await enterSetup();
   else render();
 }
@@ -1642,7 +1651,9 @@ const ASSESS_SLOTS = (() => {
   return out;
 })();
 // Rooms used for retests (attempt 2). Student Faculty pick from these when they confirm a retest. Empty = every assessment room is offered. Jon to confirm the list.
-const DEFAULT_RETEST_ROOMS = ["CM08", "CM09", "CM10", "CM11"];   // 21 Oct, Jon: the only rooms offered for retests (every retest attempt). RAP can use any room.
+const DEFAULT_RETEST_ROOMS = ["CM07", "CM08", "CM09", "CM10"];   // 28 Oct, Jon: how faculty run resits. Rooms open from the start of the night. RAP can use any room.
+const LATE_RETEST_ROOMS = ["CM06", "CM11"];                        // 28 Oct, Jon: open once the last first sit has finished (the picker asks before using them earlier)
+const RESIT_WAIT = 2;                                              // 28 Oct, Jon: one student inside a resit room and two waiting outside
 const DEFAULT_ASSESS_ROOMS = ["CM01","CM02","CM03","CM04","CM06","CM11","CM12","CM13","CM14","CM15","CM16","WF38","WF38c","WS14","WS18","WF19","EF5","EF27","EF30","EF10d"];
 const A = {
   rooms: [], loaded: false, sel: null, target: null, showGrid: false, busy: false, log: [],
@@ -1670,14 +1681,14 @@ async function ensureRooms() {
 function showView() {
   const picking = pickingRole();
   const info = !picking && S.view === "tassinfo" && S.drole === "tass";
-  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewPlan", "plan"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewEnd", "endnight"], ["viewSetup", "setup"]]
+  [["viewTassInfo", "tassinfo"], ["viewRegister", "register"], ["viewPlan", "plan"], ["viewAlloc", "alloc"], ["viewRetest", "retest"], ["viewRunner", "runner"], ["viewAssessor", "assessor"], ["viewCheckin", "checkin"], ["viewResit", "resit"], ["viewEnd", "endnight"], ["viewSetup", "setup"]]
     .forEach(([id, v]) => $(id).classList.toggle("hidden", picking || S.view !== v || (v === "tassinfo" && !info)));
   $("plain").classList.toggle("hidden", picking || info); $("msgs").classList.toggle("hidden", picking || info);
   renderDoors();
 }
 async function setView(v) {
   if ((v === "alloc" || v === "retest" || v === "plan") && !S.full) return;
-  if (v === "runner" && !S.run) return;
+  if ((v === "runner" || v === "resit") && !S.run) return;
   if (v === "assessor" && (!S.night || S.teamOnly)) return;
   if ((v === "checkin" || v === "endnight") && !S.full) return;
   if (v === "setup" && !S.isDirector) return;
@@ -2210,7 +2221,7 @@ document.addEventListener("DOMContentLoaded", () => { const s = document.getElem
 //     and by someone other than the attempt 1 assessor
 //   - attempt 3 and above only by Senior Faculty or an extra named assessor
 // ════════════════════════════════════════════════════════════════════════════
-const NIGHT_VIEWS = ["retest", "runner", "assessor", "checkin", "endnight"];
+const NIGHT_VIEWS = ["retest", "runner", "assessor", "checkin", "endnight", "resit"];
 const N = {
   course: null, cands: [], results: {}, named: [], team: [], form: {}, err: "", resErr: "", usingFallback: false,
   room: null, open: new Set(), fullRoom: null, unsub: null, poll: null, formOpen: false, loadedAt: 0, present: [], unsubP: null,
@@ -2229,6 +2240,40 @@ function isDoneN(c) { return Object.keys(nattempts(c.id)).length > 0; }
 function isDoneNow(c) { return !!(passedAtKey(c.id) || recordedAt(c.id, effAttempt(c))); }
 // Resit room (21 Oct, Jon): chosen by RMD faculty when a referred candidate is checked in again. Stored on flow["<attempt>"].room. A resit has a room but no time slot.
 function resitRoom(c) { const a = effAttempt(c); return a >= 2 ? String((nres(c.id).flow || {})[String(a)] && (nres(c.id).flow || {})[String(a)].room || "") : ""; }
+// ── Resit routine (28 Oct, Jon) ─────────────────────────────────────────────
+// Failed first sit -> resit teaching in the LDLT -> a senior instructor marks them Ready to sit -> RMD faculty (atrium hub) pick a room:
+// one student inside, two waiting outside -> the student walks there themselves.
+// "Ready" lives on stage1_assessments/{id}.flow["2"].ready = {by, byName, at}. Any RMD member may write the flow map, so there is no rules change.
+function isReady(c) { const r = flowOf(c, 2).ready; return !!(r && r.at); }
+function readyAt(c) { const r = flowOf(c, 2).ready; return r && r.at ? String(r.at) : ""; }
+function agoShort(iso) { const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000)); return isNaN(m) ? "" : (m < 1 ? "just now" : m + " min ago"); }
+function byNameAsc(a, b) { return String(a.name).localeCompare(String(b.name)); }
+// People referred at attempt 1 on this course, still to resit tonight (attempt 2 is the same night only).
+function resitCands() { return (N.cands || []).filter(c => !c.absent && !passedAtKey(c.id) && derivedAttempt(c.id) === 2 && effAttempt(c) === 2 && !recordedAt(c.id, 2)); }
+function resitSplit() {
+  const rest = [], withA = [];
+  resitCands().forEach(c => { const cl = nres(c.id).claim; (cl && cl.uid ? withA : rest).push(c); });
+  return {
+    teaching: rest.filter(c => !isReady(c) && !resitRoom(c)).sort(byNameAsc),
+    ready: rest.filter(c => isReady(c) && !resitRoom(c)).sort((a, b) => readyAt(a).localeCompare(readyAt(b))),
+    go: rest.filter(c => resitRoom(c)).sort(byNameAsc),
+    withA: withA.sort(byNameAsc)
+  };
+}
+// Who is inside a retest room (with an assessor) and who is waiting for it, by the room chosen as the guide.
+function roomLoad(room) {
+  let inside = 0, wait = 0;
+  (N.cands || []).forEach(c => {
+    if (c.absent || effAttempt(c) < 2 || isDoneNow(c) || resitRoom(c) !== room) return;
+    const cl = nres(c.id).claim; if (cl && cl.uid) inside++; else wait++;
+  });
+  return { inside, wait };
+}
+// The later rooms (CM06, CM11) open once nobody is still due a first sit.
+function firstSitsLeft() { return (N.cands || []).filter(c => !c.absent && effAttempt(c) === 1 && hasSlot(c) && !isDoneNow(c) && !(nres(c.id).notThere && nres(c.id).notThere.flag)).length; }
+function lateRoomsOpen() { return firstSitsLeft() === 0; }
+// First sits still to come in one room (slotted there, not done, not flagged not-there). A room with none is free to use as a resit room.
+function roomFirstSitsLeft(room) { return (N.cands || []).filter(c => !c.absent && c.assessmentRoom === room && effAttempt(c) === 1 && hasSlot(c) && !isDoneNow(c) && !(nres(c.id).notThere && nres(c.id).notThere.flag)).length; }
 function slotLabel(c) { return resitRoom(c) ? "Resit" : (c.assessmentSlot || "-"); }
 function formAttemptOf(c) { const p = passedAtKey(c.id); return p ? Number(p) : effAttempt(c); }
 function firstNameOf(c) { return String(c.name || "").trim().split(/\s+/)[0] || "this candidate"; }
@@ -2452,7 +2497,7 @@ function attachNight() {
     renderNight();
   });
   if (N.poll) clearInterval(N.poll);
-  N.poll = setInterval(() => { if (!N.formOpen && ["retest", "runner", "assessor", "checkin", "endnight"].includes(S.view)) loadNight(); }, 30000);
+  N.poll = setInterval(() => { if (!N.formOpen && ["retest", "runner", "assessor", "checkin", "endnight", "resit"].includes(S.view)) loadNight(); }, 30000);
 }
 function renderNight() {
   autoSyncAttempts();
@@ -2460,6 +2505,7 @@ function renderNight() {
   else if (S.view === "runner") renderRunner();
   else if (S.view === "assessor") renderAssessor();
   else if (S.view === "checkin") renderCheckin();
+  else if (S.view === "resit") renderResit();
   else if (S.view === "endnight") renderEnd();
 }
 // Passed with red steps (2026-10-15, Jon): every time an assessor marks a part Pass although a step was red.
@@ -2576,7 +2622,7 @@ function deskBlocked(c) {
 function deskExpected(c) { const f = nres(c.id).flow; return !c.absent && (hasSlot(c) || effAttempt(c) >= 2 || (!!f && Object.keys(f).some(k => /^\d+$/.test(k)))); }
 function retestRoomList() {
   // Jon's list is the rule: offered as it stands, whether or not a room is also in the assessment rooms list. A saved list (config/stage1_assessment_rooms.retestRooms) overrides it.
-  return (A.retestRooms && A.retestRooms.length) ? A.retestRooms.slice() : DEFAULT_RETEST_ROOMS.slice();
+  return (A.retestRooms && A.retestRooms.length) ? A.retestRooms.slice() : DEFAULT_RETEST_ROOMS.concat(LATE_RETEST_ROOMS);
 }
 // Rooms a person may be given in the Adjust box: RAP any room; every other retest (attempt 2 or later) only the retest rooms; first sits any assessment room.
 function roomsFor(c) { return (c && c.rap !== true && attemptOf(c) >= 2) ? retestRoomList() : A.rooms; }
@@ -2584,17 +2630,30 @@ function roomsFor(c) { return (c && c.rap !== true && attemptOf(c) >= 2) ? retes
 // The room is a guide for the runner and assessor, not a rule. changeOnly = just move the room, no new check-in.
 function askResitRoom(c, changeOnly) {
   const rooms = retestRoomList(), cur = resitRoom(c);
-  $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true"><h3>${changeOnly ? "Change retest room" : "Retest tonight"} for ${esc(c.name)}</h3>` +
-    `<div class="hint" style="margin:0 0 8px">${changeOnly ? "Pick the new room." : "Student Faculty: confirm " + esc(firstNameOf(c)) + " is retesting tonight, then pick a retest room. No time needed. Send them for their extra training; a runner collects them and takes them to the room."} The room is a guide: an assessor can take them to a different room.</div>` +
-    `<div class="fqo">${rooms.map(r => `<button type="button" class="fqb${r === cur ? " on" : ""}" data-rr="${esc(r)}">${esc(r)}</button>`).join("")}</div>` +
+  // 28 Oct, Jon: start with the set resit rooms, then any other assessment room once its first sits are done (free) can be used as a resit room.
+  const others = (A.rooms || []).filter(r => !rooms.includes(r)).concat(cur && !rooms.includes(cur) && !(A.rooms || []).includes(cur) ? [cur] : []);
+  const btn = r => {
+    const L = roomLoad(r), left = roomFirstSitsLeft(r), busy = left > 0 && (LATE_RETEST_ROOMS.includes(r) || !rooms.includes(r)), full = L.inside >= 1 && L.wait >= RESIT_WAIT;
+    const note = busy ? left + " first sit" + (left === 1 ? "" : "s") + " still due" : (!rooms.includes(r) || LATE_RETEST_ROOMS.includes(r) ? "free" : "");
+    return `<button type="button" class="fqb rr${r === cur ? " on" : ""}${full ? " rfull" : ""}${busy ? " rlate" : ""}" data-rr="${esc(r)}" data-in="${L.inside}" data-wait="${L.wait}" data-late="${busy ? 1 : 0}" data-left="${left}"><b>${esc(r)}</b><small>${L.inside} in, ${L.wait} waiting${full ? " (full)" : ""}${note ? " &middot; " + note : ""}</small></button>`;
+  };
+  const free = others.filter(r => roomFirstSitsLeft(r) === 0), inUse = others.filter(r => roomFirstSitsLeft(r) > 0);
+  $("overlay").innerHTML = `<div class="modalbg" id="rrbg"><div class="modal" role="dialog" aria-modal="true"><h3>${changeOnly ? "Change retest room" : "Send to a room"} for ${esc(c.name)}</h3>` +
+    `<div class="hint" style="margin:0 0 8px">${changeOnly ? "Pick the new room." : esc(firstNameOf(c)) + " is ready to sit. Pick a room: one student inside and two waiting outside. They walk there themselves."} The room is a guide: an assessor can take them to a different room.</div>` +
+    `<div class="fqo">${rooms.map(btn).join("")}</div>` +
+    (others.length ? `<div class="hint" style="margin:12px 0 6px"><b>Other assessment rooms.</b> Free once their first sits are done.</div>` +
+      `<div class="fqo" id="rrOther">${free.map(btn).join("")}${inUse.map(btn).join("")}</div>` : "") +
     `<div class="row2" style="margin-top:12px"><button type="button" class="btn" id="rrCancel">Cancel</button></div></div></div>`;
   const close = () => { $("overlay").innerHTML = ""; };
   $("rrCancel").onclick = close;
   $("rrbg").onclick = e => { if (e.target.id === "rrbg") close(); };
   $("overlay").querySelectorAll("[data-rr]").forEach(b => b.onclick = () => {
+    const r = b.dataset.rr, inN = Number(b.dataset.in), wN = Number(b.dataset.wait), lf = Number(b.dataset.left);
+    if (b.dataset.late === "1" && !confirm(r + " still has " + lf + " first sit" + (lf === 1 ? "" : "s") + " to come, so it may be in use. Use it anyway?")) return;
+    if (r !== cur && inN >= 1 && wN >= RESIT_WAIT && !confirm(r + " already has " + inN + " inside and " + wN + " waiting. Send " + firstNameOf(c) + " there anyway?")) return;
     close();
-    if (changeOnly) return flowWrite(c, { room: b.dataset.rr }, c.name + ": retest room " + b.dataset.rr);
-    checkIn(c, true, b.dataset.rr);
+    if (changeOnly) return flowWrite(c, { room: r }, c.name + ": retest room " + r);
+    checkIn(c, true, r);
   });
 }
 function checkIn(c, roomAsked, room) {
@@ -2602,7 +2661,7 @@ function checkIn(c, roomAsked, room) {
   if (!deskExpected(c)) { toast(c.name + " has no slot tonight. See RMD faculty.", true); return; }
   if (effAttempt(c) >= 2 && !roomAsked) { toast(c.name + " is a retest. RMD faculty confirm the retest and pick the room from the Retest pool.", true); return; }
   const patch = { arrived: whoNow() };
-  if (effAttempt(c) >= 2 && room) patch.room = room;
+  if (effAttempt(c) >= 2 && room) { patch.room = room; patch.collected = Object.assign(whoNow(), { override: false, selfWalk: true }); }   // 28 Oct: resit students walk to the room themselves, so no runner collection is needed
   return flowWrite(c, patch, c.name + " checked in" + (patch.room ? " (retest room " + patch.room + ")" : "")).then(ok => {
     if (ok && S.view === "checkin") {
       N.undoBar = { id: c.id, name: c.name, until: Date.now() + 6000 };
@@ -2617,6 +2676,8 @@ function doAct(act, id) {
   if (act === "checkin") return checkIn(c);
   if (act === "changeroom") return askResitRoom(c, true);
   if (act === "retestroom") return askResitRoom(c, false);
+  if (act === "ready") return flowWrite(c, { ready: whoNow() }, c.name + " is ready to sit");
+  if (act === "notready") return flowWrite(c, { ready: null }, c.name + " is back in resit teaching");
   if (act === "undo") { N.undoBar = null; renderDeskUndo(); return flowWrite(c, { arrived: null, collected: null }, c.name + ": check-in undone"); }
   if (act === "collect") return flowWrite(c, { collected: Object.assign(whoNow(), { override: false }) }, c.name + " collected");
   if (act === "collectnow") { N.confirmCollect = id; return renderNight(); }
@@ -2820,6 +2881,30 @@ function runnerRows(list, big) {
       `<span class="rs">${d ? "" : stChip(c)}${stateChips(c) || (due ? '<span class="nchip due">Due now</span>' : "")}</span><span class="ract">${acts}</span></div>`;
   };
   return open.map(row).join("") + (done.length ? `<div class="rsep">Assessed (${done.length})</div>` + done.map(row).join("") : "");
+}
+// ── Resit teaching view (28 Oct, Jon): for the senior instructors in the LDLT. Names shown to RMD members only. ──
+function renderResit() {
+  if (!S.course) return;
+  const d = assessDate(), rs = resitSplit(), q = String(N.rsQ || "").trim().toLowerCase();
+  const f = list => q ? list.filter(c => String(c.name || "").toLowerCase().includes(q)) : list;
+  const had = document.activeElement && document.activeElement.id === "rsQ", pos = had ? document.activeElement.selectionStart : 0;
+  $("msgs").innerHTML = nightBanner();
+  $("plain").innerHTML = '<span class="lbl">Resit teaching</span>' + `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. When a student feels ready to sit, tap <b>Ready to sit</b> next to their name. RMD faculty then send them to a room and it shows here under <b>Go now</b>.`;
+  const row = (c, bits) => `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}</span><small>${esc(c.degree || "")}</small><span class="pact">${bits}</span></div>`;
+  const total = rs.teaching.length + rs.ready.length + rs.go.length + rs.withA.length;
+  let h = `<div class="sumstrip">${nightTile(rs.teaching.length, "In resit teaching")}${nightTile(rs.ready.length, "Ready, waiting for a room", rs.ready.length > 0)}${nightTile(rs.go.length, "Sent to a room")}${nightTile(rs.withA.length, "With an assessor")}</div>`;
+  if (!total) h += '<div class="card"><div class="hint" style="margin:0">Nobody is waiting for a resit yet. Students appear here as soon as an assessor saves their first sit as <b>Retest tonight</b>.</div></div>';
+  else {
+    h += `<div class="card"><input type="search" id="rsQ" class="rsq" placeholder="Find a name..." value="${esc(N.rsQ || "")}" autocomplete="off"></div>`;
+    if (rs.go.length) h += `<div class="card"><h3>Go now (${f(rs.go).length})</h3><div class="hint" style="margin:0 0 8px">Tell each student which room. They walk there themselves.</div>` + f(rs.go).map(c => row(c, `<span class="nchip claim" style="font-size:16px">Go to ${esc(resitRoom(c))}</span>`)).join("") + `</div>`;
+    if (rs.ready.length) h += `<div class="card"><h3>Ready to sit, waiting for a room (${f(rs.ready).length})</h3><div class="hint" style="margin:0 0 8px">In the order they were marked ready. RMD faculty pick the room.</div>` + f(rs.ready).map(c => row(c, `<span class="nchip claim">Ready ${esc(agoShort(readyAt(c)))}</span><button type="button" class="btn sm" data-act="notready" data-id="${esc(c.id)}">Not ready</button>`)).join("") + `</div>`;
+    h += `<div class="card"><h3>In resit teaching (${f(rs.teaching).length})</h3>` + (rs.teaching.length ? f(rs.teaching).map(c => row(c, `<button type="button" class="btn pri rsbig" data-act="ready" data-id="${esc(c.id)}">Ready to sit</button>`)).join("") : '<div class="hint" style="margin:0">Nobody is in resit teaching.</div>') + `</div>`;
+    if (rs.withA.length) h += `<div class="card"><h3>With an assessor (${rs.withA.length})</h3>` + rs.withA.map(c => row(c, `<span class="nchip claim">With ${esc(((nres(c.id).claim || {}).name) || "an assessor")}</span>`)).join("") + `</div>`;
+  }
+  $("viewResit").innerHTML = h;
+  bindActs($("viewResit"));
+  const qi = $("rsQ");
+  if (qi) { qi.oninput = () => { N.rsQ = qi.value; renderResit(); }; if (had) { qi.focus(); try { qi.setSelectionRange(pos, pos); } catch (e) {} } }
 }
 function renderRunner() {
   if (!S.course) return;
@@ -4073,9 +4158,10 @@ function renderRetest() {
   const heldNote = notHere ? `<div class="hint" style="margin:0 0 8px"><b>${notHere}</b> more on a second attempt or later ${notHere === 1 ? "is" : "are"} due on the night and will appear here then.</div>` : "";
   const needRoom = c => effAttempt(c) === 2 && !resitRoom(c) && !(nres(c.id).claim && nres(c.id).claim.uid);
   const need = simple ? [] : pool.filter(needRoom), queue = simple ? pool : pool.filter(c => !needRoom(c));
+  const needReady = need.filter(isReady).sort((a, b) => readyAt(a).localeCompare(readyAt(b))), needTeach = need.filter(c => !isReady(c)).sort(byNameAsc);   // 28 Oct: resit teaching (LDLT) then Ready to sit
   const has3 = pool.some(c => effAttempt(c) >= 3);
   let h = `<div class="sumstrip">` + (simple ? `${nightTile(pool.length, "In the pool")}${nightTile(waiting.length, "Waiting for an assessor", waiting.length > 0)}${nightTile(withA, "With an assessor")}` :
-    `${nightTile(need.length, "Need a retest room", need.length > 0)}${nightTile(waiting.length - need.length, "Queued, waiting for an assessor")}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
+    `${nightTile(needReady.length, "Ready, need a room", needReady.length > 0)}${nightTile(needTeach.length, "In resit teaching")}${nightTile(waiting.length - need.length, "Queued, waiting for an assessor")}${nightTile(withA, "With an assessor")}${nightTile(passedRetest, "Passed a retest")}` +
     (has3 ? nightTile(hereCount(), "Attempt 3+ assessors here", hereCount() === 0) : "") +
     `${nightTile(af.retrain.length + af.leads.length + af.final.length, "Not retested tonight", af.retrain.length + af.leads.length + af.final.length > 0)}`) + `</div>`;
   const staleCard = () => `<div class="card" style="border-color:var(--org)"><h3>Update attempt numbers</h3><div class="hint" style="margin:0 0 8px"><b>${stale.length}</b> have a retest tonight, so their saved attempt number is out of date: ${stale.slice(0, 6).map(c => esc(c.name)).join(", ")}${stale.length > 6 ? " and others" : ""}. Updating also keeps the Master sheet in step.</div><button type="button" class="btn pri" id="syncAtt">Update ${stale.length} attempt number${stale.length === 1 ? "" : "s"}</button></div>`;
@@ -4083,13 +4169,13 @@ function renderRetest() {
     const att = effAttempt(c), prev = nattempts(c.id)["1"], cl = nres(c.id).claim;
     const sec = COMPS.map(x => { let r = ""; Object.keys(nattempts(c.id)).sort((a, b) => b - a).some(k => { const v = (nattempts(c.id)[k].components || {})[x.k]; if (v === "pass" || v === "fail") { r = v; return true; } return false; }); return esc(x.label) + ": <b>" + (r === "pass" ? "Pass" : r === "fail" ? "Fail" : "Not yet tested") + "</b>"; }).join(" &middot; ");
     const rule = att === 2 ? (prev && prev.assessorName ? "Not " + esc(prev.assessorName) : "Different assessor from attempt 1") : "Senior Faculty or extra named assessor";
-    const who = cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : (mode === "need" ? "" : '<span class="nchip bad">Waiting</span>');
-    const roomBits = (!simple && att === 2 && !cl) ? (resitRoom(c) ? `<span class="nchip claim">Room ${esc(resitRoom(c))}</span><button type="button" class="btn sm" data-act="changeroom" data-id="${esc(c.id)}">Change room</button>` : `<button type="button" class="btn sm pri" data-act="retestroom" data-id="${esc(c.id)}">Confirm retest + pick room</button>`) : "";
+    const who = cl && cl.name ? `<span class="nchip claim">With ${esc(cl.name)}</span><button type="button" class="btn sm" data-prelease="${esc(c.id)}">Release</button>` : (mode === "need" || mode === "teach" ? "" : '<span class="nchip bad">Waiting</span>');
+    const roomBits = (!simple && att === 2 && !cl) ? (resitRoom(c) ? `<span class="nchip claim">Room ${esc(resitRoom(c))}</span><button type="button" class="btn sm" data-act="changeroom" data-id="${esc(c.id)}">Change room</button>` : (isReady(c) ? `<span class="nchip claim">Ready ${esc(agoShort(readyAt(c)))}</span><button type="button" class="btn sm pri" data-act="retestroom" data-id="${esc(c.id)}">Pick room</button><button type="button" class="btn sm" data-act="notready" data-id="${esc(c.id)}">Not ready</button>` : `<button type="button" class="btn sm pri" data-act="ready" data-id="${esc(c.id)}">Mark ready</button>`)) : "";
     const ed = Object.values((nres(c.id).flow || {}).edits || {}).sort((a, b) => String(a.at).localeCompare(String(b.at))).pop();
-    const stepper = (simple || mode === "need") ? "" : `<button type="button" class="btn sm" data-patt="${esc(c.id)}">Edit attempt</button>`;
+    const stepper = (simple || mode === "need" || mode === "teach") ? "" : `<button type="button" class="btn sm" data-patt="${esc(c.id)}">Edit attempt</button>`;
     const edNote = (!stepper || !ed) ? "" : ` &middot; <i>Attempt edited ${esc(ed.from)} to ${esc(ed.to)} by ${esc(ed.byName || "someone")}</i>`;
     return `<div class="lrow"><span class="nm">${esc(c.name)} ${c.rap ? RAPSVG : ""}${attBadge(att)}</span><small>${esc(c.degree || "")}</small>` +
-      `<small style="flex-basis:100%">${sec}${simple || mode === "need" ? "" : " &middot; " + rule}${edNote}</small>` +
+      `<small style="flex-basis:100%">${sec}${simple || mode === "need" || mode === "teach" ? "" : " &middot; " + rule}${edNote}</small>` +
       `<span class="pact">${who}${roomBits}${stepper}</span></div>`;
   };
   h += findCard();
@@ -4103,8 +4189,10 @@ function renderRetest() {
     // Order (22 Oct, Jon): room first, then who the senior assessment team are, then the queue. The old "Not retested tonight" list is gone:
     // the Not passed card below replaces it and is left to the end of the evening.
     h += hereCard(pool, 1);
-    h += `<div class="card"><h3><span class="stepno">2</span>At the hub now: confirm the retest and pick a room</h3><div class="hint" style="margin:0 0 8px">Not passed at attempt 1. Confirm they are retesting tonight, send them for their extra training, and pick a retest room. No time needed. A runner then collects them.</div>` + heldNote +
-      (need.length ? need.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is waiting for a room.</div>') + `</div>`;
+    h += `<div class="card"><h3><span class="stepno">2</span>Resits: ready to sit, pick a room</h3><div class="hint" style="margin:0 0 8px">Students go to resit teaching first. A senior instructor marks each one <b>Ready</b> when they feel ready to sit (Resit teaching job). Pick a room for the next ready student: one inside the room, two waiting outside. They walk there themselves.</div>` + heldNote +
+      (needReady.length ? needReady.map(c => prow(c, "need")).join("") : '<div class="hint">Nobody is ready and waiting for a room.</div>') +
+      `<details class="more" id="teachDetails"${(N.teachOpen || !needReady.length) ? " open" : ""} style="margin-top:8px"><summary style="cursor:pointer;font-weight:700;color:var(--pur)">In resit teaching (${needTeach.length})</summary><div style="margin-top:6px">` +
+      (needTeach.length ? needTeach.map(c => prow(c, "teach")).join("") : '<div class="hint">Nobody is in resit teaching.</div>') + `</div></details></div>`;
     // 28 Oct (Jon): the queue is the list behind the "Queued" and "With an assessor" tiles (room confirmed, waiting for or with an assessor),
     // so it only shows when someone is in it. The end of night emails and results backup now live on the End of night tab.
     if (queue.length) h += `<div class="card"><h3><span class="stepno">3</span>Retest queue (${queue.length})</h3>` + queue.map(c => prow(c)).join("") + `</div>`;
@@ -4124,6 +4212,7 @@ function renderRetest() {
   }
   if (wasOpen && $("attDetails")) $("attDetails").open = true;
   { const hd = $("hereDetails"); if (hd) hd.addEventListener("toggle", () => { N.hereOpen = hd.open; }); }
+  { const td = $("teachDetails"); if (td) td.querySelector("summary").addEventListener("click", () => { N.teachOpen = !td.open; }); }   // click, not toggle: the first render also fires toggle
   const sy = $("syncAtt"); if (sy) sy.onclick = syncAttempts;
   bindActs($("viewRetest"));
   $("viewRetest").querySelectorAll("[data-nmail]").forEach(b => b.onclick = () => openNightMail(b.dataset.nmail));

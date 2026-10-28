@@ -54,9 +54,10 @@ main{max-width:1500px;margin:0 auto;padding:16px}
 .za{flex:1;min-height:0;margin-top:6px}
 .zone.flow1{border-color:rgba(255,255,255,.22)}
 .zone.z-being{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.35)}
-.outs{display:grid;grid-template-rows:1.5fr 1fr 1fr 1fr;gap:10px;min-height:0;min-width:0}
+.outs{display:grid;grid-template-rows:1.4fr 1fr 1fr 1fr 1fr;gap:10px;min-height:0;min-width:0}
 .outs .zone.z-pass1,.outs .zone.z-passRe{border-color:rgba(123,224,168,.55);background:rgba(123,224,168,.09)}
-.outs .zone.z-ref{border-color:rgba(255,195,107,.6);background:rgba(255,195,107,.09)}
+.outs .zone.z-teach,.outs .zone.z-ready{border-color:rgba(255,195,107,.6);background:rgba(255,195,107,.09)}
+.outs .zone.z-ready{border-style:solid;border-width:2px}
 .outs .zone.z-other{border-color:rgba(255,255,255,.28);background:rgba(0,0,0,.18)}
 .arrow{position:absolute;top:50%;width:0;height:0;display:none}
 
@@ -117,18 +118,19 @@ main{max-width:1500px;margin:0 auto;padding:16px}
       <div class="field noanim" id="field">
         <div class="zone z-nothere flow1" data-z="nothere"><h3><span>Not here yet</span><b data-n></b></h3><small>due tonight, not checked in</small><div class="za"></div></div>
         <div class="zone z-arrived flow1" data-z="arrived"><h3><span>Waiting</span><b data-n></b></h3><small>arrived, not yet collected</small><div class="za"></div></div>
-        <div class="zone z-collected flow1" data-z="collected"><h3><span>Collected</span><b data-n></b></h3><small>with a runner, on the way</small><div class="za"></div></div>
+        <div class="zone z-collected flow1" data-z="collected"><h3><span>Collected</span><b data-n></b></h3><small>with a runner, or sent to a room</small><div class="za"></div></div>
         <div class="zone z-being flow1" data-z="being"><h3><span>Being assessed</span><b data-n></b></h3><small>in a room now</small><div class="za"></div></div>
         <div class="outs">
           <div class="zone z-pass1" data-z="pass1"><h3><span>Passed first time</span><b data-n></b></h3><div class="za"></div></div>
           <div class="zone z-passRe" data-z="passRe"><h3><span>Passed after retest</span><b data-n></b></h3><div class="za"></div></div>
-          <div class="zone z-ref" data-z="ref"><h3><span>With RMD faculty</span><b data-n></b></h3><small>retest tonight, to arrange</small><div class="za"></div></div>
+          <div class="zone z-teach" data-z="teach"><h3><span>In resit teaching</span><b data-n></b></h3><small>referred, with the senior instructors</small><div class="za"></div></div>
+          <div class="zone z-ready" data-z="ready"><h3><span>Ready to sit</span><b data-n></b></h3><small>waiting for RMD faculty to pick a room</small><div class="za"></div></div>
           <div class="zone z-other" data-z="other"><h3><span>Not passed at a later sit</span><b data-n></b></h3><small>retrain, degree leads or final</small><div class="za"></div></div>
         </div>
       </div>
       <div class="fac" id="fac"></div>
     </div>
-    <div class="hint" id="hint">Numbers and flow only, never names. Each dot is one candidate and the number inside it is the assessment attempt they are on (blue 1, amber 2, pink 3, green 4). A dashed white ring means the runner could not find them. Dots move by themselves as people are checked in, collected and assessed. Who is expected at RMD faculty (with names) is on the Check-in station in the Monday Night hub.</div>
+    <div class="hint" id="hint">Numbers and flow only, never names. Each dot is one candidate and the number inside it is the assessment attempt they are on (blue 1, amber 2, pink 3, green 4). A dashed white ring means the runner could not find them. A referred person goes to In resit teaching, then Ready to sit when a senior instructor marks them, then is sent to a room. Dots move by themselves as people are checked in, collected and assessed. Who is expected at RMD faculty (with names) is on the Check-in station in the Monday Night hub.</div>
   </main>
 </div>
 <script>
@@ -174,7 +176,7 @@ function placeOf(c) {
   if (pk) return { z: Number(pk) === 1 ? "pass1" : "passRe", a: clampA(pk) };
   const lr = lastReferAt(c.id), st = cstate(c);
   if (lr >= 2) return { z: "other", a: clampA(lr) };
-  if (lr === 1 && st === "nothere") return { z: "ref", a: 1 };
+  if (lr === 1 && st === "nothere") { const f2 = flowOf(c, 2); return { z: (f2.ready && f2.ready.at) ? "ready" : "teach", a: 1 }; }   // 28 Oct: resit teaching, then Ready to sit, then a room (Collected)
   if (st === "assessed") return { z: "other", a: clampA(effAttempt(c)) };
   return { z: st, a: clampA(effAttempt(c)) };
 }
@@ -251,7 +253,7 @@ function render() {
   // Opaque dot keys: position in a stable order, never the id or the name.
   const ordered = list.slice().sort((a, b) => (a.assessmentSlot || "99:99").localeCompare(b.assessmentSlot || "99:99") || String(a.id).localeCompare(String(b.id)));
   const keyOf = new Map(); ordered.forEach((c, i) => keyOf.set(c.id, "k" + i));
-  const zones = {}; ["nothere", "arrived", "collected", "being", "pass1", "passRe", "ref", "other"].forEach(z => zones[z] = []);
+  const zones = {}; ["nothere", "arrived", "collected", "being", "pass1", "passRe", "teach", "ready", "other"].forEach(z => zones[z] = []);
   const att = { 1: 0, 2: 0, 3: 0, 4: 0 };
   let facRetest = { n: 0, arr: 0, by: { 2: 0, 3: 0, 4: 0 } }, other = { 2: 0, 3: 0, 4: 0 };
   ordered.forEach(c => {
@@ -269,8 +271,8 @@ function render() {
   const total = ordered.length;
   const here = zones.arrived.length + zones.collected.length + zones.being.length;
   const passed = zones.pass1.length + zones.passRe.length;
-  const assessed = passed + zones.other.length + zones.ref.length;
-  const refd = zones.ref.length + zones.other.length;
+  const assessed = passed + zones.other.length + zones.teach.length + zones.ready.length;
+  const refd = zones.teach.length + zones.ready.length + zones.other.length;
   $("stats").innerHTML =
     `<div class="stat"><b>${total}</b><span>Expected tonight</span></div>` +
     `<div class="stat"><b>${here}</b><span>In the building</span></div>` +
@@ -286,7 +288,8 @@ function render() {
   $("fac").innerHTML =
     `<h3>RMD faculty <span>counts only, names are on the Check-in station</span></h3><div class="facg">` +
     `<div><b>${facRetest.n}</b><span>on the retest list tonight</span><small>${facRetest.arr} here already &middot; attempt 2: ${facRetest.by[2]} &middot; 3: ${facRetest.by[3]} &middot; 4: ${facRetest.by[4]}</small></div>` +
-    `<div><b>${zones.ref.length}</b><span>retest tonight, to arrange</span></div>` +
+    `<div><b>${zones.teach.length}</b><span>in resit teaching</span></div>` +
+    `<div><b>${zones.ready.length}</b><span>ready to sit, need a room</span></div>` +
     `<div><b>${other[2]}</b><span>retrain after attempt 2</span></div>` +
     `<div><b>${other[3]}</b><span>back to degree leads (attempt 3)</span></div>` +
     `<div><b>${other[4]}</b><span>final attempt not passed</span></div></div>`;
