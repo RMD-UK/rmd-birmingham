@@ -189,7 +189,11 @@ function dotsFor(l) {
 function render() {
   if (!S.course) return;
   $("msgs").innerHTML = S.err ? `<div class="msg">${esc(S.err)}</div>` : "";
-  const slotted = S.cands.filter(c => !isAbsent(c) && c.assessmentRoom && c.assessmentSlot);
+  // 28 Oct (Jon): anyone who sat tonight stays in their room's count even after a Director moves them to another course
+  // (the move clears their room on the candidate record, so the room and slot come from their first attempt).
+  const have = new Set(S.cands.map(c => c.id));
+  const gone = Object.keys(S.res).filter(id => !have.has(id) && nattempts(id)["1"]).map(id => { const k = nattempts(id)["1"]; return { id, assessmentRoom: k.room || null, assessmentSlot: k.slot || null }; });
+  const slotted = S.cands.concat(gone).filter(c => !isAbsent(c) && c.assessmentRoom && c.assessmentSlot);
   const by = {};
   slotted.forEach(c => { (by[c.assessmentRoom] = by[c.assessmentRoom] || []).push(c); });
   const rooms = roomOrder(Object.keys(by));
