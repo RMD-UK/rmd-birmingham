@@ -94,6 +94,14 @@ const CURRENT_MOU_YEAR = "2026/27";
 const SFR_CYCLE_YEAR        = "2027";     // the calendar year this review round runs in (June/July 2027)
 const SFR_NEXT_ACADEMIC_YEAR = "2027/28"; // the academic year the form is asking people to plan for
 
+// Senior Faculty review gate (Jon, 28 Oct 2026): automatic, no dates to set. Open to Senior Faculty from 1 April to 1 July
+// inclusive every year, the same dates sendSeniorFacultyReminders in functions/index.js allows (isWithinSfrReminderWindow).
+// Directors see the review all year. Uses UTC dates so the page, the Cloud Function and firestore.rules agree to the day.
+function sfrWindowOpen(date) {
+  const d = date || new Date(), md = (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+  return md >= 401 && md <= 701;
+}
+
 // ── Annual faculty roster (single source for both faculty.html groups) ─────
 // Built 2026-07-27: one bulk paste on admin-faculty-roster.html each year
 // replaces both collections below, replacing the old approach of a

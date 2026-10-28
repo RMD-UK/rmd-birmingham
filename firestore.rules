@@ -666,12 +666,17 @@ service cloud.firestore {
     //   review response. Doc id must be exactly {cycleYear}_{uid} and the
     //   uid field must match the caller — prevents overwriting someone
     //   else's submission even if their doc id were guessed.
+    //   28 Oct 2026 (Jon): Senior Faculty (faculty_roster group "senior") can save only from
+    //   1 April to 1 July inclusive (UTC), the same dates as the reminder emails. Directors any time.
     //   (see senior-faculty-review.html)
     // Read/delete: director only — admin-senior-faculty-review.html
     match /senior_faculty_review/{docId} {
       allow create, update: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
-        && docId == request.resource.data.cycleYear + "_" + request.auth.uid;
+        && docId == request.resource.data.cycleYear + "_" + request.auth.uid
+        && (isDirector() || (isSeniorFaculty()
+            && request.time.month() * 100 + request.time.day() >= 401
+            && request.time.month() * 100 + request.time.day() <= 701));
       allow read, delete: if isDirector();
     }
 

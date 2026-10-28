@@ -125,7 +125,7 @@
   </div>
 
   <div class="not-eligible-box" id="notEligibleBox">
-This review is for RMD Birmingham senior faculty. We don't have your email on the senior faculty roster &mdash; if that's wrong, contact RMD Birmingham. You're welcome to submit anyway if you believe this applies to you.
+This review is for RMD Birmingham senior faculty. We don't have your email on the senior faculty roster &mdash; if that's wrong, contact RMD Birmingham.
   </div>
 
   <div class="not-eligible-box" id="sfrClosedBox"></div>
@@ -228,19 +228,17 @@ auth.onAuthStateChanged(async function (user) {
     const eligible = currentRole === "director" || onRoster;
     document.getElementById("notEligibleBox").style.display = eligible ? "none" : "block";
 
-    // Open only for a period of the year (Jon, 28 Oct): a Director sets the dates in Global admin tools (config/senior_faculty_review_window).
-    // Outside it the form is hidden for everyone except Directors, who still see it with a note. This is a screen gate, not a rules gate.
-    let win = {};
-    try { const w = await db.collection("config").doc("senior_faculty_review_window").get(); win = w.exists ? w.data() : {}; } catch (e) { win = {}; }
-    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
-    const windowOpen = !!win.open && !!win.close && today >= win.open && today <= win.close;
-    if (!windowOpen) {
-      const box = document.getElementById("sfrClosedBox");
-      box.style.display = "block";
-      box.textContent = currentRole === "director"
-        ? "This review is closed to Senior Faculty at the moment" + (win.open && win.close ? " (open " + win.open + " to " + win.close + ")" : " (no dates set)") + ". You can still see it as a Director. Set the dates in Global admin tools."
-        : "The Senior Faculty review is not open at the moment. You will be emailed when it opens.";
-      if (currentRole !== "director") document.getElementById("sfrForm").style.display = "none";
+    // Automatic gate (Jon, 28 Oct): Directors see this all year. Senior Faculty see it only from 1 April to 1 July, the same dates the
+    // reminder emails can go out (sfrWindowOpen in js/firebase-config.js). Anyone else sees no form. firestore.rules enforce the same on saving.
+    const windowOpen = sfrWindowOpen(), box = document.getElementById("sfrClosedBox");
+    const hideAll = function () { document.getElementById("sfrForm").style.display = "none"; document.querySelector(".intro-box").style.display = "none"; };
+    if (currentRole === "director") {
+      if (!windowOpen) { box.style.display = "block"; box.textContent = "Director view. This review is closed to Senior Faculty at the moment. It opens to them on 1 April and closes after 1 July each year."; }
+    } else if (!onRoster) {
+      hideAll();
+    } else if (!windowOpen) {
+      box.style.display = "block"; box.textContent = "The Senior Faculty review is not open at the moment. It opens on 1 April each year.";
+      hideAll();
     }
 
     // Pre-fill from an existing submission for this cycle, if any (lets

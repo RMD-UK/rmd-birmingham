@@ -97,28 +97,7 @@ async function saveEoiSettings() {
   }
 }
 
-async function loadSfrWindow() {
-  const st = document.getElementById("sfrWindowStatus");
-  try {
-    const s = await db.collection("config").doc("senior_faculty_review_window").get();
-    const d = s.exists ? s.data() : {};
-    document.getElementById("sfrOpenDate").value = d.open || "";
-    document.getElementById("sfrCloseDate").value = d.close || "";
-    const t = todayLondon(), on = !!(d.open && d.close && t >= d.open && t <= d.close);
-    setChip("sfrChip", on, "Open now", "Closed");
-    st.textContent = d.open && d.close ? "Currently set: open " + d.open + " to " + d.close + "." : "No dates set, so the review is closed.";
-  } catch (err) { st.textContent = "Couldn't load the current dates, reload and try again."; }
-}
-async function saveSfrWindow() {
-  const o = document.getElementById("sfrOpenDate").value, c = document.getElementById("sfrCloseDate").value, st = document.getElementById("sfrWindowStatus");
-  if ((o && !c) || (!o && c)) { st.textContent = "Set both dates, or clear both to close the review."; return; }
-  if (o && c && c < o) { st.textContent = "The close date is before the open date."; return; }
-  try {
-    await db.collection("config").doc("senior_faculty_review_window").set({ open: o || null, close: c || null });
-    const t = todayLondon(); setChip("sfrChip", !!(o && c && t >= o && t <= c), "Open now", "Closed");
-    st.textContent = o ? "Saved. Open " + o + " to " + c + "." : "Saved. The review is closed.";
-  } catch (err) { st.textContent = "Couldn't save that. This needs super-user access, not just director."; }
-}
+function showSfrGate() { setChip("sfrChip", sfrWindowOpen(), "Open to Senior Faculty now", "Closed to Senior Faculty"); }
 
 const ITEMS = [
   // Access and roles
@@ -146,10 +125,8 @@ const ITEMS = [
   { id: "facRoster", g: "annual", icon: "📇", title: "Faculty Roster: Bulk Upload", text: "Annual paste that populates the public faculty pages and the senior review roster", href: () => "admin-faculty-roster.html" },
 
   // Switches and dates
-  { id: "pSfr", g: "switches", panel: () => `<div class="panel"><h3>Senior Faculty review: open and close dates ${chip("sfrChip", null)}</h3>
-      <p class="hint">The <a href="senior-faculty-review.html">Senior Faculty review</a> form and its link on the Director menu are only available between these two dates (both days included). Outside them Senior Faculty see a "not open" message, and Directors can still view the form. With no dates set it is closed.</p>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin:12px 0;"><label>Opens<br><input type="date" id="sfrOpenDate"></label><label>Closes<br><input type="date" id="sfrCloseDate"></label></div>
-      <button class="btn-primary" type="button" onclick="saveSfrWindow()">Save</button><div class="hint" id="sfrWindowStatus"></div></div>`, mount: loadSfrWindow },
+  { id: "pSfr", g: "switches", panel: () => `<div class="panel"><h3>Senior Faculty review: automatic gate ${chip("sfrChip", null)}</h3>
+      <p class="hint">Nothing to switch on or off. The <a href="senior-faculty-review.html">Senior Faculty review</a> opens to Senior Faculty from 1 April to 1 July every year (both days included), the same dates the reminder emails can be sent. Directors can see it all year. Everyone else sees nothing, or a "not open" message.</p></div>`, mount: showSfrGate },
   { id: "pEoi", g: "switches", panel: () => `<div class="panel"><h3>Instructor Expression of Interest ${chip("eoiChip", null)}</h3>
       <p class="hint">This is the one place the <a href="instructor-eoi.html">Instructor Expression of Interest</a> form is switched on or off for everyone. Closing it shows visitors a "not accepting right now" message instead of the form, and stops new submissions being written even if someone bypasses that message. There's no per-person override.</p>
       <label style="display:flex;align-items:center;gap:8px;margin:12px 0;"><input type="checkbox" id="eoiOpenCheckbox" style="width:auto;"> Open: accepting expressions of interest now</label>
