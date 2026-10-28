@@ -114,6 +114,18 @@
     .cra-nav a:hover { border-color:var(--rmd-blue); color:var(--rmd-blue); }
     .cra-nav a.on { background:var(--rmd-navy); border-color:var(--rmd-navy); color:#fff; }
     .cra-nav .cra-nav-back { border-radius:10px; margin-right:6px; }
+
+    /* ---- Start of year mode (28 Oct, Jon): the instructor-team job is its own choice in the course list ---- */
+    body.start-mode .cand-stat, body.start-mode #tabCandidates, body.start-mode #autoAllBtn { display:none !important; }
+    #setDefaultBtn { display:none !important; }
+    .start-intro { background:#F1ECF8; border:1.5px solid #D9CCEE; border-radius:12px; padding:12px 16px; margin:10px 14px 0; font-size:13px; line-height:1.55; color:#1c2540; }
+    .start-intro h3 { margin:0 0 6px; font-size:15px; color:var(--rmd-navy); }
+    .start-intro dl { margin:0; display:grid; grid-template-columns:70px 1fr; gap:4px 10px; }
+    .start-intro dt { font-weight:800; color:var(--rmd-navy); }
+    .start-intro dd { margin:0; }
+    .start-intro .chk-warn { margin-top:8px; }
+    .teams-note { margin:10px 14px 0; background:#fff; border:1.5px solid #dde1ec; border-radius:12px; padding:10px 14px; font-size:13px; color:#1c2540; line-height:1.5; }
+    .teams-note .chk-btn { margin-top:6px; }
   </style>
 </head>
 <body>
@@ -151,14 +163,16 @@
   <span class="course-hint" id="courseHint"></span>
 </div>
 
-<div id="noCourse" class="no-course">Pick a course above to allocate its candidates into rooms and build its instructor teams.<br>Courses come from what's already been imported on the First year candidates page — nothing to type here.</div>
+<div id="noCourse" class="no-course">Pick a course above to place its candidates into rooms.<br><b>Starting a new teaching year?</b> Pick &ldquo;Start of year: instructor teams&rdquo; first, to build the instructor teams every course will use.<br>Courses come from what's already been imported on the First year candidates page — nothing to type here.</div>
 
 <div id="allocationUI" style="display:none">
+  <div class="start-intro" id="startIntro" style="display:none"></div>
+  <div class="teams-note" id="teamsNote" style="display:none"></div>
   <details class="chk" id="chkPanel" open></details>
   <div class="cra-stats">
-    <div>Candidates: <b id="statCand">—</b></div>
-    <div>Assigned: <b id="statAssigned">0</b></div>
-    <div>Unassigned: <b id="statUnassigned">—</b></div>
+    <div class="cand-stat">Candidates: <b id="statCand">—</b></div>
+    <div class="cand-stat">Assigned: <b id="statAssigned">0</b></div>
+    <div class="cand-stat">Unassigned: <b id="statUnassigned">—</b></div>
     <div>Instructors placed: <b id="statInstr">0</b></div>
     <div id="selHint" style="display:none;color:rgba(255,255,255,.8)">Click a room to assign selected candidate</div>
   </div>
@@ -218,6 +232,8 @@ function rmdCourseSort(a, b) {
 // top-level const throws and silently kills this whole block, per the
 // documented DIRECTOR_EMAILS lesson in admin-room-allocation.html).
 const ROOMS = STAGE1_TEACHING_ROOMS;
+const START = "__start__";            // pseudo-course in the dropdown: the once-a-year instructor team job (no candidates)
+function isStart() { return currentCourse === START; }
 
 // ── State ────────────────────────────────────────────────────────────────
 let allCandidates   = [];   // every stage1_candidates doc, all courses
@@ -237,6 +253,8 @@ let gwByUid = {};            // gateway_assessments by candidate (people) id
 let gwLoaded = false;
 let excludedUids = new Set(); // left out of this allocation (on screen only; nothing is written)
 let chk = { ratings: false, gateway: false, room: false }; // ticked steps
+let courseDatesLoaded = false, firstCourseDate = null;  // earliest date in config/stage1_course_dates (Course 1), "YYYY-MM-DD"
+let chkRemovedN = 0;        // display only: instructors taken out of the carried-over teams because they failed
 let instrTouched = false;    // instructor teams changed on screen since the course was opened / last saved
 let allocRan = false;        // "Allocate" has been run since the last reset
 let lastAllocSummary = "";
@@ -359,6 +377,12 @@ async function loadData() {
   } catch (e) { console.warn("Course result load failed:", e.message); }
 
   try {
+    const cd = await db.collection("config").doc("stage1_course_dates").get();
+    const dates = (cd.exists ? (cd.data().courses || []) : []).map(c => c && c.date).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    firstCourseDate = dates[0] || null; courseDatesLoaded = true;
+  } catch (e) { console.warn("course dates load failed:", e.message); }
+
+  try {
     const snap = await db.collection(COLLECTIONS.courseAllocations).get();
     const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     defaultAllocDoc = docs.find(d => d.id === "_default") || null;
@@ -386,7 +410,7 @@ function courseList() {
 function populateCourseDropdown() {
   const sel = document.getElementById("courseSelect");
   const courses = courseList();
-  sel.innerHTML = `<option value="">— Choose a course —</option>` +
+  sel.innerHTML = `<option value="">— Choose a course —</option><option value="${START}">★ Start of year: instructor teams (once a year)</option>` +
     courses.map(c => {
       const n = allCandidates.filter(x => x.course === c).length;
       return `<option value="${escAttr(c)}">${c} (${n} candidate${n===1?"":"s"})</option>`;
@@ -409,6 +433,8 @@ function selectCourse(course) {
   document.getElementById("setDefaultBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("resetInstrBtn").style.display = currentCourse ? "" : "none";
   document.getElementById("saveBtn").style.display  = currentCourse ? "" : "none";
+  document.body.classList.toggle("start-mode", isStart());
+  document.getElementById("saveBtn").textContent = isStart() ? "💾 Save as this year's teams" : "💾 Save all";
   document.getElementById("noCourse").style.display  = currentCourse ? "none" : "";
   document.getElementById("allocationUI").style.display = currentCourse ? "" : "none";
   if (!currentCourse) return;
@@ -417,7 +443,7 @@ function selectCourse(course) {
   instrTouched = false; allocRan = false; lastAllocSummary = "";
 
   // Working copy of this course's candidates.
-  courseCandidates = allCandidates.filter(c => c.course === currentCourse).map(c => {
+  courseCandidates = isStart() ? [] : allCandidates.filter(c => c.course === currentCourse).map(c => {
     const room = ROOMS.includes(c.room) ? c.room : null;
     return {
       id: c.id, name: c.name || "(no name)", email: c.email || "", degree: c.degree || "",
@@ -434,13 +460,17 @@ function selectCourse(course) {
   // course wins" heuristic, which could drift if one course's team gets a
   // one-off tweak. Adjusting one course's team here never changes the shared
   // default unless ⭐ is clicked deliberately.
-  const own = allAllocDocs.find(d => d.id === slugify(currentCourse) || d.course === currentCourse);
+  const own = isStart() ? null : allAllocDocs.find(d => d.id === slugify(currentCourse) || d.course === currentCourse);
   roomTeams = {};
   ROOMS.forEach(r => { roomTeams[r] = { uids: [], prefilled: false }; });
   // An own doc with no instructors at all (saving candidate rooms writes one)
   // does not count as an allocation: fall through to the default pre-fill.
   const ownHasInstructors = !!(own && own.instructorTeams && Object.values(own.instructorTeams).some(a => (a || []).length));
-  if (ownHasInstructors) {
+  if (isStart()) {
+    const dflt = defaultAllocDoc && defaultAllocDoc.instructorTeams;
+    if (dflt) ROOMS.forEach(r => { roomTeams[r].uids = (dflt[r] || []).slice(); });
+    document.getElementById("courseHint").textContent = dflt ? "Editing this year's saved instructor teams." : "No instructor teams saved for this year yet.";
+  } else if (ownHasInstructors) {
     ROOMS.forEach(r => { roomTeams[r].uids = (own.instructorTeams[r] || []).slice(); });
     document.getElementById("courseHint").textContent = "Editing this course's saved allocation.";
   } else if (defaultAllocDoc && defaultAllocDoc.instructorTeams) {
@@ -453,7 +483,11 @@ function selectCourse(course) {
     document.getElementById("courseHint").textContent = "First course of the year — instructor teams start empty. Save, then use ⭐ Set as default so every later course starts from it.";
   }
 
+  const teamCountBefore = ROOMS.reduce((n, r) => n + (roomTeams[r]?.uids || []).length, 0);
   applyExclusions();
+  chkRemovedN = teamCountBefore - ROOMS.reduce((n, r) => n + (roomTeams[r]?.uids || []).length, 0);
+  if (isStart()) { setPoolView("instructors"); const ce = document.getElementById("chkPanel"); if (ce) ce.open = true; }
+  else if (poolView === "instructors" && document.getElementById("tabCandidates")) setPoolView("candidates");
   render();
 }
 
@@ -1096,14 +1130,64 @@ async function syncStage1Sheet() {
 }
 
 // ── Save ─────────────────────────────────────────────────────────────────
+async function saveStartOfYear() {
+  const todo = checklistOutstanding();
+  if (todo.length && !confirm("The start-of-year checklist is not finished:\n\n- " + todo.join("\n- ") + "\n\nSave these as this year's instructor teams anyway?")) return;
+  const already = allAllocDocs.filter(d => d.instructorTeams && Object.values(d.instructorTeams).some(a => (a || []).length)).map(d => d.course || d.id);
+  if (!confirm("Save these as this year's instructor teams?\n\nEvery course will start from them." + (already.length ? "\n\nThese courses already have their own saved teams and will keep them until you open them and save again: " + already.join(", ") + "." : "") + "\n\nNo candidates are changed.")) return;
+  showStatus("Saving…", "");
+  try {
+    const instructorTeams = {};
+    ROOMS.forEach(r => { instructorTeams[r] = (roomTeams[r]?.uids || []).slice(); });
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+    const uid = auth.currentUser?.uid;
+    await db.collection(COLLECTIONS.courseAllocations).doc("_default").set({ instructorTeams, updatedAt: ts, updatedBy: uid || null, isDefault: true });
+    defaultAllocDoc = { id: "_default", instructorTeams, updatedAt: { toMillis: () => Date.now() }, isDefault: true };
+    instrTouched = false;
+    showStatus("✓ This year's instructor teams saved", "ok");
+    renderChecklist();
+  } catch (e) {
+    console.error(e);
+    showStatus("Save failed — check Firestore rules", "err");
+  }
+}
+
+// Start of year only: empties the instructor teams saved on each course so they pick up the new default. Keeps the
+// course records, candidates, and every candidate's own copy of their team (so last year's OPIS access is untouched).
+async function clearCourseTeams() {
+  const win = clearWindow();
+  if (!win.open) { showStatus(win.why, "err"); return; }
+  const docs = allAllocDocs.filter(d => d.instructorTeams && Object.values(d.instructorTeams).some(a => (a || []).length));
+  if (!docs.length) { showStatus("No saved course teams to clear", "ok"); return; }
+  if (!confirm("Clear the saved instructor teams on these courses?\n\n- " + docs.map(d => d.course || d.id).join("\n- ") + "\n\nDo this only at the start of a new teaching year, before this year's courses are saved. Their teams are lost; the courses then start from this year's teams. No candidates change.")) return;
+  const typed = prompt("Type CLEAR to confirm");
+  if (typed !== "CLEAR") { showStatus("Not cleared", "err"); return; }
+  showStatus("Clearing…", "");
+  try {
+    const empty = {}; ROOMS.forEach(r => { empty[r] = []; });
+    const ts = firebase.firestore.FieldValue.serverTimestamp();
+    const uid = auth.currentUser?.uid;
+    const batch = db.batch();
+    docs.forEach(d => batch.update(db.collection(COLLECTIONS.courseAllocations).doc(d.id), { instructorTeams: empty, clearedAt: ts, clearedBy: uid || null }));
+    await batch.commit();
+    docs.forEach(d => { d.instructorTeams = empty; });
+    showStatus("✓ Cleared " + docs.length + " course" + (docs.length !== 1 ? "s" : ""), "ok");
+    renderChecklist();
+  } catch (e) {
+    console.error(e);
+    showStatus("Clear failed — check Firestore rules", "err");
+  }
+}
+
 async function saveAll() {
   if (!currentCourse) return;
+  if (isStart()) return saveStartOfYear();
   const todo = checklistOutstanding();
   repeatWarn = repeatConflicts();
   const rwl = Object.values(repeatWarn);
   if (rwl.length && !confirm("Repeat candidates are with the same instructors as their earlier attempt:\n\n- " + rwl.slice(0, 10).map(repeatText).join("\n- ") + (rwl.length > 10 ? "\n- and " + (rwl.length - 10) + " more" : "") + "\n\nSave anyway?")) return;
   if (instrTouched && todo.length &&
-      !confirm("Instructor teams have changed, but the allocation checklist is not finished:\n\n- " + todo.join("\n- ") + "\n\nSave to the live site anyway?")) return;
+      !confirm("Instructor teams have changed, but something needs sorting out first:\n\n- " + todo.join("\n- ") + "\n\nSave to the live site anyway?")) return;
   showStatus("Saving…", "");
   try {
     const uid = auth.currentUser?.uid;
@@ -1223,6 +1307,10 @@ function roomIssues() {
 }
 function checklistOutstanding() {
   const t = [];
+  if (!isStart()) {                      // on a course the long checklist does not apply: only problems in the rooms
+    roomIssues().issues.filter(x => x.bad).forEach(x => t.push(x.text));
+    return t;
+  }
   if (!chk.ratings) t.push("Step 1: confirm the weekend ratings are complete");
   if (!chk.gateway) t.push("Step 2: confirm the gateway and final course results have been checked");
   if (!allocRan) t.push("Step 4: run the allocation (after resetting)");
@@ -1233,9 +1321,52 @@ function checklistOutstanding() {
   if (!chk.room) t.push("Step 5: look at every room and tick the box");
   return t;
 }
+function renderTeamsNote() {
+  const el = document.getElementById("teamsNote");
+  const hasOwn = allAllocDocs.some(d => (d.id === slugify(currentCourse) || d.course === currentCourse) && d.instructorTeams && Object.values(d.instructorTeams).some(a => (a || []).length));
+  const hasDefault = !!(defaultAllocDoc && defaultAllocDoc.instructorTeams && Object.values(defaultAllocDoc.instructorTeams).some(a => (a || []).length));
+  let h = "";
+  if (!hasOwn && !hasDefault) {
+    h += `<div class="chk-warn">No instructor teams have been set up yet.</div><div>Do <b>★ Start of year: instructor teams</b> first (once a year), so every course starts with the same teams.</div><button class="chk-btn" onclick="document.getElementById('courseSelect').value='${START}'; selectCourse('${START}')">Go to Start of year</button>`;
+  } else {
+    h += `<div>Instructor teams ${hasOwn ? "are this course's own saved teams" : "come from the start-of-year teams"}. Change someone here only if this course needs it, then press Save all. To rebuild the teams for the whole year, use <b>★ Start of year</b>.</div>`;
+  }
+  if (chkRemovedN) h += `<div class="chk-warn" style="margin-top:6px">${chkRemovedN} instructor${chkRemovedN !== 1 ? "s were" : " was"} taken out of the teams after a recorded fail. Place a replacement if a room is short, then Save all.</div>`;
+  const bad = roomIssues().issues.filter(x => x.bad);
+  if (bad.length) h += `<ul class="chk-list">${bad.map(x => `<li class="chk-bad">${escH(x.text)}</li>`).join("")}</ul>`;
+  el.innerHTML = h;
+}
+// The clear button is only live from 1 June each year until the day Course 1 starts (Jon, 28 Oct). Course 1 = the earliest
+// date in Course dates and rooms, and that date must be this year's, so the new dates have to be entered first.
+function clearWindow() {
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
+  const june = today.slice(0, 4) + "-06-01";
+  if (!courseDatesLoaded) return { open: false, why: "Could not read the course dates, so this stays locked." };
+  if (today < june) return { open: false, why: "Opens on 1 June." };
+  if (!firstCourseDate || firstCourseDate < june) return { open: false, why: "Enter this year's course dates first (First year candidates, Course dates and rooms). This unlocks once Course 1 has a date after 1 June." };
+  if (today >= firstCourseDate) return { open: false, why: "Closed: Course 1 has started (" + firstCourseDate + ")." };
+  return { open: true, why: "Open until Course 1 starts on " + firstCourseDate + "." };
+}
+function renderStartIntro() {
+  const el = document.getElementById("startIntro");
+  const own = allAllocDocs.filter(d => d.instructorTeams && Object.values(d.instructorTeams).some(a => (a || []).length)).map(d => d.course || d.id);
+  el.innerHTML = `<h3>★ Start of year: instructor teams</h3>
+    <dl>
+      <dt>What</dt><dd>Builds the instructor team for each room, once, for the whole teaching year. Every course then starts from these teams. No candidates are involved here.</dd>
+      <dt>When</dt><dd>Once at the start of the teaching year: after the Instructor Weekend ratings are in and the gateway and final course results are signed off, and before you place candidates on Course 1. Do it again only to rebuild the teams.</dd>
+      <dt>How</dt><dd>Work down the checklist below, steps 1 to 6, then press <b>Save as this year's teams</b>. After that, open each course in the list above, place its candidates, and press Save all.</dd>
+    </dl>
+    ${own.length ? `<div class="chk-warn">These courses already have their own saved teams, so they will not pick up this year's teams until you open them and save again: ${own.map(escH).join(", ")}.</div><div class="chk-note" style="margin-top:4px">New teaching year? Clear them so every course starts from this year's teams. This only empties the instructor teams saved on those courses. No candidates change.</div><button class="chk-btn" onclick="clearCourseTeams()" ${clearWindow().open ? "" : "disabled"}>Clear last year's saved course teams</button> <span class="chk-note">${escH(clearWindow().why)}</span>` : ""}`;
+}
 function renderChecklist() {
   const el = document.getElementById("chkPanel");
   if (!el || !currentCourse) return;
+  const startMode = isStart();
+  document.getElementById("startIntro").style.display = startMode ? "" : "none";
+  document.getElementById("teamsNote").style.display = startMode ? "none" : "";
+  el.style.display = startMode ? "" : "none";
+  if (!startMode) { renderTeamsNote(); return; }
+  renderStartIntro();
   const live = allInstructors.filter(i => !excludedUids.has(i.uid));
   const n = t => live.filter(i => i.iwTier === t).length;
   const unrated = live.filter(i => i.iwTier !== "weak" && i.iwTier !== "strong" && i.iwTier !== "standard").length;
@@ -1285,9 +1416,9 @@ function renderChecklist() {
      <div class="chk-note">Scan each room below: who is with whom, and whether the mix looks right to you.</div>${tick("room", "I have looked at every room", !ri.placed)}`);
 
   h += step(6, d6 && !todo.length, "Save to the live site",
-    `<div class="chk-note">Saving writes the teams to the live site and gives each room's instructors access to their candidates' ratings.</div>
+    `<div class="chk-note">Saving stores these as this year's instructor teams. No candidates change. Each room's instructors get access to their candidates' ratings when you press Save all on a course.</div>
      ${todo.length ? `<ul class="chk-list">${todo.map(t => `<li class="chk-warn">${escH(t)}</li>`).join("")}</ul>` : `<div class="chk-good">All steps done.</div>`}
-     <button class="chk-btn" onclick="saveAll()">💾 Save all</button>`);
+     <button class="chk-btn" onclick="saveAll()">💾 Save as this year's teams</button>`);
 
   const wasOpen = el.open;
   el.innerHTML = h;
