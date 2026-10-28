@@ -18,6 +18,10 @@
     .msg.err { background: #fce8e6; border-color: #f1b0a8; }
     .hidden { display: none !important; }
     h2 { font-size: 15px; color: var(--rmd-navy); margin: 22px 0 8px; }
+    .scope { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+    .scope .sb { font: 700 13px var(--font); padding: 7px 14px; border-radius: 999px; border: 1px solid var(--rmd-navy); background: #fff; color: var(--rmd-navy); cursor: pointer; }
+    .scope .sb.on { background: var(--rmd-navy); color: #fff; }
+    .scope .wk { font-size: 13px; color: var(--rmd-muted); margin-left: 4px; }
     .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
     .nchip { flex: 0 0 auto; background: #fff; border: 1px solid #cfd8e0; border-radius: 12px; padding: 8px 12px; cursor: pointer; text-align: left; font-family: var(--font); min-width: 118px; }
     .nchip b { display: block; font-size: 14px; }
@@ -68,9 +72,11 @@
 <div class="wrap">
   <div id="state" class="msg">Checking access...</div>
   <div id="main" class="hidden">
+    <div class="scope" id="scopeBar"></div>
     <div class="chips" id="nightChips"></div>
     <div id="night"></div>
-    <details id="byPerson"><summary>Everyone who has sent a notice</summary><div class="scroll" id="byPersonBody"></div></details>
+    <details id="whoBox" open><summary>Who has submitted, and how many evenings</summary><div class="scroll" id="whoBody"></div></details>
+    <details id="byPerson"><summary>Everyone who has ever sent a notice</summary><div class="scroll" id="byPersonBody"></div></details>
     <details id="pastBox"><summary>Past evenings</summary><div id="pastBody"></div></details>
   </div>
 </div>
@@ -96,6 +102,7 @@
   let teams = new Map();      // "course|room" -> Map(uid -> name)
   let member = new Map();     // "course|uid" -> room
   let sel = null;             // selected date
+  let scope = null;           // "this" | "next" | "all"; set on first load (this week, or next week when nothing is left this week)
 
   const tsDate = r => { const v = r.submittedAt; if (!v) return null; if (v.toDate) return v.toDate(); if (typeof v.seconds === "number") return new Date(v.seconds * 1000); const d = new Date(v); return isNaN(d) ? null : d; };
   const today = () => U.iso(new Date());
@@ -138,14 +145,35 @@
 
   // ── view ──
   function shortNight(n) { return n.label.replace(" teaching night", "").replace(" night", ""); }
+  // Monday to Sunday week containing a date, offset by whole weeks.
+  function weekBounds(offset) {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    const mon = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7) + 7 * offset);
+    const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+    return { from: U.iso(mon), to: U.iso(sun) };
+  }
+  function inScope(n) {
+    const t = today(); if (n.date < t) return false;
+    if (scope === "all") return true;
+    const w = weekBounds(scope === "next" ? 1 : 0); return n.date >= w.from && n.date <= w.to;
+  }
   function renderChips(nights) {
     const t = today();
-    const list = nights.filter(n => n.date >= t);
+    if (!scope) {   // first load: this week if any evening is left in it, otherwise next week
+      const w0 = weekBounds(0);
+      scope = nights.some(n => n.date >= t && n.date <= w0.to) ? "this" : "next";
+    }
+    const w = weekBounds(scope === "next" ? 1 : 0);
+    const list = nights.filter(inScope);
+    const weekOut = new Set(); list.forEach(n => outOn(n.date).forEach(r => weekOut.add(r.uid || r.email)));
+    $("scopeBar").innerHTML = [["this", "This week"], ["next", "Next week"], ["all", "All upcoming"]].map(([k, l]) => `<button type="button" class="sb${scope === k ? " on" : ""}" data-s="${k}">${l}</button>`).join("") +
+      `<span class="wk">${scope === "all" ? "" : esc(U.niceDate(w.from) + " to " + U.niceDate(w.to) + ": ")}${weekOut.size} ${weekOut.size === 1 ? "person" : "people"} expected absent${list.length ? " across " + list.length + " evening" + (list.length === 1 ? "" : "s") : ""}</span>`;
+    $("scopeBar").querySelectorAll(".sb").forEach(b => b.onclick = () => { scope = b.dataset.s; sel = null; render(); });
     if (!list.some(n => n.date === sel)) sel = (list.find(n => n.date === t) || list.find(n => outOn(n.date).length) || list[0] || {}).date || null;
     $("nightChips").innerHTML = list.map(n => {
       const c = outOn(n.date).length;
       return `<button type="button" class="nchip${c ? " has" : ""}${n.date === t ? " tonight" : ""}${n.date === sel ? " on" : ""}" data-d="${n.date}"><span class="n">${c}</span><b>${esc(U.niceDate(n.date))}${n.date === t ? " (tonight)" : ""}</b><small>${esc(n.course ? n.course + ", " : "")}${esc(shortNight(n))}</small></button>`;
-    }).join("") || '<div class="msg">No upcoming evenings on the calendar.</div>';
+    }).join("") || `<div class="msg">No ${scope === "all" ? "upcoming" : scope === "next" ? "evenings next week" : "evenings left this week"} on the calendar.</div>`;
     $("nightChips").querySelectorAll(".nchip").forEach(b => b.onclick = () => { sel = b.dataset.d; render(); });
   }
 
@@ -221,7 +249,20 @@
   function renderPeople(totals) {
     const list = Array.from(totals.values()).sort((a, b) => b.total - a.total || String(a.name).localeCompare(String(b.name)));
     $("byPersonBody").innerHTML = list.length ? `<table><tr><th>Name</th><th>Role</th><th>Absences incl. latest notice</th><th>Evenings notified</th></tr>${list.map(t => `<tr><td>${esc(t.name)}</td><td>${esc(t.role || "")}</td><td>${t.total >= U.REPEAT_AT ? '<span class="tag red">' + t.total + "</span>" : t.total}</td><td>${esc(t.dates.map(U.niceDate).join(", "))}</td></tr>`).join("")}</table>` + (withdrawnCount ? `<div class="hint" style="font-size:12px;color:var(--rmd-muted);margin-top:6px">${withdrawnCount} withdrawn notice${withdrawnCount === 1 ? "" : "s"} not counted.</div>` : "") : '<div class="hint" style="margin-top:8px">No notices yet.</div>';
-    $("byPerson").querySelector("summary").textContent = `Everyone who has sent a notice (${list.length})`;
+    $("byPerson").querySelector("summary").textContent = `Everyone who has ever sent a notice (${list.length})`;
+  }
+  // Everyone with an evening still to come: how many evenings, which, and when they sent it.
+  function renderWho(totals) {
+    const t = today(); const rows = [];
+    totals.forEach(p => {
+      const up = p.dates.filter(d => d >= t); if (!up.length) return;
+      const sent = p.rows.map(tsDate).filter(Boolean).sort((a, b) => b - a)[0] || null;
+      rows.push({ p, up, sent });
+    });
+    rows.sort((a, b) => a.up[0] < b.up[0] ? -1 : a.up[0] > b.up[0] ? 1 : String(a.p.name).localeCompare(String(b.p.name)));
+    const evenings = rows.reduce((n, r) => n + r.up.length, 0);
+    $("whoBox").querySelector("summary").textContent = `Who has submitted, and how many evenings (${rows.length} ${rows.length === 1 ? "person" : "people"}, ${evenings} evening${evenings === 1 ? "" : "s"} still to come)`;
+    $("whoBody").innerHTML = rows.length ? `<table><tr><th>Name</th><th>Role</th><th>Evenings absent</th><th>Which evenings</th><th>Absences incl. these</th><th>Sent</th></tr>${rows.map(r => `<tr><td><b>${esc(r.p.name)}</b></td><td>${esc(r.p.role || "")}</td><td><b>${r.up.length}</b></td><td>${esc(r.up.map(U.niceDate).join(", "))}</td><td>${r.p.total >= U.REPEAT_AT ? '<span class="tag red">' + r.p.total + "</span>" : r.p.total}</td><td>${r.sent ? esc(r.sent.toLocaleDateString("en-GB", { day: "numeric", month: "short" })) : "-"}</td></tr>`).join("")}</table>` : '<div class="hint" style="margin-top:8px;color:var(--rmd-muted);font-size:13px">Nobody has sent an absence notice for an evening still to come.</div>';
   }
   function renderPast(nights) {
     const t = today(); const past = nights.filter(n => n.date < t && outOn(n.date).length).reverse();
@@ -233,7 +274,7 @@
     renderChips(nights);
     const night = nights.find(n => n.date === sel);
     if (night) renderNight(night, totals); else $("night").innerHTML = "";
-    renderPeople(totals); renderPast(nights);
+    renderWho(totals); renderPeople(totals); renderPast(nights);
   }
 
   // ── load ──
