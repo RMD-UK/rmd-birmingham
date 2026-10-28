@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menu Assessors - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#F5F7FA; font-family: var(--font); margin:0; padding:0 0 50px; color:#1A2233; }
+    .top-bar { background:var(--rmd-navy); color:#fff; padding:10px 14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .top-bar img { height:28px; border-radius:50%; background:#fff; }
+    .top-bar-title { flex:1; font-size:15px; font-weight:700; }
+    .top-bar a.back { color:rgba(255,255,255,.75); text-decoration:none; font-size:12px; }
+    .wrap { max-width:820px; margin:0 auto; padding:16px 14px; }
+    .card { background:#fff; border:1px solid #E2E8ED; border-radius:14px; padding:16px; margin-bottom:14px; }
+    h2 { margin:0 0 4px; font-size:16px; color:var(--rmd-navy); }
+    p { line-height:1.5; margin:6px 0; font-size:14px; }
+    .muted { color:#6B7C93; font-size:13px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    input.in, textarea.in { width:100%; padding:10px 12px; border:2px solid #E3E8EF; border-radius:10px; font-size:16px; font-family:var(--font); }
+    textarea.in { min-height:110px; resize:vertical; }
+    button.pri { appearance:none; border:none; background:var(--rmd-navy); color:#fff; font-weight:700; font-size:14px; padding:10px 18px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    button.pri:disabled { background:#aab8c2; cursor:default; }
+    button.sec { appearance:none; border:2px solid #D5DEE8; background:#fff; color:var(--rmd-navy); font-weight:700; font-size:13px; padding:7px 12px; border-radius:9px; cursor:pointer; font-family:var(--font); }
+    .person { display:flex; align-items:center; gap:12px; padding:9px 0; border-top:1px solid #EEF1F6; font-size:14px; }
+    .person:first-child { border-top:0; }
+    .person label { display:flex; align-items:center; gap:12px; flex:1; cursor:pointer; min-width:0; }
+    .person input[type=checkbox] { width:20px; height:20px; flex-shrink:0; accent-color: var(--rmd-navy); }
+    .person .nm { font-weight:700; }
+    .person small { display:block; color:#6B7C93; font-size:12px; word-break:break-word; }
+    .msg { border-radius:10px; padding:9px 12px; font-size:13.5px; margin:10px 0 0; font-weight:600; }
+    .msg.ok { background:#E3F3E8; color:#1E6B3A; } .msg.warn { background:#FFF1D6; color:#8A5200; } .msg.err { background:#FCE8E6; color:#B3261E; }
+    .sub { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:#6B7C93; margin:14px 0 4px; }
+    .auth-overlay { position:fixed; inset:0; background:var(--rmd-navy); display:flex; align-items:center; justify-content:center; z-index:999; flex-direction:column; gap:14px; color:#fff; font-family:var(--font); }
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body>
+<div id="authOverlay" class="auth-overlay"><div id="authMsg">Checking access…</div></div>
+
+<div class="top-bar">
+  <a href="admin-global-tools.html"><img src="assets/rmd-logo.png" alt="RMD"></a>
+  <div class="top-bar-title">Menu assessors</div>
+  <a class="back" href="admin-global-tools.html">← Global admin tools</a>
+</div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>Who counts as an Assessor on the member menu</h2>
+    <p class="muted">A person marked here does not see the OPIS candidate rating card on their menu, because assessors do not teach the Monday sessions. Directors and Student or Senior Faculty always keep it. Nothing else changes: this does not touch their Instructor Weekend role, sessions or access.</p>
+    <div class="sub" id="markedHead">Marked as Assessor</div>
+    <div id="marked"><p class="muted">Loading…</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Find someone</h2>
+    <input class="in" id="q" type="search" placeholder="Type a name or email, then tick the box" autocomplete="off">
+    <div id="found"></div>
+    <div id="msgTick"></div>
+  </div>
+
+  <div class="card">
+    <h2>Paste a list of emails</h2>
+    <p class="muted">One go for many people. Paste emails separated by spaces, commas or new lines. You see who will be marked before anything is saved.</p>
+    <textarea class="in" id="paste" placeholder="a@example.com&#10;b@example.com"></textarea>
+    <div class="row" style="margin-top:8px"><button class="pri" id="previewBtn" type="button">Preview</button></div>
+    <div id="preview"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const norm = s => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+const nameOf = p => p.preferredName || p.name || p.email || p.id;
+
+let ALL = [];
+let toMark = [];   // preview result waiting for Confirm
+
+function marked() { return ALL.filter(p => p.menuAssessor === true).sort((a, b) => norm(nameOf(a)).localeCompare(norm(nameOf(b)))); }
+
+function personRow(p, extra) {
+  return `<div class="person"><label><input type="checkbox" data-id="${esc(p.id)}" ${p.menuAssessor === true ? "checked" : ""}>
+    <span><span class="nm">${esc(nameOf(p))}</span><small>${esc(p.email || "no email on record")}${p.role ? " · " + esc(p.role) : ""}${extra || ""}</small></span></label></div>`;
+}
+
+function renderMarked() {
+  const m = marked();
+  $("markedHead").textContent = "Marked as Assessor (" + m.length + ")";
+  $("marked").innerHTML = m.length ? m.map(p => personRow(p)).join("") : `<p class="muted">Nobody is marked yet.</p>`;
+  bindTicks("marked");
+}
+
+function renderFound() {
+  const q = norm($("q").value);
+  if (q.length < 2) { $("found").innerHTML = ""; return; }
+  const hits = ALL.filter(p => norm(p.name).includes(q) || norm(p.preferredName).includes(q) || norm(p.email).includes(q)).slice(0, 15);
+  $("found").innerHTML = hits.length ? hits.map(p => personRow(p)).join("") : `<p class="muted">No match.</p>`;
+  bindTicks("found");
+}
+
+function bindTicks(boxId) {
+  $(boxId).querySelectorAll("input[type=checkbox]").forEach(cb => cb.onchange = () => toggle(cb));
+}
+
+async function toggle(cb) {
+  const p = ALL.find(x => x.id === cb.dataset.id); if (!p) return;
+  const on = cb.checked;
+  cb.disabled = true;
+  try {
+    await db.collection(COLLECTIONS.people).doc(p.id).update({ menuAssessor: on ? true : firebase.firestore.FieldValue.delete() });
+    if (on) p.menuAssessor = true; else delete p.menuAssessor;
+    $("msgTick").innerHTML = `<div class="msg ok">${esc(nameOf(p))} ${on ? "is now marked as an Assessor" : "is no longer marked as an Assessor"}.</div>`;
+  } catch (err) {
+    cb.checked = !on;
+    $("msgTick").innerHTML = `<div class="msg err">Could not save for ${esc(nameOf(p))}: ${esc(err.message || err)}. Nothing was changed.</div>`;
+  }
+  renderMarked(); renderFound();
+}
+
+function preview() {
+  const emails = [...new Set((($("paste").value || "").toLowerCase().match(/[^\s,;<>"']+@[^\s,;<>"']+/g)) || [])];
+  if (!emails.length) { $("preview").innerHTML = `<div class="msg warn">No emails found in what you pasted.</div>`; toMark = []; return; }
+  const found = [], already = [], missing = [];
+  emails.forEach(e => {
+    const ms = ALL.filter(p => norm(p.email) === e);
+    if (!ms.length) { missing.push(e); return; }
+    ms.forEach(p => (p.menuAssessor === true ? already : found).push(p));
+  });
+  toMark = found;
+  let html = "";
+  if (found.length) html += `<div class="sub">Will be marked (${found.length})</div>` + found.map(p => `<div class="person"><span><span class="nm">${esc(nameOf(p))}</span><small>${esc(p.email)}</small></span></div>`).join("");
+  if (already.length) html += `<div class="sub">Already marked (${already.length})</div><p class="muted">${already.map(p => esc(nameOf(p))).join(", ")}</p>`;
+  if (missing.length) html += `<div class="msg warn">${missing.length} email${missing.length === 1 ? " has" : "s have"} no account record: ${missing.map(esc).join(", ")}. People without a login do not see this menu, so there is nothing to change for them. Check the spelling if you expected a match.</div>`;
+  if (found.length) html += `<div class="row" style="margin-top:12px"><button class="pri" id="confirmBtn" type="button">Mark ${found.length} as Assessor</button></div>`;
+  else html += `<p class="muted" style="margin-top:10px">Nobody to mark.</p>`;
+  $("preview").innerHTML = html;
+  if ($("confirmBtn")) $("confirmBtn").onclick = confirmMark;
+}
+
+async function confirmMark() {
+  const btn = $("confirmBtn"); btn.disabled = true; btn.textContent = "Saving…";
+  const list = toMark.slice(); let done = 0;
+  try {
+    for (let i = 0; i < list.length; i += 400) {
+      const batch = db.batch();
+      list.slice(i, i + 400).forEach(p => batch.update(db.collection(COLLECTIONS.people).doc(p.id), { menuAssessor: true }));
+      await batch.commit();
+      list.slice(i, i + 400).forEach(p => { p.menuAssessor = true; done++; });
+    }
+    $("preview").innerHTML = `<div class="msg ok">Marked ${done} as Assessor.</div>`;
+    $("paste").value = ""; toMark = [];
+  } catch (err) {
+    $("preview").innerHTML = `<div class="msg err">Saved ${done} of ${list.length}, then it stopped: ${esc(err.message || err)}. Run Preview again to see who is left.</div>`;
+  }
+  renderMarked(); renderFound();
+}
+
+requireDirector().then(async () => {
+  $("authOverlay").classList.add("hidden");
+  try {
+    const snap = await db.collection(COLLECTIONS.people).get();
+    ALL = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    renderMarked();
+  } catch (err) {
+    $("marked").innerHTML = `<div class="msg err">Could not read the people list: ${esc(err.message || err)}</div>`;
+  }
+  $("q").addEventListener("input", renderFound);
+  $("previewBtn").onclick = preview;
+});
+</script>
+</body>
+</html>
