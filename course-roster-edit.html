@@ -126,6 +126,10 @@
     <div class="unassigned-head">Not yet assigned to a room</div>
     <div id="unassignedGrid" class="unassigned-grid"></div>
   </div>
+  <div id="movedWrap" class="unassigned-wrap moved-wrap" style="display:none">
+    <div class="unassigned-head" id="movedHead">Moved on after the night</div>
+    <div id="movedGrid" class="moved-grid"></div>
+  </div>
 </div>
 
 <!-- Firebase SDK -->
@@ -137,6 +141,7 @@
 <script src="js/candidate-lookup.js"></script>
 <script src="js/fuzzy-search.js"></script>
 <script src="js/roster-tags.js"></script>
+<script src="js/roster-moved.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────────
 // Evening Course Rosters — read-only view for RMD Student/Senior Faculty
@@ -155,6 +160,7 @@
 const ROOMS = STAGE1_TEACHING_ROOMS;
 
 let allCandidates  = [];
+let allAssess      = {};   // stage1_assessments by candidate id, for the moved-on list
 let courseDates    = {};   // course name -> date, from config/stage1_course_dates
 let allInstructors = [];
 let allAllocDocs   = [];
@@ -208,6 +214,11 @@ async function loadData() {
     const snap = await db.collection(COLLECTIONS.stage1Candidates).get();
     allCandidates = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (e) { console.warn("stage1_candidates load failed:", e.message); }
+
+  try {
+    const snap = await db.collection("stage1_assessments").get();
+    allAssess = {}; snap.docs.forEach(d => { allAssess[d.id] = d.data(); });
+  } catch (e) { console.warn("stage1_assessments load failed:", e.message); }
 
   try {
     const cd = await db.collection("config").doc("stage1_course_dates").get();
@@ -356,6 +367,8 @@ function selectCourse(course) {
   currentCourse = course;
   const filt = RMD_TAGS.renderFilterBar(document.getElementById("filterBar"), candidates, () => selectCourse(currentCourse));
   const shownCands = candidates.filter(filt.passes);
+  // People who were on this course for the assessment night and were then moved on (did not pass, or not there). Shown once the night is over.
+  const movedOn = RMD_MOVED.forCourse(allCandidates, allAssess, courseDates, course, ROOMS).filter(m => filt.passes(m.c));
 
   const assignedCount = candidates.filter(c => c.room).length;
   document.getElementById("statCand").textContent = candidates.length;
@@ -366,8 +379,8 @@ function selectCourse(course) {
   // Only show rooms that actually have a candidate or an instructor team —
   // no point showing all 19 rooms empty for a small course.
   const roomsWithContent = ROOMS.filter(rid => filt.active
-    ? shownCands.some(c => c.room === rid)
-    : (candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length)));
+    ? (shownCands.some(c => c.room === rid) || movedOn.some(m => m.room === rid))
+    : (candidates.some(c => c.room === rid) || (teams[rid] && teams[rid].length) || movedOn.some(m => m.room === rid)));
 
   // Courses whose instructor teams have not been saved yet (Course Room &
   // Instructor Allocation) show candidates only; say so rather than looking broken.
@@ -379,14 +392,15 @@ function selectCourse(course) {
     ? roomsWithContent.map(rid => {
         const inRoom = shownCands.filter(c => c.room === rid);
         const instrs = (teams[rid] || []);
-        const total = inRoom.length + instrs.length;
+        const total = inRoom.length + instrs.length, movedHere = movedOn.filter(m => m.room === rid);
         return `<div class="room-col" data-room="${esc(rid)}">
                   <div class="room-head">
-                    <div class="room-head-row"><span class="room-id">${esc(rid)}</span><span class="room-count">${total} assigned</span></div>
+                    <div class="room-head-row"><span class="room-id">${esc(rid)}</span><span class="room-count">${total} assigned${movedHere.length ? " + " + movedHere.length + " moved on" : ""}</span></div>
                   </div>
                   <div class="room-body">
                     ${instrs.length ? `<div class="room-sec-label">Instructors</div>${instrs.map(uid => personCard(instructorName(uid), "instr", "", "")).join("")}` : ""}
                     ${inRoom.length ? `<div class="room-sec-label">Candidates</div>${inRoom.map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c), c)).join("")}` : ""}
+                    ${movedHere.length ? `<div class="room-sec-label">Moved on after the night</div>${movedHere.map(RMD_MOVED.card).join("")}` : ""}
                   </div>
                 </div>`;
       }).join("")
@@ -397,6 +411,11 @@ function selectCourse(course) {
   document.getElementById("unassignedGrid").innerHTML = unassigned
     .map(c => personCard(c.name, "cand", c.id, assessmentMetaStr(c), c))
     .join("");
+
+  const noRoom = movedOn.filter(m => !m.room);
+  document.getElementById("movedWrap").style.display = noRoom.length ? "" : "none";
+  document.getElementById("movedHead").textContent = "Moved on after the night (" + noRoom.length + ")";
+  document.getElementById("movedGrid").innerHTML = RMD_MOVED.group(noRoom);
 }
 
 // Candidate search — looks across every course at once (allCandidates

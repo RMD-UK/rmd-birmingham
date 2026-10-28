@@ -323,28 +323,24 @@ function viewHome() {
     tile("good", pcs(pct(st.passed, st.sat)), `passed on the night: ${st.passed} of ${st.sat} who sat (any attempt)`) +
     tile("good", pcs(pct(j[0][1], j[0][0])), `passed first time: ${j[0][1]} of ${j[0][0]} first sits`) +
     tile(st.not ? "act" : "neu", String(st.not), `did not pass on the night${st.sat ? " (" + pct(st.not, st.sat) + "% of those who sat)" : ""}`) +
-    tile(openRefer ? "act" : "neu", String(openRefer), `still need a follow-up${since ? " (" + since + " more passed since)" : ""}`) + `</div>` +
+    `</div>` +
     `<div class="tiles">` +
     tile(g.final ? "act" : "neu", String(g.final), "failed: not passed after 4 attempts") +
     tile("neu", String(g.absent), "not there" + (movedAbs ? " (" + movedAbs + " already moved to a new course)" : "")) +
-    tile("neu", String(g.none), "not yet assessed") +
     tile("neu", String(moved), "now on a later course") + `</div>`;
   if (!N) return h + `<div class="empty2">Nobody is on ${UI.course === "all" ? "any course" : "this course"} yet.</div>`;
   if (!j[0][0] && !g.absent) return h + `<div class="empty2">No results have been recorded yet. This page fills in as the assessment night results are saved.</div>`;
   const W = [], M = mistakes(sc.attempts), A = assessorStats(sc.attempts), worth = A.rows.filter(r => r.flag);
-  if (openRefer) W.push(["r", plural(openRefer, "person needs", "people need") + " a follow-up", "Open the follow-up board for who owns each one.", "follow"]);
   if (g.leads + g.final) W.push(["r", plural(g.leads + g.final, "person has", "people have") + " not passed at attempt 3 or 4", "The programme lead needs telling.", "follow"]);
   if (M.steps[0]) W.push(["", "Most missed step: " + afterCode(M.steps[0].t), M.steps[0].n + " of " + plural(M.first, "first sit", "first sits") + " (" + Math.round(M.steps[0].pct) + "%). See what goes wrong.", "wrong"]);
   if (worth.length) W.push(["a", plural(worth.length, "assessor differs", "assessors differ") + " from the rest", "Worth a conversation, not a verdict. See assessors.", "assess"]);
   if (g.absent) W.push(["", plural(g.absent, "person was", "people were") + " not there", "They move to a new course unless a Director has agreed an exception.", "follow"]);
   if (W.length) h += `<div class="sec">Worth a look</div><div class="wls">${W.map(w => `<button class="wl" data-go="${w[3]}"><i class="${w[0]}"></i><span><b>${esc(w[1])}</b><small>${esc(w[2])}</small></span></button>`).join("")}</div>`;
+  h += `<div class="card"><h2>Where everyone ended up</h2><p class="cap">${UI.course === "all" ? plural(N, "place", "places") + " across all courses. Someone who sat on two nights counts on each." : plural(N, "person", "people") + " on this course night, including anyone moved to a later course afterwards."}</p><div id="c1"></div>${legend()}</div>`;
+  h += `<div class="card"><h2>Pathway</h2><p class="cap">Who sat each attempt, and what happened.</p><div id="c2"></div></div>`;
   const row = (label, n, p) => `<tr><td>${label}</td><td>${n}</td><td>${p}</td><td>${n ? pcs(pct(p, n)) : "-"}</td></tr>`;
   h += `<div class="card"><h2>Pass rates</h2><p class="cap">Everyone who sat counts once, as passed if they had passed by the end of the night. First attempt is attempt 1 only. All sittings adds up every assessment, retests included.</p><div class="tw"><table><thead><tr><th></th><th>Sat</th><th>Passed</th><th>Rate</th></tr></thead><tbody>` +
     row("Everyone who sat on the night (any attempt)", st.sat, st.passed) + row("First attempt", j[0][0], j[0][1]) + row("Retest (attempt 2)", j[1][0], j[1][1]) + row("Attempt 3 or 4", j[2][0] + j[3][0], j[2][1] + j[3][1]) + row("All sittings added up", st.sittings, st.sitPass) + `</tbody></table></div></div>`;
-  h += `<div class="card"><h2>Did not pass on the night</h2><p class="cap">${plural(st.not, "person", "people")} of ${st.sat} who sat. Where each one stopped.</p><div class="tw"><table><tbody>` +
-    [["Attempt 1 not passed, no retest recorded", st.g.due], ["Retest (attempt 2) not passed: awaiting retraining", st.g.retrain], ["Attempt 3 not passed: back to degree leads", st.g.leads], ["Attempt 4 not passed: failed", st.g.final]].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("") + `</tbody></table></div></div>`;
-  h += `<div class="card"><h2>Where everyone ended up</h2><p class="cap">${UI.course === "all" ? plural(N, "place", "places") + " across all courses. Someone who sat on two nights counts on each." : plural(N, "person", "people") + " on this course night, including anyone moved to a later course afterwards."}</p><div id="c1"></div>${legend()}</div>`;
-  h += `<div class="card"><h2>Pathway</h2><p class="cap">Who sat each attempt, and what happened.</p><div id="c2"></div></div>`;
   return h;
 }
 function drawHome() {
