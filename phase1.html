@@ -4011,6 +4011,7 @@ function renderRetest() {
   // not retesting yet, so they are held back until the night (or until they check in). From the night onwards everyone shows, as before.
   const d = assessDate(), allPool = poolList(), future = !!d && d > londonNow().date;
   const pool = future ? allPool.filter(c => derivedAttempt(c.id) >= 2 || cstate(c) !== "nothere") : allPool, notHere = allPool.length - pool.length, stale = staleAttempts();
+  if (S.full && !simple && oddAttempts().length) setTimeout(acLoad, 0);
   const waiting = pool.filter(c => !(nres(c.id).claim && nres(c.id).claim.uid));
   const withA = pool.length - waiting.length;
   const passedRetest = N.cands.filter(c => passedAtKey(c.id) && Number(passedAtKey(c.id)) >= 2).length;
@@ -4048,6 +4049,7 @@ function renderRetest() {
     h += `<div class="card"><h3><span class="stepno">2</span>Who is in the pool</h3>` + (pool.length ? pool.map(c => prow(c)).join("") : '<div class="hint">Nobody yet. People appear as soon as an assessor refers them.</div>') + `</div>`;
   } else {
     // RMD faculty hub order: what needs input now first, then the queue, then information and admin.
+    h += acCard();
     h += regCard();
     // Order (22 Oct, Jon): room first, then who the senior assessment team are, then the queue. The old "Not retested tonight" list is gone:
     // the Not passed card below replaces it and is left to the end of the evening.
@@ -4084,6 +4086,14 @@ function renderRetest() {
   $("viewRetest").querySelectorAll("[data-nbdl]").forEach(b => b.onclick = () => { nbDownload(nbBuild()); toast("Downloaded " + nbFile() + " and " + nbRegFile()); });
   $("viewRetest").querySelectorAll("[data-prelease]").forEach(b => b.onclick = () => releaseCand(b.dataset.prelease));
   $("viewRetest").querySelectorAll("[data-patt]").forEach(b => b.onclick = () => editAttempt(b.dataset.patt));
+  $("viewRetest").querySelectorAll("[data-acset]").forEach(b => b.onclick = () => {
+    const row = AC.rows.find(x => x.c.id === b.dataset.acset), n = Number(b.dataset.acn); if (!row) return;
+    if (confirm("Change " + (row.c.name || "this person") + " from attempt 2 to attempt " + n + "?")) acApply([{ c: row.c, n }]);
+  });
+  const acAll = $("acAll"); if (acAll) acAll.onclick = () => {
+    const odd = oddAttempts(), items = AC.rows.filter(x => odd.some(c => c.id === x.c.id)).map(x => ({ c: x.c, n: x.sug }));
+    if (items.length && confirm("Change " + items.length + " people from attempt 2 to their suggested number?\n\n" + items.map(x => x.c.name + " to attempt " + x.n).join("\n"))) acApply(items);
+  };
   $("viewRetest").querySelectorAll("[data-here]").forEach(b => b.onclick = () => {
     const people = att3People(), name = people[Number(b.dataset.here)]; if (name === undefined) return;
     const cur = people.filter(isHere);
@@ -4103,6 +4113,62 @@ function renderRetest() {
   });
 }
 
+// Check attempt numbers (28 Oct, Jon): attempt 2 only ever happens on the same night as attempt 1, so someone who is saved as attempt 2 but has no
+// attempt 1 result on THIS course's night has a wrong number. Anyone retesting on a later course is attempt 3 or 4; a first sit here is attempt 1.
+// The suggestion comes from the earlier course the record is linked to (referred at attempt k there, so k + 1, never below 3), otherwise 1.
+const AC = { loading: false, key: "", rows: [], busy: false };
+function oddAttempts() { return N.cands.filter(c => !c.absent && !passedAtKey(c.id) && (c.attempt || 1) === 2 && derivedAttempt(c.id) < 2 && !recordedAt(c.id, 2)); }
+async function acLoad() {
+  const odd = oddAttempts(), key = odd.map(c => c.id).sort().join(",");
+  if (AC.loading || AC.busy || !odd.length || AC.key === key) return;
+  AC.loading = true; AC.key = key;
+  const rows = [];
+  for (const c of odd) {
+    const sc = S.cands.find(x => x.id === c.id) || {};
+    let sug = 1, why = "No earlier course on file";
+    if (sc.linkedCandidateId) {
+      try {
+        const d = await db.collection("stage1_assessments").doc(sc.linkedCandidateId).get();
+        const a = (d.exists && d.data().attempts) || {};
+        const k = Math.max.apply(null, [0].concat(Object.keys(a).filter(x => a[x] && a[x].outcome === "refer").map(Number)));
+        if (k >= 2) { sug = Math.min(4, Math.max(3, k + 1)); why = "Referred at attempt " + k + " on an earlier course"; }
+        else why = "Linked to an earlier course with no retest result";
+      } catch (e) { why = "Could not read the earlier course"; }
+    }
+    rows.push({ c, sug, why });
+  }
+  AC.rows = rows; AC.loading = false; renderRetest();
+}
+function acCard() {
+  const odd = oddAttempts(); if (!odd.length) return "";
+  const rows = AC.rows.filter(r => odd.some(c => c.id === r.c.id));
+  const body = (AC.loading || !rows.length) ? '<div class="hint">Looking at their earlier courses...</div>' : rows.map(r =>
+    `<div class="lrow"><span class="nm">${esc(r.c.name)} ${attBadge(2)}</span><small>${esc(r.c.degree || "")} &middot; ${esc(r.why)}</small><span class="pact">${[1, 3, 4].map(k => `<button type="button" class="btn sm${k === r.sug ? " pri" : ""}" data-acset="${esc(r.c.id)}" data-acn="${k}"${AC.busy ? " disabled" : ""}>Attempt ${k}</button>`).join(" ")}</span></div>`).join("");
+  return `<div class="card" style="border-color:var(--org)"><h3>Check attempt numbers (${odd.length})</h3><div class="hint" style="margin:0 0 8px">Attempt 2 only happens on the same night as attempt 1. These people are saved as attempt 2 but have no attempt 1 result on ${esc(S.course)}, so the number is probably wrong. A first sit here is attempt 1; retesting after earlier courses is attempt 3 or 4. The dark button is the suggestion. Nothing else is changed or deleted.</div>` + body +
+    (rows.length && !AC.loading ? `<div class="row2" style="margin-top:8px"><button type="button" class="btn pri" id="acAll"${AC.busy ? " disabled" : ""}>Use the suggestion for all ${rows.length}</button></div>` : "") + `</div>`;
+}
+async function acApply(items) {
+  if (AC.busy || !items.length) return;
+  AC.busy = true; renderRetest();
+  let ok = false;
+  try {
+    for (let i = 0; i < items.length; i += 200) {
+      const batch = db.batch();
+      items.slice(i, i + 200).forEach(x => batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(x.c.id), { assessmentAttempt: x.n, twoPlusAssessments: x.n >= 2 }));
+      await batch.commit();
+    }
+    ok = true;
+    items.forEach(x => { x.c.attempt = x.n; N.cands.forEach(nc => { if (nc.id === x.c.id) nc.attempt = x.n; }); const sc = S.cands.find(y => y.id === x.c.id); if (sc) { sc.assessmentAttempt = x.n; sc.twoPlusAssessments = x.n >= 2; } });
+    let logged = true;
+    try {
+      const at = new Date().toISOString();
+      for (const x of items) await db.collection("stage1_assessments").doc(x.c.id).set({ course: S.course, candidateName: x.c.name || "", flow: { edits: { ["e" + Date.now() + x.c.id.slice(0, 4)]: { from: 2, to: x.n, by: S.user.uid, byName: S.myName, at } } }, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    } catch (err) { logged = false; }
+    toast("Changed " + items.length + " attempt number" + (items.length === 1 ? "" : "s") + (logged ? "." : ". Saved, but the change could not be logged."), !logged);
+  } catch (err) { toast("Not saved: " + (err.code === "permission-denied" ? "you do not have permission" : err.message), true); }
+  AC.busy = false; AC.key = ""; if (ok) AC.rows = [];
+  renderRetest(); renderAlloc();
+}
 // Edit attempt (21 Oct, Jon): replaces the +/- buttons. Explains what the number does, never goes below what the results
 // on file imply, asks "are you sure" with the exact change, and logs who did it on stage1_assessments/{id}.flow.edits.
 async function editAttempt(id) {
