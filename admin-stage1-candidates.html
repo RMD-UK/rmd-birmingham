@@ -156,7 +156,7 @@
       <div class="top-bar-title">First year candidates</div>
       <div class="top-bar-sub">RMD Birmingham · Director only</div>
     </div>
-    <a href="admin-stage1-settings.html" class="top-bar-link">⚙️ Settings</a>
+    <a href="#cfg" class="top-bar-link" id="cfgTopLink">⚙️ Settings</a>
     <a href="admin-course-room-allocation.html" class="top-bar-link">🏫 Room allocation</a>
   </div>
 
@@ -173,6 +173,7 @@
     <button class="tab2" data-k="add" role="tab">Add and allocate</button>
     <button class="tab2" data-k="rep" role="tab">Repeat takers and outcomes</button>
     <button class="tab2" data-k="set" role="tab">Settings and clean-up</button>
+    <button class="tab2" data-k="cfg" role="tab">Course dates and rooms</button>
   </div>
 
   <div class="pane2 on" id="pane-list">
@@ -273,6 +274,8 @@
     </div>
   </div>
   </div>
+
+  <div class="pane2" id="pane-cfg"><div id="cfgHost"></div></div>
 
   <div class="pane2" id="pane-set">
   <div class="card">
@@ -2208,12 +2211,22 @@ loadAccessCode();
 <script>
 // Layout only: tabs show and hide the blocks above. Nothing here reads or writes data except the counts.
 (function () {
-  const keys = ["list", "add", "rep", "set"];
+  const keys = ["list", "add", "rep", "set", "cfg"];
   function show(k) {
     if (keys.indexOf(k) < 0) k = "list";
     document.querySelectorAll(".pane2").forEach(p => p.classList.toggle("on", p.id === "pane-" + k));
     document.querySelectorAll(".tab2").forEach(t => t.classList.toggle("on", t.dataset.k === k));
+    if (k === "cfg" && !document.getElementById("cfgFrame")) {
+      document.getElementById("cfgHost").innerHTML = '<iframe id="cfgFrame" src="admin-stage1-settings.html?embed=1" title="Course dates and rooms" style="width:100%;height:900px;border:0;display:block;"></iframe>';
+    }
   }
+  window.addEventListener("hashchange", () => show((location.hash || "").replace("#", "")));
+  window.addEventListener("message", e => {
+    const d = e.data, f = document.getElementById("cfgFrame");
+    if (!d || d.type !== "rmd-embed-height" || d.src !== "stage1-settings" || !f || e.source !== f.contentWindow) return;
+    if (e.origin !== location.origin && location.protocol !== "file:") return;
+    f.style.height = Math.max(300, d.h) + "px";
+  });
   document.querySelectorAll(".tab2").forEach(t => t.onclick = () => { show(t.dataset.k); try { history.replaceState(null, "", "#" + t.dataset.k); } catch (e) {} });
   const qs = new URLSearchParams(window.location.search);
   show(qs.get("find") || qs.get("realloc") ? "list" : (location.hash || "").replace("#", ""));

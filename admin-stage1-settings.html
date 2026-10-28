@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+  // This page is now the "Course dates and rooms" tab of First year candidates. Opened on its own (old links), it goes there.
+  if (window.top === window.self && !/[?&]embed\b/.test(location.search)) location.replace("admin-stage1-candidates.html#cfg");
+  if (/[?&]embed\b/.test(location.search)) document.documentElement.classList.add("embed");
+  </script>
   <title>Stage 1 Settings — RMD Birmingham</title>
   <link rel="stylesheet" href="css/rmd.css">
   <style>
@@ -32,6 +37,15 @@
     .status-line { font-size:12px; margin-top:10px; color:var(--rmd-muted); }
     .status-line.ok { color:#1a6e31; }
     .status-line.err { color:#b7410e; }
+    /* embed mode: shown inside the First year candidates page */
+    html.embed body { background: transparent; padding: 0 0 8px; }
+    html.embed .page { max-width: none; }
+    html.embed .top-bar { display: none; }
+    html.embed .card { border: 1.5px solid #dde2ed; border-radius: 14px; box-shadow: none; }
+    html.embed .card-header { background: #fff; color: #1f2540; text-transform: none; letter-spacing: 0; font-size: 15.5px; font-weight: 800; border-bottom: 1.5px solid #dde2ed; padding: 13px 16px; }
+    html.embed .btn-primary { background: #44247C; border-radius: 10px; }
+    html.embed .btn-primary:hover { background: #2e1856; }
+    html.embed .btn-secondary { border: 1.5px solid #dde2ed; border-radius: 10px; }
   </style>
 </head>
 <body>
@@ -314,6 +328,16 @@ loadDeadlines();
 loadCourses();
 loadAssessRooms();
 
+</script>
+<script>
+// Embed only: tell the parent page how tall this page is so the tab has no inner scrollbar.
+(function () {
+  if (!document.documentElement.classList.contains("embed")) return;
+  var el = document.querySelector(".page");
+  function post() { try { parent.postMessage({ type: "rmd-embed-height", h: Math.ceil(el.getBoundingClientRect().height) + 12, src: "stage1-settings" }, location.protocol === "file:" ? "*" : location.origin); } catch (e) {} }
+  if (window.ResizeObserver) new ResizeObserver(post).observe(el);
+  window.addEventListener("load", post); setInterval(post, 1500);
+})();
 </script>
 </body>
 </html>
