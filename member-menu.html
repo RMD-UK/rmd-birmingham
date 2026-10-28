@@ -338,12 +338,13 @@
   // Only things the member can check about themselves. Add a rule to buildTodo() to add an item.
   function todoHtml() {
     if (!todo.length) return "";
-    return `<div class="todo" id="todoBox"><h3>To do (${todo.length})</h3>${todo.map(t => `<a href="${esc(t.href)}"><div><b>${esc(t.title)}</b><small>${esc(t.text)}</small></div><span class="go">&rsaquo;</span></a>`).join("")}</div>`;
+    const list = todo.slice().sort((a, b) => (a.p || 9) - (b.p || 9));   // most time-limited first
+    return `<div class="todo" id="todoBox"><h3>To do (${list.length})</h3>${list.map(t => `<a href="${esc(t.href)}"><div><b>${esc(t.title)}</b><small>${esc(t.text)}</small></div><span class="go">&rsaquo;</span></a>`).join("")}</div>`;
   }
   function buildTodo(person) {
     const list = [];
     if (person && !(String(person.passportFirstName || "").trim() && String(person.passportLastName || "").trim())) {
-      list.push({ title: "Add your passport name", text: "It fills in your MOU and faculty forms for you. Takes a minute.", href: "my-account.html" });
+      list.push({ title: "Add your passport name", text: "It fills in your MOU and faculty forms for you. Takes a minute.", href: "my-account.html", p: 3 });
     }
     return list;
   }
@@ -441,6 +442,65 @@
     document.getElementById("rolePill").textContent =
       customRoleLabel(roleLabel) || (menuAssessor && !isDir(ctx) && !isSF(ctx) ? "Assessor" : null) || ROLE_LABELS[role] || role;
     render();
+
+    // MOU to do (29 Oct 2026, Jon): only for people on the MOU roster (doc id = their lowercased email) with no
+    // submission of their own for this year. Any failed read shows nothing, never a false reminder.
+    // Needs the firestore.rules change that lets a member read their own roster line and submissions.
+    if (personRead && user.email && typeof CURRENT_MOU_YEAR !== "undefined") {
+      (async () => {
+        try {
+          const ros = await db.collection(COLLECTIONS.mouRoster).doc(String(user.email).toLowerCase()).get();
+          if (!ros.exists) return;
+          const subs = await db.collection(COLLECTIONS.mouResponses).where("submittedByUid", "==", user.uid).where("academicYear", "==", CURRENT_MOU_YEAR).limit(1).get();
+          if (!subs.empty) return;
+          todo.push({ title: "Submit your " + CURRENT_MOU_YEAR + " MOU", text: "Your annual Memorandum of Understanding. If you have already sent it from a different email, tell us.", href: "mou-form.html", p: 2 });
+          render();
+        } catch (e) { /* rules not deployed yet or offline: no reminder */ }
+      })();
+    }
+
+    // Senior Faculty review (29 Oct 2026, Jon): only while the form is open to Senior Faculty (1 April to 1 July)
+    // and they have not submitted this cycle's review. Needs the same firestore.rules change.
+    if (personRead && ctx.seniorFac && typeof sfrWindowOpen === "function" && sfrWindowOpen() && typeof SFR_CYCLE_YEAR !== "undefined") {
+      (async () => {
+        try {
+          const d = await db.collection(COLLECTIONS.sfrResponses).doc(SFR_CYCLE_YEAR + "_" + user.uid).get();
+          if (d.exists) return;
+          todo.push({ title: "Senior Faculty review and future plans", text: "Your annual reflection and plans for next year. Open until 1 July.", href: "senior-faculty-review.html", p: 1 });
+          render();
+        } catch (e) { /* rules not deployed yet or offline: no reminder */ }
+      })();
+    }
+
+    // OPIS rating (29 Oct 2026, Jon): instructors on a room team in the running course who have not yet rated
+    // a candidate they taught. "Running" = from the first teaching night (14 days before the stored assessment
+    // night) to 14 days after it; test courses ignored. Not for people marked menuAssessor. Needs the same rules change.
+    if (personRead && !menuAssessor && !isDir(ctx) && !isSF(ctx)) {
+      (async () => {
+        try {
+          const cs = await db.collection("config").doc("stage1_course_dates").get();
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const live = new Set();
+          (cs.exists ? (cs.data().courses || []) : []).forEach(c => {
+            if (!c || !c.name || !c.date || /^test/i.test(c.name)) return;
+            const p = String(c.date).split("-").map(Number); if (p.length !== 3 || !p[0]) return;
+            const night = new Date(p[0], p[1] - 1, p[2]);
+            const from = new Date(p[0], p[1] - 1, p[2] - 14), to = new Date(p[0], p[1] - 1, p[2] + 14);
+            if (today >= from && today <= to) live.add(c.name);
+          });
+          if (!live.size) return;
+          const mine = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", user.uid).get();
+          const taught = mine.docs.filter(d => live.has(d.data().course)).map(d => d.id);
+          if (!taught.length) return;
+          const rated = await db.collection(COLLECTIONS.opisRatings).where("submittedByUid", "==", user.uid).get();
+          const done = new Set(rated.docs.map(d => d.data().candidateId));
+          const left = taught.filter(id => !done.has(id)).length;
+          if (!left) return;
+          todo.push({ title: "OPIS rating: " + left + " candidate" + (left === 1 ? "" : "s") + " to rate", text: "Candidates you taught this course. Score them while it is fresh.", href: "opis-rating.html", p: 1.5 });
+          render();
+        } catch (e) { /* rules not deployed yet or offline: no reminder */ }
+      })();
+    }
 
     // Loaded after the menu is on screen so they never slow it down.
     try {

@@ -650,15 +650,22 @@ service cloud.firestore {
     // ── MOU responses ───────────────────────────────────────────────────────
     // Create: authenticated — member submits their own MOU form response
     // Read/update/delete: director only — only directors review submissions
+    // 29 Oct 2026 (Jon): a member may also read their OWN submissions (submittedByUid is their uid), so the
+    // member menu can show "submit your MOU" only until they have. A query must filter on submittedByUid.
     match /mou_responses/{docId} {
       allow create: if isSignedIn();
-      allow read, update, delete: if isDirector();
+      allow read: if isDirector() || (isSignedIn() && resource.data.get("submittedByUid", null) == request.auth.uid);
+      allow update, delete: if isDirector();
     }
 
     // ── MOU roster ──────────────────────────────────────────────────────────
     // Director only — expected member list, managed exclusively via director tools
+    // 29 Oct 2026 (Jon): a member may get their OWN roster line (doc id = their lowercased email), so the member
+    // menu knows whether an MOU is expected from them. Listing the roster stays director only.
     match /mou_roster/{docId} {
-      allow read, write: if isDirector();
+      allow get: if isDirector() || (isSignedIn() && docId == request.auth.token.email.lower());
+      allow list: if isDirector();
+      allow write: if isDirector();
     }
 
     // ── Senior faculty annual review ────────────────────────────────────────
@@ -678,6 +685,9 @@ service cloud.firestore {
             && request.time.month() * 100 + request.time.day() >= 401
             && request.time.month() * 100 + request.time.day() <= 701));
       allow read, delete: if isDirector();
+      // 29 Oct 2026 (Jon): a member may get their OWN review (doc id ends _{their uid}), so the member menu
+      // can show "Senior Faculty review" in the To do box until they have submitted it.
+      allow get: if isSignedIn() && docId.matches('.*_' + request.auth.uid);
     }
 
     // ── Annual faculty roster ───────────────────────────────────────────────
@@ -944,8 +954,10 @@ service cloud.firestore {
     //   audience deciding instructor potential, not the raters themselves.
     // update: none — a submission is immutable once made.
     // delete: director only (corrections/cleanup).
+    // 29 Oct 2026 (Jon): a rater may also read their OWN submissions (query by submittedByUid), so the member
+    // menu can show "rate your candidates" only for candidates they have not rated yet.
     match /opis_ratings/{docId} {
-      allow read: if isDirector() || isSeniorFaculty();
+      allow read: if isDirector() || isSeniorFaculty() || (isSignedIn() && resource.data.get("submittedByUid", null) == request.auth.uid);
       allow create: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isOnCandidateTeam(request.resource.data.candidateId))
         && request.resource.data.submittedByUid == request.auth.uid
         && request.resource.data.credibilityConfirmed == true
