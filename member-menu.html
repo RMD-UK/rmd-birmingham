@@ -102,6 +102,8 @@
     .tile b { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 17px; font-weight: 800; color: var(--rmd-navy); }
     .tile span { display: block; font-size: 13px; color: var(--rmd-muted); margin-top: 4px; }
     .tile .n { font-size: 12px; font-weight: 700; color: var(--rmd-muted); }
+    .tile.me { background: var(--rmd-light); border: 2px solid var(--rmd-navy); }
+    .tile.me span { color: var(--rmd-text); }
     .tile.is-admin { background: var(--rmd-navy); border-color: var(--rmd-navy); }
     .tile.is-admin b { color: #fff; }
     .tile.is-admin span, .tile.is-admin .n { color: rgba(255,255,255,0.72); }
@@ -185,10 +187,10 @@
      the old single-list menu; the only new rule is menuAssessor (below).
      ──────────────────────────────────────────────────────────────────────── */
   const GROUPS = [
+    { id: "me",        name: "Me",                 line: "Your account, your forms and site feedback" },   // first tile and highlighted (Jon, 28 Oct 2026)
     { id: "evening",   name: "Evening courses",    line: "Teaching nights and assessment night" },
     { id: "people",    name: "People and faculty", line: "Directory and instructor development" },
     { id: "resources", name: "Resources",          line: "Guidelines, videos and guides" },
-    { id: "me",        name: "Me",                 line: "Your account and your forms" },
     { id: "tools",     name: "Director tools",     line: "Directors only" }   // renamed "Faculty tools" for non-Directors
   ];
 
@@ -218,7 +220,7 @@
       text: "Pass rates, retests and who has passed. Directors and Senior Faculty also see assessor comments",
       href: () => "assessment-results.html", show: c => isDir(c) || isSF(c) },
     { id: "commsLink", g: "evening", icon: "✉", title: "Comms",
-      text: "Email a group: Stage 1 candidates by course, assessors, instructors, faculty",
+      text: "Email a group: first year candidates by course, assessors, instructors, faculty",
       href: () => "admin-comms.html", show: c => isDir(c) || isSF(c) },
 
     // ── People and faculty ──
@@ -256,7 +258,19 @@
       text: "Something broken, awkward or missing? Tell us in four taps",
       href: () => "feedback.html", show: () => true },
 
-    // ── Director / faculty tools ──
+    // ── Director / faculty tools (Courses and admin first, Instructor Weekend last: Jon, 28 Oct 2026) ──
+    { id: "courseAllocationLink", g: "tools", sub: "Courses and admin", admin: true, icon: "🔀", title: "Course allocation",
+      text: "Move people to a new course, check eligibility and rooms",
+      href: () => "course-allocation.html", show: isDir },
+    { id: "stage1CandidatesLink", g: "tools", sub: "Courses and admin", admin: true, icon: "🧑‍🎓", title: "First year candidates",
+      text: "Add and edit candidate records",
+      href: () => "admin-stage1-candidates.html", show: isDir },
+    { id: "globalToolsLink", g: "tools", sub: "Courses and admin", admin: true, icon: "🌐", title: "Global admin tools",
+      text: "MOU, bulk accounts, account reminders, faculty roster",
+      href: () => "admin-global-tools.html", show: isDir },
+    { id: "feedbackInboxLink", g: "tools", sub: "Courses and admin", admin: true, icon: "📥", title: "Site feedback inbox",
+      text: "Read, sort and tick off what the team has sent",
+      href: () => "admin-feedback.html", count: true, show: isDir },
     { id: "badgeTemplatesLink", g: "tools", sub: "Instructor Weekend", admin: true, icon: "🪪", title: "Print badge templates",
       text: "Blank Candidate / Faculty name badges, no roster needed",
       href: () => "iw-badges.html", show: isFacultyTools },
@@ -268,19 +282,7 @@
       href: () => "site-info.html?role=director", show: isDir },
     { id: "cdDashboardLink", g: "tools", sub: "Instructor Weekend", admin: true, icon: "🛠", title: "Course Director dashboard",
       text: "Instructor Weekend 2026: registrations, rooms, assessments",
-      href: () => "cd-dashboard.html", show: isDir },
-    { id: "courseAllocationLink", g: "tools", sub: "Courses and admin", admin: true, icon: "🔀", title: "Course allocation",
-      text: "Move people to a new course, check eligibility and rooms",
-      href: () => "course-allocation.html", show: isDir },
-    { id: "stage1CandidatesLink", g: "tools", sub: "Courses and admin", admin: true, icon: "🧑‍🎓", title: "Stage 1 candidates",
-      text: "Add and edit candidate records",
-      href: () => "admin-stage1-candidates.html", show: isDir },
-    { id: "globalToolsLink", g: "tools", sub: "Courses and admin", admin: true, icon: "🌐", title: "Global admin tools",
-      text: "MOU, bulk accounts, account reminders, faculty roster",
-      href: () => "admin-global-tools.html", show: isDir },
-    { id: "feedbackInboxLink", g: "tools", sub: "Courses and admin", admin: true, icon: "📥", title: "Site feedback inbox",
-      text: "Read, sort and tick off what the team has sent",
-      href: () => "admin-feedback.html", count: true, show: isDir }
+      href: () => "cd-dashboard.html", show: isDir }
   ];
 
   const ctx = { role: null, studentFac: false, seniorFac: false, menuAssessor: false };
@@ -359,7 +361,7 @@
         <div class="tiles">${vis.map(x => {
           const n = cardsFor(x.id).length;
           const cnt = x.id === "tools" && countText() ? ` <span class="count" data-count="1">${countText()} new</span>` : "";
-          return `<a class="tile${x.id === "tools" ? " is-admin" : ""}" href="#${x.id}" id="tile-${x.id}"><b><em>${esc(groupName(x))}${cnt}</em><small class="n">${n}</small></b><span>${esc(groupLine(x))}</span></a>`;
+          return `<a class="tile${x.id === "tools" ? " is-admin" : x.id === "me" ? " me" : ""}" href="#${x.id}" id="tile-${x.id}"><b><em>${esc(groupName(x))}${cnt}</em><small class="n">${n}</small></b><span>${esc(groupLine(x))}</span></a>`;
         }).join("")}</div>
         ${footHtml}`;
       return;
