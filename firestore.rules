@@ -658,6 +658,36 @@ service cloud.firestore {
       allow update, delete: if isDirector();
     }
 
+    // ── Instructor absence notices (29 Oct 2026, Jon) ────────────────────────
+    // instructor-absence.html: any signed-in member sends a notice for themselves (uid must be their own,
+    //   fixed set of fields, status starts active, mentor tick required). They can read their own notices and
+    //   withdraw them (only status and withdrawnAt may change).
+    // admin-absences.html: Directors, Student Faculty and Senior Faculty read everything and may record cover
+    //   (covered, coverNote, coveredByName, coveredAt only). Delete: Director only.
+    match /instructor_absences/{docId} {
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'email', 'role', 'reason', 'priorAbsences', 'nights', 'nightDates', 'mentorTold', 'status', 'submittedAt'])
+        && request.resource.data.status == 'active'
+        && request.resource.data.mentorTold == true
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 200
+        && request.resource.data.email is string && request.resource.data.email.size() <= 200
+        && request.resource.data.role in ['Instructor', 'Senior Instructor', 'Assessor']
+        && request.resource.data.reason is string && request.resource.data.reason.size() > 0 && request.resource.data.reason.size() <= 1000
+        && request.resource.data.priorAbsences is int && request.resource.data.priorAbsences >= 0 && request.resource.data.priorAbsences <= 99
+        && request.resource.data.nights is list && request.resource.data.nights.size() >= 1 && request.resource.data.nights.size() <= 12
+        && request.resource.data.nightDates is list && request.resource.data.nightDates.size() == request.resource.data.nights.size()
+        && request.resource.data.submittedAt == request.time;
+      allow get, list: if isSignedIn() && (resource.data.uid == request.auth.uid || isDirector() || isStudentFaculty() || isSeniorFaculty());
+      allow update: if isSignedIn() && (
+        (resource.data.uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'withdrawnAt'])
+          && request.resource.data.status == 'withdrawn')
+        || ((isDirector() || isStudentFaculty() || isSeniorFaculty())
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['covered', 'coverNote', 'coveredByName', 'coveredAt'])));
+      allow delete: if isDirector();
+    }
+
     // ── MOU roster ──────────────────────────────────────────────────────────
     // Director only — expected member list, managed exclusively via director tools
     // 29 Oct 2026 (Jon): a member may get their OWN roster line (doc id = their lowercased email), so the member

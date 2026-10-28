@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructor absences — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; color: var(--rmd-text); }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 10px 14px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+    .top-bar img { height: 32px; border-radius: 50%; background: white; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub { font-size: 11px; font-weight: 400; opacity: 0.7; display: block; }
+    .top-bar-back { background: none; border: 1px solid rgba(255,255,255,0.35); color: white; font-size: 12px; font-family: var(--font); padding: 5px 10px; border-radius: 6px; text-decoration: none; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 16px 14px 0; }
+    .msg { padding: 12px 14px; border-radius: 10px; font-size: 14px; background: #fff; border: 1px solid #e2e8ed; }
+    .msg.err { background: #fce8e6; border-color: #f1b0a8; }
+    .hidden { display: none !important; }
+    h2 { font-size: 15px; color: var(--rmd-navy); margin: 22px 0 8px; }
+    .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; }
+    .nchip { flex: 0 0 auto; background: #fff; border: 1px solid #cfd8e0; border-radius: 12px; padding: 8px 12px; cursor: pointer; text-align: left; font-family: var(--font); min-width: 118px; }
+    .nchip b { display: block; font-size: 14px; }
+    .nchip small { display: block; color: var(--rmd-muted); font-size: 11.5px; }
+    .nchip .n { float: right; font-size: 12px; font-weight: 800; background: #e8edf1; border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
+    .nchip.has .n { background: #b7410e; color: #fff; }
+    .nchip.on { border-color: var(--rmd-navy); box-shadow: 0 0 0 2px var(--rmd-navy); }
+    .nchip.tonight { background: #efe9f8; }
+    .head { background: #fff; border: 1px solid #e2e8ed; border-radius: 12px; padding: 14px; margin-top: 10px; }
+    .head h3 { margin: 0; font-size: 17px; color: var(--rmd-navy); }
+    .head .sub { color: var(--rmd-muted); font-size: 13px; margin-top: 2px; }
+    .head .tools { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn { font: 700 13px var(--font); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--rmd-navy); background: #fff; color: var(--rmd-navy); cursor: pointer; }
+    .btn.pri { background: var(--rmd-navy); color: #fff; }
+    .todo { background: #FFF6E5; border: 1px solid #F0C36D; border-radius: 12px; padding: 12px 14px; margin-top: 10px; font-size: 14px; }
+    .todo h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .4px; color: #7a4b00; }
+    .todo ul { margin: 0; padding-left: 18px; } .todo li { margin: 3px 0; }
+    .ok { background: #e6f4ea; border: 1px solid #a8d5b5; border-radius: 12px; padding: 12px 14px; margin-top: 10px; font-size: 14px; }
+    .rooms { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .room { background: #fff; border: 1px solid #e2e8ed; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+    .room b { font-size: 14px; }
+    .room.short { border-color: #b7410e; background: #fdf0ec; }
+    .room.part { border-color: #F0C36D; background: #FFF6E5; }
+    .person { background: #fff; border: 1px solid #e2e8ed; border-left: 5px solid #b7410e; border-radius: 10px; padding: 12px 14px; margin-top: 10px; }
+    .person.cov { border-left-color: #2e8b57; }
+    .person .nm { font-size: 15px; font-weight: 800; }
+    .person .nm small { font-weight: 400; color: var(--rmd-muted); font-size: 13px; }
+    .person .row { font-size: 13px; margin-top: 4px; line-height: 1.45; }
+    .person .reason { background: #f7f9fb; border-radius: 8px; padding: 7px 10px; margin-top: 6px; font-size: 13px; }
+    .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #e8edf1; color: #44525f; margin: 0 4px 2px 0; }
+    .tag.red { background: #fce8e6; color: #b7410e; } .tag.amber { background: #FFF1CC; color: #7a4b00; } .tag.green { background: #e6f4ea; color: #1e6b34; }
+    .cover { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .cover input[type=text] { flex: 1; min-width: 160px; font: 13px var(--font); padding: 6px 8px; border: 1px solid #cfd8e0; border-radius: 8px; }
+    details { background: #fff; border: 1px solid #e2e8ed; border-radius: 12px; padding: 10px 14px; margin-top: 10px; }
+    summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--rmd-navy); }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+    th { font-size: 11.5px; text-transform: uppercase; color: var(--rmd-muted); }
+    .scroll { overflow-x: auto; }
+  </style>
+</head>
+<body>
+<div class="top-bar">
+  <img src="assets/rmd-logo.png" alt="" onerror="this.style.display='none'">
+  <div class="top-bar-title">Instructor absences<span class="top-bar-sub">Who is expected not to be there</span></div>
+  <a class="top-bar-back" href="member-menu.html#evening">Back</a>
+</div>
+<div class="wrap">
+  <div id="state" class="msg">Checking access...</div>
+  <div id="main" class="hidden">
+    <div class="chips" id="nightChips"></div>
+    <div id="night"></div>
+    <details id="byPerson"><summary>Everyone who has sent a notice</summary><div class="scroll" id="byPersonBody"></div></details>
+    <details id="pastBox"><summary>Past evenings</summary><div id="pastBody"></div></details>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/absence-util.js"></script>
+<script>
+  initFirebase();
+  const U = window.RMD_ABS;
+  const COL = "instructor_absences";
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const $ = id => document.getElementById(id);
+
+  let me = { uid: null, name: "RMD faculty" };
+  let calendar = [];          // evenings from the course calendar
+  let notices = [];           // every active notice
+  let withdrawnCount = 0;
+  let teams = new Map();      // "course|room" -> Map(uid -> name)
+  let member = new Map();     // "course|uid" -> room
+  let sel = null;             // selected date
+
+  const tsDate = r => { const v = r.submittedAt; if (!v) return null; if (v.toDate) return v.toDate(); if (typeof v.seconds === "number") return new Date(v.seconds * 1000); const d = new Date(v); return isNaN(d) ? null : d; };
+  const today = () => U.iso(new Date());
+
+  // ── data ──
+  function buildTeams(cands) {
+    teams = new Map(); member = new Map();
+    cands.forEach(c => {
+      if (!c.course || !c.room) return;
+      const uids = c.instructorTeamUids || [], names = c.instructorTeamNames || [];
+      const key = c.course + "|" + c.room;
+      if (!teams.has(key)) teams.set(key, new Map());
+      uids.forEach((u, i) => { if (!teams.get(key).has(u)) teams.get(key).set(u, names[i] || "Instructor"); member.set(c.course + "|" + u, c.room); });
+    });
+  }
+  // The evenings we show: the calendar plus any other date somebody gave notice for.
+  function allNights() {
+    const m = new Map();
+    calendar.forEach(n => m.set(n.date, n));
+    notices.forEach(r => (r.nights || []).forEach(n => { if (!m.has(n.date)) m.set(n.date, { date: n.date, course: n.course || null, label: n.label || "Other date", kind: "other" }); }));
+    return Array.from(m.values()).sort((a, b) => a.date < b.date ? -1 : 1);
+  }
+  const outOn = date => notices.filter(r => (r.nightDates || []).includes(date));
+  // Latest notice per person gives their declared count; total includes the evenings in that notice.
+  function personTotals() {
+    const by = new Map();
+    notices.forEach(r => {
+      const key = r.uid || r.email; const t = by.get(key) || { key, name: r.name, role: r.role, email: r.email, rows: [], prior: 0 };
+      t.rows.push(r); by.set(key, t);
+    });
+    by.forEach(t => {
+      t.rows.sort((a, b) => ((tsDate(b) || 0) - (tsDate(a) || 0)));
+      const latest = t.rows[0]; t.name = latest.name; t.role = latest.role;
+      t.prior = Number(latest.priorAbsences) || 0;
+      t.total = t.prior + (latest.nights || []).length;
+      t.dates = Array.from(new Set(t.rows.flatMap(r => r.nightDates || []))).sort();
+    });
+    return by;
+  }
+
+  // ── view ──
+  function shortNight(n) { return n.label.replace(" teaching night", "").replace(" night", ""); }
+  function renderChips(nights) {
+    const t = today();
+    const list = nights.filter(n => n.date >= t);
+    if (!list.some(n => n.date === sel)) sel = (list.find(n => n.date === t) || list.find(n => outOn(n.date).length) || list[0] || {}).date || null;
+    $("nightChips").innerHTML = list.map(n => {
+      const c = outOn(n.date).length;
+      return `<button type="button" class="nchip${c ? " has" : ""}${n.date === t ? " tonight" : ""}${n.date === sel ? " on" : ""}" data-d="${n.date}"><span class="n">${c}</span><b>${esc(U.niceDate(n.date))}${n.date === t ? " (tonight)" : ""}</b><small>${esc(n.course ? n.course + ", " : "")}${esc(shortNight(n))}</small></button>`;
+    }).join("") || '<div class="msg">No upcoming evenings on the calendar.</div>';
+    $("nightChips").querySelectorAll(".nchip").forEach(b => b.onclick = () => { sel = b.dataset.d; render(); });
+  }
+
+  function roomState(night, totals) {
+    // rooms of the night's course where at least one team member is out
+    if (!night.course) return [];
+    const out = new Set(outOn(night.date).map(r => r.uid));
+    const res = [];
+    teams.forEach((team, key) => {
+      if (!key.startsWith(night.course + "|")) return;
+      const uids = Array.from(team.keys()); const gone = uids.filter(u => out.has(u));
+      if (!gone.length) return;
+      res.push({ room: key.split("|")[1], total: uids.length, out: gone.length, left: uids.length - gone.length, names: gone.map(u => team.get(u)) });
+    });
+    return res.sort((a, b) => a.left - b.left || a.room.localeCompare(b.room, "en", { numeric: true }));
+  }
+
+  function renderNight(night, totals) {
+    const rows = outOn(night.date);
+    const rs = roomState(night, totals);
+    const uncovered = rows.filter(r => !r.covered).length;
+    let h = `<div class="head"><h3>${esc(U.niceDate(night.date))}${night.date === today() ? " (tonight)" : ""}</h3><div class="sub">${esc(night.course ? night.course + ", " : "")}${esc(night.label)}</div>
+      <div style="margin-top:8px;font-size:15px"><b>${rows.length}</b> expected absent${rows.length ? ` &middot; <b>${uncovered}</b> without cover arranged` : ""}</div>
+      ${rows.length ? '<div class="tools"><button class="btn pri" id="copyBtn" type="button">Copy this list</button></div>' : ""}</div>`;
+    // suggestions
+    const sug = [];
+    rs.filter(x => x.left <= 1).forEach(x => sug.push(`<b>${esc(x.room)}</b> would have ${x.left === 0 ? "no instructor" : "only 1 instructor"} left (${x.out} of ${x.total} out). Ask Student Faculty to cover or move someone in.`));
+    rs.filter(x => x.left > 1).forEach(x => sug.push(`<b>${esc(x.room)}</b> is down ${x.out} of ${x.total}: ${esc(x.names.join(", "))}. Still workable, but check.`));
+    rows.filter(r => !member.get((night.course || "") + "|" + r.uid) && night.course).forEach(r => sug.push(`<b>${esc(r.name)}</b> is not on a room team for ${esc(night.course)}, so no room is affected. Check they are meant to be teaching.`));
+    rows.forEach(r => { const t = totals.get(r.uid || r.email); if (t && t.total >= U.REPEAT_AT) sug.push(`<b>${esc(r.name)}</b> has had ${t.total} absences including this one. Speak to their mentor.`); });
+    rows.forEach(r => { const hrs = U.noticeHours(tsDate(r), night.date); if (hrs !== null && hrs < U.SHORT_NOTICE_HOURS) sug.push(`<b>${esc(r.name)}</b> gave ${hrs < 0 ? "notice after the evening started" : "under 48 hours' notice"}.`); });
+    if (rows.length && sug.length) h += `<div class="todo"><h3>Suggested actions</h3><ul>${sug.map(s => `<li>${s}</li>`).join("")}</ul></div>`;
+    else if (rows.length) h += `<div class="ok">Every room keeps enough instructors. Nothing else flagged.</div>`;
+    else h += `<div class="ok">No absences notified for this evening.</div>`;
+    if (rs.length) h += `<div class="rooms">${rs.map(x => `<div class="room ${x.left <= 1 ? "short" : "part"}"><b>${esc(x.room)}</b><br>${x.left} of ${x.total} left</div>`).join("")}</div>`;
+    // people
+    rows.sort((a, b) => (a.covered ? 1 : 0) - (b.covered ? 1 : 0) || String(a.name).localeCompare(String(b.name)));
+    h += rows.map(r => {
+      const t = totals.get(r.uid || r.email) || {}; const room = night.course ? member.get(night.course + "|" + r.uid) : null;
+      const rt = room ? teams.get(night.course + "|" + room) : null; const sent = tsDate(r); const hrs = U.noticeHours(sent, night.date);
+      const tags = [];
+      if (room && rt) { const left = rt.size - Array.from(rt.keys()).filter(u => outOn(night.date).some(x => x.uid === u)).length; tags.push(`<span class="tag ${left <= 1 ? "red" : "amber"}">Room ${esc(room)}: ${left} of ${rt.size} left</span>`); }
+      else if (night.course) tags.push('<span class="tag">Not on a room team</span>');
+      if (hrs !== null && hrs < U.SHORT_NOTICE_HOURS) tags.push('<span class="tag red">Short notice</span>');
+      if (t.total >= U.REPEAT_AT) tags.push(`<span class="tag red">${t.total} absences</span>`); else if (t.total) tags.push(`<span class="tag">${t.total} absence${t.total === 1 ? "" : "s"} incl. this</span>`);
+      const other = (t.dates || []).filter(d => d !== night.date);
+      return `<div class="person${r.covered ? " cov" : ""}" data-id="${esc(r.id)}"><div class="nm">${esc(r.name)} <small>${esc(r.role || "")}</small></div>
+        <div class="row">${tags.join("")}</div>
+        <div class="reason">${esc(r.reason || "")}</div>
+        <div class="row">Sent ${sent ? esc(sent.toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : "-"}${hrs !== null ? ` (${hrs < 0 ? "after the evening started" : hrs < 48 ? Math.round(hrs) + " hours before" : Math.round(hrs / 24) + " days before"})` : ""} &middot; declared ${Number(r.priorAbsences) || 0} before this notice${other.length ? " &middot; also out: " + esc(other.map(U.niceDate).join(", ")) : ""}${r.email ? ' &middot; ' + esc(r.email) : ""}</div>
+        <div class="cover"><label><input type="checkbox" class="cv"${r.covered ? " checked" : ""}> Cover arranged</label><input type="text" class="cn" placeholder="Who is covering, or notes" value="${esc(r.coverNote || "")}" maxlength="300"><button class="btn sv" type="button">Save</button></div></div>`;
+    }).join("");
+    $("night").innerHTML = h;
+    const cb = $("copyBtn");
+    if (cb) cb.onclick = async () => {
+      const lines = rows.map(r => { const room = night.course ? member.get(night.course + "|" + r.uid) : null; return `${r.name} (${r.role || "?"}${room ? ", " + room : ""})${r.covered ? " - cover: " + (r.coverNote || "arranged") : ""}`; });
+      const text = `Expected absent ${U.niceDate(night.date)} (${night.label}): ` + lines.join("; ");
+      try { await navigator.clipboard.writeText(text); cb.textContent = "Copied"; } catch (e) { prompt("Copy this list:", text); }
+    };
+    $("night").querySelectorAll(".person").forEach(card => {
+      card.querySelector(".sv").onclick = async () => {
+        const id = card.dataset.id, covered = card.querySelector(".cv").checked, note = card.querySelector(".cn").value.trim();
+        const btn = card.querySelector(".sv"); btn.disabled = true; btn.textContent = "Saving...";
+        try {
+          await db.collection(COL).doc(id).update({ covered, coverNote: note, coveredByName: me.name, coveredAt: firebase.firestore.FieldValue.serverTimestamp() });
+          const r = notices.find(x => x.id === id); if (r) { r.covered = covered; r.coverNote = note; }
+          render();
+        } catch (e) { btn.disabled = false; btn.textContent = "Save"; alert("Could not save: " + e.message); }
+      };
+    });
+  }
+
+  function renderPeople(totals) {
+    const list = Array.from(totals.values()).sort((a, b) => b.total - a.total || String(a.name).localeCompare(String(b.name)));
+    $("byPersonBody").innerHTML = list.length ? `<table><tr><th>Name</th><th>Role</th><th>Absences incl. latest notice</th><th>Evenings notified</th></tr>${list.map(t => `<tr><td>${esc(t.name)}</td><td>${esc(t.role || "")}</td><td>${t.total >= U.REPEAT_AT ? '<span class="tag red">' + t.total + "</span>" : t.total}</td><td>${esc(t.dates.map(U.niceDate).join(", "))}</td></tr>`).join("")}</table>` + (withdrawnCount ? `<div class="hint" style="font-size:12px;color:var(--rmd-muted);margin-top:6px">${withdrawnCount} withdrawn notice${withdrawnCount === 1 ? "" : "s"} not counted.</div>` : "") : '<div class="hint" style="margin-top:8px">No notices yet.</div>';
+    $("byPerson").querySelector("summary").textContent = `Everyone who has sent a notice (${list.length})`;
+  }
+  function renderPast(nights) {
+    const t = today(); const past = nights.filter(n => n.date < t && outOn(n.date).length).reverse();
+    $("pastBody").innerHTML = past.length ? past.map(n => `<div style="margin-top:8px"><b>${esc(U.niceDate(n.date))}</b> <span class="tag">${esc(n.course ? n.course + ", " : "")}${esc(n.label)}</span><br>${outOn(n.date).map(r => esc(r.name)).join(", ")}</div>`).join("") : '<div class="hint" style="margin-top:8px">No past absences on record.</div>';
+  }
+
+  function render() {
+    const nights = allNights(); const totals = personTotals();
+    renderChips(nights);
+    const night = nights.find(n => n.date === sel);
+    if (night) renderNight(night, totals); else $("night").innerHTML = "";
+    renderPeople(totals); renderPast(nights);
+  }
+
+  // ── load ──
+  auth.onAuthStateChanged(async function (user) {
+    if (!user) { window.location.href = "signin.html"; return; }
+    me.uid = user.uid; me.name = user.displayName || user.email || "RMD faculty";
+    let allowed = false;
+    try {
+      const role = await resolveRole(user.uid, user.email || "");
+      const stu = await isStudentFaculty(user.email || "").catch(() => false);
+      const sen = await isSeniorFaculty(user.email || "").catch(() => false);
+      allowed = role === "director" || stu || sen;
+    } catch (e) {}
+    if (!allowed) { const s = $("state"); s.className = "msg err"; s.textContent = "This page is for RMD Directors, Student Faculty and Senior Faculty."; return; }
+    try { const p = await db.collection(COLLECTIONS.people).doc(user.uid).get(); if (p.exists && p.data().name) me.name = p.data().name; } catch (e) {}
+    try {
+      const [cs, ab, cands] = await Promise.all([
+        db.collection("config").doc("stage1_course_dates").get(),
+        db.collection(COL).get(),
+        db.collection(COLLECTIONS.stage1Candidates).get().catch(() => null)
+      ]);
+      calendar = U.absenceNights(cs.exists ? (cs.data().courses || []) : []);
+      const all = ab.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      notices = all.filter(r => r.status !== "withdrawn"); withdrawnCount = all.length - notices.length;
+      if (cands) buildTeams(cands.docs.map(d => d.data()));
+      $("state").classList.add("hidden"); $("main").classList.remove("hidden");
+      if (!cands) { const w = document.createElement("div"); w.className = "msg err"; w.style.marginBottom = "10px"; w.textContent = "Room teams could not be loaded, so rooms are not shown. Reload to try again."; $("main").prepend(w); }
+      render();
+    } catch (e) { const s = $("state"); s.className = "msg err"; s.textContent = "Could not load the absences: " + e.message; }
+  });
+</script>
+</body>
+</html>
