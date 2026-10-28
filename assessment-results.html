@@ -155,39 +155,79 @@ function degreeOf(raw, groupMode) {
 let COURSES = [], TESTS = [], DATA = {}, LOADED_AT = null, LOAD_ERRORS = [], QLAB = {};
 const UI = { test:false, course:"all", tab:"home", mode:"course", view:"chart", group:false };
 async function getDoc(path) { const [col, id] = path.split("/"); try { const s = await db.collection(col).doc(id).get(); return s.exists ? (s.data() || {}) : null; } catch (e) { return null; } }
-async function getCol(col, course) { try { const s = await db.collection(col).where("course", "==", course).get(); return s.docs.map(d => Object.assign({ id:d.id }, d.data())); } catch (e) { LOAD_ERRORS.push(col + " for " + course + ": " + (e.code || e.message || e)); return null; } }
+async function getAll(col) { try { const s = await db.collection(col).get(); return s.docs.map(d => Object.assign({ id:d.id }, d.data())); } catch (e) { LOAD_ERRORS.push(col + ": " + (e.code || e.message || e)); return null; } }
+// The London evening an attempt belongs to (before 5am counts as the evening before).
+function nightOf(iso) {
+  const d = new Date(iso); if (isNaN(d)) return "";
+  const p = {}; new Intl.DateTimeFormat("en-GB", { timeZone:"Europe/London", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", hourCycle:"h23" }).formatToParts(d).forEach(x => { p[x.type] = x.value; });
+  let t = p.year + "-" + p.month + "-" + p.day;
+  if (Number(p.hour) < 5) { const x = new Date(t + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() - 1); t = x.toISOString().slice(0, 10); }
+  return t;
+}
+// 28 Oct 2026 (Jon): results are counted by the NIGHT they happened, not by the course a person is on today.
+// Someone moved to a later course after failing still counts on the night they sat. Each attempt is placed on the
+// latest course night on or before the date it was saved. One row per person per night they were on that course.
+//   g  = where they stand now for that night (a later pass shows as "passed at attempt 3 or 4")
+//   gN = what happened on the night itself
+//   open = still needs action now   sup = failed again on a later night (counted there, not twice in All courses)
+function buildNights(allC, allA, list, isTest) {
+  const out = {}; list.forEach(m => { out[m.name] = { date:m.date || "", rows:[] }; });
+  if (!list.length) return out;
+  const docs = {}; allA.forEach(a => { docs[a.id] = a; });
+  const pool = allC.filter(c => isTest ? c.isTest === true : c.isTest !== true), byId = {}; pool.forEach(c => { byId[c.id] = c; });
+  // a catch-up night or repeat course makes a second record for the same person, linked to the first
+  const parent = {}, find = x => { while (parent[x] && parent[x] !== x) x = parent[x]; return x; };
+  pool.forEach(c => { parent[c.id] = c.id; });
+  pool.forEach(c => { [c.linkedCandidateId, c.catchupFrom && c.catchupFrom.id, c.addedFrom && c.addedFrom.id].forEach(o => { if (o && byId[o]) parent[find(c.id)] = find(o); }); });
+  const grp = {}; pool.forEach(c => { const r = find(c.id); (grp[r] = grp[r] || []).push(c.id); });
+  const dated = list.filter(m => m.date);
+  const nightFor = (iso, fb) => { const d = iso ? nightOf(iso) : ""; let hit = null; if (d) dated.forEach(m => { if (m.date <= d) hit = m; }); return hit ? hit.name : (fb && out[fb] ? fb : null); };
+  pool.forEach(c => {
+    const doc = docs[c.id] || null, own = (doc && doc.attempts) || {}, fb = (doc && doc.course) || c.course, mine = {};
+    Object.keys(own).forEach(k => { const r = own[k]; if (!r || !r.outcome) return; const n = nightFor(r.at, fb); if (n) { (mine[n] = mine[n] || {})[k] = r; } });
+    const all = {}; (grp[find(c.id)] || [c.id]).forEach(id => { const a = ((docs[id] || {}).attempts) || {}; Object.keys(a).forEach(k => { if (a[k] && a[k].outcome) all[k] = a[k]; }); });
+    const allKey = latestKey(all), names = new Set(Object.keys(mine)), off = {};
+    if (c.course && out[c.course]) names.add(c.course);
+    (Array.isArray(c.previousCourses) ? c.previousCourses : []).forEach(m => { const o = out[m && m.course]; if (o && o.date && String(m.at || "").slice(0, 10) >= o.date) { names.add(m.course); off[m.course] = true; } });
+    const ntNight = doc && doc.notThere && doc.notThere.flag ? nightFor(doc.notThere.at, fb) : null; if (ntNight) names.add(ntNight);
+    names.forEach(n => {
+      const at = mine[n] || {}, k = latestKey(at); let gN;
+      if (k) gN = at[k].outcome === "pass" ? (k === 1 ? "pass1" : (k === 2 ? "pass2" : "pass3")) : (k === 1 ? "due" : (k === 2 ? "retrain" : (k === 3 ? "leads" : "final")));
+      else if (ntNight === n || off[n] || (c.course === n && c.assessmentAbsent === true)) gN = "absent";
+      else gN = "none";
+      let g = gN, open = false, sup = false;
+      if (k) { if (allKey > k) { if (all[allKey].outcome === "pass") g = "pass3"; else sup = true; } else open = at[k].outcome !== "pass"; }
+      else if (gN === "absent") open = c.course === n;
+      out[n].rows.push({ c, doc, at, all, g, gN, open, sup, moved:(c.course && c.course !== n) ? c.course : "" });
+    });
+  });
+  return out;
+}
 async function load() {
   LOAD_ERRORS = [];
   const cfg = await getDoc("config/stage1_course_dates");
   const allC = ((cfg && cfg.courses) || []).filter(c => c.name).sort((a, b) => String(a.date || "9") < String(b.date || "9") ? -1 : 1);
   COURSES = allC.filter(c => !c.test); TESTS = S.isDir ? allC.filter(c => c.test) : [];
-  const pairs = await Promise.all(COURSES.concat(TESTS).map(async c => [c.name, await Promise.all([getCol("stage1_candidates", c.name), getCol("stage1_assessments", c.name)])]));
+  const [cs, as] = await Promise.all([getAll("stage1_candidates"), getAll("stage1_assessments")]);
   try { const f = await getDoc("config/stage1_assessment_form"); QLAB = {}; ((f && f.questions) || []).forEach(q => { if (q && q.id) QLAB[q.id] = q.label || q.id; }); } catch (e) {}
-  DATA = {}; pairs.forEach(([name, [cands, ass]]) => { DATA[name] = { cands:cands || [], ass:ass || [] }; });
+  DATA = Object.assign({}, buildNights(cs || [], as || [], COURSES, false), buildNights(cs || [], as || [], TESTS, true));
   LOADED_AT = new Date();
 }
 
 // ---------- analysis ----------
 function latestKey(a) { const ks = Object.keys(a || {}).filter(k => a[k] && a[k].outcome).map(Number).sort((x, y) => y - x); return ks.length ? ks[0] : null; }
-function groupOf(c, doc) {
-  const at = (doc && doc.attempts) || {}, k = latestKey(at);
-  if (k) { const o = at[k].outcome; if (o === "pass") return k === 1 ? "pass1" : (k === 2 ? "pass2" : "pass3"); return k === 1 ? "due" : (k === 2 ? "retrain" : (k === 3 ? "leads" : "final")); }
-  if ((doc && doc.notThere && doc.notThere.flag) || c.assessmentAbsent === true) return "absent";
-  return "none";
-}
+const REFER = ["due","retrain","leads","final"];
 function scopeOf(names) {
-  const people = [], attempts = [];
+  const people = [], rows = [], attempts = [];
   names.forEach(n => {
     const d = DATA[n]; if (!d) return;
-    const meta = COURSES.concat(TESTS).find(c => c.name === n) || {}, docs = {}; d.ass.forEach(a => { docs[a.id] = a; });
-    d.cands.forEach(c => {
-      const doc = docs[c.id] || null, p = { c, doc, course:n, date:meta.date || "", g:groupOf(c, doc), degree:degreeOf(c.degree, UI.group), degreeExact:degreeOf(c.degree, false) };
-      people.push(p);
-      const at = (doc && doc.attempts) || {};
-      Object.keys(at).forEach(k => { if (at[k] && at[k].outcome) attempts.push({ p, n:Number(k), rec:at[k] }); });
+    d.rows.forEach(r => {
+      const doc = Object.assign({}, r.doc || {}, { attempts:r.all }), p = { c:r.c, doc, course:n, date:d.date, g:r.g, gN:r.gN, open:r.open, sup:r.sup, moved:r.moved, degree:degreeOf(r.c.degree, UI.group), degreeExact:degreeOf(r.c.degree, false) };
+      rows.push(p); if (!r.sup) people.push(p);   // failed again on a later night: listed under that night, not twice
+      Object.keys(r.at).forEach(k => attempts.push({ p, n:Number(k), rec:r.at[k] }));
     });
   });
-  return { people, attempts };
+  return { people, rows, attempts };
 }
 const scope = () => scopeOf(UI.course === "all" ? COURSES.map(c => c.name) : [UI.course]);
 function counts(people) { const o = {}; GROUPS.forEach(g => { o[g[0]] = 0; }); people.forEach(p => { o[p.g]++; }); return o; }
@@ -259,7 +299,7 @@ function historyText(doc) { const at = (doc && doc.attempts) || {}; return Objec
 function csvCell(v) { let s = String(v == null ? "" : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
 function sheetRows(people) {
   const sorted = people.slice().sort((a, b) => (SEV[a.g] - SEV[b.g]) || String(a.degreeExact).localeCompare(String(b.degreeExact)) || String(a.c.name).localeCompare(String(b.c.name)));
-  return [["Name","Email","Degree","Course","Assessment date","Result","Attempts","Parts not passed","Recommendation"]].concat(sorted.map(p => { const at = (p.doc && p.doc.attempts) || {}, k = latestKey(at); return [p.c.name || "", p.c.email || "", p.degreeExact, p.course, p.date, GLABEL[p.g], historyText(p.doc), (k && at[k].outcome === "refer") ? partsText(at[k]) : "", NEXT_STEPS[p.g]]; }));
+  return [["Name","Email","Degree","Course","Now on","Assessment date","Result","Attempts","Parts not passed","Recommendation"]].concat(sorted.map(p => { const at = (p.doc && p.doc.attempts) || {}, k = latestKey(at); return [p.c.name || "", p.c.email || "", p.degreeExact, p.course, p.moved || p.course, p.date, GLABEL[p.g] + ((p.g === "pass3" && REFER.indexOf(p.gN) >= 0) ? " (since the night)" : ""), historyText(p.doc), (k && at[k].outcome === "refer") ? partsText(at[k]) : "", NEXT_STEPS[p.g]]; }));
 }
 function download(name, rows) { const url = URL.createObjectURL(new Blob(["﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type:"text/csv;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); window.__lastDownload = { name, rows }; }
 const slug = s => String(s).replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -267,20 +307,43 @@ const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone:"Europe/Londo
 const courseSlug = () => slug(UI.course === "all" ? "all_courses" : UI.course);
 
 // ---------- screens ----------
+const pct = (n, d) => d ? Math.round(100 * n / d) : null, pcs = v => v === null ? "-" : v + "%";
+// What happened on the night itself: everyone who sat any attempt, counted once, passed if they had passed by the end of the night.
+function nightStats(rows, attempts) {
+  const g = {}; GROUPS.forEach(x => { g[x[0]] = 0; }); rows.forEach(p => { g[p.gN]++; });
+  const passed = g.pass1 + g.pass2 + g.pass3, not = g.due + g.retrain + g.leads + g.final;
+  return { g, sat:passed + not, passed, not, j:journey(attempts), sittings:attempts.length, sitPass:attempts.filter(a => a.rec.outcome === "pass").length };
+}
 function viewHome() {
-  const sc = scope(), N = sc.people.length, f = five(sc.people), g = counts(sc.people), j = journey(sc.attempts);
-  const assessed = N - g.none - g.absent, p1 = j[0][0] ? Math.round(100 * j[0][1] / j[0][0]) : null;
-  let h = `<div class="tiles"><div class="tile good"><b>${p1 === null ? "-" : p1 + "%"}</b><span>passed first time (${j[0][1]} of ${j[0][0]} first sits)</span></div><div class="tile good"><b>${f.pass1 + f.pass2}</b><span>have passed in the end${assessed ? " (" + Math.round(100 * (f.pass1 + f.pass2) / assessed) + "% of those assessed)" : ""}</span></div><div class="tile ${f.fu ? "act" : "neu"}"><b>${f.fu}</b><span>need a follow-up</span></div><div class="tile neu"><b>${f.absent + f.none}</b><span>not there (${f.absent}) or not yet assessed (${f.none})</span></div></div>`;
+  const sc = scope(), N = sc.people.length, f = five(sc.people), g = counts(sc.people), st = nightStats(sc.rows, sc.attempts), j = st.j;
+  const openRefer = sc.people.filter(p => p.open && REFER.indexOf(p.g) >= 0).length, since = sc.rows.filter(p => p.g === "pass3" && REFER.indexOf(p.gN) >= 0).length;
+  const moved = sc.rows.filter(p => p.moved).length, movedAbs = sc.rows.filter(p => p.g === "absent" && p.moved).length;
+  const tile = (cls, big, txt) => `<div class="tile ${cls}"><b>${big}</b><span>${txt}</span></div>`;
+  let h = `<div class="tiles">` +
+    tile("good", pcs(pct(st.passed, st.sat)), `passed on the night: ${st.passed} of ${st.sat} who sat (any attempt)`) +
+    tile("good", pcs(pct(j[0][1], j[0][0])), `passed first time: ${j[0][1]} of ${j[0][0]} first sits`) +
+    tile(st.not ? "act" : "neu", String(st.not), `did not pass on the night${st.sat ? " (" + pct(st.not, st.sat) + "% of those who sat)" : ""}`) +
+    tile(openRefer ? "act" : "neu", String(openRefer), `still need a follow-up${since ? " (" + since + " more passed since)" : ""}`) + `</div>` +
+    `<div class="tiles">` +
+    tile(g.final ? "act" : "neu", String(g.final), "failed: not passed after 4 attempts") +
+    tile("neu", String(g.absent), "not there" + (movedAbs ? " (" + movedAbs + " already moved to a new course)" : "")) +
+    tile("neu", String(g.none), "not yet assessed") +
+    tile("neu", String(moved), "now on a later course") + `</div>`;
   if (!N) return h + `<div class="empty2">Nobody is on ${UI.course === "all" ? "any course" : "this course"} yet.</div>`;
   if (!j[0][0] && !g.absent) return h + `<div class="empty2">No results have been recorded yet. This page fills in as the assessment night results are saved.</div>`;
   const W = [], M = mistakes(sc.attempts), A = assessorStats(sc.attempts), worth = A.rows.filter(r => r.flag);
-  if (f.fu) W.push(["r", plural(f.fu, "person needs", "people need") + " a follow-up", "Open the follow-up board for who owns each one.", "follow"]);
+  if (openRefer) W.push(["r", plural(openRefer, "person needs", "people need") + " a follow-up", "Open the follow-up board for who owns each one.", "follow"]);
   if (g.leads + g.final) W.push(["r", plural(g.leads + g.final, "person has", "people have") + " not passed at attempt 3 or 4", "The programme lead needs telling.", "follow"]);
   if (M.steps[0]) W.push(["", "Most missed step: " + afterCode(M.steps[0].t), M.steps[0].n + " of " + plural(M.first, "first sit", "first sits") + " (" + Math.round(M.steps[0].pct) + "%). See what goes wrong.", "wrong"]);
   if (worth.length) W.push(["a", plural(worth.length, "assessor differs", "assessors differ") + " from the rest", "Worth a conversation, not a verdict. See assessors.", "assess"]);
   if (g.absent) W.push(["", plural(g.absent, "person was", "people were") + " not there", "They move to a new course unless a Director has agreed an exception.", "follow"]);
   if (W.length) h += `<div class="sec">Worth a look</div><div class="wls">${W.map(w => `<button class="wl" data-go="${w[3]}"><i class="${w[0]}"></i><span><b>${esc(w[1])}</b><small>${esc(w[2])}</small></span></button>`).join("")}</div>`;
-  h += `<div class="card"><h2>Where everyone ended up</h2><p class="cap">${plural(N, "candidate", "candidates")}, one result each.</p><div id="c1"></div>${legend()}</div>`;
+  const row = (label, n, p) => `<tr><td>${label}</td><td>${n}</td><td>${p}</td><td>${n ? pcs(pct(p, n)) : "-"}</td></tr>`;
+  h += `<div class="card"><h2>Pass rates</h2><p class="cap">Everyone who sat counts once, as passed if they had passed by the end of the night. First attempt is attempt 1 only. All sittings adds up every assessment, retests included.</p><div class="tw"><table><thead><tr><th></th><th>Sat</th><th>Passed</th><th>Rate</th></tr></thead><tbody>` +
+    row("Everyone who sat on the night (any attempt)", st.sat, st.passed) + row("First attempt", j[0][0], j[0][1]) + row("Retest (attempt 2)", j[1][0], j[1][1]) + row("Attempt 3 or 4", j[2][0] + j[3][0], j[2][1] + j[3][1]) + row("All sittings added up", st.sittings, st.sitPass) + `</tbody></table></div></div>`;
+  h += `<div class="card"><h2>Did not pass on the night</h2><p class="cap">${plural(st.not, "person", "people")} of ${st.sat} who sat. Where each one stopped.</p><div class="tw"><table><tbody>` +
+    [["Attempt 1 not passed, no retest recorded", st.g.due], ["Retest (attempt 2) not passed: awaiting retraining", st.g.retrain], ["Attempt 3 not passed: back to degree leads", st.g.leads], ["Attempt 4 not passed: failed", st.g.final]].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("") + `</tbody></table></div></div>`;
+  h += `<div class="card"><h2>Where everyone ended up</h2><p class="cap">${UI.course === "all" ? plural(N, "place", "places") + " across all courses. Someone who sat on two nights counts on each." : plural(N, "person", "people") + " on this course night, including anyone moved to a later course afterwards."}</p><div id="c1"></div>${legend()}</div>`;
   h += `<div class="card"><h2>Pathway</h2><p class="cap">Who sat each attempt, and what happened.</p><div id="c2"></div></div>`;
   return h;
 }
@@ -298,15 +361,16 @@ function drawHome() {
   c2.appendChild(s);
 }
 
+const laneList = (sc, k) => sc.people.filter(p => p.open && p.g === k);
 function laneDetail(l) {
-  const sc = scope(), ppl = sc.people.filter(p => p.g === l.k), by = {}; ppl.forEach(p => { by[p.degree] = (by[p.degree] || 0) + 1; });
-  const list = Object.keys(by).map(k => [k, by[k]]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  det("Follow-up > " + l.t, `<h3>${esc(l.t)}</h3><div class="big">${ppl.length}<small> ${ppl.length === 1 ? "person" : "people"}</small></div><div class="chips"><span class="chip a">Owner: ${esc(l.o)}</span></div><h3 style="font-size:12.5px;margin-top:10px">By degree</h3>${list.length ? hbars(list) : '<div class="nx">Nobody.</div>'}<div class="nx"><b>Next:</b> ${esc(NEXT_STEPS[l.k])}</div>` + (canDl() ? (ppl.length ? `<button class="btn" id="dlBtn">Download this list (CSV)</button>` : "") : `<div class="nx">Names and emails: Directors only.</div>`));
+  const sc = scope(), ppl = laneList(sc, l.k), by = {}; ppl.forEach(p => { by[p.degree] = (by[p.degree] || 0) + 1; });
+  const list = Object.keys(by).map(k => [k, by[k]]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])), mv = ppl.filter(p => p.moved).length;
+  det("Follow-up > " + l.t, `<h3>${esc(l.t)}</h3><div class="big">${ppl.length}<small> ${ppl.length === 1 ? "person" : "people"}</small></div><div class="chips"><span class="chip a">Owner: ${esc(l.o)}</span>${mv ? `<span class="chip">${mv} already on a later course</span>` : ""}</div><h3 style="font-size:12.5px;margin-top:10px">By degree</h3>${list.length ? hbars(list) : '<div class="nx">Nobody.</div>'}<div class="nx"><b>Next:</b> ${esc(NEXT_STEPS[l.k])}</div>` + (canDl() ? (ppl.length ? `<button class="btn" id="dlBtn">Download this list (CSV)</button>` : "") : `<div class="nx">Names and emails: Directors only.</div>`));
   const b = $("dlBtn"); if (b) b.onclick = () => download("RMD_followup_" + slug(l.k) + "_" + courseSlug() + "_" + todayIso() + ".csv", sheetRows(ppl));
 }
 function viewFollow() {
-  const sc = scope(), g = counts(sc.people);
-  let h = `<div class="card"><h2>Who needs action</h2><p class="cap">Each box is a group of people, who acts, and what happens next. Click one for the detail.</p><div class="lanes">${LANES.map(l => `<button class="lane${g[l.k] ? "" : " zero"}" data-lane="${l.k}"><div class="n">${g[l.k]}</div><div class="t">${esc(l.t)}</div><div class="o">${esc(l.o)}</div></button>`).join("")}</div></div>`;
+  const sc = scope(), since = sc.rows.filter(p => p.g === "pass3" && REFER.indexOf(p.gN) >= 0).length;
+  let h = `<div class="card"><h2>Who needs action</h2><p class="cap">Each box is a group of people who still need something, who acts, and what happens next. Click one for the detail.${since ? " " + plural(since, "person who did not pass has", "people who did not pass have") + " since passed and " + (since === 1 ? "is" : "are") + " not listed." : ""}</p><div class="lanes">${LANES.map(l => { const n = laneList(sc, l.k).length; return `<button class="lane${n ? "" : " zero"}" data-lane="${l.k}"><div class="n">${n}</div><div class="t">${esc(l.t)}</div><div class="o">${esc(l.o)}</div></button>`; }).join("")}</div></div>`;
   if (canDl()) {
     const dm = {}; sc.people.forEach(p => { (dm[p.degreeExact] || (dm[p.degreeExact] = [])).push(p); }); const keys = Object.keys(dm).sort();
     h += `<div class="card"><h2>Spreadsheets for degree leads</h2><p class="cap">One file per degree for ${UI.course === "all" ? "all courses" : esc(UI.course)}: name, email, result group, attempts, sections not passed, and what happens next. They hold names and email addresses, so send them only to the degree lead.</p>` +
@@ -386,10 +450,10 @@ function viewCourses() {
 function drawCourses() {
   const c5 = $("c5"); if (!c5) return;
   let rows;
-  if (UI.mode === "course") rows = COURSES.map(c => ({ label:c.name, people:scopeOf([c.name]).people }));
+  if (UI.mode === "course") rows = COURSES.map(c => { const sc = scopeOf([c.name]); return { label:c.name, people:sc.people, st:nightStats(sc.rows, sc.attempts) }; });
   else { const dm = {}; scope().people.forEach(p => { (dm[p.degree] || (dm[p.degree] = [])).push(p); }); rows = Object.keys(dm).sort().map(k => ({ label:k, people:dm[k] })); }
   if (!rows.length || !rows.some(r => r.people.length)) c5.innerHTML = `<div class="empty2" style="margin:0">Nobody here yet.</div>`;
-  else if (UI.view === "table") c5.innerHTML = `<div class="tw"><table><thead><tr><th>${UI.mode === "course" ? "Course" : "Degree"}</th><th>People</th><th>Passed first time</th><th>Passed later</th><th>Follow-up</th><th>Not there</th><th>Not yet</th></tr></thead><tbody>${rows.map(r => { const f = five(r.people); return `<tr><td>${esc(r.label)}</td><td>${r.people.length}</td><td>${f.pass1}</td><td>${f.pass2}</td><td>${f.fu}</td><td>${f.absent}</td><td>${f.none}</td></tr>`; }).join("")}</tbody></table></div>`;
+  else if (UI.view === "table") c5.innerHTML = `<div class="tw"><table><thead><tr><th>${UI.mode === "course" ? "Course" : "Degree"}</th><th>People</th><th>Passed first time</th><th>Passed later</th><th>Follow-up</th><th>Not there</th><th>Not yet</th>${UI.mode === "course" ? "<th>Passed on the night</th><th>First attempt</th>" : ""}</tr></thead><tbody>${rows.map(r => { const f = five(r.people); return `<tr><td>${esc(r.label)}</td><td>${r.people.length}</td><td>${f.pass1}</td><td>${f.pass2}</td><td>${f.fu}</td><td>${f.absent}</td><td>${f.none}</td>${r.st ? `<td>${pcs(pct(r.st.passed, r.st.sat))}</td><td>${pcs(pct(r.st.j[0][1], r.st.j[0][0]))}</td>` : ""}</tr>`; }).join("")}</tbody></table></div>`;
   else c5.appendChild(stackBars(rows.map(r => { const f = five(r.people); return { label:r.label, segs:FIVE.map(x => [f[x[0]], x[2]]), onClick:() => det((UI.mode === "course" ? "Course" : "Degree") + " > " + r.label, `<h3>${esc(r.label)}</h3><div class="big">${r.people.length}<small> people</small></div><div style="margin-top:8px">${FIVE.map(x => `<div class="hb"><span>${esc(x[1])}</span><span class="t"><i style="width:${(100 * f[x[0]] / Math.max(1, r.people.length)).toFixed(0)}%;background:${x[2]}"></i></span><b>${f[x[0]]}</b></div>`).join("")}</div>`) }; }), 640));
   const c6 = $("c6"); if (!c6) return;
   const pts = COURSES.map(c => { const j = journey(scopeOf([c.name]).attempts)[0]; return j[0] ? { n:c.name, r:Math.round(100 * j[1] / j[0]) } : null; }).filter(Boolean);
