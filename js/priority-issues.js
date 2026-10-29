@@ -223,17 +223,38 @@
   }
 
   // ── Instructor concerns: picker list, flag, update ──
-  async function loadInstructors(db) {
-    var roles = [(typeof ROLES !== "undefined" && ROLES.INSTRUCTOR) || "instructor", (typeof ROLES !== "undefined" && ROLES.ASSESSOR) || "assessor"], out = [], seen = {};
-    for (var i = 0; i < roles.length; i++) {
-      var snap = await db.collection("people").where("role", "==", roles[i]).get();
-      snap.forEach(function (d) {
-        if (seen[d.id]) return; seen[d.id] = true; var x = d.data();
-        var nm = x.preferredName ? (x.preferredName + " " + String(x.name || "").split(" ").slice(1).join(" ")).trim() : (x.name || "");
-        out.push({ id: d.id, name: x.name || nm || x.email || "", email: x.email || "", role: x.role, roleLabel: roles[i] === roles[0] ? "Instructor" : "Assessor / Senior Instructor" });
-      });
+  // Everyone with an instructor or assessor role; with more=true also instructor trainers, ITCs, assessor faculty and faculty.
+  // Each role is read on its own, so one refused read does not hide the rest. Errors are returned on list.errs.
+  async function loadInstructors(db, more) {
+    var R_ = (typeof ROLES !== "undefined") ? ROLES : {};
+    var defs = [[R_.INSTRUCTOR || "instructor", "Instructor"], [R_.ASSESSOR || "assessor", "Assessor / Senior Instructor"]];
+    if (more) defs = defs.concat([[R_.FULL_INSTRUCTOR || "full-instructor", "Instructor Trainer"], [R_.ITC || "itc", "Instructor Trainer Candidate"], [R_.ASSESSOR_FACULTY || "assessor-faculty", "Assessor Faculty"], [R_.FACULTY || "faculty", "Faculty"]]);
+    var out = [], seen = {}, errs = [];
+    for (var i = 0; i < defs.length; i++) {
+      try {
+        var snap = await db.collection("people").where("role", "==", defs[i][0]).get();
+        snap.forEach(function (d) {
+          if (seen[d.id]) return; seen[d.id] = true; var x = d.data();
+          var nm = x.name || ((x.preferredName || "") + " " + (x.passportLastName || "")).trim() || x.email || "";
+          out.push({ id: d.id, name: nm, email: x.email || "", role: x.role, roleLabel: defs[i][1] });
+        });
+      } catch (e) { errs.push(defs[i][1] + " list: " + (e.code || e.message || "error")); }
     }
+    // The MOU roster lists every instructor, including candidates who have no login or people record. Directors only (others are refused, ignored).
+    try {
+      var have = {}; out.forEach(function (p) { if (p.email) have[p.email.toLowerCase()] = true; });
+      var okRoles = more ? null : { "instructor": 1, "senior instructor": 1, "assessor": 1 };
+      var rs = await db.collection("mou_roster").get();
+      rs.forEach(function (d) {
+        var x = d.data(), em = String(x.email || d.id || "").toLowerCase(), rl = String(x.role || "").toLowerCase();
+        if (!em || have[em] || !x.name) return;
+        if (okRoles && !okRoles[rl]) return;
+        have[em] = true;
+        out.push({ id: "roster:" + em, name: x.name, email: em, role: "roster", roleLabel: x.role || "Instructor" });
+      });
+    } catch (e) { /* not a Director: the people list alone is used */ }
     out.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    out.errs = errs;
     return out;
   }
   function isoNow() { return new Date().toISOString(); }

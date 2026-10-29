@@ -26,9 +26,16 @@
     .btn2.pri { background:var(--rmd-navy); border-color:var(--rmd-navy); color:#fff; }
     .btn2:disabled { opacity:.45; cursor:default; }
     section.sec { margin:0 0 18px; }
-    section.sec > h3 { margin:0 0 6px; font-size:15px; color:var(--rmd-navy); display:flex; gap:8px; align-items:center; }
-    section.sec > h3 .n { font-size:12px; background:#b7410e; color:#fff; border-radius:12px; padding:2px 9px; }
-    section.sec > h3 .n.zero { background:#e6f4ea; color:#1a6e31; }
+    section.sec > details { background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.08); padding:0 12px; }
+    section.sec > details[open] { padding-bottom:10px; }
+    section.sec > details > summary { cursor:pointer; padding:10px 0; list-style:none; }
+    section.sec > details > summary::-webkit-details-marker { display:none; }
+    section.sec > details > summary::before { content:"\25B8"; color:var(--rmd-muted); margin-right:8px; display:inline-block; }
+    section.sec > details[open] > summary::before { content:"\25BE"; }
+    section.sec h3 { margin:0; font-size:15px; color:var(--rmd-navy); display:inline-flex; gap:8px; align-items:center; }
+    section.sec h3 .n { font-size:12px; background:#b7410e; color:#fff; border-radius:12px; padding:2px 9px; }
+    section.sec h3 .n.zero { background:#e6f4ea; color:#1a6e31; }
+    section.sec h3 .n.quiet { background:#fff3cd; color:#856404; }
     .item { background:#fff; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,.1); padding:12px 14px; margin:0 0 10px; border-left:5px solid #b7410e; }
     .item .nm { font-weight:700; font-size:15px; color:var(--rmd-navy); }
     .item .sub { font-size:12.5px; color:var(--rmd-muted); margin:2px 0 6px; }
@@ -100,6 +107,7 @@
 <script src="js/opis-util.js"></script>
 <script src="js/priority-issues.js"></script>
 <script>
+initFirebase();
 const $ = id => document.getElementById(id);
 const esc = v => (v == null ? "" : String(v)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const P = window.RMD_PRIORITY;
@@ -113,8 +121,9 @@ const SECTIONS = [
   ["repeat", "Repeat absences", "Absent from more than one course."],
   ["instabs", "Instructor absences needing action", "Short notice or repeat absence for an evening still to come, with no cover arranged."]
 ];
+const OPEN = {};
 let ME = { uid: "", name: "", isDirector: false }, R = null, openKey = null, openMode = null, busy = false;
-const FL = { list: null, sel: null, loading: false };
+const FL = { list: null, sel: null, loading: false, more: false };
 
 auth.onAuthStateChanged(async function (user) {
   if (!user) { window.location.href = "signin.html"; return; }
@@ -153,8 +162,9 @@ function render() {
   $("sections").innerHTML = SECTIONS.map(([t, title, help]) => {
     const list = by(t), shown = t === "iconcern" ? R.items.filter(x => x.type === t && !x.closed) : list;
     const quiet = shown.length - list.length;
-    return `<section class="sec"><h3>${esc(title)} <span class="n ${list.length ? "" : "zero"}">${list.length}</span></h3><p class="hint">${esc(help)}${quiet ? ` ${quiet} more under review, not yet due.` : ""}</p>` +
-      (shown.length ? shown.map(card).join("") : `<div class="empty">None. Well done.</div>`) + `</section>`;
+    const isOpen = OPEN[t] !== undefined ? OPEN[t] : shown.length > 0;
+    return `<section class="sec"><details ${isOpen ? "open" : ""} ontoggle="OPEN['${t}']=this.open"><summary><h3>${esc(title)} <span class="n ${list.length ? "" : (quiet ? "quiet" : "zero")}">${list.length}</span>${quiet ? ` <span class="n quiet">${quiet} under review</span>` : ""}</h3></summary><p class="hint">${esc(help)}${quiet ? ` ${quiet} more under review, not yet due.` : ""}</p>` +
+      (shown.length ? shown.map(card).join("") : `<div class="empty">None. Well done.</div>`) + `</details></section>`;
   }).join("");
   const done = R.items.filter(x => x.closed);
   $("doneBox").style.display = done.length ? "" : "none";
@@ -325,24 +335,40 @@ async function toggleFlag(force) {
   buildFlag();
   if (!FL.list && !FL.loading) {
     FL.loading = true; $("fRes") && ($("fRes").innerHTML = '<span class="hint">Loading instructors…</span>');
-    try { FL.list = await P.loadInstructors(db); } catch (e) { FL.list = []; $("fMsg").textContent = "Could not load the instructor list (" + (e.code || e.message) + ")."; }
+    try { FL.list = await P.loadInstructors(db, FL.more); } catch (e) { FL.list = []; FL.list.errs = [(e.code || e.message || "error")]; }
     FL.loading = false;
   }
   pickFilter();
 }
 function buildFlag() {
   FL.sel = null;
-  $("fWho").innerHTML = `<input type="search" id="fq" placeholder="Start typing a name" oninput="pickFilter()" autocomplete="off"><div class="pick" id="fRes"></div><div id="fChosen"></div>`;
+  $("fWho").innerHTML = `<input type="search" id="fq" placeholder="Start typing a name" oninput="pickFilter()" autocomplete="off"><div class="pick" id="fRes"></div><div id="fErr"></div>` +
+    `<label class="tick"><input type="checkbox" id="fMore" ${FL.more ? "checked" : ""} onchange="moreRoles(this.checked)"> Also search instructor trainers, ITCs and faculty</label><div id="fChosen"></div>`;
   $("fSrc").innerHTML = P.INSTR_SOURCES.map(([k, l]) => `<label class="opt"><input type="radio" name="src" value="${esc(k)}" onchange="flagCheck()"> ${esc(l)}</label>`).join("");
   $("fWhy").innerHTML = P.INSTR_REASONS.map(([k, l]) => `<label class="opt"><input type="checkbox" class="fr" value="${esc(k)}" onchange="flagCheck()"> ${esc(l)}</label>`).join("");
   $("fWhat").value = ""; $("fDup").innerHTML = ""; $("fMsg").textContent = ""; flagCheck();
 }
+async function moreRoles(on) {
+  FL.more = !!on; FL.list = null; $("fRes").innerHTML = '<span class="hint">Loading…</span>';
+  try { FL.list = await P.loadInstructors(db, FL.more); } catch (e) { FL.list = []; FL.list.errs = [(e.code || e.message || "error")]; }
+  pickFilter();
+}
 function pickFilter() {
-  const res = $("fRes"); if (!res || FL.sel) return;
-  const q = ($("fq").value || "").trim().toLowerCase();
+  const res = $("fRes"); if (!res || FL.sel || !$("fq")) return;
+  const q = ($("fq").value || "").trim(), ql = q.toLowerCase();
   if (!FL.list) return;
-  const m = FL.list.filter(p => !q || p.name.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)).slice(0, 12);
-  res.innerHTML = m.length ? m.map(p => `<button type="button" onclick="pickWho('${esc(p.id)}')">${esc(p.name)} <span style="color:var(--rmd-muted);font-size:11px;">${esc(p.roleLabel)}</span></button>`).join("") : `<span class="hint">${FL.list.length ? "No match." : "No instructors found."}</span>`;
+  const m = FL.list.filter(p => !ql || p.name.toLowerCase().includes(ql) || p.email.toLowerCase().includes(ql)).slice(0, 12);
+  $("fErr").innerHTML = (FL.list.errs || []).length ? `<div class="err">Could not read part of the people list: ${FL.list.errs.map(esc).join("; ")}. You can still type a name below.</div>` : "";
+  res.innerHTML = (m.length ? m.map(p => `<button type="button" onclick="pickWho('${esc(p.id)}')">${esc(p.name)} <span style="color:var(--rmd-muted);font-size:11px;">${esc(p.roleLabel)}</span></button>`).join("")
+    : `<span class="hint">${FL.list.length ? "No match in the people list." : "Nobody with that role found in the people list."}</span>`) +
+    (q.length >= 3 ? `<button type="button" onclick="pickTyped()" style="border-style:dashed;">Use "${esc(q)}" as typed</button>` : "");
+}
+function pickTyped() {
+  const q = $("fq").value.trim(); if (q.length < 3) return;
+  FL.list = FL.list || [];
+  const id = "typed:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  if (!FL.list.find(p => p.id === id)) FL.list.push({ id, name: q, email: "", role: "typed", roleLabel: "Typed name" });
+  pickWho(id);
 }
 function pickWho(id) {
   FL.sel = FL.list.find(p => p.id === id) || null;
