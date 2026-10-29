@@ -75,7 +75,18 @@
   </div>
 
   <div class="card">
-    <div class="card-header">Choose a course and candidates</div>
+    <div class="card-header">Step 1: Pull passes from assessment night</div>
+    <div class="card-body">
+      <p class="hint" style="margin-top:0;">Marks everyone who passed on assessment night as <strong>Passed</strong>, using the results already saved in the hub (passing at attempt 1, 2 or later all count). Nothing is saved until you check the list and confirm. Do this once the results for the course are final, then use Step 2.</p>
+      <div class="toolbar">
+        <select id="pullCourse" style="max-width:340px;"><option value="">Loading courses…</option></select>
+        <button class="btn secondary" id="pullCheckBtn" onclick="pullCheck()">Check results</button>
+      </div>
+      <div id="pullWrap"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">Step 2: Choose a course and candidates</div>
     <div class="card-body">
       <div class="toolbar">
         <select id="courseSelect" onchange="renderTable()" style="max-width:340px;"><option value="">Loading courses…</option></select>
@@ -83,7 +94,8 @@
         <button class="btn secondary" onclick="selectNone()">Clear selection</button>
         <span id="countLine" class="hint" style="margin:0;"></span>
       </div>
-      <p class="hint">Only candidates marked <strong>Passed</strong> on the Stage 1 assessment are listed. The date on the form is the course date set in Settings. "Ready" means: passed, has OPIS ratings, nothing flagged, and a year of study. You can edit the year and the supporting statement for anyone before generating.</p>
+      <label class="hint" style="display:block;margin:0 0 8px;"><input type="checkbox" id="showAllPassed" onchange="renderTable()"> Also show passed candidates who have not been chosen</label>
+      <p class="hint">By default only candidates who are <strong>Passed</strong> and <strong>Chosen</strong> as next year's instructors are listed. Choose people here (Choose button) or on the Instructor EOI review page. Use Step 1 to mark passes from assessment night. The date on the form is the course date set in Settings. "Ready" means: passed, has OPIS ratings, nothing flagged, and a year of study. You can edit the year and the supporting statement for anyone before generating.</p>
       <div id="tableWrap"><div class="empty-state">Loading…</div></div>
     </div>
   </div>
@@ -176,6 +188,114 @@ function longDate(iso) {
   return (+m[3]) + " " + months[+m[2] - 1] + " " + m[1];
 }
 
+// Course lists. Step 2 only lists courses that already have Passed candidates;
+// Step 1 lists every real course so passes can be pulled in the first place.
+function rebuildCourseSelect() {
+  const names = Array.from(new Set(candidates.filter(c => c.outcome === "Passed" && c.course).map(c => c.course))).sort(rmdCourseSort);
+  const sel = document.getElementById("courseSelect");
+  const keep = sel.value;
+  sel.innerHTML = `<option value="">— Choose a course —</option>` + names.map(n => {
+    const d = longDate(courseDates[n]);
+    return `<option value="${esc(n)}">${esc(n)}${d ? " (" + esc(d) + ")" : ""}</option>`;
+  }).join("");
+  if (keep && names.includes(keep)) sel.value = keep;
+  return names;
+}
+function fillPullSelect() {
+  const names = Array.from(new Set(candidates.filter(c => c.course && c.isTest !== true && !/^test/i.test(c.course)).map(c => c.course))).sort(rmdCourseSort);
+  const sel = document.getElementById("pullCourse");
+  const keep = sel.value;
+  sel.innerHTML = `<option value="">— Choose a course —</option>` + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+  if (keep && names.includes(keep)) sel.value = keep;
+}
+
+// Step 1: work out who passed from the saved assessment night results
+// (stage1_assessments/{candidateId}.attempts[n].outcome === "pass"), show the
+// plan, and only write after the Director confirms. Anyone with a pass at any
+// attempt counts, so a referral at attempt 1 followed by a pass at attempt 2
+// is Passed. Candidates with no pass are left exactly as they are.
+let pullPlan = null;
+async function pullCheck() {
+  const course = document.getElementById("pullCourse").value;
+  const wrap = document.getElementById("pullWrap");
+  if (!course) { wrap.innerHTML = `<div class="empty-state">Choose a course first.</div>`; return; }
+  const btn = document.getElementById("pullCheckBtn");
+  btn.disabled = true; wrap.innerHTML = `<div class="empty-state">Reading results…</div>`;
+  try {
+    const snap = await db.collection("stage1_assessments").get();
+    const as = {};
+    snap.forEach(d => { as[d.id] = d.data(); });
+    const plan = { course, mark: [], already: [], notPassed: [], none: [] };
+    candidates.filter(c => c.course === course && c.isTest !== true).forEach(c => {
+      const at = (as[c.id] && as[c.id].attempts) || {};
+      const keys = Object.keys(at).map(Number).filter(n => n > 0).sort((a, b) => a - b);
+      if (!keys.length) { plan.none.push(c); return; }
+      const pk = keys.find(k => at[k] && at[k].outcome === "pass");
+      if (pk === undefined) { plan.notPassed.push({ c, last: keys[keys.length - 1] }); return; }
+      if (c.outcome === "Passed") { plan.already.push(c); return; }
+      plan.mark.push({ c, att: pk, was: c.outcome || "" });
+    });
+    pullPlan = plan;
+    renderPull();
+  } catch (err) {
+    wrap.innerHTML = `<div class="empty-state">Couldn't read the results: ${esc(err.message)}</div>`;
+  }
+  btn.disabled = false;
+}
+function pullNames(list) {
+  return list.map(x => esc((x.c || x).name || "(no name)")).sort((a, b) => a.localeCompare(b)).join(", ");
+}
+function renderPull() {
+  const p = pullPlan, wrap = document.getElementById("pullWrap");
+  if (!p) { wrap.innerHTML = ""; return; }
+  const by = n => p.mark.filter(x => (n === 3 ? x.att >= 3 : x.att === n)).length;
+  const wasFailed = p.mark.filter(x => x.was && x.was !== "Passed");
+  let h = `<div class="hint" style="font-size:13px;color:var(--rmd-navy);"><strong>${esc(p.course)}</strong>: ${p.mark.length} to mark as Passed (${by(1)} at attempt 1, ${by(2)} at attempt 2, ${by(3)} at attempt 3 or later). ${p.already.length} already Passed. ${p.notPassed.length} with no pass recorded. ${p.none.length} with no result saved.</div>`;
+  if (p.mark.length) {
+    h += `<details open style="margin:6px 0;"><summary>Will be marked Passed (${p.mark.length})</summary><div class="hint">${pullNames(p.mark)}</div></details>`;
+    if (wasFailed.length) h += `<div class="hint" style="color:#8a5a00;">Note: ${wasFailed.length} of these are currently marked ${esc(Array.from(new Set(wasFailed.map(x => x.was))).join(" / "))} and will change to Passed: ${pullNames(wasFailed)}.</div>`;
+  }
+  if (p.notPassed.length) h += `<details style="margin:6px 0;"><summary>No pass recorded, left as they are (${p.notPassed.length})</summary><div class="hint">${pullNames(p.notPassed)}</div></details>`;
+  if (p.none.length) h += `<details style="margin:6px 0;"><summary>No result saved at all, left as they are (${p.none.length})</summary><div class="hint">${pullNames(p.none)}</div></details>`;
+  h += p.mark.length
+    ? `<div style="margin-top:10px;"><button class="btn" id="pullApplyBtn" onclick="pullApply()">Mark ${p.mark.length} as Passed</button></div>`
+    : `<div class="empty-state" style="margin-top:8px;">Nobody new to mark for this course.</div>`;
+  wrap.innerHTML = h;
+}
+async function pullApply() {
+  const p = pullPlan;
+  if (!p || !p.mark.length) return;
+  if (!confirm(`Mark ${p.mark.length} candidate${p.mark.length === 1 ? "" : "s"} on ${p.course} as Passed? This updates their existing records.`)) return;
+  const btn = document.getElementById("pullApplyBtn");
+  if (btn) btn.disabled = true;
+  try {
+    const CHUNK = 400;
+    for (let i = 0; i < p.mark.length; i += CHUNK) {
+      const batch = db.batch();
+      p.mark.slice(i, i + CHUNK).forEach(x => {
+        batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(x.c.id), {
+          outcome: "Passed",
+          neededMoreThanTwoAttempts: x.att > 2,
+          outcomeSource: "assessment-night",
+          outcomeImportedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      });
+      await batch.commit();
+    }
+    const n = p.mark.length, course = p.course;
+    const cSnap = await db.collection(COLLECTIONS.stage1Candidates).get();
+    candidates = cSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    pullPlan = null;
+    document.getElementById("pullWrap").innerHTML = `<div class="empty-state">Marked ${n} candidate${n === 1 ? "" : "s"} on ${esc(course)} as Passed. Now choose the course in Step 2.</div>`;
+    rebuildCourseSelect();
+    document.getElementById("courseSelect").value = course;
+    renderTable();
+  } catch (err) {
+    alert("Could not save: " + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function init() {
   document.getElementById("fCentre").value = IP_DEFAULTS.centre;
   document.getElementById("fNominated").value = IP_DEFAULTS.nominatedBy;
@@ -200,13 +320,9 @@ async function init() {
     return;
   }
 
-  const names = Array.from(new Set(candidates.filter(c => c.outcome === "Passed" && c.course).map(c => c.course))).sort(rmdCourseSort);
-  const sel = document.getElementById("courseSelect");
-  sel.innerHTML = `<option value="">— Choose a course —</option>` + names.map(n => {
-    const d = longDate(courseDates[n]);
-    return `<option value="${esc(n)}">${esc(n)}${d ? " (" + esc(d) + ")" : ""}</option>`;
-  }).join("");
-  if (!names.length) document.getElementById("tableWrap").innerHTML = `<div class="empty-state">No candidates are marked Passed yet. Import assessment outcomes on the First year candidates page first.</div>`;
+  fillPullSelect();
+  const names = rebuildCourseSelect();
+  if (!names.length) document.getElementById("tableWrap").innerHTML = `<div class="empty-state">No candidates are marked Passed yet. Use Step 1 above to pull passes from assessment night first.</div>`;
   else renderTable();
 }
 
@@ -220,7 +336,7 @@ function ratingsFor(c) {
 
 function buildRows(course) {
   return candidates
-    .filter(c => c.course === course && c.outcome === "Passed")
+    .filter(c => c.course === course && c.outcome === "Passed" && (c.chosenInstructor === true || showAll()))
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
     .map(c => {
       const rts = ratingsFor(c);
@@ -257,9 +373,16 @@ function renderTable() {
   const wrap = document.getElementById("tableWrap");
   if (!course) { rows = []; wrap.innerHTML = `<div class="empty-state">Choose a course above.</div>`; updateCount(); return; }
   rows = buildRows(course);
-  if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No passed candidates on this course.</div>`; updateCount(); return; }
+  const passedAll = candidates.filter(c => c.course === course && c.outcome === "Passed");
+  hiddenCount = showAll() ? 0 : passedAll.filter(c => c.chosenInstructor !== true).length;
+  if (!rows.length) {
+    wrap.innerHTML = passedAll.length
+      ? `<div class="empty-state">${passedAll.length} candidate${passedAll.length === 1 ? "" : "s"} passed on this course, but none ${passedAll.length === 1 ? "has" : "have"} been chosen as next year's instructors yet. Tick "Also show passed candidates who have not been chosen" above to choose people, or choose them on the Instructor EOI review page.</div>`
+      : `<div class="empty-state">No passed candidates on this course.</div>`;
+    updateCount(); return;
+  }
   wrap.innerHTML = `<table>
-    <thead><tr><th></th><th>Candidate</th><th>Degree</th><th>Year</th><th>OPIS</th><th>Status</th><th></th></tr></thead>
+    <thead><tr><th></th><th>Candidate</th><th>Degree</th><th>Year</th><th>OPIS</th><th>Chosen</th><th>Status</th><th></th></tr></thead>
     <tbody>${rows.map((r, i) => {
       return `<tr>
         <td><input type="checkbox" ${selected.has(r.c.id) ? "checked" : ""} onchange="toggle('${esc(r.c.id)}', this.checked)"></td>
@@ -267,10 +390,11 @@ function renderTable() {
         <td>${esc(r.c.degree || "")}</td>
         <td><input type="text" class="year" value="${esc(yearOf(r))}" oninput="setYear('${esc(r.c.id)}', this.value)" aria-label="Year of study"></td>
         <td>${r.rts.length} rating${r.rts.length === 1 ? "" : "s"}</td>
+        <td>${r.c.chosenInstructor === true ? `<span style="color:#1a6e31;font-weight:700;">Chosen</span> <button class="link" onclick="setChosen('${esc(r.c.id)}', false)">Undo</button>` : `<button class="link" onclick="setChosen('${esc(r.c.id)}', true)">Choose</button>`}</td>
         <td id="st-${esc(r.c.id)}">${statusHtml(r)}</td>
         <td><button class="link" onclick="toggleStmt(${i})">Statement</button></td>
       </tr>
-      <tr class="stmt-row" id="stmt-${i}" style="display:none;"><td></td><td colspan="6">
+      <tr class="stmt-row" id="stmt-${i}" style="display:none;"><td></td><td colspan="7">
         <textarea oninput="setStmt('${esc(r.c.id)}', this.value)">${esc(stmtOf(r))}</textarea>
         <div class="hint" style="margin:4px 0 0;">Edit the wording if you want. It is what is typed in the "Course Director supporting statement" box.</div>
       </td></tr>`;
@@ -278,6 +402,24 @@ function renderTable() {
   updateCount();
 }
 
+let hiddenCount = 0;
+function showAll() { const el = document.getElementById("showAllPassed"); return !!(el && el.checked); }
+// "Chosen" = picked by a Director to go forward as next year's instructor (through the
+// EOI process). Stored on the candidate record as chosenInstructor; the Instructor EOI
+// review page writes the same field.
+async function setChosen(id, on) {
+  const c = candidates.find(x => x.id === id); if (!c) return;
+  try {
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({
+      chosenInstructor: on,
+      chosenInstructorAt: firebase.firestore.FieldValue.serverTimestamp(),
+      chosenInstructorBy: (auth.currentUser && auth.currentUser.email) || ""
+    });
+    c.chosenInstructor = on;
+    if (!on) selected.delete(id);
+    renderTable();
+  } catch (err) { alert("Could not save: " + err.message); }
+}
 function toggle(id, on) { if (on) selected.add(id); else selected.delete(id); updateCount(); }
 function setYear(id, v) { yearEdits[id] = v; refreshStatus(id); }
 function setStmt(id, v) { stmtEdits[id] = v; refreshStatus(id); }
@@ -286,7 +428,7 @@ function selectReady() { rows.forEach(r => { if (isReady(r)) selected.add(r.c.id
 function selectNone() { selected.clear(); renderTable(); }
 function updateCount() {
   const n = rows.filter(r => selected.has(r.c.id)).length;
-  document.getElementById("countLine").textContent = rows.length ? `${n} selected of ${rows.length} passed` : "";
+  document.getElementById("countLine").textContent = rows.length ? `${n} ticked of ${rows.length} listed` + (hiddenCount ? ` (${hiddenCount} passed but not chosen, hidden)` : "") : "";
   document.getElementById("genBtn").disabled = n === 0;
   document.getElementById("genSepBtn").disabled = n === 0;
 }

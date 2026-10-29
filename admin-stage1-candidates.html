@@ -206,7 +206,6 @@
         <select id="courseFilter" onchange="renderCandidates()"><option value="">All courses</option></select>
         <input type="text" id="searchBox" placeholder="Search by name, email, degree or room…" oninput="renderCandidates()" style="flex:1;margin-bottom:0;">
       </div>
-      <p class="hint" style="margin-top:0;">Repeating? Add them as a new record, then use <strong>Link repeat</strong> on either row.</p>
       <div class="summary-line" id="summaryLine"></div>
       <div id="candidatesWrap"></div>
     </div>
@@ -215,7 +214,7 @@
   </div>
 
   <div class="pane2" id="pane-add">
-  <div class="director-note">Add candidates (Steps 1 and 2), then allocate: Course allocation, then Assessment allocation. Then <a href="admin-course-room-allocation.html">Room and instructor allocation</a>.</div>
+  <div class="director-note">Add candidates (Step 1; Step 2 appears once Pharmacy students have been added), then allocate: Course allocation, then Assessment allocation. Then <a href="admin-course-room-allocation.html">Room and instructor allocation</a>.</div>
   <div class="card">
     <div class="card-header">Step 1 — Add candidates</div>
     <div class="card-body">
@@ -247,7 +246,7 @@
       <div id="previewWrap"></div>
     </div>
   </div>
-  <div class="card">
+  <div class="card" id="step2Card" style="display:none;">
     <div class="card-header">Step 2 — Check placement dates (Pharmacy only)</div>
     <div class="card-body">
       <p class="hint" style="margin-top:0;">Pharmacy only; other degrees are checked automatically. Paste <strong>student ID, last name, first name, email, start, end</strong> (dates DD/MM/YYYY). Matched by email. Clashes with the course's 3 Mondays are flagged. Nothing is saved until you confirm.</p>
@@ -284,6 +283,9 @@
     </div>
   </div>
     <div class="secthead">Later: once a course has actually run</div>
+  <p class="hint">Passes now come straight from assessment night: use <a href="admin-ip-forms.html">IP forms</a>, Step 1, <strong>Pull passes from assessment night</strong>. The paste importer below is only a fallback (for example for results from outside the hub).</p>
+  <details class="fallback" style="margin-bottom:16px;">
+  <summary style="cursor:pointer;font-size:13px;font-weight:700;color:var(--rmd-muted);padding:6px 2px;">Fallback: import outcomes by pasting emails</summary>
   <div class="card">
     <div class="card-header">Import assessment outcomes (after the course has run)</div>
     <div class="card-body">
@@ -293,6 +295,7 @@
       <div id="outcomesPreviewWrap"></div>
     </div>
   </div>
+  </details>
   </div>
 
   <div class="pane2" id="pane-cfg"><div id="cfgHost"></div></div>
@@ -1337,7 +1340,17 @@ async function changeAccessCode() {
 // tracks which row (if any) is currently in inline edit mode.
 let editCandidateId = null;
 
+// Step 2 (Pharmacy placement dates) only shows once at least one Pharmacy
+// MPharm candidate is in the database (Jon, 29 Oct 2026).
+function updateStep2Card() {
+  const el = document.getElementById("step2Card");
+  if (!el) return;
+  const any = allCandidates.some(c => (resolveStage1Degree(c.degree) || {}).exact === "Pharmacy MPharm");
+  el.style.display = any ? "" : "none";
+}
+
 function renderCandidates() {
+  updateStep2Card();
   const courseFilter = document.getElementById("courseFilter").value;
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
 
@@ -1362,7 +1375,7 @@ function renderCandidates() {
             <td class="acts"><div class="rowacts"><button class="btn-link-sm" onclick="startEditCandidate('${c.id}')">Edit</button>
               ${c.linkedCandidateId
               ? `<button class="btn-link-sm" onclick="unlinkRepeat('${c.id}')">Unlink</button>`
-              : `<button class="btn-link-sm" onclick="linkRepeat('${c.id}')">Link repeat</button>`}
+              : ``}
               ${c.course ? `<button class="btn-link-sm" title="Clear this one person's course and room so the next Allocate now run places them again" onclick="reallocateCandidate('${c.id}')">Re-allocate</button>` : `<button class="btn-link-sm" title="Choose a course for this person, including one that auto-fit would rule out (voluntary override)" onclick="reallocateCandidate('${c.id}')">Place on course</button>`}
               <button class="btn-danger-sm" onclick="deleteCandidate('${c.id}')">Delete</button></div></td>
           </tr>`).join("")}</tbody>
@@ -1762,7 +1775,7 @@ function possibleRepeatBadgeHtml(c) {
   const sources = possibleRepeatSources(c);
   if (!sources.length) return "";
   if (sources.length > 1) {
-    return ` <span class="dup-warning" style="display:inline;background:#fff3cd;border-color:#f0b860;color:#8a5a00;" title="More than one earlier record with this email has a Failed outcome - use Link repeat to pick the right one">⚠ possible repeat (${sources.length} earlier fails)</span>`;
+    return ` <span class="dup-warning" style="display:inline;background:#fff3cd;border-color:#f0b860;color:#8a5a00;" title="More than one earlier record with this email has a Failed outcome - check which earlier record is the right one">⚠ possible repeat (${sources.length} earlier fails)</span>`;
   }
   const s = sources[0];
   return ` <span class="dup-warning" style="display:inline;background:#fff3cd;border-color:#f0b860;color:#8a5a00;" title="Same email as an earlier record with outcome Failed">⚠ possible repeat of ${esc(s.course || "earlier course")} <button class="btn-link-sm" style="padding:2px 8px;font-size:10px;" onclick="confirmSuggestedRepeat('${c.id}', '${s.id}')">Link &amp; mark repeat</button></span>`;

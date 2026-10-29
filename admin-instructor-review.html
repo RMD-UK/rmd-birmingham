@@ -70,6 +70,8 @@
       <option value="fail">Failed assessment</option>
       <option value="attempts">Needed &gt;2 attempts</option>
       <option value="excellent">Excellent pass (assessor note)</option>
+      <option value="chosen">Chosen for next year</option>
+      <option value="notchosen">Not chosen yet</option>
     </select>
   </div>
 
@@ -103,6 +105,7 @@ auth.onAuthStateChanged(async function(user) {
   if (!user) { window.location.href = "signin.html"; return; }
   const role = await resolveRole(user.uid, user.email || "");
   const seniorFac = await isSeniorFaculty(user.email || "");
+  isDirectorUser = role === ROLES.DIRECTOR;
   if (role !== ROLES.DIRECTOR && !seniorFac) {
     document.getElementById("authMsg").textContent = "Course Directors and RMD Senior Faculty only — redirecting…";
     setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
@@ -119,6 +122,7 @@ function fmtDate(v) {
   return String(v);
 }
 
+let isDirectorUser = false;
 let eoiList = [];
 let candidatesByEmail = {}; // email -> [stage1_candidates records]
 let ratingsByEmail = {};    // email -> [opis_ratings]
@@ -201,7 +205,7 @@ function render() {
     const records = candidatesByEmail[email] || [];
     const ratings = ratingsByEmail[email] || [];
     const outcome = combinedOutcome(records);
-    return { eoi, email, records, ratings, outcome, excellent: excellentByEmail[email] || [] };
+    return { eoi, email, records, ratings, outcome, excellent: excellentByEmail[email] || [], chosen: records.some(c => c.chosenInstructor === true) };
   });
 
   if (q) rows = rows.filter(r => RMD_FUZZY.score(q, [r.eoi.name, r.email]) > 0);
@@ -209,8 +213,11 @@ function render() {
   if (filter === "fail") rows = rows.filter(r => r.outcome.outcome === "Failed");
   if (filter === "attempts") rows = rows.filter(r => r.outcome.neededMoreThanTwoAttempts === true);
   if (filter === "excellent") rows = rows.filter(r => r.excellent.length > 0);
+  if (filter === "chosen") rows = rows.filter(r => r.chosen);
+  if (filter === "notchosen") rows = rows.filter(r => !r.chosen);
 
-  document.getElementById("summaryLine").textContent = `${rows.length} of ${eoiList.length} expression${eoiList.length === 1 ? "" : "s"} of interest`;
+  const chosenAll = eoiList.filter(e => (candidatesByEmail[(e.email || "").toLowerCase()] || []).some(c => c.chosenInstructor === true)).length;
+  document.getElementById("summaryLine").textContent = `${rows.length} of ${eoiList.length} expression${eoiList.length === 1 ? "" : "s"} of interest. ${chosenAll} chosen for next year.`;
 
   const wrap = document.getElementById("wrap");
   if (!rows.length) { wrap.innerHTML = `<div class="empty-state">No expressions of interest match.</div>`; return; }
@@ -268,12 +275,21 @@ function candidateCardHtml(r, i) {
     <div class="candidate-card" id="card-${i}">
       <div class="candidate-head" onclick="toggleCard(${i})">
         <div style="flex:1;">
-          <div class="candidate-name">${esc(eoi.name)}${outcomePill(r.outcome)}${r.excellent && r.excellent.length ? `<span class="pill pill-exc">Excellent pass</span>` : ""}${r.outcome.neededMoreThanTwoAttempts === true ? `<span class="pill pill-attempts">&gt;2 attempts</span>` : ""}${ratingCount ? `<span class="pill pill-count">${ratingCount} OPIS rating${ratingCount === 1 ? "" : "s"} · avg ${avgTotal}/15</span>` : `<span class="pill pill-unknown">No ratings yet</span>`}</div>
+          <div class="candidate-name">${esc(eoi.name)}${outcomePill(r.outcome)}${r.chosen ? `<span class="pill pill-pass">Chosen for next year</span>` : ""}${r.excellent && r.excellent.length ? `<span class="pill pill-exc">Excellent pass</span>` : ""}${r.outcome.neededMoreThanTwoAttempts === true ? `<span class="pill pill-attempts">&gt;2 attempts</span>` : ""}${ratingCount ? `<span class="pill pill-count">${ratingCount} OPIS rating${ratingCount === 1 ? "" : "s"} · avg ${avgTotal}/15</span>` : `<span class="pill pill-unknown">No ratings yet</span>`}</div>
           <div class="candidate-sub">${esc(eoi.email)} · ${esc(eoi.degree) || "no degree on EOI"}</div>
         </div>
         <div class="candidate-arrow">▶</div>
       </div>
       <div class="candidate-detail">
+        <div class="detail-section">
+          <div class="detail-label">Decision</div>
+          ${r.chosen ? `<div><b style="color:#1a6e31;">Chosen as a next year instructor.</b> They will be listed by default on the IP forms page.</div>` : `<div class="no-ratings">Not chosen yet. Only chosen candidates are listed by default on the IP forms page.</div>`}
+          ${isDirectorUser
+            ? (r.records.length
+                ? `<div style="margin-top:6px;"><button class="btn" onclick="setChosenEmail('${esc(r.email)}', ${r.chosen ? "false" : "true"})">${r.chosen ? "Undo: not chosen" : "Choose for next year"}</button></div>`
+                : `<div class="no-ratings" style="margin-top:6px;">Cannot choose: no first year candidate record matches this email.</div>`)
+            : `<div class="no-ratings" style="margin-top:6px;">Course Directors record this decision.</div>`}
+        </div>
         <div class="detail-section">
           <div class="detail-label">Expression of interest</div>
           <div class="kv-grid">
@@ -299,6 +315,27 @@ function candidateCardHtml(r, i) {
         </div>
       </div>
     </div>`;
+}
+
+// Writes chosenInstructor on every stage1_candidates record with this email, so the
+// IP forms page lists the person by default. Course Directors only (Stage 1 candidate
+// records are director-write).
+async function setChosenEmail(email, on) {
+  const recs = candidatesByEmail[email] || [];
+  if (!recs.length) return;
+  try {
+    const batch = db.batch();
+    recs.forEach(c => batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(c.id), {
+      chosenInstructor: on,
+      chosenInstructorAt: firebase.firestore.FieldValue.serverTimestamp(),
+      chosenInstructorBy: (auth.currentUser && auth.currentUser.email) || ""
+    }));
+    await batch.commit();
+    recs.forEach(c => { c.chosenInstructor = on; });
+    const open = Array.from(document.querySelectorAll(".candidate-card.open")).map(el => el.id);
+    render();
+    open.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("open"); });
+  } catch (err) { alert("Could not save: " + err.message); }
 }
 
 function toggleCard(i) {
