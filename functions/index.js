@@ -355,6 +355,51 @@ function swapUidInList(list, oldId, newId) {
  * Defaults to a dry run; pass { dryRun: false } to write. Optional { emails: [...] }
  * limits the run to those addresses.
  */
+// backfillOpisCoverage (29 Oct 2026, Jon): fills opis_coverage/{candidateId}.raters from the OPIS ratings made before the
+// two-rater counter existed. Copies user ids only. Directors only. dryRun defaults to true. Adds ids (arrayUnion), never
+// removes any, never touches skippers, so it is safe to run twice. Test candidates are skipped.
+exports.backfillOpisCoverage = onCall({ region: "us-central1" }, async (request) => {
+  const auth = request.auth;
+  if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (!(await callerIsDirector(auth))) throw new HttpsError("permission-denied", "Course Directors only.");
+  const dryRun = request.data?.dryRun !== false;
+
+  const ratings = await db.collection("opis_ratings").get();
+  const by = {};
+  let noUid = 0, noCandidate = 0, testSkipped = 0;
+  for (const d of ratings.docs) {
+    const r = d.data();
+    if (!r.candidateId) { noCandidate++; continue; }
+    if (!r.submittedByUid) { noUid++; continue; }
+    if (String(r.candidateEmail || "").toLowerCase().includes(".test@")) { testSkipped++; continue; }
+    const e = by[r.candidateId] = by[r.candidateId] || { course: r.course || "", name: r.candidateName || "", raters: new Set() };
+    e.raters.add(r.submittedByUid);
+    if (r.course) e.course = r.course;
+  }
+
+  const ids = Object.keys(by);
+  const out = { dryRun, ratingsRead: ratings.size, candidates: ids.length, wouldChange: 0, changed: 0, alreadyFine: 0, testSkipped, noUid, noCandidate, sample: [] };
+  for (const id of ids) {
+    const e = by[id];
+    try {
+      const cs = await db.collection("stage1_candidates").doc(id).get();
+      if (cs.exists && cs.data().isTest === true) { out.testSkipped++; continue; }
+    } catch (err) { /* keep going */ }
+    const covRef = db.collection("opis_coverage").doc(id);
+    const cov = await covRef.get();
+    const have = new Set(cov.exists ? (cov.data().raters || []) : []);
+    const missing = Array.from(e.raters).filter(u => !have.has(u));
+    if (!missing.length) { out.alreadyFine++; continue; }
+    out.wouldChange++;
+    if (out.sample.length < 8) out.sample.push({ name: e.name, course: e.course, before: have.size, after: have.size + missing.length });
+    if (!dryRun) {
+      await covRef.set({ candidateId: id, course: e.course, raters: admin.firestore.FieldValue.arrayUnion(...missing) }, { merge: true });
+      out.changed++;
+    }
+  }
+  return out;
+});
+
 exports.repairOrphanPeople = onCall({ region: "us-central1" }, async (request) => {
   const auth = request.auth;
   if (!auth) throw new HttpsError("unauthenticated", "Sign in required.");
