@@ -4558,6 +4558,132 @@ exports.lookupCandidateRoom = onCall({ region: "us-central1" }, async (request) 
 
 
 /**
+ * candidateCheckIn (2026-10-29, Jon): Plan A for assessment night is that candidates check THEMSELVES in when
+ * they reach the Medical School, with no staff at a desk and no QR code. They find themselves on the candidate
+ * page (same access code, degree, name and email as lookupCandidateRoom), tick a short statement and press
+ * "I have arrived". Candidates have no login, so this runs with admin rights; nothing is trusted from the page
+ * except the four identifying fields and the tick.
+ *
+ * The rules it enforces (all server side, so they cannot be skipped from the browser):
+ *   - the access code, then the email (exact) AND the full name (exact after normalising) must match one record;
+ *   - the statement must be ticked (confirmed === true);
+ *   - it must be that candidate's assessment night (config/stage1_course_dates, Europe/London date) and the
+ *     candidate must have an assessment room and slot;
+ *   - only inside the window: CHECKIN_OPENS_BEFORE_MIN minutes before the slot to CHECKIN_CLOSES_AFTER_MIN
+ *     minutes after it (Jon, 29 Oct: 60 before to 30 after);
+ *   - first sits only. A retest, a repeat assessment-taker, someone already assessed, someone marked not there
+ *     or absent from the assessment, and anyone not eligible (absent in a teaching week with no Director
+ *     override) is told to see RMD faculty, who check them in by hand at the station;
+ *   - an earlier arrival time is never overwritten.
+ * It writes only stage1_assessments/{id}.flow["1"].arrived (same shape the staff station writes, plus
+ * self:true and the statement text) and clears notThere, exactly like the staff check-in.
+ */
+const CHECKIN_OPENS_BEFORE_MIN = 60;
+const CHECKIN_CLOSES_AFTER_MIN = 30;
+const CHECKIN_STATEMENT = "I confirm I am checking myself in with my own details and that I am in the Medical School now.";
+
+function londonNowParts() {
+  const p = {};
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+    .formatToParts(new Date()).forEach(x => { p[x.type] = x.value; });
+  return { date: p.year + "-" + p.month + "-" + p.day, minutes: Number(p.hour) * 60 + Number(p.minute) };
+}
+function slotToMinutes(slot) {
+  const m = /^\s*(\d{1,2}):(\d{2})/.exec(String(slot || ""));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+function minutesToHm(n) { const h = Math.floor(n / 60), m = n % 60; return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0"); }
+
+exports.candidateCheckIn = onCall({ region: "us-central1" }, async (request) => {
+  const code = String(request.data?.code || "").trim().toLowerCase();
+  const degree = String(request.data?.degree || "").trim();
+  const name = String(request.data?.name || "").trim();
+  const email = String(request.data?.email || "").trim().toLowerCase();
+  const confirmed = request.data?.confirmed === true;
+  const courseWanted = String(request.data?.course || "").trim();
+
+  if (!code || !name || !email) throw new HttpsError("invalid-argument", "Access code, name and email are required.");
+  const codeSnap = await db.collection("config").doc("candidate_access").get();
+  const realCode = (codeSnap.exists && codeSnap.data().code ? String(codeSnap.data().code) : "").trim().toLowerCase();
+  if (!realCode || code !== realCode) throw new HttpsError("permission-denied", "That access code isn't right.");
+  if (!confirmed) return { ok: false, reason: "not_confirmed", message: "Please tick the statement first." };
+
+  const snap = await db.collection("stage1_candidates").where("email", "==", email).get();
+  const wanted = normalizeNameForMatch(name);
+  let hits = snap.docs.filter(d => normalizeNameForMatch(d.data().name) === wanted);
+  if (courseWanted) hits = hits.filter(d => d.data().course === courseWanted);
+  if (!hits.length) return { ok: false, reason: "no_match", message: "We could not match that name and email. Please see a member of RMD Faculty at the RMD Faculty Hub." };
+
+  const datesSnap = await db.collection("config").doc("stage1_course_dates").get();
+  const dates = {};
+  ((datesSnap.exists && datesSnap.data().courses) || []).forEach(c => { if (c && c.name) dates[c.name] = c.date || null; });
+  const now = londonNowParts();
+
+  // The record whose assessment night is today (a person can have an older record on an earlier course).
+  const tonight = hits.filter(d => d.data().course && dates[d.data().course] === now.date);
+  if (!tonight.length) {
+    // Tell them their own assessment date when we know it (the next one, else the most recent), and send them to RMD faculty.
+    const mine = hits.map(d => dates[d.data().course]).filter(Boolean).sort();
+    const own = mine.find(x => x >= now.date) || mine[mine.length - 1] || null;
+    let when = "";
+    if (own) {
+      try { when = " (" + new Date(own + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }) + ")"; } catch (e) { when = ""; }
+    }
+    return { ok: false, reason: "not_tonight", assessmentDate: own, message: "Check-in is only open on your assessment night" + when + ". If you think this is wrong, please see a member of RMD Faculty at the RMD Faculty Hub." };
+  }
+  const withSlot = tonight.filter(d => d.data().assessmentRoom && d.data().assessmentSlot);
+  if (!withSlot.length) return { ok: false, reason: "no_slot", message: "You do not have an assessment slot tonight. Please see a member of RMD Faculty at the RMD Faculty Hub." };
+  const doc = withSlot[0], c = doc.data(), id = doc.id, course = c.course;
+
+  const attempt = (typeof c.assessmentAttempt === "number" && c.assessmentAttempt >= 1)
+    ? Math.floor(c.assessmentAttempt)
+    : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 3 : 1);
+  if (attempt !== 1 || c.assessmentAbsent === true) return { ok: false, reason: "see_faculty", message: "Please see a member of RMD Faculty at the RMD Faculty Hub to be checked in." };
+
+  const aSnap = await db.collection("stage1_assessments").doc(id).get();
+  const a = aSnap.exists ? aSnap.data() : {};
+  const sat = Object.keys(a.attempts || {}).some(k => a.attempts[k] && a.attempts[k].outcome);
+  if (sat) return { ok: false, reason: "see_faculty", message: "Please see a member of RMD Faculty at the RMD Faculty Hub to be checked in." };
+  const already = a.flow && a.flow["1"] && a.flow["1"].arrived;
+  if (already) return { ok: true, alreadyCheckedIn: true, room: c.assessmentRoom, slot: c.assessmentSlot, firstName: String(c.name || "").split(" ")[0] };
+
+  // Eligibility, same rule as getAssessmentNight: absent in either teaching week with no Director override = see faculty.
+  const regAnySnap = await db.collection("stage1_register").where("course", "==", course).limit(1).get();
+  if (!regAnySnap.empty) {
+    const rSnap = await db.collection("stage1_register").doc(id).get();
+    const r = rSnap.exists ? rSnap.data() : null;
+    const st = n => (r && r["w" + n] && r["w" + n].status) || null;
+    const o = c.eligibilityOverride;
+    const overridden = !!(o && typeof o === "object" && o.by);
+    if ((st(1) === "absent" || st(2) === "absent") && !overridden) {
+      return { ok: false, reason: "see_faculty", message: "Please see a member of RMD Faculty at the RMD Faculty Hub to be checked in." };
+    }
+  }
+
+  // The time window.
+  const slotMin = slotToMinutes(c.assessmentSlot);
+  if (slotMin == null) return { ok: false, reason: "no_slot", message: "Please see a member of RMD Faculty at the RMD Faculty Hub to be checked in." };
+  const opens = slotMin - CHECKIN_OPENS_BEFORE_MIN, closes = slotMin + CHECKIN_CLOSES_AFTER_MIN;
+  if (now.minutes < opens) {
+    return { ok: false, reason: "too_early", opensAt: minutesToHm(Math.max(opens, 0)), slot: c.assessmentSlot, message: "Check-in opens at " + minutesToHm(Math.max(opens, 0)) + " for your " + c.assessmentSlot + " slot." };
+  }
+  if (now.minutes > closes) {
+    return { ok: false, reason: "too_late", slot: c.assessmentSlot, message: "Self check-in has closed for your slot. Please see a member of RMD Faculty at the RMD Faculty Hub." };
+  }
+
+  const nowIso = new Date().toISOString();
+  await db.collection("stage1_assessments").doc(id).set({
+    course,
+    candidateName: c.name || "",
+    flow: { "1": { arrived: { by: "self", byName: c.name || "", at: nowIso, self: true, statement: CHECKIN_STATEMENT } } },
+    notThere: null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  return { ok: true, alreadyCheckedIn: false, room: c.assessmentRoom, slot: c.assessmentSlot, firstName: String(c.name || "").split(" ")[0] };
+});
+
+
+/**
  * iwKioskSearch / iwKioskCheckIn: on-demand (callable), public, no sign-in.
  * Added 2026-10-11 to fix the Instructor Weekend QR kiosk (iw-checkin.html).
  * Candidates have no login, and firestore.rules (correctly) lets only

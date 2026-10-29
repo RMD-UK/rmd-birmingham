@@ -2661,7 +2661,8 @@ function isLate(c) {   // more than 10 minutes past the slot on the night itself
 function stChip(c) {
   const st = cstate(c);
   if (st === "nothere" && isLate(c)) return '<span class="nchip s-late">Not here, late</span>';
-  return `<span class="nchip s-${st}">${ST_LABEL[st]}</span>`;
+  const fl = (nres(c.id).flow || {})[String(effAttempt(c))], selfIn = st === "arrived" && !!(fl && fl.arrived && fl.arrived.self);
+  return `<span class="nchip s-${st}">${ST_LABEL[st]}${selfIn ? " (self)" : ""}</span>`;
 }
 function whoNow() { return { by: S.user.uid, byName: S.myName, at: new Date().toISOString() }; }
 function permMsg(err) { return "Not saved: " + (err && err.code === "permission-denied" ? "you do not have permission (rules not deployed yet?)" : (err && err.message) || err); }
@@ -2782,7 +2783,7 @@ function renderCheckin() {
   if (!S.course) return;
   const d = assessDate(), v = $("viewCheckin");
   $("msgs").innerHTML = nightBanner();
-  $("plain").innerHTML = '<span class="lbl">Check-in station</span>' + `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. Tap a name to check that person in once you have seen their Student ID, or type a name to search. Runners then collect them from the atrium and assessors take them from the room list.`;
+  $("plain").innerHTML = '<span class="lbl">Check-in station</span>' + `<b>${esc(S.course)}.</b> Assessment night is ${d ? nice(d) : "not set"}. <b>Plan A: nobody staffs this screen.</b> Candidates check themselves in on the candidate page (rmd.uk.com/candidate-resources.html, with the candidate code), from 60 minutes before their slot to 30 minutes after, by ticking that they are in the Medical School. This screen shows who has arrived (marked "self"). Use it to check someone in by hand if they cannot do it themselves (retests, late, or told to see RMD faculty). Runners then collect people from the atrium and assessors take them from the room list.`;
   if (!$("dQ")) {
     v.innerHTML = '<div id="dUndo"></div><div id="dGate"></div><div id="dSum"></div><div class="card"><input type="search" id="dQ" placeholder="Type a name to find anyone expected tonight..." autocomplete="off"><div class="rchips" id="dTabs" style="margin-top:10px"></div><div id="dList"></div></div>';
     $("dQ").oninput = () => { N.dq = $("dQ").value; renderDeskList(); };
@@ -2794,7 +2795,7 @@ function renderDeskGate() {
   const state = `<span class="nchip ${N.gate ? "s-collected" : "s-nothere"}">${N.gate ? "ON" : "OFF"}</span>`;
   const txt = N.gate
     ? "Assessors can only pick people who have been collected. If someone is in the atrium but not yet collected, an assessor can use Collect now."
-    : "Assessors see everyone in their room and can pick anyone, exactly as before. Turn this on when the check-in station is running.";
+    : "Assessors see everyone in their room and can pick anyone, exactly as before. Turn this on once candidates are checking themselves in.";
   if (!S.full) { g.innerHTML = `<div class="msg ${N.gate ? "ok" : "warn"}"><b>Check-in required tonight: ${N.gate ? "ON" : "OFF"}.</b> ${txt} RMD faculty or a Director turns this on or off.</div>`; return; }
   const ask = N.gateAsk
     ? `<div class="msg warn" style="margin:8px 0 0">${N.gate ? "Turn it off? Assessors will see and can pick everyone again." : "Turn it on? From now on assessors can only pick people who have been collected. Check people in first."}</div><div class="row2" style="margin-top:8px"><button type="button" class="btn pri" id="dGateYes">Yes, turn ${N.gate ? "off" : "on"}</button><button type="button" class="btn" id="dGateNo">No</button></div>`

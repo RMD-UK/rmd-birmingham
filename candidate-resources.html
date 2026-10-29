@@ -49,6 +49,19 @@
     .btn-confirm-no:hover { background:#e4e9ee; }
     .assessment-line { margin-top:12px; padding-top:12px; border-top:1px solid rgba(0,0,0,0.12); }
     .assessment-line .room-value { font-size:18px; margin:2px 0 0; }
+    .night-card { background:var(--rmd-navy,#44247C); border-radius:14px; padding:18px; margin-bottom:16px; color:#fff; text-align:center; }
+    .night-card .night-kicker { font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; opacity:.8; margin-bottom:4px; }
+    .night-card .night-text { font-size:14px; margin:0 0 12px; opacity:.92; }
+    .night-btn { display:block; width:100%; padding:22px 12px; border:none; border-radius:12px; background:#f49001; color:#1f2540; font-size:24px; font-weight:900; font-family:var(--font); cursor:pointer; }
+    .night-btn:hover { background:#ffa626; }
+    .checkin-box { margin-top:14px; padding:14px; border:2px solid var(--rmd-blue); border-radius:10px; background:rgba(255,255,255,0.7); }
+    .checkin-box h4 { margin:0 0 6px; font-size:16px; }
+    .checkin-box .ci-window { font-size:13px; margin:0 0 10px; opacity:0.85; }
+    .checkin-tick { display:flex; gap:10px; align-items:flex-start; font-size:14px; margin:0 0 12px; cursor:pointer; }
+    .checkin-tick input { margin-top:3px; width:20px; height:20px; flex:none; }
+    .checkin-box .btn-primary:disabled { background:#9aa5b8; cursor:not-allowed; }
+    .ci-msg { margin-top:10px; font-size:14px; font-weight:700; }
+    .ci-msg.ok { color:#1a6e31; } .ci-msg.bad { color:#a8321f; }
     .glance-head { font-size:16px; font-weight:800; color:var(--rmd-navy); margin:0 0 2px; }
     .glance-sub { font-size:13px; color:var(--rmd-muted); line-height:1.5; margin:0 0 6px; }
     .info-row { display:flex; gap:10px; align-items:flex-start; padding:11px 0; border-bottom:1px solid #f0f3f6; font-size:14px; }
@@ -83,6 +96,12 @@
       </div>
     </div>
 
+    <div class="night-card hidden" id="nightCard">
+      <div class="night-kicker">Assessment night</div>
+      <p class="night-text">Tap the button when you arrive at the Medical School.</p>
+      <button type="button" class="night-btn" onclick="startNightCheckIn()">Assessment check-in</button>
+    </div>
+
     <div class="card hidden eoi-banner" id="eoiCard">
       <div class="card-body">
         <div class="eoi-kicker">Passed your BLS assessment?</div>
@@ -100,7 +119,7 @@
           <div class="info-row-icon">📅</div>
           <div>
             <div class="info-row-label">Dates</div>
-            <div class="info-row-value">Three evening sessions: two teaching sessions, then your exam night. Your own dates appear when you look up your course below. Exam night instructions are sent in the week before.</div>
+            <div class="info-row-value">Three evening sessions: two teaching sessions, then your assessment night. Your own dates appear when you look up your course below. Exam night instructions are sent in the week before.</div>
           </div>
         </div>
         <div class="info-row">
@@ -215,7 +234,30 @@ const STORAGE_KEY = "rmdCandidateAccessGranted";
 let enteredAccessCode = ""; // kept in memory only, so findRoom() can re-send it server-side without asking twice
 let pendingCloseMatch = null; // { degree, email, suggestedName } while a "did you mean X?" prompt is up — 2026-10-03
 
+// Assessment night button (2026-10-29, Jon): a large button at the top, shown only on a day when a course has its
+// assessment night (config/stage1_course_dates is public read). Test courses are ignored unless the page is opened
+// with ?test=1, so Jon can try it without showing it to real candidates. It only guides: candidateCheckIn is the real rule.
+async function showNightButton() {
+  try {
+    const snap = await db.collection("config").doc("stage1_course_dates").get();
+    const list = (snap.exists && snap.data().courses) || [];
+    const withTests = /[?&]test=1\b/.test(location.search);
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
+    const tonight = list.some(c => c && c.date === today && (withTests || !c.test));
+    if (tonight) document.getElementById("nightCard").classList.remove("hidden");
+  } catch (e) { /* no button if the dates cannot be read */ }
+}
+function startNightCheckIn() {
+  const card = document.getElementById("resourcesCard");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  const sel = document.getElementById("degreeSelect");
+  setTimeout(() => { try { (sel && !sel.value ? sel : document.getElementById("lookupName")).focus(); } catch (e) {} }, 400);
+  const hint = document.querySelector("#resourcesCard .room-hint");
+  if (hint && !hint.dataset.night) { hint.dataset.night = "1"; hint.insertAdjacentHTML("afterbegin", "<strong>To check in:</strong> enter your details, press the button, then tick the box and press <strong>I have arrived</strong>. "); }
+}
+
 function showResources() {
+  showNightButton();
   document.getElementById("gateCard").classList.add("hidden");
   document.getElementById("glanceLabel").classList.remove("hidden");
   document.getElementById("glanceCard").classList.remove("hidden");
@@ -287,7 +329,7 @@ function courseDatesHtml(examIso) {
   return `<ul class="date-list">` +
     `<li>Session 1: ${escapeHtml(formatCourseDate(back(14)))}</li>` +
     `<li>Session 2: ${escapeHtml(formatCourseDate(back(7)))}</li>` +
-    `<li>Session 3 (exam night): ${escapeHtml(formatCourseDate(back(0)))}</li>` +
+    `<li>Session 3 (assessment night): ${escapeHtml(formatCourseDate(back(0)))}</li>` +
     `</ul>`;
 }
 
@@ -321,9 +363,48 @@ function assessmentLineHtml(data) {
     return `<div class="assessment-line">Your assessment is being managed separately by RMD faculty — check with them for your date and time.</div>`;
   }
   if (data.assessmentRoom && data.assessmentSlot) {
-    return `<div class="assessment-line">Your assessment:<span class="room-value">${escapeHtml(data.assessmentRoom)} at ${escapeHtml(data.assessmentSlot)}</span></div>`;
+    return `<div class="assessment-line">Your assessment:<span class="room-value">${escapeHtml(data.assessmentRoom)} at ${escapeHtml(data.assessmentSlot)}</span></div>` + checkInBlockHtml(data);
   }
   return `<div class="assessment-line">You don't have an assessment slot allocated yet — check back nearer the time.</div>`;
+}
+
+
+// Self check-in on assessment night (2026-10-29, Jon). Shown only on the candidate's own assessment night, for a first
+// sit with a room and slot. The window below is for display only: candidateCheckIn (Cloud Function) is the real rule.
+const CI_OPENS_BEFORE = 60, CI_CLOSES_AFTER = 30;
+const CI_STATEMENT = "I confirm I am checking myself in with my own details and that I am in the Medical School now.";
+let lastLookup = null;
+function todayLondonIso() { return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date()); }
+function ciHm(slot, delta) { const m = /^(\d{1,2}):(\d{2})/.exec(String(slot || "")); if (!m) return ""; const t = Math.max(0, Number(m[1]) * 60 + Number(m[2]) + delta); return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(t % 60).padStart(2, "0"); }
+function ciId(course) { return String(course || "x").replace(/[^A-Za-z0-9]/g, "_"); }
+function checkInBlockHtml(m) {
+  if (!m || !m.course || m.firstTimeAssessment === false || !m.assessmentRoom || !m.assessmentSlot) return "";
+  if (m.courseDate !== todayLondonIso()) return "";
+  const id = ciId(m.course);
+  return `<div class="checkin-box"><h4>Arrived at the Medical School?</h4>` +
+    `<div class="ci-window">Check-in is open from ${escapeHtml(ciHm(m.assessmentSlot, -CI_OPENS_BEFORE))} to ${escapeHtml(ciHm(m.assessmentSlot, CI_CLOSES_AFTER))}.</div>` +
+    `<label class="checkin-tick"><input type="checkbox" id="ciTick_${id}" onchange="document.getElementById('ciBtn_${id}').disabled = !this.checked"><span>${escapeHtml(CI_STATEMENT)}</span></label>` +
+    `<button type="button" class="btn-primary" id="ciBtn_${id}" disabled onclick="doCheckIn('${escapeHtml(m.course).replace(/'/g, "")}')">I have arrived</button>` +
+    `<div class="ci-msg" id="ciMsg_${id}" role="status"></div></div>`;
+}
+async function doCheckIn(course) {
+  const id = ciId(course), btn = document.getElementById("ciBtn_" + id), msg = document.getElementById("ciMsg_" + id), tick = document.getElementById("ciTick_" + id);
+  if (!lastLookup || !btn || !msg) return;
+  if (!tick || !tick.checked) { msg.className = "ci-msg bad"; msg.textContent = "Please tick the statement first."; return; }
+  btn.disabled = true; msg.className = "ci-msg"; msg.textContent = "Checking you in...";
+  try {
+    const res = await fns.httpsCallable("candidateCheckIn")({ code: enteredAccessCode, degree: lastLookup.degree, name: lastLookup.name, email: lastLookup.email, course, confirmed: true });
+    const d = res.data || {};
+    if (d.ok) {
+      msg.className = "ci-msg ok";
+      msg.textContent = (d.alreadyCheckedIn ? "You are already checked in" : "You are checked in") + (d.firstName ? ", " + d.firstName : "") + ". Please wait for an instructor to collect you for your assessment (" + (d.room || "") + " at " + (d.slot || "") + "). Do not go to your assessment room until you have been collected.";
+      if (tick) tick.disabled = true;
+    } else {
+      msg.className = "ci-msg bad"; msg.textContent = d.message || "Could not check you in. Please see a member of RMD Faculty at the RMD Faculty Hub."; btn.disabled = false;
+    }
+  } catch (err) {
+    msg.className = "ci-msg bad"; msg.textContent = "Could not check you in just now. Please try again, or see a member of RMD Faculty at the RMD Faculty Hub."; btn.disabled = false;
+  }
 }
 
 async function runRoomLookup(degree, name, email) {
@@ -337,6 +418,7 @@ async function runRoomLookup(degree, name, email) {
     const res = await lookup({ code: enteredAccessCode, degree, name, email });
     const data = res.data || {};
     if (data.found) {
+      lastLookup = { degree, name: data.name || name, email };
       const list = (data.matches && data.matches.length) ? data.matches : [data];
       showRoomResult("found", list.map((m, i) => courseRoomHtml(m, list.length > 1)).join(""));
     } else if (data.closeMatch && data.suggestedName) {
