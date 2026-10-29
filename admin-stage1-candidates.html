@@ -1605,7 +1605,17 @@ async function confirmReallocate(id, override) {
   // course (so were already allocated), or this is a deliberate override.
   const placementChecked = !!(c.placementChecked || prevCourse || overridePreferred);
   try {
-    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update({ course: null, room: null, placementChecked: placementChecked, preferredCourse, avoidCourse, overridePreferred, eligibilityOverrideCourse: null });
+    const upd = { course: null, room: null, placementChecked: placementChecked, preferredCourse, avoidCourse, overridePreferred, eligibilityOverrideCourse: null };
+    // 2026-10-29 (Jon): taking someone off a course must leave a move record (previousCourses), the same as the hub
+    // and Course Allocation do, so the results and degree lead sheets can still find them. Not written for people with no course.
+    if (prevCourse) {
+      let u = null; try { u = firebase.auth().currentUser; } catch (e) {}
+      upd.previousCourses = firebase.firestore.FieldValue.arrayUnion({ course: prevCourse, at: new Date().toISOString(), room: c.room || null,
+        teamUids: (c.instructorTeamUids || []).slice(), teamNames: (c.instructorTeamNames || []).slice(),
+        reason: "Re-allocated on the Candidates page", by: u ? u.uid : null, byName: u ? (u.displayName || u.email || null) : null, via: "candidates" });
+    }
+    await db.collection(COLLECTIONS.stage1Candidates).doc(id).update(upd);
+    if (prevCourse) c.previousCourses = (c.previousCourses || []).concat([{ course: prevCourse, at: new Date().toISOString(), room: c.room || null, via: "candidates" }]);
     c.course = null; c.room = null; c.placementChecked = placementChecked; c.preferredCourse = preferredCourse; c.avoidCourse = avoidCourse; c.overridePreferred = overridePreferred; c.eligibilityOverrideCourse = null;
     document.getElementById("reallocOverlay").remove();
     populateCourseFilter();

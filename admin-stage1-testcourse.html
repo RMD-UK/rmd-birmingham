@@ -65,6 +65,7 @@
     <label class="opt"><input type="radio" name="when" value="0" checked> <span><b>Assessment night</b> is today (weeks 1 and 2 are already in the past)</span></label>
     <label class="opt"><input type="checkbox" id="putMe" checked> <span>Put me on the teaching team for room CM01, so I can test the instructor view of the register</span></label>
     <label class="opt"><input type="checkbox" id="preSlot" checked> <span>Pre-fill assessment rooms and time slots for 10 candidates (untick to test the allocation itself)</span></label>
+    <label class="opt"><input type="checkbox" id="selfCheck" checked> <span>Self check-in test: give <b>Ada Tester</b> my own email and an assessment slot starting soon, so I can check in on the candidate page (use with "Assessment night is today")</span></label>
     <div class="btns"><button class="pri" id="createBtn" type="button" disabled>Create test course</button></div>
     <div id="createMsg"></div>
   </div>
@@ -150,7 +151,7 @@ async function refresh() {
   }
 }
 
-function build(offsetDays, putMe, preSlot) {
+function build(offsetDays, putMe, preSlot, selfCheck) {
   const uid = me.uid, myName = me.displayName || me.email || "Me";
   const teams = {
     CM01: { uids: ["test-instr-a1", "test-instr-a2"].concat(putMe ? [uid] : []), names: ["Test Instructor A1", "Test Instructor A2"].concat(putMe ? [myName] : []) },
@@ -184,6 +185,12 @@ function build(offsetDays, putMe, preSlot) {
       const ar = i < 4 ? "CM11" : i < 8 ? "CM12" : "CM13";
       extra.assessmentRoom = ar; extra.assessmentSlot = SLOTS[i % 4];
     }
+    if (i === 0 && selfCheck) {                                       // self check-in test: my email, slot 10-25 min ahead (inside the 60 before / 30 after window)
+      const nowMin = (() => { const q = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).reduce((o, x) => (o[x.type] = x.value, o), {}); return +q.hour * 60 + +q.minute; })();
+      const sl = Math.min(Math.ceil((nowMin + 10) / 15) * 15, 23 * 60 + 45);
+      extra.assessmentRoom = "CM11"; extra.assessmentSlot = String(Math.floor(sl / 60)).padStart(2, "0") + ":" + String(sl % 60).padStart(2, "0");
+      extra.email = String(me.email || "").toLowerCase();
+    }
     if (i === 10) extra.rap = true;                                   // RAP: hand-placed only
     if (i === 11) { extra.assessmentAttempt = 3; extra.twoPlusAssessments = true; extra.firstTimeAssessment = false; } // attempt 3: Senior Faculty only
     if (i === 14) { extra.firstTimeAssessment = true; }
@@ -202,8 +209,8 @@ function build(offsetDays, putMe, preSlot) {
 
 async function createTest() {
   const offset = +document.querySelector('input[name="when"]:checked').value;
-  const putMe = $("putMe").checked, preSlot = $("preSlot").checked;
-  const { docs, date, earlierDate } = build(offset, putMe, preSlot);
+  const putMe = $("putMe").checked, preSlot = $("preSlot").checked, selfCheck = $("selfCheck").checked && offset === 0;
+  const { docs, date, earlierDate } = build(offset, putMe, preSlot, selfCheck);
   if (!confirm(`Create "${TEST_COURSE}" with assessment night on ${date}?\n\n15 test candidates, plus 2 earlier-attempt records on "${TEST_EARLIER}" (${earlierDate}).\nEvery record is flagged as a test record and can be removed with one button.`)) return;
   $("createBtn").disabled = true; $("createMsg").innerHTML = '<div class="msg warn">Creating…</div>';
   try {
