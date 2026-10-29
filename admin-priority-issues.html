@@ -25,14 +25,17 @@
     .btn2:hover { border-color:var(--rmd-navy); }
     .btn2.pri { background:var(--rmd-navy); border-color:var(--rmd-navy); color:#fff; }
     .btn2:disabled { opacity:.45; cursor:default; }
-    section.sec { margin:0 0 18px; }
+    #sections { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:8px; align-items:start; margin:0 0 12px; }
+    section.sec { margin:0; padding:0; min-width:0; }
+    section.sec:has(> details[open]) { grid-column:1 / -1; }
     section.sec > details { background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.08); padding:0 12px; }
     section.sec > details[open] { padding-bottom:10px; }
-    section.sec > details > summary { cursor:pointer; padding:10px 0; list-style:none; }
+    section.sec > details > summary { cursor:pointer; padding:9px 0; list-style:none; display:flex; align-items:center; }
     section.sec > details > summary::-webkit-details-marker { display:none; }
     section.sec > details > summary::before { content:"\25B8"; color:var(--rmd-muted); margin-right:8px; display:inline-block; }
     section.sec > details[open] > summary::before { content:"\25BE"; }
-    section.sec h3 { margin:0; font-size:15px; color:var(--rmd-navy); display:inline-flex; gap:8px; align-items:center; }
+    section.sec h3 { margin:0; font-size:14px; color:var(--rmd-navy); display:flex; flex:1; gap:6px; align-items:center; justify-content:space-between; }
+    section.sec h3 .tt { flex:1; }
     section.sec h3 .n { font-size:12px; background:#b7410e; color:#fff; border-radius:12px; padding:2px 9px; }
     section.sec h3 .n.zero { background:#e6f4ea; color:#1a6e31; }
     section.sec h3 .n.quiet { background:#fff3cd; color:#856404; }
@@ -155,7 +158,6 @@ function render() {
   const pend = R.pending, n = pend.length;
   const by = t => pend.filter(x => x.type === t);
   $("summary").innerHTML = (n ? `<span class="big red">${n} need${n === 1 ? "s" : ""} action</span>` : `<span class="big green">Nothing needs action</span>`) +
-    SECTIONS.map(s => `<span class="cnt ${by(s[0]).length ? "on" : ""}">${esc(s[1])}: ${by(s[0]).length}</span>`).join("") +
     `<button type="button" class="btn2" onclick="refresh()">Check again</button>`;
   $("errs").innerHTML = R.errs.map(e => `<div class="err">${esc(e)}</div>`).join("") +
     (R.scanned.length ? `<div class="hint">Candidate issues checked on: ${R.scanned.map(esc).join(", ")}.</div>` : `<div class="hint">No real course has started yet, so there are no candidate issues to check.</div>`);
@@ -163,7 +165,7 @@ function render() {
     const list = by(t), shown = t === "iconcern" ? R.items.filter(x => x.type === t && !x.closed) : list;
     const quiet = shown.length - list.length;
     const isOpen = OPEN[t] !== undefined ? OPEN[t] : shown.length > 0;
-    return `<section class="sec"><details ${isOpen ? "open" : ""} ontoggle="OPEN['${t}']=this.open"><summary><h3>${esc(title)} <span class="n ${list.length ? "" : (quiet ? "quiet" : "zero")}">${list.length}</span>${quiet ? ` <span class="n quiet">${quiet} under review</span>` : ""}</h3></summary><p class="hint">${esc(help)}${quiet ? ` ${quiet} more under review, not yet due.` : ""}</p>` +
+    return `<section class="sec"><details ${isOpen ? "open" : ""} ontoggle="OPEN['${t}']=this.open"><summary><h3><span class="tt">${esc(title)}</span> <span class="n ${list.length ? "" : (quiet ? "quiet" : "zero")}">${list.length}</span>${quiet ? ` <span class="n quiet">${quiet} under review</span>` : ""}</h3></summary><p class="hint">${esc(help)}${quiet ? ` ${quiet} more under review, not yet due.` : ""}</p>` +
       (shown.length ? shown.map(card).join("") : `<div class="empty">None. Well done.</div>`) + `</details></section>`;
   }).join("");
   const done = R.items.filter(x => x.closed);
