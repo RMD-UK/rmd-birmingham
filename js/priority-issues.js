@@ -9,6 +9,8 @@
  *   repeat     Absent on two or more courses (counting earlier courses on their record) and not already shown as absent.
  *   final      Failed the final attempt (attempt 4), or marked Failed. Needs a plan.
  *   instabs    An instructor absence notice for an evening still to come with short notice or a repeat count, cover not arranged.
+ *   reggap     One item per course and teaching week (1 or 2) when people have no register mark (not here, late or absent) and the
+ *              week is over (the next day, or from 8pm London time on the night itself). Course must have some register marks at all.
  *   iconcern   An instructor flagged as a concern by RMD faculty (instructor_concerns). Open until closed with an outcome; "Keep under
  *              review" hides the red flag until its review date. Review log kept on the record.
  * Only the two most recent real courses that have started are scanned for candidate issues, to keep reads small.
@@ -20,6 +22,10 @@
   var SHORT_NOTICE_HOURS = 48, REPEAT_AT = 3;
 
   function pad(n) { return String(n).padStart(2, "0"); }
+  function londonHour() {
+    var h = 0; new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", hour12: false }).formatToParts(new Date()).forEach(function (x) { if (x.type === "hour") h = parseInt(x.value, 10) % 24; });
+    return h;
+  }
   function londonToday() {
     var p = {};
     new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date()).forEach(function (x) { p[x.type] = x.value; });
@@ -65,7 +71,7 @@
 
   async function load(db, opts) {
     opts = opts || {};
-    var today = londonToday(), items = [], errs = [];
+    var today = londonToday(), hour = opts.hour != null ? opts.hour : londonHour(), items = [], errs = [];
     var OU = window.OPIS_UTIL;
 
     // ── Courses ──
@@ -90,7 +96,8 @@
       try { docs(await db.collection("stage1_register").where("course", "==", cname).get()).forEach(function (r) { reg[r.id] = r; }); } catch (e) { errs.push("Could not read the register for " + cname + ": " + (e.message || e)); }
       try { docs(await db.collection("stage1_assessments").where("course", "==", cname).get()).forEach(function (r) { assess[r.id] = r; }); } catch (e) { errs.push("Could not read results for " + cname + ": " + (e.message || e)); }
       var w1 = addDays(course.date, -14), w2 = addDays(course.date, -7), night = course.date;
-      var shown = {};
+      var shown = {}, gaps = { 1: [], 2: [] };
+      var weekOver = function (n) { var d = n === 1 ? w1 : w2; return today > d || (today === d && hour >= 20); };
       cands.forEach(function (c) {
         if (c.isTest === true) return;
         var passed = c.outcome === "Passed" || passedAttemptOrNone(assess[c.id]);
@@ -102,6 +109,10 @@
         if (r.w2 && r.w2.status === "absent" && w2 <= today) abWeeks.push(2);
         var ov = c.eligibilityOverride && c.eligibilityOverride.by;
         var prevAbs = (Array.isArray(c.previousCourses) ? c.previousCourses : []).filter(function (p) { return p && (p.w1 === "absent" || p.w2 === "absent"); }).length;
+        // register gap: no mark at all for a week that is over (people already marked absent are shown under "absent")
+        if (!passed && needsAttend && !ov && !abWeeks.length && !(r.w1 && r.w1.status === "absent") && !(r.w2 && r.w2.status === "absent")) {
+          [1, 2].forEach(function (n) { var st = (r["w" + n] || {}).status; if (weekOver(n) && st !== "here" && st !== "late" && st !== "absent") gaps[n].push(c.name || c.id); });
+        }
         var base = { candidateId: c.id, name: c.name || "", course: cname, degree: c.degree || "", email: c.email || "" };
 
         // absent from teaching weeks, not reallocated
@@ -133,6 +144,13 @@
         if (failedFinal || c.outcome === "Failed") {
           add(Object.assign({ key: "f|" + c.id, type: "final", title: c.name, sub: cname + " - " + (failedFinal ? "did not pass the final attempt" : "marked Failed"), tags: [failedFinal ? "Final attempt" : "Failed"], kind: "generic" }, base));
         }
+      });
+      // one item per course and week, only when the course has any register marks at all
+      if (Object.keys(reg).length) [1, 2].forEach(function (n) {
+        var names = gaps[n]; if (!names.length) return;
+        items.push({ key: "g|" + cname + "|" + n, type: "reggap", kind: "link", title: cname + ", teaching week " + n, closed: false,
+          sub: names.length + " " + (names.length === 1 ? "person has" : "people have") + " no register mark for this night: " + names.slice(0, 12).join(", ") + (names.length > 12 ? " and " + (names.length - 12) + " more" : ""),
+          tags: ["Register not complete"], href: "phase1.html?course=" + encodeURIComponent(cname) + "#register", hrefLabel: "Open the register and mark them", top: true, followup: null });
       });
     }
 

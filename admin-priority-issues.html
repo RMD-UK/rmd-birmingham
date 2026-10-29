@@ -106,6 +106,7 @@ const P = window.RMD_PRIORITY;
 const SECTIONS = [
   ["iconcern", "Instructor concerns", "Instructors flagged by RMD faculty. Each stays here until it is closed. Keep under review keeps it listed but takes off the red flag until the review date."],
   ["concern", "OPIS concerns", "A very low rating was submitted. Record what was done and whether the university concern form should be submitted."],
+  ["reggap", "Register not complete", "Nobody marked them here, late or absent for a teaching night that is over. Shows from 8pm on the night. Mark them in the register and it clears."],
   ["absent", "Absent from the course, not reallocated", "Absent in teaching week 1 or 2 and still on the course. Reallocate them to a new course (Register, All absences, in the Monday hub), or record why not."],
   ["noshow", "Did not attend the assessment night", "The night has passed and they did not sit. They need a new course."],
   ["final", "Failed the final attempt", "Needs a plan. Record what was agreed, and whether the programme or tutor has been told."],
@@ -170,7 +171,7 @@ function card(it) {
   if (it.reasons && it.reasons.length) h += `<div class="hint" style="margin:2px 0;">Reason given: ${it.reasons.map(esc).join("; ")}</div>`;
   if (it.reason) h += `<div class="hint" style="margin:2px 0;">Reason given: ${esc(it.reason)}</div>`;
   h += `<div class="acts">`;
-  if (it.kind === "link") h += `<a class="btn2 pri" href="${esc(it.href)}">${esc(it.hrefLabel)}</a>`;
+  if (it.kind === "link") h += `<a class="btn2 pri" href="${esc(it.href)}"${it.top ? ' target="_top"' : ""}>${esc(it.hrefLabel)}</a>`;
   else {
     h += `<button type="button" class="btn2 pri" onclick="openForm('${esc(it.key)}')">${it.type === "concern" ? "Record outcome" : "Record outcome or dealt with"}</button>`;
     if (ME.isDirector && (it.type === "absent" || it.type === "noshow") && it.name) h += `<a class="btn2" href="course-allocation.html?find=${encodeURIComponent(it.name)}" target="_top">Move in Course Allocation</a>`;
