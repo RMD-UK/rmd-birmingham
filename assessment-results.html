@@ -295,10 +295,32 @@ function partsText(rec) {
 }
 function historyText(doc) { const at = (doc && doc.attempts) || {}; return Object.keys(at).filter(k => at[k] && at[k].outcome).sort((a, b) => a - b).map(k => "Attempt " + k + ": " + (at[k].outcome === "pass" ? "Pass" : "Not yet")).join("; "); }
 function csvCell(v) { let s = String(v == null ? "" : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+// 29 Oct 2026 (Jon): wording for the degree-lead spreadsheets (the page's own labels are unchanged).
+function sheetResult(p) {
+  if (p.g === "retrain") return "Failed attempt 2 on this assessment night, to repeat course and assessment";
+  if (p.g === "leads") return "Failed attempt 3 on this assessment night, to repeat course and assessment";
+  if (p.g === "final") return "Failed attempt 4 and now considered to have failed the BLS course. Not reallocated to any further course";
+  if (p.g === "pass3") {
+    const k = latestKey((p.doc && p.doc.attempts) || {});
+    return (k === 4 ? "Passed on fourth attempt" : k === 3 ? "Passed on third attempt" : GLABEL.pass3) + (REFER.indexOf(p.gN) >= 0 ? " (passed after this night)" : "");
+  }
+  return GLABEL[p.g];
+}
 function sheetRows(people) {
   const sorted = people.slice().sort((a, b) => (SEV[a.g] - SEV[b.g]) || String(a.degreeExact).localeCompare(String(b.degreeExact)) || String(a.c.name).localeCompare(String(b.c.name)));
-  return [["Name","Email","Degree","Course","Now on","Assessment date","Result","Attempts","Parts not passed","Recommendation"]].concat(sorted.map(p => { const at = (p.doc && p.doc.attempts) || {}, k = latestKey(at); return [p.c.name || "", p.c.email || "", p.degreeExact, p.course, p.moved || p.course, p.date, GLABEL[p.g] + ((p.g === "pass3" && REFER.indexOf(p.gN) >= 0) ? " (since the night)" : ""), historyText(p.doc), (k && at[k].outcome === "refer") ? partsText(at[k]) : "", NEXT_STEPS[p.g]]; }));
+  return [["Name","Email","Degree","Course","Now on","Assessment date","Result","Attempts","Parts not passed","Recommendation"]].concat(sorted.map(p => { const at = (p.doc && p.doc.attempts) || {}, k = latestKey(at); return [p.c.name || "", p.c.email || "", p.degreeExact, p.course, p.moved || p.course, p.date, sheetResult(p), historyText(p.doc), (k && at[k].outcome === "refer") ? partsText(at[k]) : "", NEXT_STEPS[p.g]]; }));
 }
+// 29 Oct 2026 (Jon): the spreadsheets sent to degree leads. Plain layout: name, email, degree, course, the course dates
+// (the two teaching nights), the assessment night and the result. The file name is the title shown when it is opened.
+function shiftIso(iso, n) { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function leadSheetRows(people) {
+  const sorted = people.slice().sort((a, b) => String(a.date || "9").localeCompare(String(b.date || "9")) || (SEV[a.g] - SEV[b.g]) || String(a.degreeExact).localeCompare(String(b.degreeExact)) || String(a.c.name).localeCompare(String(b.c.name)));
+  return [["Name","Email","Degree","Course","Course dates (teaching nights)","Assessment date","Result"]].concat(sorted.map(p => [
+    p.c.name || "", p.c.email || "", p.degreeExact, p.course,
+    p.date ? shiftIso(p.date, -14) + " and " + shiftIso(p.date, -7) : "", p.date || "", sheetResult(p)]));
+}
+const fileSafe = s => String(s).replace(/[\\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+function leadSheetName(course, degree) { return "RMD basic life support assessment - " + fileSafe(course) + " - " + fileSafe(degree) + ".csv"; }
 function download(name, rows) { const url = URL.createObjectURL(new Blob(["﻿" + rows.map(r => r.map(csvCell).join(",")).join("\r\n")], { type:"text/csv;charset=utf-8" })); const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000); window.__lastDownload = { name, rows }; }
 const slug = s => String(s).replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "");
 const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone:"Europe/London" }).format(new Date());
@@ -503,9 +525,9 @@ function paint() {
   document.querySelectorAll("#segMode button").forEach(b => b.onclick = () => { UI.mode = b.dataset.m; paint(); });
   const cg = $("chkGroup"); if (cg) cg.onchange = () => { UI.group = cg.checked; paint(); };
   document.querySelectorAll("[data-dl]").forEach(b => b.onclick = () => {
-    const sc = scope(), key = b.dataset.dl; let ppl = sc.people, label = "all_degrees";
+    const sc = scope(), key = b.dataset.dl; let ppl = sc.people, label = "all degrees";
     if (key !== "*") { const ks = Array.from(new Set(sc.people.map(p => p.degreeExact))).sort(); label = ks[Number(key)]; ppl = sc.people.filter(p => p.degreeExact === label); }
-    download("RMD_assessment_results_" + courseSlug() + "_" + slug(label) + "_" + todayIso() + ".csv", sheetRows(ppl));
+    download(leadSheetName(UI.course === "all" ? "all courses" : UI.course, label), leadSheetRows(ppl));
   });
 }
 async function boot() { await load(); paint(); det("", ""); }
