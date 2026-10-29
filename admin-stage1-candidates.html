@@ -619,6 +619,64 @@ function oneAdd() {
 document.addEventListener("DOMContentLoaded", () => { oneFillDegrees(); oneCheck(); });
 document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target && /^one(Surname|First|Email|StudentId)$/.test(e.target.id)) { e.preventDefault(); if (e.target.id === "oneEmail") oneAutoSuffix(); oneAdd(); } });
 
+// ── Format advice for pasted lines (Jon, 29 Oct 2026) ──────────────────
+// Plain-English notes on what is wrong with a pasted line, shown beside the row. Advice only: it never
+// blocks an import. Step 1 order: last name, first name, email, degree, student ID, year.
+const EMAIL_SHAPE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+function step1Advice(line) {
+  const out = [], txt = String(line || "");
+  const low = txt.toLowerCase();
+  if (/\bemail\b/.test(low) && /\bdegree\b/.test(low) && !txt.includes("@")) return ["This looks like a header row, not a person. Remove it."];
+  if (!/[,\t]/.test(txt)) {
+    if (/;/.test(txt)) out.push("Parts are separated with semicolons. Use commas (or tabs when pasting from a spreadsheet).");
+    else if (/\|/.test(txt)) out.push("Parts are separated with | marks. Use commas (or tabs when pasting from a spreadsheet).");
+    else out.push("No commas found, so this is read as one single item. Separate last name, first name, email, degree, student ID and year with commas.");
+    return out;
+  }
+  const parts = txt.split(/\t|,/).map(x => x.trim());
+  if (/["“”]/.test(txt)) out.push("Quote marks found. Remove them.");
+  if (/;/.test(txt)) out.push("A semicolon was found. Parts must be separated with commas.");
+  if (parts.length < 4) out.push(`Only ${parts.length} part${parts.length === 1 ? "" : "s"} found. The order is last name, first name, email, degree (then student ID and year, which are optional).`);
+  if (parts.length > 6) out.push(`${parts.length} parts found but at most 6 are expected. A name or degree with a comma inside it will split into extra parts.`);
+  const atAt = parts.map((x, i) => x.includes("@") ? i : -1).filter(i => i >= 0);
+  if (atAt.length && atAt.indexOf(2) < 0) out.push(`The email is in part ${atAt[0] + 1} but should be part 3. Order: last name, first name, email, degree, student ID, year.`);
+  const em = parts[2] || "";
+  if (em && !em.includes("@") && !atAt.length) out.push(`Email "${em}" has no @ sign.`);
+  else if (em && em.includes("@") && !EMAIL_SHAPE.test(em)) out.push(`Email "${em}" does not look right (check for spaces, a missing dot or a missing ending).`);
+  if (/\d/.test(parts[0] || "")) out.push(`Last name "${parts[0]}" contains a number. Is a student ID or year in the wrong place?`);
+  if (/\d/.test(parts[1] || "")) out.push(`First name "${parts[1]}" contains a number. Is a student ID or year in the wrong place?`);
+  const sid = parts[4] || "", yr = parts[5] || "";
+  if (sid && !/^\d+$/.test(sid)) out.push(`Student ID "${sid}" should be numbers only (it may be in the wrong part).`);
+  if (yr && !/^[1-6]$/.test(yr)) out.push(`Year "${yr}" should be a single number such as 1 or 2.`);
+  return out;
+}
+function dateAdvice(raw, label) {
+  const t = String(raw || "").trim();
+  if (!t) return `${label} date is missing.`;
+  if (parseUkDate(t)) return "";
+  if (/^\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}$/.test(t)) return `${label} date "${t}" is year first. Use DD/MM/YYYY, for example 02/11/2026.`;
+  if (/^\d{1,2}[-.]\d{1,2}[-.]\d{4}$/.test(t)) return `${label} date "${t}" uses dashes or dots. Use slashes: DD/MM/YYYY.`;
+  if (/^\d{1,2}\/\d{1,2}\/\d{2}$/.test(t)) return `${label} date "${t}" has a two digit year. Use four digits: DD/MM/YYYY.`;
+  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) { const a = Number(m[1]), b = Number(m[2]); if (b > 12 && a <= 12) return `${label} date "${t}" looks like MM/DD/YYYY (there is no month ${b}). Use DD/MM/YYYY.`; return `${label} date "${t}" is not a real date.`; }
+  if (/[A-Za-z]/.test(t)) return `${label} date "${t}" has letters in it. Use numbers only: DD/MM/YYYY.`;
+  return `${label} date "${t}" is not recognised. Use DD/MM/YYYY, for example 02/11/2026.`;
+}
+function placementAdvice(parts, startRaw, endRaw, start, end) {
+  const out = [];
+  if (parts.length === 1) return ["No commas or tabs found, so this is read as one single item. Separate student ID, last name, first name, email, start and end with commas (or tabs when pasting from a spreadsheet)."];
+  if (parts.length < 5) out.push(`Only ${parts.length} part${parts.length === 1 ? "" : "s"} found. Expected student ID, last name, first name, email, start, end (6 parts, or 5 without the student ID).`);
+  else if (parts.length > 6) out.push(`${parts.length} parts found but 6 are expected: student ID, last name, first name, email, start, end.`);
+  const emailIdx = parts.length >= 6 ? 3 : 2;
+  const atAt = parts.map((x, i) => x.includes("@") ? i : -1).filter(i => i >= 0);
+  if (atAt.length && atAt.indexOf(emailIdx) < 0) out.push(`The email is in part ${atAt[0] + 1} but should be part ${emailIdx + 1}.`);
+  if (!atAt.length) out.push("No email found. Rows are matched to candidates by email.");
+  const a = dateAdvice(startRaw, "Start"), b = dateAdvice(endRaw, "End");
+  if (a) out.push(a);
+  if (b) out.push(b);
+  if (start && end && end < start) out.push("The end date is before the start date. Are they the wrong way round?");
+  return out;
+}
 // ── Add candidates (paste, parse, preview, import) ──────────────────────
 function parseLine(line) {
   const parts = line.split(/\t|,/).map(s => s.trim());
@@ -677,6 +735,7 @@ function parsePreview() {
     // so a single flagged row can be pulled back out via removePreviewRow()
     // without re-parsing the textarea (which would renumber everything).
     r._pid = nextPid++;
+    r._fmt = step1Advice(line);
     rows.push(r);
   });
 
@@ -732,8 +791,10 @@ function renderParsedPreview(errors) {
     r._sfx = suffixProblem(r.email, r.degreeOverride || (r.degreeMatch && r.degreeMatch.exact) || "");
     r._sfxFlagged = !!r._sfx;
 
-    r._flagged = r._dupFlagged || r._missingFlagged || r._sfxFlagged;
+    r._fmtFlagged = !!(r._fmt && r._fmt.length);
+    r._flagged = r._dupFlagged || r._missingFlagged || r._sfxFlagged || r._fmtFlagged;
     r._warn = [
+      r._fmtFlagged ? r._fmt.map(n => `<span class="dup-warning" style="display:inline;">⚠ format: ${esc(n)}</span>`).join("<br>") : "",
       r._missingFlagged ? `<span class="dup-warning dup-exact" style="display:inline;">⚠ missing: ${esc(missing.join(", "))}</span>` : "",
       r._sfxFlagged ? `<span class="dup-warning ${r._sfx.strict ? "dup-exact" : ""}" style="display:inline;">⚠ email should end ${esc(r._sfx.exp)}</span> <button type="button" class="btn-secondary" style="padding:2px 8px;font-size:11px;margin-left:4px;" onclick="fixEmailEnding(${r._pid})">Fix ending</button>` : "",
       r._dupWarn
@@ -771,7 +832,7 @@ function renderParsedPreview(errors) {
     cluster.forEach(r => { r._dupColor = color; });
     groupedFlagged.push(...cluster);
   });
-  const missingOnlyRows = rows.filter(r => (r._missingFlagged || r._sfxFlagged) && !r._dupFlagged);
+  const missingOnlyRows = rows.filter(r => (r._missingFlagged || r._sfxFlagged || r._fmtFlagged) && !r._dupFlagged);
   const allFlagged = [...groupedFlagged, ...missingOnlyRows];
   const clear = rows.filter(r => !r._flagged);
 
@@ -1151,7 +1212,7 @@ function parsePlacementPreview() {
     const end = parseUkDate(endRaw);
     const name = [firstName, lastName].filter(Boolean).join(" ");
     const matches = email ? allCandidates.filter(c => (c.email || "").toLowerCase() === email.toLowerCase()) : [];
-    return { lineNo: i + 1, name, email: email || "", startRaw: startRaw || "", endRaw: endRaw || "", start, end, matches, chosenId: matches.length === 1 ? matches[0].id : null };
+    return { lineNo: i + 1, name, email: email || "", startRaw: startRaw || "", endRaw: endRaw || "", start, end, matches, chosenId: matches.length === 1 ? matches[0].id : null, advice: placementAdvice(parts, startRaw, endRaw, start, end) };
   });
   parsedPlacementRows = rows;
 
@@ -1172,7 +1233,7 @@ function parsePlacementPreview() {
     const chosen = r.matches.length === 1 ? r.matches[0] : (r.chosenId ? allCandidates.find(c => c.id === r.chosenId) : null);
     const chosenSession = chosen && chosen.course ? courseSessions.find(s => s.name === chosen.course) : null;
     const hasClash = !!(chosen && chosenSession && r.start && r.end && placementClashesWithCourse([{ start: r.start, end: r.end }], chosenSession.date));
-    r._problem = noMatch || isAmbiguous || badDate || hasClash;
+    r._problem = noMatch || isAmbiguous || badDate || hasClash || (r.advice && r.advice.length > 0);
   });
   const problemRows = rows.filter(r => r._problem);
   const cleanRows = rows.filter(r => !r._problem);
@@ -1192,9 +1253,10 @@ function parsePlacementPreview() {
           ${r.matches.map(m => `<option value="${esc(m.id)}">${esc(m.name)} — ${esc(m.course) || "no course"}</option>`).join("")}
         </select>`;
     }
+    const adviceHtml = (r.advice && r.advice.length) ? r.advice.map(n => `<br><span class="dup-warning dup-exact" style="display:inline;">⚠ ${esc(n)}</span>`).join("") : "";
     const dateCell = (r.start && r.end)
-      ? `${esc(r.startRaw)} – ${esc(r.endRaw)}`
-      : `<span class="dup-warning dup-exact" style="display:inline;">⚠ "${esc(r.startRaw)}" / "${esc(r.endRaw)}" — expected DD/MM/YYYY</span>`;
+      ? `${esc(r.startRaw)} – ${esc(r.endRaw)}${adviceHtml}`
+      : `<span class="dup-warning dup-exact" style="display:inline;">⚠ "${esc(r.startRaw)}" / "${esc(r.endRaw)}"</span>${adviceHtml}`;
     const chosen = r.matches.length === 1 ? r.matches[0] : (r.chosenId ? allCandidates.find(c => c.id === r.chosenId) : null);
     const chosenSession = chosen && chosen.course ? courseSessions.find(s => s.name === chosen.course) : null;
     const clashCell = (chosen && chosenSession && r.start && r.end && placementClashesWithCourse([{ start: r.start, end: r.end }], chosenSession.date))
