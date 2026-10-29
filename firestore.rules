@@ -1055,6 +1055,46 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+    // ── OPIS rating coverage and "not enough time" (29 Oct 2026, Jon) ───────
+    // opis_coverage/{candidateId}: who has rated and who said they could not, as user ids only (no scores). Any signed-in member reads
+    // it so instructors in a room can see "1 of 2 ratings in". A member may only add or remove THEIR OWN id (raters add only; skippers
+    // add or remove). Directors may correct it.
+    match /opis_coverage/{docId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['candidateId', 'course', 'raters', 'skippers'])
+        && request.resource.data.candidateId == docId
+        && request.resource.data.get('raters', []).toSet().difference([request.auth.uid].toSet()).size() == 0
+        && request.resource.data.get('skippers', []).toSet().difference([request.auth.uid].toSet()).size() == 0;
+      allow update: if isDirector() || (isSignedIn()
+        && request.resource.data.keys().hasOnly(['candidateId', 'course', 'raters', 'skippers'])
+        && request.resource.data.candidateId == resource.data.candidateId
+        && request.resource.data.get('raters', []).toSet().difference(resource.data.get('raters', []).toSet()).hasOnly([request.auth.uid])
+        && resource.data.get('raters', []).toSet().difference(request.resource.data.get('raters', []).toSet()).size() == 0
+        && request.resource.data.get('skippers', []).toSet().difference(resource.data.get('skippers', []).toSet()).hasOnly([request.auth.uid])
+        && resource.data.get('skippers', []).toSet().difference(request.resource.data.get('skippers', []).toSet()).hasOnly([request.auth.uid]));
+      allow delete: if isDirector();
+    }
+
+    // opis_skips/{candidateId_uid}: the reason an instructor did not rate a candidate. Own record only to write and read;
+    // Directors, Student Faculty and Senior Faculty read all (OPIS review page).
+    match /opis_skips/{docId} {
+      allow get: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly(['candidateId', 'candidateName', 'course', 'room', 'uid', 'name', 'reason', 'reasonLabel', 'note', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && docId == request.resource.data.candidateId + '_' + request.auth.uid
+        && request.resource.data.reason in ['late', 'several', 'brief', 'other']
+        && request.resource.data.note is string && request.resource.data.note.size() <= 300
+        && request.resource.data.at == request.time;
+      allow update: if isSignedIn() && resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['candidateId', 'candidateName', 'course', 'room', 'uid', 'name', 'reason', 'reasonLabel', 'note', 'at'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.reason in ['late', 'several', 'brief', 'other']
+        && request.resource.data.note is string && request.resource.data.note.size() <= 300 && request.resource.data.at == request.time;
+      allow delete: if isDirector() || (isSignedIn() && resource.data.uid == request.auth.uid);
+    }
+
     // ── IW registrations ────────────────────────────────────────────────────
     // Director only — director-managed attendee list for Instructor Weekend
     match /iw_registrations/{docId} {

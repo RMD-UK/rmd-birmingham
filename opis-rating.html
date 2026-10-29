@@ -45,6 +45,19 @@
     .cand-chip:hover { border-color:var(--rmd-blue); }
     .cand-chip.done { background:#e6f4ea; border-color:#bfe0c9; color:#1a6e31; }
     .cand-chip.active { box-shadow:0 0 0 2px var(--rmd-blue); border-color:var(--rmd-blue); }
+    .cand-chip .cov { font-size:10.5px; font-weight:700; margin-left:6px; padding:1px 6px; border-radius:8px; background:#fff3cd; color:#856404; }
+    .cand-chip .cov.ok { background:#d4ecd9; color:#1a6e31; }
+    .cand-chip.skipped { background:#f1f3f7; border-style:dashed; color:#6b7a90; }
+    .covroom { flex-basis:100%; margin:6px 0 2px; padding:7px 10px; border-left:4px solid #b8860b; background:#fff8e1; border-radius:0 6px 6px 0; font-size:12.5px; line-height:1.4; }
+    .covbar { margin:6px 10px 0; padding:6px 10px; border-left:4px solid #b8860b; background:#fff8e1; border-radius:0 6px 6px 0; font-size:12.5px; line-height:1.4; }
+    .covbar.ok { border-left-color:#1a6e31; background:#e6f4ea; }
+    .skipbox { margin:6px 10px 0; font-size:12.5px; }
+    .skipbox .skipform { margin-top:6px; padding:8px 10px; background:#f7f9fb; border:1px solid #dde4ea; border-radius:8px; }
+    .skipbox textarea { width:100%; min-height:44px; font:inherit; font-size:12.5px; padding:6px; border:1.5px solid #ccd6dd; border-radius:6px; margin-top:6px; }
+    .skipbox .chip { font:inherit; font-size:12px; padding:5px 10px; border:2px solid #ccd6dd; border-radius:16px; background:#fff; color:var(--rmd-navy); cursor:pointer; margin:0 6px 4px 0; }
+    .skipbox .chip.on { background:var(--rmd-navy); border-color:var(--rmd-navy); color:#fff; font-weight:700; }
+    .btn-skip { font:inherit; font-size:12.5px; padding:5px 12px; border:2px solid #ccd6dd; border-radius:8px; background:#fff; color:var(--rmd-navy); cursor:pointer; }
+    .btn-skip:hover { border-color:var(--rmd-navy); }
     .strip-count { font-size:11.5px; color:#8893b0; margin-left:4px; }
 
     section.detail { padding:0; background:#fff; border:1px solid #dde2ed; border-radius:10px; overflow:hidden; margin-top:8px; }
@@ -293,6 +306,27 @@ function refreshSubmit() {
   const n = document.getElementById("concernNeed"); if (n) n.style.display = concernOk() ? "none" : "";
 }
 let scoredThisSession = new Set(); // candidateIds submitted in this page session
+// Rating coverage (29 Oct 2026, Jon): each candidate needs at least MIN_RATERS ratings from different instructors.
+// opis_coverage/{candidateId} holds only who has rated or skipped (user ids, no scores) so every instructor can see the count.
+const MIN_RATERS = 2;
+const SKIP_REASONS = [["late", "I joined this room late"], ["several", "I covered several rooms"], ["brief", "I only met them briefly"], ["other", "Other"]];
+let coverage = {};                 // candidateId -> { raters: [uid], skippers: [uid] }
+let mySkip = {};                   // candidateId -> { reasonLabel, note } for skips made by me
+let skipOpen = false, skipReason = "", skipNote = "";
+async function loadCoverage(course) {
+  try {
+    const snap = await db.collection("opis_coverage").where("course", "==", course).get();
+    const m = {}; snap.forEach(d => { m[d.id] = d.data(); }); coverage = m;
+  } catch (e) { console.warn("opis_coverage load failed:", e.message); }
+}
+function covOf(id) { return coverage[id] || { raters: [], skippers: [] }; }
+function iRated(id) { return !!(currentUser && (covOf(id).raters || []).indexOf(currentUser.uid) >= 0); }
+function iSkipped(id) { return !!(currentUser && (covOf(id).skippers || []).indexOf(currentUser.uid) >= 0); }
+function raterCount(id) {
+  const set = new Set(covOf(id).raters || []);
+  if (currentUser && (doneSet.has(id) || scoredThisSession.has(id))) set.add(currentUser.uid);
+  return set.size;
+}
 let doneSet = new Set();           // candidateIds this person has submitted, remembered on this device
 function doneKey() { return "opis_done_" + (currentUser ? currentUser.uid : ""); }
 function loadDone() {
@@ -301,7 +335,7 @@ function loadDone() {
 function saveDone() {
   try { localStorage.setItem(doneKey(), JSON.stringify(Array.from(doneSet))); } catch (e) { /* storage blocked: session set still works */ }
 }
-function isDone(id) { return doneSet.has(id) || scoredThisSession.has(id); }
+function isDone(id) { return doneSet.has(id) || scoredThisSession.has(id) || iRated(id); }
 let justSubmitted = false;
 let mistakeChecked = false;   // 'I made a mistake with my first submission' (correction of an earlier rating)
 let mistakeOpen = false;      // user opened the correction box for a candidate not yet marked rated on this device
@@ -487,6 +521,7 @@ function selectCourse(course) {
   document.getElementById("candidateSearch").value = "";
   document.getElementById("searchResultsWrap").style.display = "none";
   if (!course) return;
+  loadCoverage(course).then(() => { if (selectedRoom) renderRoster(); if (selectedCandidateId) renderDetail(); });
 
   const candidates = candidatesForCourse(course);
   const teams = courseTeams(course);
@@ -551,13 +586,23 @@ function selectCandidateFromSearch(candidateId) {
   selectCandidate(candidateId);
 }
 
+function covRoomBanner(candidates) {
+  const short = candidates.filter(c => raterCount(c.id) < MIN_RATERS);
+  if (!short.length) return `<div class="covroom" style="border-left-color:#1a6e31;background:#e6f4ea;">Everyone in this room has ${MIN_RATERS} ratings from different instructors ✓</div>`;
+  const mine = short.filter(c => !isDone(c.id)), waiting = short.length - mine.length;
+  let h = `<div class="covroom"><b>Each candidate needs ${MIN_RATERS} ratings from different instructors.</b> `;
+  if (mine.length) h += `You have not rated ${mine.map(c => esc(c.name)).join(", ")}${mine.some(c => iSkipped(c.id)) ? " (some you marked as not enough time)" : ""}. Please reconsider: if you have taught them enough, open them and submit.`;
+  if (waiting) h += `${mine.length ? " " : ""}${waiting} more ${waiting === 1 ? "is" : "are"} waiting on another instructor in the room.`;
+  return h + `</div>`;
+}
 function renderRoster() {
   const candidates = candidatesForCourse(selectedCourse).filter(c => c.room === selectedRoom);
   const grid = document.getElementById("rosterGrid");
   const done = candidates.filter(c => isDone(c.id)).length;
   grid.innerHTML = candidates.length
-    ? candidates.map(c => `<button type="button" class="cand-chip ${isDone(c.id) ? "done" : ""} ${c.id === selectedCandidateId ? "active" : ""}" onclick="selectCandidate('${esc(c.id)}')" title="${esc(c.degree || "")}">${isDone(c.id) ? "✓ " : ""}${esc(c.name)}</button>`).join("")
-      + `<span class="strip-count">${done} of ${candidates.length} rated</span>`
+    ? candidates.map(c => { const n = raterCount(c.id), sk = !isDone(c.id) && iSkipped(c.id);
+        return `<button type="button" class="cand-chip ${isDone(c.id) ? "done" : ""} ${sk ? "skipped" : ""} ${c.id === selectedCandidateId ? "active" : ""}" onclick="selectCandidate('${esc(c.id)}')" title="${esc(c.degree || "")}${sk ? " (you said you have not spent enough time)" : ""}">${isDone(c.id) ? "✓ " : ""}${esc(c.name)}<span class="cov ${n >= MIN_RATERS ? "ok" : ""}">${n >= MIN_RATERS ? n + " ✓" : n + "/" + MIN_RATERS}</span></button>`; }).join("")
+      + `<span class="strip-count">${done} of ${candidates.length} rated</span>` + covRoomBanner(candidates)
     : `<div class="no-course">No candidates assigned to this room yet.</div>`;
 }
 
@@ -583,6 +628,7 @@ function selectCandidate(candidateId) {
   justSubmitted = false;
   mistakeChecked = false;
   mistakeOpen = false;
+  skipOpen = false; skipReason = ""; skipNote = "";
   const d = isDone(candidateId) ? null : DraftGuard.read(opDraftKey(candidateId));
   if (d) {
     currentScores = d.scores || {}; credibilityChecked = !!d.cred; teachingPotential = !!d.tp;
@@ -591,6 +637,7 @@ function selectCandidate(candidateId) {
   }
   renderRoster();
   renderDetail();
+  loadMySkip(candidateId);
   if (d) DraftGuard.banner("opDraftBanner", "submitErr", "Restored your unsubmitted scores for this candidate from this device.", "warn");
   else DraftGuard.banner("opDraftBanner", "submitErr", "");
   try { sessionStorage.setItem("rmd_opis_last", JSON.stringify({ uid: currentUser && currentUser.uid, course: selectedCourse, room: selectedRoom, cand: candidateId })); } catch (e) {}
@@ -622,6 +669,51 @@ function evaluate() {
   return { total, complete, scoredCount, hasUnsat };
 }
 
+function covDetail(c) {
+  const n = raterCount(c.id), id = c.id, done = isDone(id);
+  if (justSubmitted) return n >= MIN_RATERS ? `<div class="covbar ok">${n} ratings in from different instructors ✓</div>` : `<div class="covbar">${n} of ${MIN_RATERS} ratings in. Waiting on another instructor in your room.</div>`;
+  let h = n >= MIN_RATERS ? `<div class="covbar ok">${n} ratings in from different instructors ✓</div>`
+    : `<div class="covbar"><b>${n} of ${MIN_RATERS} ratings in from different instructors.</b> ${done ? "Waiting on another instructor in your room." : (iSkipped(id) ? "You said you had not spent enough time with them. Please reconsider: if you have now, tick the box below and submit." : "If you have spent enough time with them, please rate them.")}</div>`;
+  if (!done) {
+    if (iSkipped(id)) {
+      const m = mySkip[id];
+      h += `<div class="skipbox">Marked as not enough time${m && m.reasonLabel ? ` (${esc(m.reasonLabel)})` : ""}. <button type="button" class="btn-skip" onclick="undoSkip()">Undo, I will rate them</button></div>`;
+    } else if (skipOpen) {
+      h += `<div class="skipbox"><div class="skipform"><b>Why have you not spent enough time with ${esc(c.name)}?</b>
+        <div class="chips" style="margin-top:6px;">${SKIP_REASONS.map(([k, l]) => `<button type="button" class="chip ${skipReason === k ? "on" : ""}" onclick="setSkipReason('${k}')">${esc(l)}</button>`).join("")}</div>
+        <textarea id="skipNote" maxlength="300" placeholder="Optional note" oninput="skipNote = this.value">${esc(skipNote)}</textarea>
+        <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button type="button" class="btn-submit" ${skipReason ? "" : "disabled"} onclick="saveSkip()">Save: not enough time to rate</button><button type="button" class="btn-reset" onclick="skipOpen=false;renderDetail()">Cancel</button><span class="submit-err" id="skipErr" style="display:none;"></span></div></div></div>`;
+    } else {
+      h += `<div class="skipbox"><button type="button" class="btn-skip" onclick="skipOpen=true;renderDetail()">I haven't spent enough time with them to rate</button></div>`;
+    }
+  }
+  return h;
+}
+function setSkipReason(v) { skipReason = v; renderDetail(); }
+async function saveSkip() {
+  const c = candidatesForCourse(selectedCourse).find(x => x.id === selectedCandidateId); if (!c || !skipReason) return;
+  const uid = currentUser.uid, label = (SKIP_REASONS.find(r => r[0] === skipReason) || [0, ""])[1], err = document.getElementById("skipErr");
+  try {
+    await db.collection("opis_skips").doc(c.id + "_" + uid).set({ candidateId: c.id, candidateName: c.name, course: selectedCourse, room: selectedRoom || "", uid, name: myName, reason: skipReason, reasonLabel: label, note: (skipNote || "").trim(), at: firebase.firestore.FieldValue.serverTimestamp() });
+    await db.collection("opis_coverage").doc(c.id).set({ candidateId: c.id, course: selectedCourse, skippers: firebase.firestore.FieldValue.arrayUnion(uid) }, { merge: true });
+    const cv = covOf(c.id); coverage[c.id] = { candidateId: c.id, course: selectedCourse, raters: cv.raters || [], skippers: (cv.skippers || []).concat([uid]) };
+    mySkip[c.id] = { reasonLabel: label, note: skipNote }; skipOpen = false; skipReason = ""; skipNote = "";
+    renderRoster(); renderDetail();
+  } catch (e) { console.error("skip failed", e.code, e.message); if (err) { err.textContent = "Couldn't save (" + (e.code || "error") + "). Try again."; err.style.display = ""; } }
+}
+async function undoSkip() {
+  const id = selectedCandidateId, uid = currentUser.uid; if (!id) return;
+  try {
+    await db.collection("opis_skips").doc(id + "_" + uid).delete();
+    await db.collection("opis_coverage").doc(id).set({ candidateId: id, course: selectedCourse, skippers: firebase.firestore.FieldValue.arrayRemove(uid) }, { merge: true });
+    const cv = covOf(id); coverage[id] = Object.assign({}, cv, { skippers: (cv.skippers || []).filter(x => x !== uid) }); delete mySkip[id];
+    renderRoster(); renderDetail();
+  } catch (e) { console.error("undo skip failed", e.code, e.message); alert("Couldn't undo (" + (e.code || "error") + "). Try again."); }
+}
+async function loadMySkip(id) {
+  if (mySkip[id] || !iSkipped(id)) return;
+  try { const d = await db.collection("opis_skips").doc(id + "_" + currentUser.uid).get(); if (d.exists) { mySkip[id] = d.data(); renderDetail(); } } catch (e) { /* the reason just stays hidden */ }
+}
 function renderDetail() {
   const candidate = candidatesForCourse(selectedCourse).find(c => c.id === selectedCandidateId);
   const detail = document.getElementById("detail");
@@ -682,6 +774,7 @@ function renderDetail() {
       <h3>${esc(candidate.name)}</h3>
       <div class="sub">${esc(candidate.degree || "—")} · Room ${esc(selectedRoom || "not yet assigned")} · ${esc(selectedCourse)}</div>
     </div>
+    ${covDetail(candidate)}
     <label class="cred-bar ${justSubmitted ? "locked" : ""} ${gated ? "need" : ""}">
       <input type="checkbox" id="credibilityCheckbox" ${credibilityChecked ? "checked" : ""} onchange="setCredibility(this.checked)">
       <span>I've spent enough time with this person to make a credible submission.</span>
@@ -790,6 +883,14 @@ async function submitRating() {
       submittedByEmail: currentUser.email || null,
       submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    // Record that this instructor has rated (user id only, no scores) and drop any earlier "not enough time". Never blocks the rating.
+    try {
+      const uid = currentUser.uid, wasSkipped = iSkipped(candidate.id);
+      await db.collection("opis_coverage").doc(candidate.id).set({ candidateId: candidate.id, course: selectedCourse, raters: firebase.firestore.FieldValue.arrayUnion(uid), skippers: firebase.firestore.FieldValue.arrayRemove(uid) }, { merge: true });
+      if (wasSkipped) { try { await db.collection("opis_skips").doc(candidate.id + "_" + uid).delete(); } catch (e2) { /* harmless */ } delete mySkip[candidate.id]; }
+      const cv = covOf(candidate.id);
+      coverage[candidate.id] = { candidateId: candidate.id, course: selectedCourse, raters: Array.from(new Set((cv.raters || []).concat([uid]))), skippers: (cv.skippers || []).filter(x => x !== uid) };
+    } catch (e3) { console.warn("opis_coverage update failed:", e3.code, e3.message); }
     clearConcern();
     scoredThisSession.add(candidate.id);
     doneSet.add(candidate.id);
