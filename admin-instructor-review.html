@@ -64,6 +64,7 @@
 
   <div class="toolbar">
     <input type="text" id="searchBox" placeholder="Search by name or email…" oninput="render()">
+    <a href="admin-instructor-ranking.html" style="font-size:13px;font-weight:700;color:var(--rmd-blue);white-space:nowrap;">Rank and select &rarr;</a>
     <select id="filterSelect" onchange="render()">
       <option value="">All EOI submissions</option>
       <option value="unrated">No OPIS ratings yet</option>
@@ -268,6 +269,7 @@ function candidateCardHtml(r, i) {
           <span>Total: <b>${rt.total ?? "–"}/15</b></span>
           ${rt.outstandingTeachingPotential === true ? `<span style="color:#1a6e31;"><b>&#10003; Potential outstanding teaching ability</b></span>` : ""}
         </div>
+        ${rt._superseded ? "" : OPIS_UTIL.concernHtml(rt)}
       </div>`).join("")
     : `<div class="no-ratings">No OPIS ratings submitted yet.</div>`;
 
@@ -275,7 +277,7 @@ function candidateCardHtml(r, i) {
     <div class="candidate-card" id="card-${i}">
       <div class="candidate-head" onclick="toggleCard(${i})">
         <div style="flex:1;">
-          <div class="candidate-name">${esc(eoi.name)}${outcomePill(r.outcome)}${r.chosen ? `<span class="pill pill-pass">Chosen for next year</span>` : ""}${r.excellent && r.excellent.length ? `<span class="pill pill-exc">Excellent pass</span>` : ""}${r.outcome.neededMoreThanTwoAttempts === true ? `<span class="pill pill-attempts">&gt;2 attempts</span>` : ""}${ratingCount ? `<span class="pill pill-count">${ratingCount} OPIS rating${ratingCount === 1 ? "" : "s"} · avg ${avgTotal}/15</span>` : `<span class="pill pill-unknown">No ratings yet</span>`}</div>
+          <div class="candidate-name">${esc(eoi.name)}${outcomePill(r.outcome)}${r.chosen ? `<span class="pill pill-pass">Chosen for next year</span>` : ""}${r.excellent && r.excellent.length ? `<span class="pill pill-exc">Excellent pass</span>` : ""}${r.outcome.neededMoreThanTwoAttempts === true ? `<span class="pill pill-attempts">&gt;2 attempts</span>` : ""}${r.ratings.some(x => !x._superseded && OPIS_UTIL.hasConcern(x)) ? `<span class="pill pill-fail">Concern raised</span>` : ""}${ratingCount ? `<span class="pill pill-count">${ratingCount} OPIS rating${ratingCount === 1 ? "" : "s"} · avg ${avgTotal}/15</span>` : `<span class="pill pill-unknown">No ratings yet</span>`}</div>
           <div class="candidate-sub">${esc(eoi.email)} · ${esc(eoi.degree) || "no degree on EOI"}</div>
         </div>
         <div class="candidate-arrow">▶</div>
@@ -343,5 +345,6 @@ function toggleCard(i) {
 }
 
 </script>
+<script src="js/embed-mode.js"></script>
 </body>
 </html>

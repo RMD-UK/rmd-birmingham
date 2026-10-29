@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructor Ranking — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 20px; }
+    .page { max-width: 1180px; margin: 0 auto; }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 12px 18px; border-radius: 8px; display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .top-bar img { height: 32px; }
+    .top-bar-title { font-size:16px; font-weight:700; }
+    .top-bar-sub { font-size:12px; opacity:0.7; }
+    #authMsg { color:#fff3cd; font-size:12px; }
+    .hint { font-size:12px; color:var(--rmd-muted); line-height:1.5; margin:0 0 10px; }
+    .card { background:white; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.1); margin-bottom:16px; overflow:hidden; }
+    .card-header { padding:10px 16px; font-weight:700; color:var(--rmd-navy); font-size:14px; border-bottom:1px solid #eef2f6; }
+    .card-body { padding:14px 16px; }
+    .sgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:12px 16px; }
+    .sgrid label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--rmd-muted); margin-bottom:4px; }
+    .sgrid input[type=number], .sgrid select { width:100%; padding:8px; border:2px solid #ccd6dd; border-radius:6px; font-size:14px; font-family:var(--font); }
+    .sgrid .note { font-size:11px; color:var(--rmd-muted); margin-top:3px; line-height:1.35; }
+    .summary-line { font-size:13px; color:var(--rmd-muted); margin:4px 0 12px; }
+    .empty-state { padding:24px; text-align:center; color:var(--rmd-muted); font-size:13px; background:white; border-radius:8px; }
+    .scroll { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px; color:var(--rmd-muted); padding:8px 10px; border-bottom:2px solid #eef2f6; white-space:nowrap; }
+    td { padding:8px 10px; border-bottom:1px solid #eef2f6; vertical-align:top; }
+    td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+    .nm { font-weight:700; color:var(--rmd-navy); }
+    .sub { font-size:11px; color:var(--rmd-muted); }
+    .pill { display:inline-block; font-size:10px; font-weight:700; padding:3px 9px; border-radius:10px; text-transform:uppercase; letter-spacing:.4px; white-space:nowrap; }
+    .p-sel { background:#e1efe3; color:#1a6e31; }
+    .p-res { background:#fff3cd; color:#856404; }
+    .p-not { background:#eef2f6; color:var(--rmd-muted); }
+    .p-low { background:#fce8e6; color:#b7410e; }
+    .p-exc { background:#FFE08A; color:#4A3500; }
+    .warn { color:#8a5a00; }
+    .applybar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+    .applybar button { padding:10px 16px; border:0; border-radius:6px; background:var(--rmd-navy); color:#fff; font-weight:700; cursor:pointer; font-family:var(--font); }
+    .applybar button:disabled { opacity:.45; cursor:default; }
+    .linkbtn { background:none; border:0; color:var(--rmd-blue); cursor:pointer; font-size:12px; padding:0; font-family:var(--font); }
+    tr.sel td { background:#f6fbf7; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="top-bar">
+    <a href="member-menu.html" style="display:flex;align-items:center;"><img src="assets/rmd-logo.png" alt="RMD"></a>
+    <div style="flex:1;">
+      <div class="top-bar-title">Instructor Ranking</div>
+      <div class="top-bar-sub">RMD Birmingham · Director &amp; Senior Faculty only · <a href="admin-instructor-review.html" style="color:#cfe3ff;">Back to Instructor Potential Review</a></div>
+      <div id="authMsg"></div>
+    </div>
+  </div>
+
+  <p class="hint">Ranks everyone who sent an Expression of Interest and passed. The score is the average OPIS total (out of 15), plus a bonus for potential outstanding teaching ability (scaled by how many raters ticked it), plus a bonus for an Excellent pass note, minus a penalty for passing at attempt 3 or 4. Passing at attempt 1 or 2 ranks the same. Enter the number of places to see a selection that keeps the intake in proportion to the degrees we teach, without dropping below the standard you set. Nothing is saved until a Director presses Choose.</p>
+
+  <div class="card">
+    <div class="card-header">Settings</div>
+    <div class="card-body">
+      <div class="sgrid">
+        <div><label for="sPlaces">Places available</label><input type="number" id="sPlaces" min="1" step="1" placeholder="TBC" oninput="recalc()"><div class="note">Leave blank to see the ranking only.</div></div>
+        <div><label for="sFloor">Minimum score</label><input type="number" id="sFloor" step="0.1" oninput="recalc()"><div class="note">Nobody below this is chosen, whatever their degree. 10 means satisfactory on average.</div></div>
+        <div><label for="sMargin">Degree margin (points)</label><input type="number" id="sMargin" step="0.1" min="0" oninput="recalc()"><div class="note">How far below the score cut-off a degree place may go. 0 means pure merit.</div></div>
+        <div><label for="sOut">Outstanding potential bonus</label><input type="number" id="sOut" step="0.1" oninput="recalc()"><div class="note">Multiplied by the share of raters who ticked it.</div></div>
+        <div><label for="sExc">Excellent pass bonus</label><input type="number" id="sExc" step="0.1" oninput="recalc()"></div>
+        <div><label for="sLate">Attempt 3 or 4 penalty</label><input type="number" id="sLate" step="0.1" min="0" oninput="recalc()"><div class="note">Taken off. Attempts 1 and 2 are the same.</div></div>
+        <div><label for="sBasis">Degree shares based on</label><select id="sBasis" onchange="recalc()"><option value="taught">Everyone we taught</option><option value="applicants">Eligible applicants only</option></select></div>
+        <div><label for="sUnsat">Unsatisfactory scores</label><select id="sUnsat" onchange="recalc()"><option value="flag">Flag only</option><option value="exclude">Exclude anyone with one</option></select></div>
+      </div>
+      <div style="margin-top:10px;"><button class="linkbtn" onclick="resetSettings()">Reset to suggested values</button></div>
+    </div>
+  </div>
+
+  <div class="summary-line" id="summaryLine"></div>
+  <div id="groupsWrap"></div>
+  <div id="applyWrap"></div>
+  <div class="card"><div class="card-header">Ranking</div><div class="scroll" id="tableWrap"><div class="empty-state">Loading…</div></div></div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/opis-util.js"></script>
+<script src="js/instructor-ranking.js"></script>
+<script>
+initFirebase();
+
+let isDirectorUser = false;
+let DATA = null;       // { eois, candidatesByEmail, ratingsByEmail, assessById, taughtByGroup, groupOf }
+let RESULT = null;
+const LS_KEY = "rmdInstructorRankingSettings";
+
+auth.onAuthStateChanged(async function(user) {
+  if (!user) { window.location.href = "signin.html"; return; }
+  const role = await resolveRole(user.uid, user.email || "");
+  const seniorFac = await isSeniorFaculty(user.email || "");
+  isDirectorUser = role === ROLES.DIRECTOR;
+  if (role !== ROLES.DIRECTOR && !seniorFac) {
+    document.getElementById("authMsg").textContent = "Course Directors and RMD Senior Faculty only — redirecting…";
+    setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
+    return;
+  }
+  init();
+});
+
+function esc(v) { return (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function loadSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; } catch (e) { s = {}; }
+  return s;
+}
+function putSettings(s) {
+  const d = RMD_RANK.DEFAULTS;
+  document.getElementById("sPlaces").value = s.places || "";
+  document.getElementById("sFloor").value = s.floor !== undefined ? s.floor : d.floor;
+  document.getElementById("sMargin").value = s.margin !== undefined ? s.margin : d.margin;
+  document.getElementById("sOut").value = s.bonusOutstanding !== undefined ? s.bonusOutstanding : d.bonusOutstanding;
+  document.getElementById("sExc").value = s.bonusExcellent !== undefined ? s.bonusExcellent : d.bonusExcellent;
+  document.getElementById("sLate").value = s.penaltyLate !== undefined ? s.penaltyLate : d.penaltyLate;
+  document.getElementById("sBasis").value = s.basis || d.basis;
+  document.getElementById("sUnsat").value = s.excludeUnsat ? "exclude" : "flag";
+}
+function readSettings() {
+  return {
+    places: document.getElementById("sPlaces").value,
+    floor: document.getElementById("sFloor").value,
+    margin: document.getElementById("sMargin").value,
+    bonusOutstanding: document.getElementById("sOut").value,
+    bonusExcellent: document.getElementById("sExc").value,
+    penaltyLate: document.getElementById("sLate").value,
+    basis: document.getElementById("sBasis").value,
+    excludeUnsat: document.getElementById("sUnsat").value === "exclude"
+  };
+}
+function resetSettings() { try { localStorage.removeItem(LS_KEY); } catch (e) {} putSettings({}); recalc(); }
+
+async function init() {
+  putSettings(loadSettings());
+  try {
+    const [eoiSnap, candSnap, ratingSnap, asSnap] = await Promise.all([
+      db.collection(COLLECTIONS.instructorEoi).get(),
+      db.collection(COLLECTIONS.stage1Candidates).get(),
+      db.collection(COLLECTIONS.opisRatings).get(),
+      db.collection("stage1_assessments").get()
+    ]);
+    const eois = eoiSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const candidatesByEmail = {}; const taughtSeen = {}; const taughtByGroup = {};
+    const groupOf = (deg) => { const r = resolveStage1Degree(deg) || {}; return r.group || r.exact || (deg ? String(deg) : "Other"); };
+    candSnap.docs.forEach(d => {
+      const c = { id: d.id, ...d.data() };
+      const email = (c.email || "").toLowerCase();
+      if (email) (candidatesByEmail[email] = candidatesByEmail[email] || []).push(c);
+      if (c.isTest === true || /^test/i.test(c.course || "")) return;
+      const key = email || d.id;
+      if (taughtSeen[key]) return;
+      taughtSeen[key] = true;
+      const g = groupOf(c.degree);
+      taughtByGroup[g] = (taughtByGroup[g] || 0) + 1;
+    });
+    const allRatings = ratingSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    OPIS_UTIL.markSuperseded(allRatings);
+    const ratingsByEmail = {};
+    allRatings.forEach(r => { const em = (r.candidateEmail || "").toLowerCase(); if (em) (ratingsByEmail[em] = ratingsByEmail[em] || []).push(r); });
+    const assessById = {};
+    asSnap.docs.forEach(d => { assessById[d.id] = d.data(); });
+    DATA = { eois, candidatesByEmail, ratingsByEmail, assessById, taughtByGroup, groupOf };
+  } catch (err) {
+    document.getElementById("tableWrap").innerHTML = `<div class="empty-state">Couldn't load the data: ${esc(err.message)}</div>`;
+    return;
+  }
+  recalc();
+}
+
+function recalc() {
+  if (!DATA) return;
+  const s = readSettings();
+  try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e) {}
+  RESULT = RMD_RANK.build(DATA, s);
+  render();
+}
+
+function pillFor(r) {
+  if (r.status === "selected") return `<span class="pill p-sel">Selected</span>`;
+  if (r.status === "reserve") return `<span class="pill p-res">Reserve</span>`;
+  if (r.status === "below") return `<span class="pill p-low">Below standard</span>`;
+  if (r.status === "unrated") return `<span class="pill p-not">No OPIS ratings</span>`;
+  if (r.status === "notpassed") return `<span class="pill p-not">Not passed</span>`;
+  return `<span class="pill p-not">${RESULT.settings.places ? "Not selected" : "Ranked"}</span>`;
+}
+
+function render() {
+  const R = RESULT, S = R.settings;
+  const rows = R.rows;
+  const eligible = R.eligible.length;
+  document.getElementById("summaryLine").textContent =
+    `${rows.length} expression${rows.length === 1 ? "" : "s"} of interest. ${rows.filter(r => r.passed).length} passed, ${rows.filter(r => r.rankable).length} with OPIS ratings, ${eligible} at or above the minimum score` +
+    (S.places ? `. ${R.selected.length} of ${S.places} places filled.` : ". Enter the places available to see a selection.");
+
+  // Degree table
+  const gw = document.getElementById("groupsWrap");
+  if (S.places && R.groups.length) {
+    const diff = R.selected.filter(r => r.reason !== "On score").length;
+    gw.innerHTML = `<div class="card"><div class="card-header">Places by degree</div><div class="card-body">
+      <p class="hint">Score cut-off for the top ${S.places} on score alone is <b>${R.cutoff === null ? "–" : R.cutoff.toFixed(1)}</b>. A degree place can go to someone down to <b>${R.bar === -Infinity || R.bar === null ? "anyone eligible" : R.bar.toFixed(1)}</b>. ${diff ? `${diff} ${diff === 1 ? "person is" : "people are"} selected for degree representation who would not be in the top ${S.places} on score.` : "The selection is the same as the top places on score."}</p>
+      <div class="scroll"><table><thead><tr><th>Degree</th><th class="num">Taught</th><th class="num">Share</th><th class="num">Fair places</th><th class="num">Applied</th><th class="num">Eligible</th><th class="num">Selected</th><th class="num">On score alone</th></tr></thead><tbody>
+      ${R.groups.map(g => `<tr><td class="nm">${esc(g.group)}</td><td class="num">${g.count}</td><td class="num">${g.pct.toFixed(1)}%</td><td class="num">${g.quota}</td><td class="num">${g.applicants}</td><td class="num">${g.eligible}</td><td class="num"><b>${g.selected}</b></td><td class="num">${g.merit}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${R.groups.some(g => g.quota > g.eligible) ? `<p class="hint warn" style="margin-top:8px;">Some degrees have fewer eligible applicants than their fair share. Their spare places went to the best remaining people.</p>` : ""}
+    </div></div>`;
+  } else gw.innerHTML = "";
+
+  // Apply bar
+  const aw = document.getElementById("applyWrap");
+  if (S.places) {
+    const toClear = rows.filter(r => r.chosenNow && r.status !== "selected").length;
+    const already = R.selected.filter(r => r.chosenNow).length;
+    aw.innerHTML = isDirectorUser
+      ? `<div class="applybar"><button id="applyBtn" onclick="applySelection()" ${R.selected.length && R.selected.every(r => r.hasRecord) ? "" : "disabled"}>Choose these ${R.selected.length} for next year</button><span class="hint" style="margin:0;">${already} of them are already chosen. ${toClear ? `${toClear} currently chosen ${toClear === 1 ? "person is" : "people are"} not in this list and would be un-chosen.` : "Nobody else is currently chosen."}</span></div>`
+      : `<div class="hint">Course Directors apply the selection.</div>`;
+  } else aw.innerHTML = "";
+
+  // Ranking table
+  const list = R.rankedRows;
+  if (!list.length) { document.getElementById("tableWrap").innerHTML = `<div class="empty-state">No expressions of interest yet.</div>`; return; }
+  document.getElementById("tableWrap").innerHTML = `<table>
+    <thead><tr><th class="num" title="Rank on score alone">#</th><th>Candidate</th><th>Degree</th><th class="num">Score</th><th class="num">OPIS avg</th><th>Outstanding</th><th>Excellent</th><th>Attempt</th><th>Standing</th><th>Chosen now</th><th>Note</th></tr></thead>
+    <tbody>${list.map(r => {
+      const ranked = r.rankable;
+      const notes = [];
+      if (r.reason) notes.push(esc(r.reason));
+      if (r.anyUnsat) notes.push(`<span class="warn">Has an Unsatisfactory score</span>`);
+      if (r.rankable && r.n === 1) notes.push(`<span class="warn">Only one rater</span>`);
+      if (r.attemptInferred) notes.push(`<span class="warn">Attempt inferred</span>`);
+      if (r.rankable && r.attempt === null) notes.push(`<span class="warn">Attempt unknown, ranked as 1 or 2</span>`);
+      if (!r.hasRecord) notes.push(`<span class="warn">No candidate record for this email</span>`);
+      return `<tr class="${r.status === "selected" ? "sel" : ""}">
+        <td class="num">${ranked ? r.rank : ""}</td>
+        <td><div class="nm">${esc(r.name)}</div><div class="sub">${esc(r.email)}</div></td>
+        <td>${esc(r.group)}</td>
+        <td class="num"><b>${ranked ? r.score.toFixed(1) : "–"}</b></td>
+        <td class="num">${ranked ? r.mean.toFixed(1) + ` <span class="sub">(${r.n})</span>` : "–"}</td>
+        <td>${ranked ? (r.ticks ? `${r.ticks} of ${r.n}` : "No") : "–"}</td>
+        <td>${r.excellent ? `<span class="pill p-exc">Excellent</span>` : "–"}</td>
+        <td>${r.attempt === null ? "–" : (r.late ? `<span class="warn">${r.attempt}</span>` : r.attempt)}</td>
+        <td>${pillFor(r)}</td>
+        <td>${r.chosenNow ? "Yes" : ""}</td>
+        <td class="sub">${notes.join("<br>")}</td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+}
+
+// Writes chosenInstructor on every candidate record for each selected person (and clears it
+// for anyone chosen earlier who is not in this list). Course Directors only.
+async function applySelection() {
+  if (!isDirectorUser || !RESULT || !RESULT.settings.places) return;
+  const sel = RESULT.selected;
+  const clear = RESULT.rows.filter(r => r.chosenNow && r.status !== "selected");
+  if (!sel.length) return;
+  if (!confirm(`Choose ${sel.length} ${sel.length === 1 ? "person" : "people"} for next year` + (clear.length ? ` and un-choose ${clear.length} currently chosen ${clear.length === 1 ? "person" : "people"} who are not in this list` : "") + `?\n\nChoosing someone here replaces any choices made by hand.`)) return;
+  const btn = document.getElementById("applyBtn"); if (btn) btn.disabled = true;
+  const by = (auth.currentUser && auth.currentUser.email) || "";
+  const ops = [];
+  sel.forEach(r => r.recordIds.forEach(id => ops.push([id, true])));
+  clear.forEach(r => r.recordIds.forEach(id => ops.push([id, false])));
+  try {
+    for (let i = 0; i < ops.length; i += 400) {
+      const batch = db.batch();
+      ops.slice(i, i + 400).forEach(([id, on]) => batch.update(db.collection(COLLECTIONS.stage1Candidates).doc(id), {
+        chosenInstructor: on,
+        chosenInstructorAt: firebase.firestore.FieldValue.serverTimestamp(),
+        chosenInstructorBy: by
+      }));
+      await batch.commit();
+    }
+    ops.forEach(([id, on]) => {
+      Object.keys(DATA.candidatesByEmail).forEach(em => DATA.candidatesByEmail[em].forEach(c => { if (c.id === id) c.chosenInstructor = on; }));
+    });
+    recalc();
+    alert(`Done. ${sel.length} chosen for next year.`);
+  } catch (err) {
+    alert("Could not save: " + err.message);
+    if (btn) btn.disabled = false;
+  }
+}
+</script>
+<script src="js/embed-mode.js"></script>
+</body>
+</html>

@@ -81,6 +81,14 @@
     .matrix.gated { opacity:.45; }
     .m-cell:disabled { cursor:not-allowed; }
     .check.off { opacity:.45; filter:grayscale(1); cursor:default; }
+    .concern { margin:6px 10px 8px; padding:10px 12px; background:#fce8e6; border-left:4px solid #b7410e; border-radius:0 6px 6px 0; font-size:12px; line-height:1.4; }
+    .concern h4 { margin:0 0 4px; font-size:13px; color:#8a2f08; }
+    .concern .cq { margin:8px 0 4px; font-weight:700; color:#5c2410; }
+    .concern .chips { display:flex; flex-wrap:wrap; gap:6px; }
+    .concern .chip { font:inherit; font-size:12px; padding:6px 10px; border:2px solid #e3b4a3; border-radius:16px; background:#fff; color:#5c2410; cursor:pointer; }
+    .concern .chip.on { background:#b7410e; border-color:#b7410e; color:#fff; font-weight:700; }
+    .concern textarea { width:100%; min-height:84px; font:inherit; font-size:13px; padding:8px; border:2px solid #e3b4a3; border-radius:6px; resize:vertical; box-sizing:border-box; }
+    .concern .need { color:#b7410e; font-weight:700; }
     .check.mistake { background:#fce8e6; border-left:4px solid #b7410e; }
     .link-btn { background:none; border:none; padding:2px 4px; font:inherit; font-size:11.5px; color:#8893b0; text-decoration:underline; cursor:pointer; align-self:center; }
     .link-btn:hover { color:var(--rmd-navy); }
@@ -251,6 +259,39 @@ let selectedCandidateId = null;
 let currentScores = {};
 let credibilityChecked = false;
 let teachingPotential = false; // optional tick: potential outstanding teaching ability
+// Concern (Jon, 29 Oct 2026): a total of 8 or less must be explained. At least one reason button
+// plus free text are both compulsory; "how often" and "what you did" are optional quick buttons.
+const CONCERN_MAX_TOTAL = 8;
+const CONCERN_MIN_CHARS = 15;
+const CONCERN_REASONS = [
+  // Deliberately NOT repeating what the five scores already capture (communication, team, adaptability, engagement, punctuality).
+  ["conduct", "Conduct or professionalism (for example disrespect, not taking feedback, phone use)"],
+  ["clinical", "Resuscitation knowledge, technique or safety concern"],
+  ["support", "May need extra support (wellbeing, personal or learning needs)"],
+  ["offnight", "Not typical: seemed an off night, or my score may be unrepresentative"],
+  ["other", "Other"]
+];
+const CONCERN_OFTEN = [["oneoff", "One-off"], ["repeated", "Repeated across the course"]];
+const CONCERN_DONE = [["spoke", "I spoke to the candidate"], ["willtell", "I confirm I will tell RMD faculty"]];
+let concernTags = [], concernOften = "", concernDone = [], concernText = "";
+function concernNeeded() { const e = evaluate(); return e.complete && e.total <= CONCERN_MAX_TOTAL; }
+function concernOk() { return concernTags.length > 0 && concernText.trim().length >= CONCERN_MIN_CHARS; }
+function clearConcern() { concernTags = []; concernOften = ""; concernDone = []; concernText = ""; }
+function toggleIn(arr, v) { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); else arr.push(v); }
+function setConcernTag(v) { toggleIn(concernTags, v); opWriteDraft(); renderDetail(); }
+function setConcernDone(v) { toggleIn(concernDone, v); opWriteDraft(); renderDetail(); }
+function setConcernOften(v) { concernOften = concernOften === v ? "" : v; opWriteDraft(); renderDetail(); }
+function setConcernText(v) { concernText = v; opWriteDraft(); refreshSubmit(); }
+// Updates the Submit button and hint without redrawing the form (a redraw would drop the cursor while typing).
+function refreshSubmit() {
+  const candidate = candidatesForCourse(selectedCourse).find(c => c.id === selectedCandidateId);
+  if (!candidate) return;
+  const mistakeRequired = isDone(candidate.id);
+  const ready = evaluate().complete && credibilityChecked && !justSubmitted && (!mistakeRequired || mistakeChecked) && (!concernNeeded() || concernOk());
+  const b = document.getElementById("submitBtn"); if (b) b.disabled = !ready;
+  const h = document.getElementById("submitHint"); if (h) h.style.display = ready ? "none" : "";
+  const n = document.getElementById("concernNeed"); if (n) n.style.display = concernOk() ? "none" : "";
+}
 let scoredThisSession = new Set(); // candidateIds submitted in this page session
 let doneSet = new Set();           // candidateIds this person has submitted, remembered on this device
 function doneKey() { return "opis_done_" + (currentUser ? currentUser.uid : ""); }
@@ -525,9 +566,9 @@ function renderRoster() {
 function opDraftKey(id) { return "rmd_draft_opis_" + (currentUser ? currentUser.uid : "x") + "_" + id; }
 function opWriteDraft() {
   if (!selectedCandidateId) return;
-  const any = Object.keys(currentScores).length || credibilityChecked || teachingPotential;
+  const any = Object.keys(currentScores).length || credibilityChecked || teachingPotential || concernTags.length || concernText;
   if (any && !justSubmitted) {
-    DraftGuard.write(opDraftKey(selectedCandidateId), { scores: currentScores, cred: credibilityChecked, tp: teachingPotential, course: selectedCourse, room: selectedRoom, ts: Date.now() });
+    DraftGuard.write(opDraftKey(selectedCandidateId), { scores: currentScores, cred: credibilityChecked, tp: teachingPotential, ct: concernTags, co: concernOften, cd: concernDone, cx: concernText, course: selectedCourse, room: selectedRoom, ts: Date.now() });
     DraftGuard.markDirty("opis", true);
   } else { DraftGuard.clear(opDraftKey(selectedCandidateId)); DraftGuard.markDirty("opis", false); }
   try { sessionStorage.setItem("rmd_opis_last", JSON.stringify({ uid: currentUser && currentUser.uid, course: selectedCourse, room: selectedRoom, cand: selectedCandidateId })); } catch (e) {}
@@ -538,12 +579,14 @@ function selectCandidate(candidateId) {
   currentScores = {};
   credibilityChecked = false;
   teachingPotential = false;
+  clearConcern();
   justSubmitted = false;
   mistakeChecked = false;
   mistakeOpen = false;
   const d = isDone(candidateId) ? null : DraftGuard.read(opDraftKey(candidateId));
   if (d) {
     currentScores = d.scores || {}; credibilityChecked = !!d.cred; teachingPotential = !!d.tp;
+    concernTags = d.ct || []; concernOften = d.co || ""; concernDone = d.cd || []; concernText = d.cx || "";
     DraftGuard.markDirty("opis", true);
   }
   renderRoster();
@@ -596,7 +639,8 @@ function renderDetail() {
   // newer one as current and the earlier one as superseded.
   const mistakeRequired = isDone(candidate.id);
   const showMistake = mistakeRequired || mistakeOpen;
-  const ready = complete && credibilityChecked && !justSubmitted && (!mistakeRequired || mistakeChecked);
+  const needConcern = complete && total <= CONCERN_MAX_TOTAL;
+  const ready = complete && credibilityChecked && !justSubmitted && (!mistakeRequired || mistakeChecked) && (!needConcern || concernOk());
   const LEVELS = { 1: "Unsatisfactory", 2: "Adequate", 3: "Excellent" };
   // The scores can't be filled in until the "spent enough time" box is ticked.
   const gated = !credibilityChecked && !justSubmitted;
@@ -621,6 +665,7 @@ function renderDetail() {
     const hint = !credibilityChecked ? "Tick the confirmation under the name to start"
                : !complete ? "Score all 5 criteria"
                : (mistakeRequired && !mistakeChecked) ? "Tick the box about your first submission"
+               : (needConcern && !concernOk()) ? "Explain the concern above to submit"
                : "";
     foot = `<span class="tot-label">Total${complete ? "" : ` (${scoredCount} of 5)`}</span>
       <span class="tot-val">${complete ? total : "–"} <span style="font-size:12px;color:#8893b0;font-weight:400;">/ 15</span></span>
@@ -628,7 +673,7 @@ function renderDetail() {
       <span class="spacer"></span>
       <span class="hint" id="submitHint" style="${ready ? "display:none;" : ""}">${hint}</span>
       <span class="submit-err" id="submitErr" style="display:none;"></span>
-      <button type="button" class="btn-reset" id="resetBtn" ${(scoredCount || credibilityChecked || teachingPotential || mistakeChecked) ? "" : "disabled"} onclick="resetRating()">Reset</button>
+      <button type="button" class="btn-reset" id="resetBtn" ${(scoredCount || credibilityChecked || teachingPotential || mistakeChecked || concernTags.length || concernText) ? "" : "disabled"} onclick="resetRating()">Reset</button>
       <button type="button" class="btn-submit" id="submitBtn" ${ready ? "" : "disabled"} onclick="submitRating()">Submit rating</button>`;
   }
 
@@ -646,6 +691,7 @@ function renderDetail() {
       <div class="m-head s3">3 · ${LEVELS[3]}</div><div class="m-head s2">2 · ${LEVELS[2]}</div><div class="m-head s1">1 · ${LEVELS[1]}</div>
       ${rows}
     </div>
+    ${needConcern && !justSubmitted ? concernPanel() : ""}
     <div class="checks ${justSubmitted ? "locked" : ""}">
       <label class="check pot ${potOk ? "" : "off"}">
         <input type="checkbox" id="teachingCheckbox" ${teachingPotential ? "checked" : ""} ${potOk ? "" : "disabled"} onchange="setTeachingPotential(this.checked)">
@@ -663,12 +709,32 @@ function renderDetail() {
   if (nb) nb.focus();
 }
 
+function chipRow(items, sel, fn) {
+  return `<div class="chips">${items.map(([k, label]) => `<button type="button" class="chip ${(Array.isArray(sel) ? sel.indexOf(k) >= 0 : sel === k) ? "on" : ""}" onclick="${fn}('${k}')">${esc(label)}</button>`).join("")}</div>`;
+}
+function concernPanel() {
+  const locked = justSubmitted;
+  return `<div class="concern ${locked ? "locked" : ""}">
+    <h4>This is a very low rating (${evaluate().total} out of 15), so it will be flagged as a concern</h4>
+    Please tell us why. This goes to the Course Director and helps us support the candidate fairly. Your five scores already show communication, teamwork, adaptability, engagement and punctuality, so choose what they do not cover.
+    <div class="cq">What was the concern? Choose at least one</div>
+    ${chipRow(CONCERN_REASONS, concernTags, "setConcernTag")}
+    <div class="cq">How often? (optional)</div>
+    ${chipRow(CONCERN_OFTEN, concernOften, "setConcernOften")}
+    <div class="cq">What have you done about it? (optional)</div>
+    ${chipRow(CONCERN_DONE, concernDone, "setConcernDone")}
+    <div class="cq">Describe what happened and what issues you had <span class="need" id="concernNeed" style="${concernOk() ? "display:none;" : ""}">(required, at least ${CONCERN_MIN_CHARS} characters${concernTags.length ? "" : " and a reason above"})</span></div>
+    <textarea id="concernText" maxlength="1500" oninput="setConcernText(this.value)" placeholder="For example: what you saw, when, and how it affected the group. Stick to what you observed.">${esc(concernText)}</textarea>
+  </div>`;
+}
+
 // Clear this candidate's scores and both ticks before submitting. Nothing has been
 // saved yet at this point, so this only resets the form.
 function resetRating() {
   currentScores = {};
   credibilityChecked = false;
   teachingPotential = false;
+  clearConcern();
   mistakeChecked = false;
   opWriteDraft();
   renderDetail();
@@ -700,6 +766,8 @@ async function submitRating() {
 
   const mistakeRequired = isDone(candidate ? candidate.id : "");
   if (!candidate || !complete || !credibilityChecked || justSubmitted || (mistakeRequired && !mistakeChecked)) return;
+  const concern = concernNeeded();
+  if (concern && !concernOk()) return;
 
   btn.disabled = true;
   btn.textContent = "Submitting…";
@@ -715,12 +783,14 @@ async function submitRating() {
       total: total,
       outstandingTeachingPotential: (teachingPotential === true && total >= 12 && !hasUnsat),
       credibilityConfirmed: true,
+      ...(concern ? { concernFlag: true, concern: { reasons: concernTags.slice(), reasonLabels: CONCERN_REASONS.filter(r => concernTags.indexOf(r[0]) >= 0).map(r => r[1]), often: concernOften || null, done: concernDone.slice(), text: concernText.trim() } } : { concernFlag: false }),
       ...(mistakeChecked ? { correctsPrevious: true } : {}),
       submittedByUid: currentUser.uid,
       submittedByName: myName,
       submittedByEmail: currentUser.email || null,
       submittedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    clearConcern();
     scoredThisSession.add(candidate.id);
     doneSet.add(candidate.id);
     saveDone();

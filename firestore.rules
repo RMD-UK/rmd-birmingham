@@ -987,7 +987,9 @@ service cloud.firestore {
     // 29 Oct 2026 (Jon): a rater may also read their OWN submissions (query by submittedByUid), so the member
     // menu can show "rate your candidates" only for candidates they have not rated yet.
     match /opis_ratings/{docId} {
-      allow read: if isDirector() || isSeniorFaculty() || (isSignedIn() && resource.data.get("submittedByUid", null) == request.auth.uid);
+      // 29 Oct 2026 (Jon): Student Faculty may read ratings flagged as a concern (concernFlag true) so they can record the follow-up on the
+      // High priority issues tab. They still cannot read ordinary ratings. Queries must filter on concernFlag == true.
+      allow read: if isDirector() || isSeniorFaculty() || (isSignedIn() && resource.data.get("submittedByUid", null) == request.auth.uid) || (isStudentFaculty() && resource.data.concernFlag == true);
       allow create: if (isDirector() || isStudentFaculty() || isSeniorFaculty() || isOnCandidateTeam(request.resource.data.candidateId))
         && request.resource.data.submittedByUid == request.auth.uid
         && request.resource.data.credibilityConfirmed == true
@@ -1000,6 +1002,56 @@ service cloud.firestore {
         && request.resource.data.scores.punctuality in [1, 2, 3]
         && request.resource.data.outstandingTeachingPotential is bool;
       allow update: if false;
+      allow delete: if isDirector();
+    }
+
+    // ── High priority issues: recorded outcomes (29 Oct 2026, Jon) ───────────
+    // priority_followups/{key}: what RMD faculty did about an OPIS concern, an absent or no-show candidate, a failed final attempt,
+    // and so on (phase1 hub tab and admin-priority-issues.html). Directors, Student Faculty and Senior Faculty read and record.
+    // An outcome can later change only its "university form submitted" tick; Directors can delete (reopen).
+    match /priority_followups/{docId} {
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow create: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.keys().hasOnly(['key', 'type', 'status', 'candidateId', 'candidateName', 'course', 'ratingId', 'actions', 'note', 'uniForm', 'uniSubmitted', 'closedByUid', 'closedByName', 'closedAt'])
+        && request.resource.data.status == 'closed'
+        && request.resource.data.closedByUid == request.auth.uid
+        && request.resource.data.type in ['concern', 'absent', 'noshow', 'final', 'repeat']
+        && request.resource.data.actions is list && request.resource.data.actions.size() >= 1 && request.resource.data.actions.size() <= 10
+        && request.resource.data.note is string && request.resource.data.note.size() >= 15 && request.resource.data.note.size() <= 1500
+        && request.resource.data.closedAt == request.time;
+      allow update: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uniSubmitted']);
+      allow delete: if isDirector();
+    }
+
+    // ── Instructor concerns (29 Oct 2026, Jon) ───────────────────────────────
+    // instructor_concerns/{id}: an instructor flagged as a concern by RMD faculty (picker on admin-priority-issues.html, shown in the
+    // Monday hub High priority issues tab). Directors, Student Faculty and Senior Faculty read, flag and update; the flagged person
+    // cannot read it. Each change appends exactly one entry to the log. Close needs an outcome; only a Director can reopen or delete.
+    match /instructor_concerns/{docId} {
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow create: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.keys().hasOnly(['instructorId', 'instructorName', 'instructorEmail', 'instructorRoleLabel', 'source', 'reasons', 'reasonLabels', 'note', 'status', 'reviewDate', 'outcome', 'degreeLeadsUpdated', 'formSubmitted', 'log', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && request.resource.data.status == 'open' && request.resource.data.outcome == null && request.resource.data.reviewDate == null
+        && request.resource.data.degreeLeadsUpdated == false && request.resource.data.formSubmitted == false
+        && request.resource.data.source in ['iw', 'teaching', 'assessment', 'other']
+        && request.resource.data.instructorId is string && request.resource.data.instructorId.size() > 0
+        && request.resource.data.instructorName is string && request.resource.data.instructorName.size() > 0 && request.resource.data.instructorName.size() <= 200
+        && request.resource.data.reasons is list && request.resource.data.reasons.size() >= 1 && request.resource.data.reasons.size() <= 5
+        && request.resource.data.reasonLabels is list && request.resource.data.reasonLabels.size() == request.resource.data.reasons.size()
+        && request.resource.data.note is string && request.resource.data.note.size() >= 15 && request.resource.data.note.size() <= 1500
+        && request.resource.data.log is list && request.resource.data.log.size() == 1
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewDate', 'outcome', 'degreeLeadsUpdated', 'formSubmitted', 'log', 'updatedAt'])
+        && request.resource.data.log is list && request.resource.data.log.size() == resource.data.log.size() + 1
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.status in ['open', 'review', 'closed']
+        && ((request.resource.data.status == 'closed' && request.resource.data.outcome in ['noconcern', 'removed', 'support'])
+            || (request.resource.data.status != 'closed' && request.resource.data.outcome == null))
+        && (request.resource.data.status != 'review' || (request.resource.data.reviewDate is string && request.resource.data.reviewDate.size() == 10))
+        && (resource.data.status != 'closed' || isDirector() || (request.resource.data.status == 'closed' && request.resource.data.outcome == resource.data.outcome));
       allow delete: if isDirector();
     }
 

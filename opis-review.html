@@ -71,6 +71,7 @@
       <option value="raters">Most raters first</option>
     </select>
     <label><input type="checkbox" id="exc"> Outstanding potential only</label>
+    <label><input type="checkbox" id="conc"> Concerns only</label>
     <button class="btn" type="button" id="csv">Download CSV</button>
   </div>
   <div class="summary-line" id="summary"></div>
@@ -122,11 +123,11 @@ async function init() {
       const cur = rs.filter(r => !r._superseded), latest = rs[0];
       const crit = {}; CRIT.concat(OLD).forEach(([key]) => { const v = cur.filter(r => r.scores && r.scores[key] !== undefined).map(r => Number(r.scores[key])); if (v.length) crit[key] = avg(v); });
       return { key: k, name: latest.candidateName || "Unnamed", course: latest.course || "", room: latest.room || "", all: rs, cur, n: cur.length,
-        avg: avg(cur.map(totalOf)), crit, exc: cur.filter(r => r.outstandingTeachingPotential === true).length };
+        avg: avg(cur.map(totalOf)), crit, exc: cur.filter(r => r.outstandingTeachingPotential === true).length, conc: cur.filter(r => OPIS_UTIL.hasConcern(r)).length };
     });
     const courses = [...new Set(CANDS.map(c => c.course).filter(Boolean))].sort();
     $("course").innerHTML = '<option value="">All courses</option>' + courses.map(c => `<option>${esc(c)}</option>`).join("");
-    ["q", "course", "sort", "exc"].forEach(id => $(id).addEventListener(id === "q" ? "input" : "change", render));
+    ["q", "course", "sort", "exc", "conc"].forEach(id => $(id).addEventListener(id === "q" ? "input" : "change", render));
     $("csv").onclick = csv;
     render();
   } catch (err) {
@@ -136,7 +137,7 @@ async function init() {
 
 function view() {
   const q = $("q").value.trim().toLowerCase(), co = $("course").value, ex = $("exc").checked, so = $("sort").value;
-  let l = CANDS.filter(c => c.n > 0 && (!q || c.name.toLowerCase().includes(q)) && (!co || c.course === co) && (!ex || c.exc > 0));
+  let l = CANDS.filter(c => c.n > 0 && (!q || c.name.toLowerCase().includes(q)) && (!co || c.course === co) && (!ex || c.exc > 0) && (!$("conc").checked || c.conc > 0));
   l.sort((a, b) => so === "name" ? a.name.localeCompare(b.name) : so === "raters" ? (b.n - a.n) || a.name.localeCompare(b.name) : so === "avgLow" ? (a.avg - b.avg) : (b.avg - a.avg));
   return l;
 }
@@ -149,8 +150,8 @@ function render() {
   $("wrap").innerHTML = l.map(c => {
     const critHtml = CRIT.concat(OLD).filter(([k]) => c.crit[k] !== undefined).map(([k, lab]) => `<div><span>${lab}</span><b>${f1(c.crit[k])}</b> / 3</div>`).join("");
     const rhtml = c.all.map(r => `<div class="rating" style="${r._superseded ? "opacity:.5;" : ""}"><div class="rh"><span>${esc(r.submittedByName || "Unknown rater")}${r._isCorrection ? ' <span class="tag">correction</span>' : ""}${r._superseded ? " (replaced)" : ""}</span><span class="when">${esc(fmtDate(r.submittedAt))}${r.course ? " &middot; " + esc(r.course) : ""}${r.room ? " / " + esc(r.room) : ""}</span></div>` +
-      `<div class="sc" style="${r._superseded ? "text-decoration:line-through;" : ""}">${CRIT.concat(OLD).filter(([k]) => r.scores && r.scores[k] !== undefined).map(([k, lab]) => `<span>${lab}: <b>${r.scores[k]}</b></span>`).join("")}<span>Total: <b>${totalOf(r)}/15</b></span>${r.outstandingTeachingPotential === true ? '<span style="color:#1a6e31"><b>&#10003; Outstanding potential</b></span>' : ""}</div></div>`).join("");
-    return `<div class="cand${open.has(c.key) ? " open" : ""}" data-k="${esc(c.key)}"><button type="button" class="head" aria-expanded="${open.has(c.key)}"><div><div class="nm">${esc(c.name)}${c.exc ? `<span class="pill exc">${c.exc} outstanding</span>` : ""}${c.avg < 8 ? '<span class="pill low">low</span>' : ""}</div><div class="sub">${esc(c.course) || "no course"}${c.room ? " / " + esc(c.room) : ""} &middot; ${c.n} rater${c.n === 1 ? "" : "s"}</div></div><div class="avg"><b>${f1(c.avg)}</b><small>average of 15</small></div></button>` +
+      `<div class="sc" style="${r._superseded ? "text-decoration:line-through;" : ""}">${CRIT.concat(OLD).filter(([k]) => r.scores && r.scores[k] !== undefined).map(([k, lab]) => `<span>${lab}: <b>${r.scores[k]}</b></span>`).join("")}<span>Total: <b>${totalOf(r)}/15</b></span>${r.outstandingTeachingPotential === true ? '<span style="color:#1a6e31"><b>&#10003; Outstanding potential</b></span>' : ""}</div>${r._superseded ? "" : OPIS_UTIL.concernHtml(r)}</div>`).join("");
+    return `<div class="cand${open.has(c.key) ? " open" : ""}" data-k="${esc(c.key)}"><button type="button" class="head" aria-expanded="${open.has(c.key)}"><div><div class="nm">${esc(c.name)}${c.exc ? `<span class="pill exc">${c.exc} outstanding</span>` : ""}${c.avg < 8 ? '<span class="pill low">low</span>' : ""}${c.conc ? `<span class="pill low">${c.conc} concern${c.conc === 1 ? "" : "s"}</span>` : ""}</div><div class="sub">${esc(c.course) || "no course"}${c.room ? " / " + esc(c.room) : ""} &middot; ${c.n} rater${c.n === 1 ? "" : "s"}</div></div><div class="avg"><b>${f1(c.avg)}</b><small>average of 15</small></div></button>` +
       `<div class="detail"><div class="crit">${critHtml}</div>${rhtml}</div></div>`;
   }).join("");
   document.querySelectorAll(".cand .head").forEach(h => h.onclick = () => { const c = h.parentElement; c.classList.toggle("open"); h.setAttribute("aria-expanded", c.classList.contains("open")); });
@@ -158,11 +159,12 @@ function render() {
 
 function csv() {
   const q = s => '"' + String(s == null ? "" : s).replace(/"/g, '""') + '"';
-  const rows = [["Name", "Course", "Room", "Raters", "Average /15"].concat(CRIT.map(c => c[1])).concat(["Outstanding ticks"])];
-  view().forEach(c => rows.push([c.name, c.course, c.room, c.n, f1(c.avg)].concat(CRIT.map(([k]) => c.crit[k] === undefined ? "" : f1(c.crit[k]))).concat([c.exc])));
+  const rows = [["Name", "Course", "Room", "Raters", "Average /15"].concat(CRIT.map(c => c[1])).concat(["Outstanding ticks", "Concerns"])];
+  view().forEach(c => rows.push([c.name, c.course, c.room, c.n, f1(c.avg)].concat(CRIT.map(([k]) => c.crit[k] === undefined ? "" : f1(c.crit[k]))).concat([c.exc, c.conc])));
   const blob = new Blob([rows.map(r => r.map(q).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }), a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "RMD_OPIS_scores_review.csv"; document.body.appendChild(a); a.click(); a.remove();
 }
 </script>
+<script src="js/embed-mode.js"></script>
 </body>
 </html>

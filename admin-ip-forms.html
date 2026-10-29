@@ -94,8 +94,16 @@
         <button class="btn secondary" onclick="selectNone()">Clear selection</button>
         <span id="countLine" class="hint" style="margin:0;"></span>
       </div>
-      <label class="hint" style="display:block;margin:0 0 8px;"><input type="checkbox" id="showAllPassed" onchange="renderTable()"> Also show passed candidates who have not been chosen</label>
-      <p class="hint">By default only candidates who are <strong>Passed</strong> and <strong>Chosen</strong> as next year's instructors are listed. Choose people here (Choose button) or on the Instructor EOI review page. Use Step 1 to mark passes from assessment night. The date on the form is the course date set in Settings. "Ready" means: passed, has OPIS ratings, nothing flagged, and a year of study. You can edit the year and the supporting statement for anyone before generating.</p>
+      <div class="toolbar" style="margin-bottom:8px;">
+        <label class="hint" style="margin:0;" for="listMode">Who to list</label>
+        <select id="listMode" onchange="renderTable()" style="max-width:360px;">
+          <option value="chosen">Chosen as next year's instructors (default)</option>
+          <option value="pick">Chosen, plus others I pick (passed, with a minimum OPIS)</option>
+        </select>
+        <span id="minOpisWrap" style="display:none;" class="hint">Minimum OPIS average <input type="number" id="minOpis" min="0" max="15" step="0.5" style="width:70px;" oninput="renderTable()"></span>
+      </div>
+      <div id="pickBox" style="display:none;margin:0 0 12px;padding:10px 12px;background:#f7f9fb;border:1px solid #dde4ea;border-radius:8px;"></div>
+      <p class="hint">By default only candidates who are <strong>Passed</strong> and <strong>Chosen</strong> as next year's instructors are listed. The second option lets you pick extra people who were not chosen but passed and met the minimum OPIS, so you can make a form for them too. Picking does not mark anyone as chosen. Choose people here (Choose button) or on the Ranking and selection page. Use Step 1 to mark passes from assessment night. The date on the form is the course date set in Settings. "Ready" means: passed, has OPIS ratings, nothing flagged, and a year of study. You can edit the year and the supporting statement for anyone before generating.</p>
       <div id="tableWrap"><div class="empty-state">Loading…</div></div>
     </div>
   </div>
@@ -336,7 +344,7 @@ function ratingsFor(c) {
 
 function buildRows(course) {
   return candidates
-    .filter(c => c.course === course && c.outcome === "Passed" && (c.chosenInstructor === true || showAll()))
+    .filter(c => c.course === course && c.outcome === "Passed" && inList(c))
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
     .map(c => {
       const rts = ratingsFor(c);
@@ -374,10 +382,12 @@ function renderTable() {
   if (!course) { rows = []; wrap.innerHTML = `<div class="empty-state">Choose a course above.</div>`; updateCount(); return; }
   rows = buildRows(course);
   const passedAll = candidates.filter(c => c.course === course && c.outcome === "Passed");
-  hiddenCount = showAll() ? 0 : passedAll.filter(c => c.chosenInstructor !== true).length;
+  hiddenCount = passedAll.filter(c => !inList(c)).length;
+  document.getElementById("minOpisWrap").style.display = listMode() === "pick" ? "" : "none";
+  renderPicker(course);
   if (!rows.length) {
     wrap.innerHTML = passedAll.length
-      ? `<div class="empty-state">${passedAll.length} candidate${passedAll.length === 1 ? "" : "s"} passed on this course, but none ${passedAll.length === 1 ? "has" : "have"} been chosen as next year's instructors yet. Tick "Also show passed candidates who have not been chosen" above to choose people, or choose them on the Instructor EOI review page.</div>`
+      ? `<div class="empty-state">${passedAll.length} candidate${passedAll.length === 1 ? "" : "s"} passed on this course, but none ${passedAll.length === 1 ? "has" : "have"} been chosen as next year's instructors yet. Change "Who to list" above to see them, or choose people on the Ranking and selection page.</div>`
       : `<div class="empty-state">No passed candidates on this course.</div>`;
     updateCount(); return;
   }
@@ -389,7 +399,7 @@ function renderTable() {
         <td class="name">${esc(r.c.name)}<div style="font-weight:400;font-size:11px;color:var(--rmd-muted);">${esc(r.c.email || "")}</div></td>
         <td>${esc(r.c.degree || "")}</td>
         <td><input type="text" class="year" value="${esc(yearOf(r))}" oninput="setYear('${esc(r.c.id)}', this.value)" aria-label="Year of study"></td>
-        <td>${r.rts.length} rating${r.rts.length === 1 ? "" : "s"}</td>
+        <td>${r.rts.length ? `${opisMean(r.rts).toFixed(1)} <span class="hint" style="margin:0;">(${r.rts.length} rater${r.rts.length === 1 ? "" : "s"})</span>` : "None"}</td>
         <td>${r.c.chosenInstructor === true ? `<span style="color:#1a6e31;font-weight:700;">Chosen</span> <button class="link" onclick="setChosen('${esc(r.c.id)}', false)">Undo</button>` : `<button class="link" onclick="setChosen('${esc(r.c.id)}', true)">Choose</button>`}</td>
         <td id="st-${esc(r.c.id)}">${statusHtml(r)}</td>
         <td><button class="link" onclick="toggleStmt(${i})">Statement</button></td>
@@ -403,7 +413,44 @@ function renderTable() {
 }
 
 let hiddenCount = 0;
-function showAll() { const el = document.getElementById("showAllPassed"); return !!(el && el.checked); }
+function listMode() { const el = document.getElementById("listMode"); return el ? el.value : "chosen"; }
+function opisMean(rts) { return rts.length ? rts.reduce((s, r) => s + (Number(r.total) || 0), 0) / rts.length : 0; }
+function minOpis() {
+  const el = document.getElementById("minOpis");
+  if (el && el.value === "" ) {
+    let d = 10;
+    try { const st = JSON.parse(localStorage.getItem("rmdInstructorRankingSettings") || "{}"); if (isFinite(parseFloat(st.floor))) d = parseFloat(st.floor); } catch (e) {}
+    el.value = d;
+  }
+  return el ? (parseFloat(el.value) || 0) : 10;
+}
+// Who appears in the list: chosen people always. In "pick" mode, also people ticked in the
+// picker (passed, with at least one OPIS rating, average at or above the minimum).
+const extraPicks = new Set();
+function pickable(c) {
+  if (c.outcome !== "Passed" || c.chosenInstructor === true) return false;
+  const rts = ratingsFor(c);
+  return rts.length > 0 && opisMean(rts) >= minOpis();
+}
+function inList(c) {
+  if (c.chosenInstructor === true) return true;
+  return listMode() === "pick" && extraPicks.has(c.id) && pickable(c);
+}
+function renderPicker(course) {
+  const box = document.getElementById("pickBox");
+  if (listMode() !== "pick" || !course) { box.style.display = "none"; return; }
+  const list = candidates.filter(c => c.course === course && pickable(c)).sort((a, b) => opisMean(ratingsFor(b)) - opisMean(ratingsFor(a)) || (a.name || "").localeCompare(b.name || ""));
+  box.style.display = "";
+  if (!list.length) { box.innerHTML = `<div class="hint" style="margin:0;">Nobody who passed and was not chosen has an OPIS average of ${minOpis()} or more on this course.</div>`; return; }
+  box.innerHTML = `<div class="hint" style="margin:0 0 6px;"><strong>${list.length}</strong> passed, not chosen, OPIS average ${minOpis()} or more. Tick the ones to add to the list below. <button class="link" onclick="pickAll(true)">Tick all</button> <button class="link" onclick="pickAll(false)">Clear</button></div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px 18px;">${list.map(c => { const rts = ratingsFor(c); return `<label style="font-size:13px;min-width:260px;"><input type="checkbox" ${extraPicks.has(c.id) ? "checked" : ""} onchange="pick('${esc(c.id)}', this.checked)"> ${esc(c.name)} <span class="hint" style="margin:0;">${esc(c.degree || "")} · ${opisMean(rts).toFixed(1)} (${rts.length})</span></label>`; }).join("")}</div>`;
+}
+function pick(id, on) { if (on) extraPicks.add(id); else { extraPicks.delete(id); selected.delete(id); } renderTable(true); }
+function pickAll(on) {
+  const course = document.getElementById("courseSelect").value;
+  candidates.filter(c => c.course === course && pickable(c)).forEach(c => { if (on) extraPicks.add(c.id); else { extraPicks.delete(c.id); selected.delete(c.id); } });
+  renderTable(true);
+}
 // "Chosen" = picked by a Director to go forward as next year's instructor (through the
 // EOI process). Stored on the candidate record as chosenInstructor; the Instructor EOI
 // review page writes the same field.
@@ -428,7 +475,7 @@ function selectReady() { rows.forEach(r => { if (isReady(r)) selected.add(r.c.id
 function selectNone() { selected.clear(); renderTable(); }
 function updateCount() {
   const n = rows.filter(r => selected.has(r.c.id)).length;
-  document.getElementById("countLine").textContent = rows.length ? `${n} ticked of ${rows.length} listed` + (hiddenCount ? ` (${hiddenCount} passed but not chosen, hidden)` : "") : "";
+  document.getElementById("countLine").textContent = rows.length ? `${n} ticked of ${rows.length} listed` + (hiddenCount ? ` (${hiddenCount} passed but not in this list)` : "") : "";
   document.getElementById("genBtn").disabled = n === 0;
   document.getElementById("genSepBtn").disabled = n === 0;
 }
@@ -492,5 +539,6 @@ async function generate(separate) {
   }
 }
 </script>
+<script src="js/embed-mode.js"></script>
 </body>
 </html>
