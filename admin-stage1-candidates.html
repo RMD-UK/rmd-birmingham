@@ -214,7 +214,7 @@
   </div>
 
   <div class="pane2" id="pane-add">
-  <div class="director-note">Add candidates (Step 1; Step 2 appears once Pharmacy students have been added), then allocate: Course allocation, then Assessment allocation. Then <a href="admin-course-room-allocation.html">Room and instructor allocation</a>.</div>
+  <div class="director-note">Add candidates (Step 1; Step 2 appears only while Pharmacy students are waiting for a placement check), then allocate: Course allocation, then Assessment allocation. Then <a href="admin-course-room-allocation.html">Room and instructor allocation</a>.</div>
   <div class="card">
     <div class="card-header">Step 1 — Add candidates</div>
     <div class="card-body">
@@ -1294,6 +1294,7 @@ async function confirmPlacementImport() {
     document.getElementById("placementPasteBox").value = "";
     document.getElementById("placementPreviewWrap").innerHTML = `<div class="empty-state">Saved placement dates for ${byId.size} candidate(s).</div>`;
     parsedPlacementRows = null;
+    step2Hold = true;
     await loadCandidates();
   } catch (err) {
     alert("Import failed: " + err.message);
@@ -1340,12 +1341,16 @@ async function changeAccessCode() {
 // tracks which row (if any) is currently in inline edit mode.
 let editCandidateId = null;
 
-// Step 2 (Pharmacy placement dates) only shows once at least one Pharmacy
-// MPharm candidate is in the database (Jon, 29 Oct 2026).
+// Step 2 (Pharmacy placement dates) only shows while at least one Pharmacy MPharm candidate
+// still needs their placement dates checked (Jon, 29 Oct 2026). Pharmacy entries start unchecked
+// at Step 1 and are marked checked once Step 2 is confirmed, so the box appears after a Pharmacy
+// entry and goes away again when none are waiting. Earlier Pharmacy candidates already checked
+// do not keep it open.
+let step2Hold = false;   // keeps the box open after a save so the "Saved" message is not hidden at once
 function updateStep2Card() {
   const el = document.getElementById("step2Card");
   if (!el) return;
-  const any = allCandidates.some(c => (resolveStage1Degree(c.degree) || {}).exact === "Pharmacy MPharm");
+  const any = step2Hold || allCandidates.some(c => !c.placementChecked && (resolveStage1Degree(c.degree) || {}).exact === "Pharmacy MPharm");
   el.style.display = any ? "" : "none";
 }
 
