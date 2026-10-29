@@ -313,6 +313,13 @@ function sheetRows(people) {
 // 29 Oct 2026 (Jon): the spreadsheets sent to degree leads. Plain layout: name, email, degree, course, the course dates
 // (the two teaching nights), the assessment night and the result. The file name is the title shown when it is opened.
 function shiftIso(iso, n) { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+// 29 Oct 2026 (Jon): in the "All courses" lead file a moved candidate was listed once per night. Keep the night they sat
+// (or were marked not there) and drop the later empty "Not yet assessed" row for the same person. Single courses are unchanged.
+function leadPeople(sc) {
+  if (UI.course !== "all") return sc.people;
+  const had = {}; sc.rows.forEach(p => { if (p.gN !== "none") (had[p.c.id] = had[p.c.id] || []).push(p.date || ""); });
+  return sc.people.filter(p => !(p.gN === "none" && (had[p.c.id] || []).some(d => d <= (p.date || "9"))));
+}
 function leadSheetRows(people) {
   const sorted = people.slice().sort((a, b) => String(a.date || "9").localeCompare(String(b.date || "9")) || (SEV[a.g] - SEV[b.g]) || String(a.degreeExact).localeCompare(String(b.degreeExact)) || String(a.c.name).localeCompare(String(b.c.name)));
   return [["Name","Email","Degree","Course","Course dates (teaching nights)","Assessment date","Result"]].concat(sorted.map(p => [
@@ -388,9 +395,9 @@ function viewFollow() {
   const sc = scope(), since = sc.rows.filter(p => p.g === "pass3" && REFER.indexOf(p.gN) >= 0).length;
   let h = `<div class="card"><h2>Who needs action</h2><p class="cap">Each box is a group of people who still need something, who acts, and what happens next. Click one for the detail.${since ? " " + plural(since, "person who did not pass has", "people who did not pass have") + " since passed and " + (since === 1 ? "is" : "are") + " not listed." : ""}</p><div class="lanes">${LANES.map(l => { const n = laneList(sc, l.k).length; return `<button class="lane${n ? "" : " zero"}" data-lane="${l.k}"><div class="n">${n}</div><div class="t">${esc(l.t)}</div><div class="o">${esc(l.o)}</div></button>`; }).join("")}</div></div>`;
   if (canDl()) {
-    const dm = {}; sc.people.forEach(p => { (dm[p.degreeExact] || (dm[p.degreeExact] = [])).push(p); }); const keys = Object.keys(dm).sort();
+    const lp = leadPeople(sc), dm = {}; lp.forEach(p => { (dm[p.degreeExact] || (dm[p.degreeExact] = [])).push(p); }); const keys = Object.keys(dm).sort();
     h += `<div class="card"><h2>Spreadsheets for degree leads</h2><p class="cap">One file per degree for ${UI.course === "all" ? "all courses" : esc(UI.course)}: name, email, result group, attempts, sections not passed, and what happens next. They hold names and email addresses, so send them only to the degree lead.</p>` +
-      (keys.length ? `<div class="dl"><div><b>All degrees, one file</b><small>${plural(sc.people.length, "person", "people")}</small></div><button type="button" class="btn alt" style="margin:0" data-dl="*">Download</button></div>` + keys.map((k, i) => { const G = counts(dm[k]), np = G.due + G.retrain + G.leads + G.final; return `<div class="dl"><div><b>${esc(k)}</b><small>${plural(dm[k].length, "person", "people")}, ${G.pass1 + G.pass2 + G.pass3} passed, ${np} not passed yet, ${G.absent} not there, ${G.none} no result yet</small></div><button type="button" class="btn alt" style="margin:0" data-dl="${i}">Download</button></div>`; }).join("") : `<div class="cap">Nobody here yet.</div>`) +
+      (keys.length ? `<div class="dl"><div><b>All degrees, one file</b><small>${plural(lp.length, "person", "people")}</small></div><button type="button" class="btn alt" style="margin:0" data-dl="*">Download</button></div>` + keys.map((k, i) => { const G = counts(dm[k]), np = G.due + G.retrain + G.leads + G.final; return `<div class="dl"><div><b>${esc(k)}</b><small>${plural(dm[k].length, "person", "people")}, ${G.pass1 + G.pass2 + G.pass3} passed, ${np} not passed yet, ${G.absent} not there, ${G.none} no result yet</small></div><button type="button" class="btn alt" style="margin:0" data-dl="${i}">Download</button></div>`; }).join("") : `<div class="cap">Nobody here yet.</div>`) +
       `<p class="note">Degree names are matched to the standard list. Anything else is shown as typed, or "Not recorded" if blank, so fix those on the Candidates page first.</p></div>`;
   }
   return h;
@@ -525,8 +532,8 @@ function paint() {
   document.querySelectorAll("#segMode button").forEach(b => b.onclick = () => { UI.mode = b.dataset.m; paint(); });
   const cg = $("chkGroup"); if (cg) cg.onchange = () => { UI.group = cg.checked; paint(); };
   document.querySelectorAll("[data-dl]").forEach(b => b.onclick = () => {
-    const sc = scope(), key = b.dataset.dl; let ppl = sc.people, label = "all degrees";
-    if (key !== "*") { const ks = Array.from(new Set(sc.people.map(p => p.degreeExact))).sort(); label = ks[Number(key)]; ppl = sc.people.filter(p => p.degreeExact === label); }
+    const sc = scope(), lp = leadPeople(sc), key = b.dataset.dl; let ppl = lp, label = "all degrees";
+    if (key !== "*") { const ks = Array.from(new Set(lp.map(p => p.degreeExact))).sort(); label = ks[Number(key)]; ppl = lp.filter(p => p.degreeExact === label); }
     download(leadSheetName(UI.course === "all" ? "all courses" : UI.course, label), leadSheetRows(ppl));
   });
 }
