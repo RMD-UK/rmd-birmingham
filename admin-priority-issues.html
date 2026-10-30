@@ -414,7 +414,12 @@ async function flagSave() {
   } catch (e) { busy = false; $("fMsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; flagCheck(); }
 }
 // ── Candidate concerns (30 Oct 2026): same steps as instructor concerns, but open or closed only, no review date ──
-const CF = { sel: null };
+const CF = { sel: null, tests: null };
+function cList() {
+  const seen = {}, out = [];
+  (R && R.cands || []).concat(ME.isDirector ? (CF.tests || []) : []).forEach(p => { if (!seen[p.id]) { seen[p.id] = 1; out.push(p); } });
+  return out;
+}
 function ccTicksHtml(it) {
   const c = it.rec;
   return `<div style="margin-top:6px;"><label class="tick"><input type="checkbox" ${c.degreeLeadsUpdated ? "checked" : ""} onchange="ccTick('${esc(it.id)}','degreeLeadsUpdated',this.checked)"> Degree leads updated</label>` +
@@ -482,17 +487,18 @@ function toggleCFlag(force) {
   $("cWho").innerHTML = `<input type="search" id="cq" placeholder="Type a candidate's name or course" oninput="cFilter()" autocomplete="off"><div id="cRes" class="pick"></div><div id="cChosen"></div>`;
   $("cWhy").innerHTML = P.CAND_REASONS.map(([k, l]) => `<label class="opt"><input type="checkbox" class="cr" value="${esc(k)}" onchange="cCheck()"> ${esc(l)}</label>`).join("");
   $("cWhat").value = ""; $("cDup").innerHTML = ""; $("cMsg").textContent = ""; cFilter(); cCheck();
+  if (ME.isDirector && !CF.tests) P.loadTestCandidates(db).then(t => { CF.tests = t; cFilter(); });
 }
 function cFilter() {
   const res = $("cRes"); if (!res || CF.sel || !$("cq")) return;
   if (!R) { res.innerHTML = '<span class="hint">Loading…</span>'; return; }
-  const ql = $("cq").value.trim().toLowerCase(), all = R.cands || [];
+  const ql = $("cq").value.trim().toLowerCase(), all = cList();
   const m = all.filter(p => !ql || p.name.toLowerCase().includes(ql) || p.course.toLowerCase().includes(ql)).slice(0, 12);
-  res.innerHTML = m.length ? m.map(p => `<button type="button" onclick="cChoose('${esc(p.id)}')">${esc(p.name)} <span class="hint">· ${esc(p.course)}</span></button>`).join("")
+  res.innerHTML = m.length ? m.map(p => `<button type="button" onclick="cChoose('${esc(p.id)}')">${esc(p.name)} <span class="hint">· ${esc(p.course)}${p.test ? " · TEST" : ""}</span></button>`).join("")
     : `<span class="hint">${all.length ? "No match on the two latest courses." : "No candidates found on the two latest courses."}</span>`;
 }
 function cChoose(id) {
-  CF.sel = (R.cands || []).find(p => p.id === id) || null; if (!CF.sel) return;
+  CF.sel = cList().find(p => p.id === id) || null; if (!CF.sel) return;
   $("cq").style.display = "none"; $("cRes").innerHTML = "";
   $("cChosen").innerHTML = `<span class="chosen">${esc(CF.sel.name)} · ${esc(CF.sel.course)}</span><button type="button" class="btn2" onclick="cUnpick()">Change</button>`;
   const dup = R.items.find(x => x.type === "cconcern" && !x.closed && x.rec.candidateId === CF.sel.id);

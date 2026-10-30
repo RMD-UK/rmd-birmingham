@@ -312,6 +312,13 @@
     await db.collection("instructor_concerns").doc(id).update(upd);
   }
 
+  // Test candidates (isTest) sit on test courses, which the scan skips. Directors can pick them to try the flag with test data.
+  async function loadTestCandidates(db) {
+    var out = [];
+    try { docs(await db.collection("stage1_candidates").where("isTest", "==", true).get()).forEach(function (c) { out.push({ id: c.id, name: c.name || "", email: c.email || "", course: c.course || "", degree: c.degree || "", test: true }); }); }
+    catch (e) { /* not allowed or none: the normal list is used */ }
+    return out;
+  }
   async function flagCandidate(db, who, cand, data) {
     var labs = data.reasons.map(function (k) { return (CAND_REASONS.filter(function (r) { return r[0] === k; })[0] || [k, k])[1]; });
     var ts = firebase.firestore.FieldValue.serverTimestamp();
@@ -328,5 +335,5 @@
     await db.collection("candidate_concerns").doc(id).update(upd);
   }
 
-  window.RMD_PRIORITY = { flagCandidate: flagCandidate, updateCandidateConcern: updateCandidateConcern, CAND_REASONS: CAND_REASONS, CAND_OUTCOMES: CAND_OUTCOMES, load: load, loadInstructors: loadInstructors, flagInstructor: flagInstructor, updateInstructorConcern: updateInstructorConcern, INSTR_SOURCES: INSTR_SOURCES, INSTR_REASONS: INSTR_REASONS, INSTR_OUTCOMES: INSTR_OUTCOMES, UNI_FORM_URL: UNI_FORM_URL, REVIEW_DAYS: REVIEW_DAYS, saveFollowup: saveFollowup, CONCERN_ACTIONS: CONCERN_ACTIONS, GENERIC_ACTIONS: GENERIC_ACTIONS, fkey: fkey, SCAN_COURSES: SCAN_COURSES };
+  window.RMD_PRIORITY = { loadTestCandidates: loadTestCandidates, flagCandidate: flagCandidate, updateCandidateConcern: updateCandidateConcern, CAND_REASONS: CAND_REASONS, CAND_OUTCOMES: CAND_OUTCOMES, load: load, loadInstructors: loadInstructors, flagInstructor: flagInstructor, updateInstructorConcern: updateInstructorConcern, INSTR_SOURCES: INSTR_SOURCES, INSTR_REASONS: INSTR_REASONS, INSTR_OUTCOMES: INSTR_OUTCOMES, UNI_FORM_URL: UNI_FORM_URL, REVIEW_DAYS: REVIEW_DAYS, saveFollowup: saveFollowup, CONCERN_ACTIONS: CONCERN_ACTIONS, GENERIC_ACTIONS: GENERIC_ACTIONS, fkey: fkey, SCAN_COURSES: SCAN_COURSES };
 })();
