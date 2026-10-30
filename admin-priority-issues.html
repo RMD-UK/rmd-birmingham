@@ -277,8 +277,38 @@ async function reopen(key) {
 // ── Instructor concerns ──
 const fmtD = iso => { try { return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch (e) { return ""; } };
 const plusDays = n => { const d = new Date(Date.now() + n * 864e5); return d.toLocaleDateString("sv-SE", { timeZone: "Europe/London" }); };
-const MGR_HTML = `<h4>Who from RMD faculty managed this case? <span class="need" id="needMgr">(required)</span></h4><input type="text" id="fmgr" maxlength="200" oninput="check()" placeholder="Name or names">`;
-const mgrOk = () => !!$("fmgr") && $("fmgr").value.trim().length >= 2;
+// Who managed the case: pick one or more from the RMD faculty directory (Student and Senior Faculty), yourself, or type any other name (for example a Director).
+const MG = { list: null, sel: [], view: [], q: "" };
+const MGR_HTML = `<h4>Who from RMD faculty managed this case? <span class="need" id="needMgr">(required, pick at least one)</span></h4><div id="mgSel"></div><input type="search" id="mgq" placeholder="Search RMD faculty, or type a name" oninput="mgRender()" autocomplete="off"><div id="mgRes" class="pick"></div>`;
+const mgrOk = () => MG.sel.length > 0;
+const mgrText = () => MG.sel.join(", ");
+async function mgInit() {
+  mgRender();
+  if (MG.list) return;
+  try {
+    const snap = await db.collection(COLLECTIONS.facultyDirectory).get();
+    const seen = {}; MG.list = [];
+    snap.forEach(d => { const x = d.data(), n = String(x.name || "").trim(); if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = 1; MG.list.push({ name: n, tag: x.group === "senior" ? "Senior" : (x.group === "student" ? "Student" : "") }); } });
+    MG.list.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) { MG.list = []; }
+  mgRender();
+}
+function mgRender() {
+  const res = $("mgRes"), sel = $("mgSel"); if (!res || !sel) return;
+  sel.innerHTML = MG.sel.map((n, i) => `<span class="chosen">${esc(n)} <a href="#" onclick="mgDel(${i});return false;" title="Remove" style="text-decoration:none;color:#b3261e;">&#10005;</a></span>`).join("");
+  const q = ($("mgq").value || "").trim(), ql = q.toLowerCase(), have = {}; MG.sel.forEach(n => have[n.toLowerCase()] = 1);
+  const all = ME.name ? [{ name: ME.name, tag: "Me" }].concat(MG.list || []) : (MG.list || []);
+  const m = all.filter(p => !have[p.name.toLowerCase()] && (!ql || p.name.toLowerCase().includes(ql))).slice(0, 12);
+  MG.view = m; MG.q = q;
+  const exact = q && all.some(p => p.name.toLowerCase() === ql);
+  res.innerHTML = m.map((p, i) => `<button type="button" onclick="mgAdd(${i})">${esc(p.name)}${p.tag ? ` <span class="hint">· ${esc(p.tag)}</span>` : ""}</button>`).join("") +
+    (q && !exact && !have[ql] ? `<button type="button" onclick="mgAddTyped()">Add "${esc(q)}"</button>` : "") +
+    (MG.list === null ? `<span class="hint">Loading faculty…</span>` : "");
+  if ($("needMgr")) $("needMgr").style.display = mgrOk() ? "none" : "";
+}
+function mgAdd(i) { const p = MG.view[i]; if (!p) return; MG.sel.push(p.name); $("mgq").value = ""; mgRender(); check(); }
+function mgAddTyped() { const q = MG.q; if (q.length < 2) return; MG.sel.push(q); $("mgq").value = ""; mgRender(); check(); }
+function mgDel(i) { MG.sel.splice(i, 1); mgRender(); check(); }
 const closingEntry = c => (c.log || []).slice().reverse().find(e => /^Closed/.test(e.action || "")) || (c.log || []).slice(-1)[0] || {};
 function logHtml(c) {
   const l = c.log || [];
@@ -301,7 +331,7 @@ function icCard(it) {
   if (openKey === it.key && openMode) h += icForm(it);
   return h + `</div>`;
 }
-function openIc(k, mode) { openKey = k; openMode = mode; render(); const el = document.querySelector('.item[data-k="' + CSS.escape(k) + '"] textarea'); if (el) el.focus(); check(); }
+function openIc(k, mode) { openKey = k; openMode = mode; MG.sel = []; render(); if (mode === "close") mgInit(); const el = document.querySelector('.item[data-k="' + CSS.escape(k) + '"] textarea'); if (el) el.focus(); check(); }
 function icForm(it) {
   let h = `<div class="form">`;
   if (openMode === "review") h += `<h4>Review again on</h4><input type="date" id="fdate" min="${plusDays(1)}" value="${plusDays(P.REVIEW_DAYS)}" onchange="check()">`;
@@ -325,7 +355,7 @@ async function icSave(key) {
     if (openMode === "review") await P.updateInstructorConcern(db, it.id, ME, { status: "review", reviewDate: $("fdate").value, outcome: null }, { action: "Kept under review until " + $("fdate").value, note });
     else {
       const o = document.querySelector('input[name="out"]:checked').value, lab = (P.INSTR_OUTCOMES.find(x => x[0] === o) || [o, o])[1];
-      await P.updateInstructorConcern(db, it.id, ME, { status: "closed", outcome: o }, { action: "Closed: " + lab, note, managedBy: $("fmgr").value.trim() });
+      await P.updateInstructorConcern(db, it.id, ME, { status: "closed", outcome: o }, { action: "Closed: " + lab, note, managedBy: mgrText() });
     }
     openKey = null; openMode = null; busy = false; await refresh();
   } catch (e) { $("fmsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; busy = false; check(); }
@@ -435,7 +465,7 @@ function ccCard(it) {
   if (openKey === it.key && openMode === "ccclose") h += ccForm(it);
   return h + `</div>`;
 }
-function openCc(k) { openKey = k; openMode = "ccclose"; render(); const el = document.querySelector('.item[data-k="' + CSS.escape(k) + '"] textarea'); if (el) el.focus(); check(); }
+function openCc(k) { openKey = k; openMode = "ccclose"; MG.sel = []; render(); mgInit(); const el = document.querySelector('.item[data-k="' + CSS.escape(k) + '"] textarea'); if (el) el.focus(); check(); }
 function ccForm(it) {
   return `<div class="form"><h4>Outcome. Choose one</h4>` + P.CAND_OUTCOMES.map(([k, l]) => `<label class="opt"><input type="radio" name="out" value="${esc(k)}" onchange="check()"> ${esc(l)}</label>`).join("") +
     MGR_HTML + `<h4>Note <span class="need" id="needNote">(required, at least 15 characters)</span></h4><textarea id="fnote" maxlength="1500" oninput="check()" placeholder="What was agreed, and why it is closed."></textarea>` +
@@ -452,7 +482,7 @@ async function ccSave(key) {
   busy = true; $("fsave").disabled = true; $("fmsg").textContent = "";
   try {
     const o = document.querySelector('input[name="out"]:checked').value, lab = (P.CAND_OUTCOMES.find(x => x[0] === o) || [o, o])[1];
-    await P.updateCandidateConcern(db, it.id, ME, Object.assign({ status: "closed", outcome: o }, o === "form" ? { formSubmitted: true } : {}), { action: "Closed: " + lab, note: $("fnote").value.trim(), managedBy: $("fmgr").value.trim() });
+    await P.updateCandidateConcern(db, it.id, ME, Object.assign({ status: "closed", outcome: o }, o === "form" ? { formSubmitted: true } : {}), { action: "Closed: " + lab, note: $("fnote").value.trim(), managedBy: mgrText() });
     openKey = null; openMode = null; busy = false; await refresh();
   } catch (e) { $("fmsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; busy = false; ccCheck(it); }
 }
