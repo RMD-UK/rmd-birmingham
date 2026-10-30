@@ -670,18 +670,6 @@ function initFirebase() {
   return true;
 }
 
-// Course Director quick link (2026-10-10): loads js/cd-quicklink.js on every page that
-// uses this config. The script itself decides whether the person is a director and
-// skips pages where a floating link would be wrong (sign-in, public forms, screens).
-(function () {
-  try {
-    var s = document.createElement("script");
-    s.src = "/js/cd-quicklink.js?v=20261010";
-    s.defer = true;
-    document.head.appendChild(s);
-  } catch (e) {}
-})();
-
 // RMD logo -> welcome page (2026-10-11): loads js/home-logo.js on every page that uses
 // this config. Signed-in pages get a clickable logo that returns to member-menu.html;
 // public pages, sign-in, forms and display screens are skipped by the script itself.

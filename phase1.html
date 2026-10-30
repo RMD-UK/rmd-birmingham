@@ -812,7 +812,8 @@ function renderCourseTabs() {
 function detach() { S.unsubs.forEach(u => { try { u(); } catch (e) {} }); S.unsubs = []; }
 async function selectCourse(name) {
   detach();
-  S.course = name; S.reg = {}; S.staff = {}; S.cands = [];
+  S.course = name;
+  if (S.full && window.RMD_PRIORITY && typeof prTimer !== "undefined") { clearTimeout(prTimer); prTimer = setTimeout(prRefresh, 400); } S.reg = {}; S.staff = {}; S.cands = [];
   MV.loaded = false; MV.rows = []; MV.err = ""; MV.busy = null; RA.ctx = null; RA.err = "";
   EN.loaded = false; EN.moved = []; EN.docs = {}; EN.err = "";
   renderCourseTabs();
@@ -857,21 +858,25 @@ window.addEventListener("message", e => {
 // Candidate issues come from the two most recent real courses; OPIS concerns from every course. Outcomes are saved in priority_followups.
 S.prCount = 0;
 function prHot() { return !!S.full && S.prCount > 0; }
+// 30 Oct 2026 (Jon): with a test course open the High priority tab shows test items only, and a real course shows real items only.
+function prTest() { return isTestCourse({ name: S.course, test: ((S.courseDates || []).find(x => x.name === S.course) || {}).test }); }
 let prTimer = null;
 async function prRefresh() {
   if (!S.full || !window.RMD_PRIORITY) return;
   clearTimeout(prTimer);
-  try { const r = await RMD_PRIORITY.load(db); S.prCount = r.count; S.prErrs = r.errs.length; } catch (e) { S.prErrs = 1; }
+  try { const r = await RMD_PRIORITY.load(db, { test: prTest() }); S.prCount = r.count; S.prErrs = r.errs.length; } catch (e) { S.prErrs = 1; }
   renderSteps(); renderDoors();
   prTimer = setTimeout(prRefresh, 5 * 60 * 1000);
 }
 function renderPriority() {
   const box = $("viewPriority");
   $("plain").classList.add("hidden");
+  const tq = prTest() ? "1" : "0";
+  if (box.dataset.ready && box.dataset.test !== tq) { box.dataset.ready = ""; box.innerHTML = ""; }
   if (!box.dataset.ready) {
-    box.dataset.ready = "1";
-    box.innerHTML = '<div style="margin:0 0 8px;text-align:right"><a href="admin-priority-issues.html" style="font-size:14px;font-weight:700;color:var(--pur)">Open on its own page &#8599;</a></div>' +
-      '<iframe id="prFrame" src="admin-priority-issues.html?embed=1&v=' + Date.now() + '" title="High priority issues" style="width:100%;height:900px;border:0;background:transparent"></iframe>';
+    box.dataset.ready = "1"; box.dataset.test = tq;
+    box.innerHTML = '<div style="margin:0 0 8px;text-align:right"><a href="admin-priority-issues.html' + (tq === "1" ? "?test=1" : "") + '" style="font-size:14px;font-weight:700;color:var(--pur)">Open on its own page &#8599;</a></div>' +
+      '<iframe id="prFrame" src="admin-priority-issues.html?embed=1' + (tq === "1" ? "&test=1" : "") + '&v=' + Date.now() + '" title="High priority issues" style="width:100%;height:900px;border:0;background:transparent"></iframe>';
   } else { const f = $("prFrame"); try { f.contentWindow.refresh(); } catch (e) {} }
 }
 window.addEventListener("message", e => {

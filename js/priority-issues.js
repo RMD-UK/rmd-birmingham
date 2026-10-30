@@ -18,6 +18,9 @@
  *   iconcern   An instructor flagged as a concern by RMD faculty (instructor_concerns). Open until closed with an outcome; "Keep under
  *              review" hides the red flag until its review date. Review log kept on the record.
  * Only the two most recent real courses that have started are scanned for candidate issues, to keep reads small.
+ * Test mode (opts.test, used when a test course is open in the hub, or admin-priority-issues.html?test=1, 30 Oct 2026 Jon): the same checks run on the
+ * two most recent TEST courses only, and nothing from real courses is shown (real OPIS and candidate concerns, instructor concerns and absences are hidden).
+ * Normal mode never shows items from test courses.
  * Outcomes live in priority_followups/{key}. Absent and no-show items disappear by themselves when the person is reallocated
  * (their course changes) or passes.
  */
@@ -83,13 +86,17 @@
   async function load(db, opts) {
     opts = opts || {};
     var today = londonToday(), hour = opts.hour != null ? opts.hour : londonHour(), items = [], errs = [], allCands = [], seenCand = {};
+    var testMode = !!opts.test, testNames = {};
+    function isTestName(n) { return !!testNames[n] || /^TEST\b/i.test(n || ""); }
     var OU = window.OPIS_UTIL;
 
     // ── Courses ──
     var courses = [];
     try {
       var cfg = await db.collection("config").doc("stage1_course_dates").get();
-      courses = (cfg.exists ? (cfg.data().courses || []) : []).filter(function (c) { return c && c.name && c.date && !isTest(c) && !isCatchup(c); });
+      courses = (cfg.exists ? (cfg.data().courses || []) : []).filter(function (c) { return c && c.name && c.date && !isCatchup(c); });
+      courses.forEach(function (c) { if (isTest(c)) testNames[c.name] = true; });
+      courses = courses.filter(function (c) { return isTest(c) === testMode; });
     } catch (e) { errs.push("Could not read the course dates: " + (e.message || e)); }
     var started = courses.filter(function (c) { return addDays(c.date, -14) <= today; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; }).slice(0, SCAN_COURSES);
 
@@ -104,7 +111,7 @@
       var course = started[i], cname = course.name;
       var cands = [], reg = {}, assess = {};
       try { cands = docs(await db.collection("stage1_candidates").where("course", "==", cname).get()); } catch (e) { errs.push("Could not read candidates on " + cname + ": " + (e.message || e)); continue; }
-      cands.forEach(function (c) { if (c.isTest === true || seenCand[c.id]) return; seenCand[c.id] = true; allCands.push({ id: c.id, name: c.name || "", email: c.email || "", course: cname, degree: c.degree || "" }); });
+      cands.forEach(function (c) { if ((!testMode && c.isTest === true) || seenCand[c.id]) return; seenCand[c.id] = true; allCands.push({ id: c.id, name: c.name || "", email: c.email || "", course: cname, degree: c.degree || "" }); });
       try { docs(await db.collection("stage1_register").where("course", "==", cname).get()).forEach(function (r) { reg[r.id] = r; }); } catch (e) { errs.push("Could not read the register for " + cname + ": " + (e.message || e)); }
       try { docs(await db.collection("stage1_assessments").where("course", "==", cname).get()).forEach(function (r) { assess[r.id] = r; }); } catch (e) { errs.push("Could not read results for " + cname + ": " + (e.message || e)); }
       var cov = {}, covOk = true;
@@ -114,7 +121,7 @@
       var shown = {}, gaps = { 1: [], 2: [] }, noOpis = [];
       var weekOver = function (n) { var d = n === 1 ? w1 : w2; return today > d || (today === d && hour >= 20); };
       cands.forEach(function (c) {
-        if (c.isTest === true) return;
+        if (!testMode && c.isTest === true) return;
         var passed = c.outcome === "Passed" || passedAttemptOrNone(assess[c.id]);
         var r = reg[c.id] || {};
         var att = typeof c.assessmentAttempt === "number" ? c.assessmentAttempt : ((c.firstTimeAssessment === false || c.twoPlusAssessments === true) ? 3 : 1);
@@ -190,7 +197,7 @@
       try { fixes = docs(await db.collection("opis_ratings").where("correctsPrevious", "==", true).get()); } catch (e) { /* Student Faculty cannot read other ratings; a corrected concern can be dealt with by hand */ }
       var all = rated.concat(fixes.filter(function (x) { return !x.concernFlag; }));
       OU.markSuperseded(all);
-      rated.filter(function (r) { return !r._superseded && OU.hasConcern(r); }).forEach(function (r) {
+      rated.filter(function (r) { return !r._superseded && OU.hasConcern(r) && isTestName(r.course || "") === testMode; }).forEach(function (r) {
         var sub = ts(r.submittedAt);
         add({ key: "c|" + r.id, type: "concern", kind: "concern", ratingId: r.id, candidateId: r.candidateId || "", title: r.candidateName || "Candidate", name: r.candidateName || "",
           sub: (r.course || "") + (r.room ? " / " + r.room : "") + " - rated " + (r.total != null ? r.total : "?") + " of 15 by " + (r.submittedByName || "an instructor"),
@@ -200,7 +207,7 @@
 
     // ── Instructor absences still to come ──
     try {
-      var notices = docs(await db.collection("instructor_absences").get()).filter(function (n) { return n.status !== "withdrawn"; });
+      var notices = testMode ? [] : docs(await db.collection("instructor_absences").get()).filter(function (n) { return n.status !== "withdrawn"; });
       var totals = {};
       notices.forEach(function (n) {
         var key = n.uid || n.email, t = ts(n.submittedAt) || 0, cur = totals[key];
@@ -222,7 +229,7 @@
 
     // ── Instructors flagged as a concern ──
     try {
-      docs(await db.collection("instructor_concerns").get()).forEach(function (c) {
+      (testMode ? [] : docs(await db.collection("instructor_concerns").get())).forEach(function (c) {
         var status = c.status || "open", closed = status === "closed";
         var snoozed = status === "review" && !!c.reviewDate && c.reviewDate > today;
         var due = status === "review" && !snoozed;
@@ -238,6 +245,7 @@
     // ── Candidates flagged as a concern ──
     try {
       docs(await db.collection("candidate_concerns").get()).forEach(function (c) {
+        if (isTestName(c.course || "") !== testMode) return;
         var closed = c.status === "closed";
         items.push({ key: "cc|" + c.id, type: "cconcern", kind: "cconcern", id: c.id, title: c.candidateName || "Candidate", name: c.candidateName || "", rec: c,
           sub: (c.course || "") + (c.degree ? " - " + c.degree : "") + " - flagged by " + (c.createdByName || "RMD faculty"),
@@ -246,7 +254,7 @@
     } catch (e) { errs.push("Could not read candidate concerns: " + (e.message || e)); }
 
     var pending = items.filter(function (x) { return !x.closed && !x.snoozed; });
-    return { items: items, pending: pending, count: pending.length, errs: errs, cands: allCands, scanned: started.map(function (c) { return c.name; }), today: today };
+    return { items: items, pending: pending, count: pending.length, errs: errs, cands: allCands, test: testMode, scanned: started.map(function (c) { return c.name; }), today: today };
   }
 
   async function saveFollowup(db, item, who, data) {

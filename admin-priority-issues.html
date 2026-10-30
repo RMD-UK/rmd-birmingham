@@ -138,6 +138,7 @@ const SECTIONS = [
   ["instabs", "Instructor absences needing action", "Short notice or repeat absence for an evening still to come, with no cover arranged."]
 ];
 const OPEN = {};
+const TEST_MODE = new URLSearchParams(location.search).get("test") === "1";
 let ME = { uid: "", name: "", isDirector: false }, R = null, openKey = null, openMode = null, busy = false;
 const FL = { list: null, sel: null, loading: false, more: false };
 
@@ -159,7 +160,7 @@ auth.onAuthStateChanged(async function (user) {
 
 async function refresh() {
   $("summary").innerHTML = '<span class="big">Checking…</span>';
-  R = await P.load(db);
+  R = await P.load(db, { test: TEST_MODE });
   render();
 }
 
@@ -172,8 +173,8 @@ function render() {
   const by = t => pend.filter(x => x.type === t);
   $("summary").innerHTML = (n ? `<span class="big red">${n} need${n === 1 ? "s" : ""} action</span>` : `<span class="big green">Nothing needs action</span>`) +
     `<button type="button" class="btn2" onclick="refresh()">Check again</button>`;
-  $("errs").innerHTML = R.errs.map(e => `<div class="err">${esc(e)}</div>`).join("") +
-    (R.scanned.length ? `<div class="hint">Candidate issues checked on: ${R.scanned.map(esc).join(", ")}.</div>` : `<div class="hint">No real course has started yet, so there are no candidate issues to check.</div>`);
+  $("errs").innerHTML = (TEST_MODE ? `<div class="err"><strong>Test course.</strong> Only items from test courses are shown. Nothing from real courses appears here.</div>` : "") + R.errs.map(e => `<div class="err">${esc(e)}</div>`).join("") +
+    (R.scanned.length ? `<div class="hint">Candidate issues checked on: ${R.scanned.map(esc).join(", ")}.</div>` : `<div class="hint">No ${TEST_MODE ? "test" : "real"} course has started yet, so there are no candidate issues to check.</div>`);
   $("sections").innerHTML = SECTIONS.map(([t, title, help]) => {
     const list = by(t), shown = (t === "iconcern" || t === "cconcern") ? R.items.filter(x => x.type === t && !x.closed) : list;
     const quiet = shown.length - list.length;
@@ -420,19 +421,13 @@ function cList() {
   (R && R.cands || []).concat(ME.isDirector ? (CF.tests || []) : []).forEach(p => { if (!seen[p.id]) { seen[p.id] = 1; out.push(p); } });
   return out;
 }
-function ccTicksHtml(it) {
-  const c = it.rec;
-  return `<div style="margin-top:6px;"><label class="tick"><input type="checkbox" ${c.degreeLeadsUpdated ? "checked" : ""} onchange="ccTick('${esc(it.id)}','degreeLeadsUpdated',this.checked)"> Degree leads updated</label>` +
-    `<label class="tick"><input type="checkbox" ${c.formSubmitted ? "checked" : ""} onchange="ccTick('${esc(it.id)}','formSubmitted',this.checked)"> University concern form submitted</label>` +
-    (P.UNI_FORM_URL ? `<a class="btn2" href="${esc(P.UNI_FORM_URL)}" target="_blank" rel="noopener">Open the university form</a>` : "") + `</div>`;
-}
+const ccFormBtn = () => P.UNI_FORM_URL ? `<a class="btn2" href="${esc(P.UNI_FORM_URL)}" target="_blank" rel="noopener">Open the university form</a>` : "";
 function ccCard(it) {
   const c = it.rec;
   let h = `<div class="item" data-k="${esc(it.key)}"><div class="nm">${esc(it.title)}</div><div class="sub">${esc(it.sub)} · ${esc(fmtD(((c.log || [])[0] || {}).at))}</div>` +
     it.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("") +
     `<div class="cbox"><strong>${(c.reasonLabels || []).map(esc).join("; ")}</strong><div style="white-space:pre-wrap;margin-top:3px;">${esc(c.note || "")}</div></div>` +
-    ccTicksHtml(it) +
-    `<div class="acts"><button type="button" class="btn2 pri" onclick="openCc('${esc(it.key)}')">Close concern</button></div>` + logHtml(c);
+    `<div class="acts"><button type="button" class="btn2 pri" onclick="openCc('${esc(it.key)}')">Close concern</button>${ccFormBtn()}</div>` + logHtml(c);
   if (openKey === it.key && openMode === "ccclose") h += ccForm(it);
   return h + `</div>`;
 }
@@ -456,18 +451,13 @@ async function ccSave(key) {
     openKey = null; openMode = null; busy = false; await refresh();
   } catch (e) { $("fmsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; busy = false; ccCheck(it); }
 }
-async function ccTick(id, field, on) {
-  const lab = field === "degreeLeadsUpdated" ? "Degree leads updated" : "University concern form submitted";
-  try { await P.updateCandidateConcern(db, id, ME, { [field]: !!on }, { action: lab + (on ? ": ticked" : ": unticked"), note: "" }); await refresh(); }
-  catch (e) { alert("Could not save: " + (e.code || e.message)); render(); }
-}
 function ccDone(it) {
   const c = it.rec, last = (c.log || []).slice(-1)[0] || {}, out = (P.CAND_OUTCOMES.find(x => x[0] === c.outcome) || [0, c.outcome || ""])[1];
   let h = `<div class="done" data-k="${esc(it.key)}"><div class="nm">${esc(it.title)} <span style="font-weight:400;color:var(--rmd-muted);">${esc(it.sub)}</span></div>` +
     `<div><span class="tag" style="background:#e6f4ea;color:#1a6e31;">${esc(out)}</span></div>` +
     `<div class="cbox"><strong>Concern: ${(c.reasonLabels || []).map(esc).join("; ")}</strong><div style="white-space:pre-wrap;margin-top:3px;">${esc(c.note || "")}</div></div>` +
     `<div style="white-space:pre-wrap;"><strong>Closing note:</strong> ${esc(last.note || "")}</div><div style="color:var(--rmd-muted);font-size:12px;margin-top:3px;">${esc(last.by || "")} · ${esc(fmtD(last.at))}</div>` +
-    ccTicksHtml(it) + logHtml(c);
+    logHtml(c);
   if (ME.isDirector) h += `<div class="acts"><button type="button" class="btn2" onclick="reopen('${esc(it.key)}')">Reopen</button></div>`;
   return h + `</div>`;
 }
@@ -487,7 +477,7 @@ function toggleCFlag(force) {
   $("cWho").innerHTML = `<input type="search" id="cq" placeholder="Type a candidate's name or course" oninput="cFilter()" autocomplete="off"><div id="cRes" class="pick"></div><div id="cChosen"></div>`;
   $("cWhy").innerHTML = P.CAND_REASONS.map(([k, l]) => `<label class="opt"><input type="checkbox" class="cr" value="${esc(k)}" onchange="cCheck()"> ${esc(l)}</label>`).join("");
   $("cWhat").value = ""; $("cDup").innerHTML = ""; $("cMsg").textContent = ""; cFilter(); cCheck();
-  if (ME.isDirector && !CF.tests) P.loadTestCandidates(db).then(t => { CF.tests = t; cFilter(); });
+  if (ME.isDirector && TEST_MODE && !CF.tests) P.loadTestCandidates(db).then(t => { CF.tests = t; cFilter(); });
 }
 function cFilter() {
   const res = $("cRes"); if (!res || CF.sel || !$("cq")) return;
