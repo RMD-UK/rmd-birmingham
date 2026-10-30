@@ -73,7 +73,6 @@
     <label><input type="checkbox" id="exc"> Outstanding potential only</label>
     <label><input type="checkbox" id="conc"> Concerns only</label>
     <button class="btn" type="button" id="csv">Download CSV</button>
-    <button class="btn" type="button" id="bf" style="display:none">Fix rater counts</button>
   </div>
   <div class="summary-line" id="summary"></div>
   <div id="wrap"><div class="empty-state">Loading...</div></div>
@@ -82,7 +81,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/opis-util.js"></script>
@@ -99,7 +97,6 @@ auth.onAuthStateChanged(async function (user) {
     setTimeout(() => { window.location.href = "member-menu.html"; }, 1500);
     return;
   }
-  window.IS_DIRECTOR = role === ROLES.DIRECTOR;
   init();
 });
 
@@ -135,7 +132,6 @@ async function init() {
     $("course").innerHTML = '<option value="">All courses</option>' + courses.map(c => `<option>${esc(c)}</option>`).join("");
     ["q", "course", "sort", "exc", "conc"].forEach(id => $(id).addEventListener(id === "q" ? "input" : "change", render));
     $("csv").onclick = csv;
-    if (window.IS_DIRECTOR) { $("bf").style.display = ""; $("bf").onclick = backfill; }
     render();
   } catch (err) {
     $("wrap").innerHTML = `<div class="empty-state">Could not load the ratings: ${esc(err.message || err)}</div>`;
@@ -162,22 +158,6 @@ function render() {
       `<div class="detail"><div class="crit">${critHtml}</div>${rhtml}${c.skips.map(x => `<div class="rating"><div class="rh"><span>${esc(x.name || "Unknown instructor")} <span class="tag">did not rate</span></span><span>${esc(fmtDate(x.at))}</span></div><div class="sc"><span>Not enough time: <b>${esc(x.reasonLabel || x.reason || "")}</b></span>${x.note ? `<span>${esc(x.note)}</span>` : ""}</div></div>`).join("")}</div></div>`;
   }).join("");
   document.querySelectorAll(".cand .head").forEach(h => h.onclick = () => { const c = h.parentElement; c.classList.toggle("open"); h.setAttribute("aria-expanded", c.classList.contains("open")); });
-}
-
-// Directors only: fills the "n of 2" counts from ratings made before the counter existed. Preview first, then confirm.
-async function backfill() {
-  const btn = $("bf"); btn.disabled = true;
-  try {
-    const fn = firebase.functions().httpsCallable("backfillOpisCoverage");
-    const p = (await fn({ dryRun: true })).data;
-    if (!p.wouldChange) { alert("Nothing to fix. " + p.alreadyFine + " candidates already have their rater counts."); return; }
-    const ex = p.sample.map(s => s.name + ": " + s.before + " to " + s.after).join("\n");
-    if (!confirm("This will fix rater counts for " + p.wouldChange + " of " + p.candidates + " rated candidates.\n\nExamples:\n" + ex + "\n\nIt only adds who rated. No scores change. Go ahead?")) return;
-    const r = (await fn({ dryRun: false })).data;
-    alert("Done. Fixed " + r.changed + " candidates.");
-    init();
-  } catch (e) { alert("Could not fix: " + (e.message || e)); }
-  finally { btn.disabled = false; }
 }
 
 function csv() {

@@ -364,36 +364,50 @@ exports.backfillOpisCoverage = onCall({ region: "us-central1" }, async (request)
   if (!(await callerIsDirector(auth))) throw new HttpsError("permission-denied", "Course Directors only.");
   const dryRun = request.data?.dryRun !== false;
 
+  // v2 (29 Oct, Jon: counters still showed 0 of 2). The rating page looks coverage up by the CANDIDATE RECORD's course, so the
+  // course is now taken from stage1_candidates, not the rating. If a rating's candidateId matches no record, match on email.
+  const candSnap = await db.collection("stage1_candidates").get();
+  const candById = {}, candByEmail = {};
+  candSnap.forEach(d => { const c = d.data(); candById[d.id] = c; const em = String(c.email || "").trim().toLowerCase(); if (em && !candByEmail[em]) candByEmail[em] = d.id; });
+
   const ratings = await db.collection("opis_ratings").get();
   const by = {};
-  let noUid = 0, noCandidate = 0, testSkipped = 0;
+  const out = { dryRun, version: 2, ratingsRead: ratings.size, candidates: 0, wouldChange: 0, changed: 0, alreadyFine: 0, testSkipped: 0, noUid: 0, noCandidate: 0, matchedByEmail: 0, noRecord: 0, courseDiffers: 0, sample: [], noRecordNames: [] };
   for (const d of ratings.docs) {
     const r = d.data();
-    if (!r.candidateId) { noCandidate++; continue; }
-    if (!r.submittedByUid) { noUid++; continue; }
-    if (String(r.candidateEmail || "").toLowerCase().includes(".test@")) { testSkipped++; continue; }
-    const e = by[r.candidateId] = by[r.candidateId] || { course: r.course || "", name: r.candidateName || "", raters: new Set() };
+    if (!r.candidateId) { out.noCandidate++; continue; }
+    if (!r.submittedByUid) { out.noUid++; continue; }
+    if (String(r.candidateEmail || "").toLowerCase().includes(".test@")) { out.testSkipped++; continue; }
+    let id = r.candidateId;
+    if (!candById[id]) {
+      const viaEmail = candByEmail[String(r.candidateEmail || "").trim().toLowerCase()];
+      if (viaEmail) { id = viaEmail; out.matchedByEmail++; }
+    }
+    const rec = candById[id];
+    if (!rec) { out.noRecord++; if (out.noRecordNames.length < 8) out.noRecordNames.push(r.candidateName || r.candidateId); }
+    const e = by[id] = by[id] || { name: (rec && rec.name) || r.candidateName || "", course: (rec && rec.course) || r.course || "", ratingCourse: r.course || "", raters: new Set(), isTest: !!(rec && rec.isTest === true) };
     e.raters.add(r.submittedByUid);
-    if (r.course) e.course = r.course;
   }
 
   const ids = Object.keys(by);
-  const out = { dryRun, ratingsRead: ratings.size, candidates: ids.length, wouldChange: 0, changed: 0, alreadyFine: 0, testSkipped, noUid, noCandidate, sample: [] };
+  out.candidates = ids.length;
   for (const id of ids) {
     const e = by[id];
-    try {
-      const cs = await db.collection("stage1_candidates").doc(id).get();
-      if (cs.exists && cs.data().isTest === true) { out.testSkipped++; continue; }
-    } catch (err) { /* keep going */ }
+    if (e.isTest) { out.testSkipped++; continue; }
+    if (e.ratingCourse && e.course && e.ratingCourse !== e.course) out.courseDiffers++;
     const covRef = db.collection("opis_coverage").doc(id);
     const cov = await covRef.get();
-    const have = new Set(cov.exists ? (cov.data().raters || []) : []);
+    const cd = cov.exists ? cov.data() : {};
+    const have = new Set(cd.raters || []);
     const missing = Array.from(e.raters).filter(u => !have.has(u));
-    if (!missing.length) { out.alreadyFine++; continue; }
+    const courseWrong = cov.exists && e.course && cd.course !== e.course;
+    if (!missing.length && !courseWrong) { out.alreadyFine++; continue; }
     out.wouldChange++;
-    if (out.sample.length < 8) out.sample.push({ name: e.name, course: e.course, before: have.size, after: have.size + missing.length });
+    if (out.sample.length < 8) out.sample.push({ name: e.name, course: e.course, before: have.size, after: have.size + missing.length, courseFix: !!courseWrong });
     if (!dryRun) {
-      await covRef.set({ candidateId: id, course: e.course, raters: admin.firestore.FieldValue.arrayUnion(...missing) }, { merge: true });
+      const upd = { candidateId: id, course: e.course };
+      if (missing.length) upd.raters = admin.firestore.FieldValue.arrayUnion(...missing);
+      await covRef.set(upd, { merge: true });
       out.changed++;
     }
   }

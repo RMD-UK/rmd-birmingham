@@ -139,6 +139,23 @@
       box-shadow: 0 3px 10px rgba(0,0,0,.3); opacity: .92;
     }
     .screensaver-btn:hover, .screensaver-btn:focus-visible { opacity: 1; background: var(--rmd-blue); }
+
+    /* ── Help search (29 Oct 2026, Jon): type what you need to do, get the likely page ── */
+    .help { margin: 0 0 6px; }
+    .help-box { display: flex; align-items: center; gap: 10px; background: #fff; border: 2px solid var(--rmd-navy); border-radius: 14px; padding: 4px 6px 4px 14px; }
+    .help-box label { font-size: 18px; }
+    .help-box input { flex: 1; min-width: 0; border: 0; outline: 0; font-family: var(--font); font-size: 16px; padding: 12px 4px; background: transparent; color: var(--rmd-text); }
+    .help-box:focus-within { box-shadow: 0 0 0 3px rgba(40,100,180,.25); }
+    .help-clear { border: 0; background: #F2F6FA; border-radius: 10px; width: 34px; height: 34px; font-size: 18px; cursor: pointer; color: var(--rmd-muted); }
+    .help-out { margin-top: 8px; display: grid; gap: 8px; }
+    .help-hit { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid #E2E8ED; border-radius: 12px; padding: 12px 14px; text-decoration: none; color: inherit; }
+    .help-hit:hover, .help-hit:focus-visible { box-shadow: 0 3px 10px rgba(0,0,0,0.08); border-color: #CBB9E8; }
+    .help-hit b { display: block; font-size: 15px; color: var(--rmd-navy); }
+    .help-hit small { display: block; font-size: 12px; color: var(--rmd-muted); margin-top: 2px; }
+    .help-hit .go { margin-left: auto; font-size: 20px; color: var(--rmd-muted); }
+    .help-none { background: #F2F6FA; border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+    .help-none a { color: var(--rmd-blue); font-weight: 700; }
+    .help-due { font-size: 12px; color: #7a4b00; background: #FFF6E5; border-radius: 8px; padding: 6px 10px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -162,6 +179,17 @@
   </div>
 </div>
 
+<div class="wrap hidden" id="helpWrap" style="padding-bottom:0">
+  <div class="help">
+    <div class="help-box" role="search">
+      <label for="helpQ" aria-hidden="true">&#128269;</label>
+      <input id="helpQ" type="search" placeholder="What do you need to do? e.g. move a candidate" autocomplete="off" enterkeyhint="search" aria-label="What do you need to do?">
+    </div>
+    <div class="help-out" id="helpOut" aria-live="polite"></div>
+    <div id="helpDue"></div>
+  </div>
+</div>
+
 <div class="wrap" id="view"></div>
 
 <!-- Firebase SDK -->
@@ -170,6 +198,8 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/fuzzy-search.js"></script>
+<script src="js/help-tasks.js"></script>
 <script>
   initFirebase();
 
@@ -317,6 +347,64 @@
   const groupLine = g => (g.id === "tools" && !isDir(ctx)) ? "Tools for Instructor Weekend faculty" : g.line;
   const countText = () => feedbackNew == null || feedbackNew === 0 ? "" : (feedbackNew >= 100 ? "99+" : String(feedbackNew));
 
+
+  /* ── Help search (29 Oct 2026, Jon). The list of jobs lives in js/help-tasks.js. Results follow the same
+     visibility rules as the cards, so nobody is sent to a page they cannot open. ── */
+  const HELP_WHO = {
+    all:       () => true,
+    notma:     c => !(c.menuAssessor && !(isDir(c) || isSF(c))),
+    faculty:   isFacultyTools,
+    dirsf:     c => isDir(c) || isSF(c),
+    dirsenior: c => isDir(c) || c.seniorFac,
+    dir:       isDir,
+    sfr:       c => isDir(c) || (c.seniorFac && sfrWindowOpen())
+  };
+  const HELP_STOP = new Set("how do i to a an the my me of can want need for and or is it on in with some someone something where what find get go open show see make into from at as be we us our up out".split(" "));
+  function helpTasks() {
+    const h = window.RMD_HELP; if (!h || !h.tasks) return [];
+    return h.tasks.filter(t => (HELP_WHO[t.who] || (() => false))(ctx));
+  }
+  function helpSearch(q) {
+    const items = helpTasks(), F = window.RMD_FUZZY;
+    const words = String(q).toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(w => w && !HELP_STOP.has(w));
+    if (!words.length || !F) return [];
+    const fields = t => [t.t, t.k, t.p];
+    let hits = F.filter(items, words.join(" "), fields);
+    if (!hits.length && words.length > 1) {
+      // No single job matches every word: rank by how many of the words match.
+      hits = items.map(t => {
+        let n = 0, sc = 0;
+        words.forEach(w => { const x = F.score(w, fields(t)); if (x > 0) { n++; sc += x; } });
+        return { t, n, sc };
+      }).filter(r => r.n >= Math.ceil(words.length * 0.6)).sort((a, b) => b.n - a.n || b.sc - a.sc).map(r => r.t);
+    }
+    return hits.slice(0, 5);
+  }
+  function helpHtml(q) {
+    if (String(q).trim().length < 2) return "";
+    const hits = helpSearch(q);
+    if (!hits.length) {
+      const fb = "feedback.html?p=" + encodeURIComponent("member-menu.html") + "&t=" + encodeURIComponent("Help search") + "&c=" + encodeURIComponent("Searched for: " + String(q).trim().slice(0, 80));
+      return `<div class="help-none">Nothing found for that. Try other words, or <a href="${esc(fb)}">tell us what you were looking for</a> and we will add it.</div>`;
+    }
+    return hits.map(t => `<a class="help-hit" href="${esc(t.href)}"><div><b>${esc(t.t)}</b><small>Opens: ${esc(t.p)}</small></div><span class="go">&rsaquo;</span></a>`).join("");
+  }
+  function helpDueHtml() {
+    const h = window.RMD_HELP; if (!h || !isDir(ctx)) return "";
+    const d = new Date(h.reviewed + "T00:00:00"); if (isNaN(d)) return "";
+    d.setMonth(d.getMonth() + (h.reviewEveryMonths || 6));
+    return new Date() > d ? `<div class="help-due">The help search list was last checked on ${esc(h.reviewed)}. A review is due (js/help-tasks.js).</div>` : "";
+  }
+  function helpShow() {
+    const q = document.getElementById("helpQ").value;
+    document.getElementById("helpOut").innerHTML = helpHtml(q);
+  }
+  document.getElementById("helpQ").addEventListener("input", helpShow);
+  document.getElementById("helpQ").addEventListener("keydown", e => {
+    if (e.key === "Enter") { const a = document.querySelector("#helpOut .help-hit"); if (a) location.href = a.getAttribute("href"); }
+    if (e.key === "Escape") { e.target.value = ""; helpShow(); }
+  });
+
   function cardHtml(k) {
     const side = k.side ? k.side(ctx) : null;
     const tag = k.tag ? k.tag(ctx) : "";
@@ -386,6 +474,9 @@
     const vis = visibleGroups();
     const key = (location.hash || "").replace(/^#/, "");
     const g = vis.find(x => x.id === key);
+    // Help search shows on Home only (not inside a group page)
+    document.getElementById("helpWrap").classList.toggle("hidden", !!g);
+    document.getElementById("helpDue").innerHTML = helpDueHtml();
     if (!g) {
       const pins = CARDS.filter(k => k.pin && k.show(ctx));
       root.innerHTML = `${todoHtml()}${stripHtml()}
