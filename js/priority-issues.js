@@ -13,6 +13,8 @@
  *              week is over (the next day, or from 8pm London time on the night itself). Course must have some register marks at all.
  *   noopis     One item per course: candidates with no OPIS rating from anyone, once teaching week 2 is over (same timing as reggap).
  *              Uses opis_coverage (readable by all members). Skips people absent both teaching weeks and second-attempt retesters.
+ *   cconcern   A candidate flagged as a concern by RMD faculty (candidate_concerns). Open until closed with an outcome. No review
+ *              date or snooze (candidates are only here for a short time). Picker lists candidates on the scanned courses.
  *   iconcern   An instructor flagged as a concern by RMD faculty (instructor_concerns). Open until closed with an outcome; "Keep under
  *              review" hides the red flag until its review date. Review log kept on the record.
  * Only the two most recent real courses that have started are scanned for candidate issues, to keep reads small.
@@ -52,6 +54,12 @@
     ["support", "May need extra support (wellbeing, personal or learning needs)"],
     ["other", "Other"]
   ];
+  var CAND_REASONS = [
+    ["conduct", "Conduct or professionalism (for example disrespect, not taking feedback, phone use)"],
+    ["attendance", "Attendance or engagement (repeated lateness, absence or switching off)"],
+    ["support", "Wellbeing or may need extra support (personal, health or learning needs)"],
+    ["other", "Other"]
+  ];
   var INSTR_OUTCOMES = [["noconcern", "No concern anymore"], ["removed", "Removed from the course"], ["support", "Resolved, support in place"]];
 
   var CONCERN_ACTIONS = [
@@ -73,7 +81,7 @@
 
   async function load(db, opts) {
     opts = opts || {};
-    var today = londonToday(), hour = opts.hour != null ? opts.hour : londonHour(), items = [], errs = [];
+    var today = londonToday(), hour = opts.hour != null ? opts.hour : londonHour(), items = [], errs = [], allCands = [], seenCand = {};
     var OU = window.OPIS_UTIL;
 
     // ── Courses ──
@@ -95,6 +103,7 @@
       var course = started[i], cname = course.name;
       var cands = [], reg = {}, assess = {};
       try { cands = docs(await db.collection("stage1_candidates").where("course", "==", cname).get()); } catch (e) { errs.push("Could not read candidates on " + cname + ": " + (e.message || e)); continue; }
+      cands.forEach(function (c) { if (c.isTest === true || seenCand[c.id]) return; seenCand[c.id] = true; allCands.push({ id: c.id, name: c.name || "", email: c.email || "", course: cname, degree: c.degree || "" }); });
       try { docs(await db.collection("stage1_register").where("course", "==", cname).get()).forEach(function (r) { reg[r.id] = r; }); } catch (e) { errs.push("Could not read the register for " + cname + ": " + (e.message || e)); }
       try { docs(await db.collection("stage1_assessments").where("course", "==", cname).get()).forEach(function (r) { assess[r.id] = r; }); } catch (e) { errs.push("Could not read results for " + cname + ": " + (e.message || e)); }
       var cov = {}, covOk = true;
@@ -225,8 +234,18 @@
       });
     } catch (e) { errs.push("Could not read instructor concerns: " + (e.message || e)); }
 
+    // ── Candidates flagged as a concern ──
+    try {
+      docs(await db.collection("candidate_concerns").get()).forEach(function (c) {
+        var closed = c.status === "closed";
+        items.push({ key: "cc|" + c.id, type: "cconcern", kind: "cconcern", id: c.id, title: c.candidateName || "Candidate", name: c.candidateName || "", rec: c,
+          sub: (c.course || "") + (c.degree ? " - " + c.degree : "") + " - flagged by " + (c.createdByName || "RMD faculty"),
+          tags: [closed ? "Closed" : "Open"], closed: closed });
+      });
+    } catch (e) { errs.push("Could not read candidate concerns: " + (e.message || e)); }
+
     var pending = items.filter(function (x) { return !x.closed && !x.snoozed; });
-    return { items: items, pending: pending, count: pending.length, errs: errs, scanned: started.map(function (c) { return c.name; }), today: today };
+    return { items: items, pending: pending, count: pending.length, errs: errs, cands: allCands, scanned: started.map(function (c) { return c.name; }), today: today };
   }
 
   async function saveFollowup(db, item, who, data) {
@@ -292,5 +311,21 @@
     await db.collection("instructor_concerns").doc(id).update(upd);
   }
 
-  window.RMD_PRIORITY = { load: load, loadInstructors: loadInstructors, flagInstructor: flagInstructor, updateInstructorConcern: updateInstructorConcern, INSTR_SOURCES: INSTR_SOURCES, INSTR_REASONS: INSTR_REASONS, INSTR_OUTCOMES: INSTR_OUTCOMES, UNI_FORM_URL: UNI_FORM_URL, REVIEW_DAYS: REVIEW_DAYS, saveFollowup: saveFollowup, CONCERN_ACTIONS: CONCERN_ACTIONS, GENERIC_ACTIONS: GENERIC_ACTIONS, fkey: fkey, SCAN_COURSES: SCAN_COURSES };
+  async function flagCandidate(db, who, cand, data) {
+    var labs = data.reasons.map(function (k) { return (CAND_REASONS.filter(function (r) { return r[0] === k; })[0] || [k, k])[1]; });
+    var ts = firebase.firestore.FieldValue.serverTimestamp();
+    var rec = { candidateId: cand.id, candidateName: cand.name, candidateEmail: cand.email || "", course: cand.course || "", degree: cand.degree || "",
+      reasons: data.reasons, reasonLabels: labs, note: String(data.note || "").trim(),
+      status: "open", outcome: null, degreeLeadsUpdated: false, formSubmitted: false,
+      log: [{ at: isoNow(), by: who.name || "", uid: who.uid, action: "Flagged", note: String(data.note || "").trim() }],
+      createdByUid: who.uid, createdByName: who.name || "", createdAt: ts, updatedAt: ts };
+    return await db.collection("candidate_concerns").add(rec);
+  }
+  async function updateCandidateConcern(db, id, who, change, entry) {
+    var upd = Object.assign({}, change, { updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      log: firebase.firestore.FieldValue.arrayUnion(Object.assign({ at: isoNow(), by: who.name || "", uid: who.uid }, entry)) });
+    await db.collection("candidate_concerns").doc(id).update(upd);
+  }
+
+  window.RMD_PRIORITY = { flagCandidate: flagCandidate, updateCandidateConcern: updateCandidateConcern, CAND_REASONS: CAND_REASONS, load: load, loadInstructors: loadInstructors, flagInstructor: flagInstructor, updateInstructorConcern: updateInstructorConcern, INSTR_SOURCES: INSTR_SOURCES, INSTR_REASONS: INSTR_REASONS, INSTR_OUTCOMES: INSTR_OUTCOMES, UNI_FORM_URL: UNI_FORM_URL, REVIEW_DAYS: REVIEW_DAYS, saveFollowup: saveFollowup, CONCERN_ACTIONS: CONCERN_ACTIONS, GENERIC_ACTIONS: GENERIC_ACTIONS, fkey: fkey, SCAN_COURSES: SCAN_COURSES };
 })();

@@ -1055,6 +1055,36 @@ service cloud.firestore {
       allow delete: if isDirector();
     }
 
+    // ── Candidate concerns (30 Oct 2026, Jon) ────────────────────────────────
+    // candidate_concerns/{id}: a candidate flagged as a concern by RMD faculty (admin-priority-issues.html). Same shape as instructor_concerns
+    // but with no review date: open or closed only. Directors, Student Faculty and Senior Faculty read, flag and update. Each change appends
+    // exactly one log entry. Close needs an outcome; only a Director can reopen or delete.
+    match /candidate_concerns/{docId} {
+      allow read: if isDirector() || isStudentFaculty() || isSeniorFaculty();
+      allow create: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.keys().hasOnly(['candidateId', 'candidateName', 'candidateEmail', 'course', 'degree', 'reasons', 'reasonLabels', 'note', 'status', 'outcome', 'degreeLeadsUpdated', 'formSubmitted', 'log', 'createdByUid', 'createdByName', 'createdAt', 'updatedAt'])
+        && request.resource.data.status == 'open' && request.resource.data.outcome == null
+        && request.resource.data.degreeLeadsUpdated == false && request.resource.data.formSubmitted == false
+        && request.resource.data.candidateId is string && request.resource.data.candidateId.size() > 0
+        && request.resource.data.candidateName is string && request.resource.data.candidateName.size() > 0 && request.resource.data.candidateName.size() <= 200
+        && request.resource.data.reasons is list && request.resource.data.reasons.size() >= 1 && request.resource.data.reasons.size() <= 4
+        && request.resource.data.reasons.hasOnly(['conduct', 'attendance', 'support', 'other'])
+        && request.resource.data.reasonLabels is list && request.resource.data.reasonLabels.size() == request.resource.data.reasons.size()
+        && request.resource.data.note is string && request.resource.data.note.size() >= 15 && request.resource.data.note.size() <= 1500
+        && request.resource.data.log is list && request.resource.data.log.size() == 1
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if (isDirector() || isStudentFaculty() || isSeniorFaculty())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'outcome', 'degreeLeadsUpdated', 'formSubmitted', 'log', 'updatedAt'])
+        && request.resource.data.log is list && request.resource.data.log.size() == resource.data.log.size() + 1
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.status in ['open', 'closed']
+        && ((request.resource.data.status == 'closed' && request.resource.data.outcome in ['noconcern', 'removed', 'support'])
+            || (request.resource.data.status == 'open' && request.resource.data.outcome == null))
+        && (resource.data.status != 'closed' || isDirector() || (request.resource.data.status == 'closed' && request.resource.data.outcome == resource.data.outcome));
+      allow delete: if isDirector();
+    }
+
     // ── OPIS rating coverage and "not enough time" (29 Oct 2026, Jon) ───────
     // opis_coverage/{candidateId}: who has rated and who said they could not, as user ids only (no scores). Any signed-in member reads
     // it so instructors in a room can see "1 of 2 ratings in". A member may only add or remove THEIR OWN id (raters add only; skippers

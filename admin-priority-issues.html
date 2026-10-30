@@ -83,6 +83,17 @@
   <p class="hint">Things that need a decision from RMD faculty. Each one stays here until it is sorted out or someone records what was done. Instructors flagged as a concern stay until they are closed. Candidate issues come from the two most recent courses; OPIS concerns come from every course.</p>
   <div class="flagbox">
     <button type="button" class="btn2 pri" id="flagBtn" onclick="toggleFlag()">Flag an instructor concern</button>
+    <button type="button" class="btn2 pri" id="cFlagBtn" onclick="toggleCFlag()">Flag a candidate concern</button>
+    <div class="form" id="cFlagPanel" style="display:none;margin-top:10px;">
+      <h4>Which candidate?</h4>
+      <div id="cWho"></div>
+      <div id="cDup"></div>
+      <h4>What is it about? Tick at least one</h4>
+      <div id="cWhy"></div>
+      <h4>What happened? <span class="need" id="cNeed">(required, at least 15 characters)</span></h4>
+      <textarea id="cWhat" maxlength="1500" oninput="cCheck()" placeholder="What you saw or heard, when, and what has been said to them so far."></textarea>
+      <div class="acts"><button type="button" class="btn2 pri" id="cGo" disabled onclick="cSave()">Flag concern</button><button type="button" class="btn2" onclick="toggleCFlag(false)">Cancel</button><span class="need" id="cMsg"></span></div>
+    </div>
     <div class="form" id="flagPanel" style="display:none;margin-top:10px;">
       <h4>Who is it about?</h4>
       <div id="fWho"></div>
@@ -115,6 +126,7 @@ const $ = id => document.getElementById(id);
 const esc = v => (v == null ? "" : String(v)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const P = window.RMD_PRIORITY;
 const SECTIONS = [
+  ["cconcern", "Candidate concerns", "Candidates flagged by RMD faculty. Each stays here until it is closed with an outcome."],
   ["iconcern", "Instructor concerns", "Instructors flagged by RMD faculty. Each stays here until it is closed. Keep under review keeps it listed but takes off the red flag until the review date."],
   ["concern", "OPIS concerns", "A very low rating was submitted. Record what was done and whether the university concern form should be submitted."],
   ["reggap", "Register not complete", "Nobody marked them here, late or absent for a teaching night that is over. Shows from 8pm on the night. Mark them in the register and it clears."],
@@ -163,7 +175,7 @@ function render() {
   $("errs").innerHTML = R.errs.map(e => `<div class="err">${esc(e)}</div>`).join("") +
     (R.scanned.length ? `<div class="hint">Candidate issues checked on: ${R.scanned.map(esc).join(", ")}.</div>` : `<div class="hint">No real course has started yet, so there are no candidate issues to check.</div>`);
   $("sections").innerHTML = SECTIONS.map(([t, title, help]) => {
-    const list = by(t), shown = t === "iconcern" ? R.items.filter(x => x.type === t && !x.closed) : list;
+    const list = by(t), shown = (t === "iconcern" || t === "cconcern") ? R.items.filter(x => x.type === t && !x.closed) : list;
     const quiet = shown.length - list.length;
     const isOpen = OPEN[t] !== undefined ? OPEN[t] : false;
     return `<section class="sec"><details ${isOpen ? "open" : ""} ontoggle="OPEN['${t}']=this.open"><summary><h3><span class="tt">${esc(title)}</span> <span class="n ${list.length ? "" : (quiet ? "quiet" : "zero")}">${list.length}</span>${quiet ? ` <span class="n quiet">${quiet} under review</span>` : ""}</h3></summary><p class="hint">${esc(help)}${quiet ? ` ${quiet} more under review, not yet due.` : ""}</p>` +
@@ -178,6 +190,7 @@ function render() {
 
 function card(it) {
   if (it.type === "iconcern") return icCard(it);
+  if (it.type === "cconcern") return ccCard(it);
   let h = `<div class="item" data-k="${esc(it.key)}"><div class="nm">${esc(it.title)}</div><div class="sub">${esc(it.sub)}${it.degree ? " · " + esc(it.degree) : ""}</div>`;
   h += (it.tags || []).map(t => `<span class="tag ${/notice|absence/i.test(t) && it.type === "instabs" ? "amber" : ""}">${esc(t)}</span>`).join("");
   if (it.type === "concern") h += OPIS_UTIL.concernHtml({ concernFlag: true, concern: it.concern }) + (it.at ? `<div class="hint" style="margin:2px 0;">Submitted ${esc(it.at.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }))}</div>` : "");
@@ -210,6 +223,7 @@ function openForm(k) { openKey = k; openMode = null; render(); if (k) { const el
 function check() {
   const it = R.items.find(x => x.key === openKey); if (!it) return;
   if (it.type === "iconcern") return icCheck(it);
+  if (it.type === "cconcern") return ccCheck(it);
   const acts = document.querySelectorAll(".fa:checked").length, note = $("fnote").value.trim().length >= 15;
   const uni = it.type !== "concern" || !!document.querySelector('input[name="uni"]:checked');
   $("needNote").style.display = note ? "none" : "";
@@ -233,6 +247,7 @@ async function save(key) {
 
 function doneCard(it) {
   if (it.type === "iconcern") return icDone(it);
+  if (it.type === "cconcern") return ccDone(it);
   const f = it.followup || {}, when = f.closedAt && f.closedAt.toDate ? f.closedAt.toDate().toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
   const acts = (it.type === "concern" ? P.CONCERN_ACTIONS : P.GENERIC_ACTIONS), lab = k => (acts.find(a => a[0] === k) || [k, k])[1];
   let h = `<div class="done" data-k="${esc(it.key)}"><div class="nm">${esc(it.title)} <span style="font-weight:400;color:var(--rmd-muted);">${esc(it.sub)}</span></div>` +
@@ -252,6 +267,7 @@ async function setUni(key, on) {
 }
 async function reopen(key) {
   const it = R.items.find(x => x.key === key); if (it && it.type === "iconcern") return icReopen(it);
+  if (it && it.type === "cconcern") return ccReopen(it);
   if (!it || !confirm("Reopen this item? The recorded outcome will be deleted.")) return;
   try { await db.collection("priority_followups").doc(P.fkey(key)).delete(); it.followup = null; it.closed = false; R.pending = R.items.filter(x => !x.closed && !x.snoozed); render(); }
   catch (e) { alert("Could not reopen: " + (e.code || e.message)); }
@@ -335,6 +351,7 @@ async function toggleFlag(force) {
   const box = $("flagPanel"), on = typeof force === "boolean" ? force : box.style.display === "none";
   box.style.display = on ? "" : "none"; $("flagBtn").style.display = on ? "none" : "";
   if (!on) { FL.sel = null; return; }
+  toggleCFlag(false);
   buildFlag();
   if (!FL.list && !FL.loading) {
     FL.loading = true; $("fRes") && ($("fRes").innerHTML = '<span class="hint">Loading instructors…</span>');
@@ -395,6 +412,106 @@ async function flagSave() {
     await P.flagInstructor(db, ME, FL.sel, { source: document.querySelector('input[name="src"]:checked').value, reasons: Array.from(document.querySelectorAll(".fr:checked")).map(x => x.value), note: $("fWhat").value });
     busy = false; toggleFlag(false); await refresh();
   } catch (e) { busy = false; $("fMsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; flagCheck(); }
+}
+// ── Candidate concerns (30 Oct 2026): same steps as instructor concerns, but open or closed only, no review date ──
+const CF = { sel: null };
+function ccTicksHtml(it) {
+  const c = it.rec;
+  return `<div style="margin-top:6px;"><label class="tick"><input type="checkbox" ${c.degreeLeadsUpdated ? "checked" : ""} onchange="ccTick('${esc(it.id)}','degreeLeadsUpdated',this.checked)"> Degree leads updated</label>` +
+    `<label class="tick"><input type="checkbox" ${c.formSubmitted ? "checked" : ""} onchange="ccTick('${esc(it.id)}','formSubmitted',this.checked)"> University concern form submitted</label>` +
+    (P.UNI_FORM_URL ? `<a class="btn2" href="${esc(P.UNI_FORM_URL)}" target="_blank" rel="noopener">Open the university form</a>` : "") + `</div>`;
+}
+function ccCard(it) {
+  const c = it.rec;
+  let h = `<div class="item" data-k="${esc(it.key)}"><div class="nm">${esc(it.title)}</div><div class="sub">${esc(it.sub)} · ${esc(fmtD(((c.log || [])[0] || {}).at))}</div>` +
+    it.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("") +
+    `<div class="cbox"><strong>${(c.reasonLabels || []).map(esc).join("; ")}</strong><div style="white-space:pre-wrap;margin-top:3px;">${esc(c.note || "")}</div></div>` +
+    ccTicksHtml(it) +
+    `<div class="acts"><button type="button" class="btn2 pri" onclick="openCc('${esc(it.key)}')">Close concern</button></div>` + logHtml(c);
+  if (openKey === it.key && openMode === "ccclose") h += ccForm(it);
+  return h + `</div>`;
+}
+function openCc(k) { openKey = k; openMode = "ccclose"; render(); const el = document.querySelector('.item[data-k="' + CSS.escape(k) + '"] textarea'); if (el) el.focus(); check(); }
+function ccForm(it) {
+  return `<div class="form"><h4>Outcome. Choose one</h4>` + P.INSTR_OUTCOMES.map(([k, l]) => `<label class="opt"><input type="radio" name="out" value="${esc(k)}" onchange="check()"> ${esc(l)}</label>`).join("") +
+    `<h4>Note <span class="need" id="needNote">(required, at least 15 characters)</span></h4><textarea id="fnote" maxlength="1500" oninput="check()" placeholder="What was agreed, and why it is closed."></textarea>` +
+    `<div class="acts"><button type="button" class="btn2 pri" id="fsave" disabled onclick="ccSave('${esc(it.key)}')">Close concern</button><button type="button" class="btn2" onclick="openForm(null)">Cancel</button><span class="need" id="fmsg"></span></div></div>`;
+}
+function ccCheck(it) {
+  const note = $("fnote") && $("fnote").value.trim().length >= 15, ok = !!document.querySelector('input[name="out"]:checked');
+  if ($("needNote")) $("needNote").style.display = note ? "none" : "";
+  if ($("fsave")) $("fsave").disabled = !(note && ok) || busy;
+}
+async function ccSave(key) {
+  const it = R.items.find(x => x.key === key); if (!it || busy) return;
+  busy = true; $("fsave").disabled = true; $("fmsg").textContent = "";
+  try {
+    const o = document.querySelector('input[name="out"]:checked').value, lab = (P.INSTR_OUTCOMES.find(x => x[0] === o) || [o, o])[1];
+    await P.updateCandidateConcern(db, it.id, ME, { status: "closed", outcome: o }, { action: "Closed: " + lab, note: $("fnote").value.trim() });
+    openKey = null; openMode = null; busy = false; await refresh();
+  } catch (e) { $("fmsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; busy = false; ccCheck(it); }
+}
+async function ccTick(id, field, on) {
+  const lab = field === "degreeLeadsUpdated" ? "Degree leads updated" : "University concern form submitted";
+  try { await P.updateCandidateConcern(db, id, ME, { [field]: !!on }, { action: lab + (on ? ": ticked" : ": unticked"), note: "" }); await refresh(); }
+  catch (e) { alert("Could not save: " + (e.code || e.message)); render(); }
+}
+function ccDone(it) {
+  const c = it.rec, last = (c.log || []).slice(-1)[0] || {}, out = (P.INSTR_OUTCOMES.find(x => x[0] === c.outcome) || [0, c.outcome || ""])[1];
+  let h = `<div class="done" data-k="${esc(it.key)}"><div class="nm">${esc(it.title)} <span style="font-weight:400;color:var(--rmd-muted);">${esc(it.sub)}</span></div>` +
+    `<div><span class="tag" style="background:#e6f4ea;color:#1a6e31;">${esc(out)}</span></div>` +
+    `<div class="cbox"><strong>Concern: ${(c.reasonLabels || []).map(esc).join("; ")}</strong><div style="white-space:pre-wrap;margin-top:3px;">${esc(c.note || "")}</div></div>` +
+    `<div style="white-space:pre-wrap;"><strong>Closing note:</strong> ${esc(last.note || "")}</div><div style="color:var(--rmd-muted);font-size:12px;margin-top:3px;">${esc(last.by || "")} · ${esc(fmtD(last.at))}</div>` +
+    ccTicksHtml(it) + logHtml(c);
+  if (ME.isDirector) h += `<div class="acts"><button type="button" class="btn2" onclick="reopen('${esc(it.key)}')">Reopen</button></div>`;
+  return h + `</div>`;
+}
+async function ccReopen(it) {
+  if (!confirm("Reopen this concern?")) return;
+  try { await P.updateCandidateConcern(db, it.id, ME, { status: "open", outcome: null }, { action: "Reopened", note: "" }); await refresh(); }
+  catch (e) { alert("Could not reopen: " + (e.code || e.message)); }
+}
+
+// ── Flag a candidate ──
+function toggleCFlag(force) {
+  const box = $("cFlagPanel"), on = typeof force === "boolean" ? force : box.style.display === "none";
+  box.style.display = on ? "" : "none"; $("cFlagBtn").style.display = on ? "none" : "";
+  CF.sel = null;
+  if (!on) return;
+  toggleFlag(false);
+  $("cWho").innerHTML = `<input type="search" id="cq" placeholder="Type a candidate's name or course" oninput="cFilter()" autocomplete="off"><div id="cRes" class="pick"></div><div id="cChosen"></div>`;
+  $("cWhy").innerHTML = P.CAND_REASONS.map(([k, l]) => `<label class="opt"><input type="checkbox" class="cr" value="${esc(k)}" onchange="cCheck()"> ${esc(l)}</label>`).join("");
+  $("cWhat").value = ""; $("cDup").innerHTML = ""; $("cMsg").textContent = ""; cFilter(); cCheck();
+}
+function cFilter() {
+  const res = $("cRes"); if (!res || CF.sel || !$("cq")) return;
+  if (!R) { res.innerHTML = '<span class="hint">Loading…</span>'; return; }
+  const ql = $("cq").value.trim().toLowerCase(), all = R.cands || [];
+  const m = all.filter(p => !ql || p.name.toLowerCase().includes(ql) || p.course.toLowerCase().includes(ql)).slice(0, 12);
+  res.innerHTML = m.length ? m.map(p => `<button type="button" onclick="cChoose('${esc(p.id)}')">${esc(p.name)} <span class="hint">· ${esc(p.course)}</span></button>`).join("")
+    : `<span class="hint">${all.length ? "No match on the two latest courses." : "No candidates found on the two latest courses."}</span>`;
+}
+function cChoose(id) {
+  CF.sel = (R.cands || []).find(p => p.id === id) || null; if (!CF.sel) return;
+  $("cq").style.display = "none"; $("cRes").innerHTML = "";
+  $("cChosen").innerHTML = `<span class="chosen">${esc(CF.sel.name)} · ${esc(CF.sel.course)}</span><button type="button" class="btn2" onclick="cUnpick()">Change</button>`;
+  const dup = R.items.find(x => x.type === "cconcern" && !x.closed && x.rec.candidateId === CF.sel.id);
+  $("cDup").innerHTML = dup ? `<div class="err">${esc(CF.sel.name)} already has an open concern, flagged by ${esc(dup.rec.createdByName || "RMD faculty")}. Add to that one instead of flagging again.</div>` : "";
+  cCheck();
+}
+function cUnpick() { CF.sel = null; $("cq").style.display = ""; $("cq").value = ""; $("cChosen").innerHTML = ""; $("cDup").innerHTML = ""; cFilter(); cCheck(); }
+function cCheck() {
+  const long = $("cWhat").value.trim().length >= 15;
+  const ok = !!CF.sel && document.querySelectorAll(".cr:checked").length > 0 && long && !(R && R.items.find(x => x.type === "cconcern" && !x.closed && x.rec.candidateId === CF.sel.id));
+  $("cNeed").style.display = long ? "none" : "";
+  $("cGo").disabled = !ok || busy;
+}
+async function cSave() {
+  if (busy || !CF.sel) return; busy = true; $("cGo").disabled = true; $("cMsg").textContent = "";
+  try {
+    await P.flagCandidate(db, ME, CF.sel, { reasons: Array.from(document.querySelectorAll(".cr:checked")).map(x => x.value), note: $("cWhat").value });
+    busy = false; OPEN["cconcern"] = true; toggleCFlag(false); await refresh();
+  } catch (e) { busy = false; $("cMsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; cCheck(); }
 }
 if (location.hash === "#flag") window.addEventListener("load", () => setTimeout(() => toggleFlag(true), 1200));
 </script>
