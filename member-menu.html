@@ -585,16 +585,30 @@
             const from = new Date(p[0], p[1] - 1, p[2] - 14), to = new Date(p[0], p[1] - 1, p[2] + 14);
             if (today >= from && today <= to) live.add(c.name);
           });
-          if (!live.size) return;
           const mine = await db.collection(COLLECTIONS.stage1Candidates).where("instructorTeamUids", "array-contains", user.uid).get();
-          const taught = mine.docs.filter(d => live.has(d.data().course)).map(d => d.id);
-          if (!taught.length) return;
+          const real = mine.docs.filter(d => { const x = d.data(); return x.isTest !== true && !/^test/i.test(x.course || "") && !String(x.email || "").toLowerCase().includes(".test@"); });
+          if (!real.length) return;
           const rated = await db.collection(COLLECTIONS.opisRatings).where("submittedByUid", "==", user.uid).get();
           const done = new Set(rated.docs.map(d => d.data().candidateId));
-          const left = taught.filter(id => !done.has(id)).length;
-          if (!left) return;
-          todo.push({ title: "OPIS rating: " + left + " candidate" + (left === 1 ? "" : "s") + " to rate", text: "Candidates you taught this course. Score them while it is fresh.", href: "opis-rating.html", p: 1.5 });
-          render();
+          // Running course: everyone I taught and have not rated yet.
+          const left = real.filter(d => live.has(d.data().course) && !done.has(d.id)).length;
+          if (left) {
+            todo.push({ title: "OPIS rating: " + left + " candidate" + (left === 1 ? "" : "s") + " to rate", text: "Candidates you taught this course. Score them while it is fresh.", href: "opis-rating.html", p: 1.5 });
+          }
+          // Earlier courses (30 Oct 2026, Jon): still show while the candidate has fewer than 2 ratings. Not for people I marked as "not enough time".
+          let old = 0;
+          try {
+            const cov = {}; (await db.collection("opis_coverage").get()).forEach(d => { cov[d.id] = d.data(); });
+            old = real.filter(d => {
+              if (live.has(d.data().course) || done.has(d.id)) return false;
+              const c = cov[d.id] || {};
+              return (c.raters || []).length < 2 && (c.skippers || []).indexOf(user.uid) < 0;
+            }).length;
+          } catch (e) { /* coverage unreadable: skip the earlier-course line */ }
+          if (old) {
+            todo.push({ title: "OPIS rating: " + old + " earlier candidate" + (old === 1 ? "" : "s") + " still need ratings", text: "Fewer than 2 ratings so far. Rate them if you taught them enough.", href: "opis-rating.html", p: 1.6 });
+          }
+          if (left || old) render();
         } catch (e) { /* rules not deployed yet or offline: no reminder */ }
       })();
     }
