@@ -11,6 +11,8 @@
  *   instabs    An instructor absence notice for an evening still to come with short notice or a repeat count, cover not arranged.
  *   reggap     One item per course and teaching week (1 or 2) when people have no register mark (not here, late or absent) and the
  *              week is over (the next day, or from 8pm London time on the night itself). Course must have some register marks at all.
+ *   noopis     One item per course: candidates with no OPIS rating from anyone, once teaching week 2 is over (same timing as reggap).
+ *              Uses opis_coverage (readable by all members). Skips people absent both teaching weeks and second-attempt retesters.
  *   iconcern   An instructor flagged as a concern by RMD faculty (instructor_concerns). Open until closed with an outcome; "Keep under
  *              review" hides the red flag until its review date. Review log kept on the record.
  * Only the two most recent real courses that have started are scanned for candidate issues, to keep reads small.
@@ -95,8 +97,11 @@
       try { cands = docs(await db.collection("stage1_candidates").where("course", "==", cname).get()); } catch (e) { errs.push("Could not read candidates on " + cname + ": " + (e.message || e)); continue; }
       try { docs(await db.collection("stage1_register").where("course", "==", cname).get()).forEach(function (r) { reg[r.id] = r; }); } catch (e) { errs.push("Could not read the register for " + cname + ": " + (e.message || e)); }
       try { docs(await db.collection("stage1_assessments").where("course", "==", cname).get()).forEach(function (r) { assess[r.id] = r; }); } catch (e) { errs.push("Could not read results for " + cname + ": " + (e.message || e)); }
+      var cov = {}, covOk = true;
+      try { docs(await db.collection("opis_coverage").where("course", "==", cname).get()).forEach(function (r) { cov[r.id] = r; }); }
+      catch (e) { covOk = false; errs.push("Could not read OPIS rater counts for " + cname + ": " + (e.message || e)); }
       var w1 = addDays(course.date, -14), w2 = addDays(course.date, -7), night = course.date;
-      var shown = {}, gaps = { 1: [], 2: [] };
+      var shown = {}, gaps = { 1: [], 2: [] }, noOpis = [];
       var weekOver = function (n) { var d = n === 1 ? w1 : w2; return today > d || (today === d && hour >= 20); };
       cands.forEach(function (c) {
         if (c.isTest === true) return;
@@ -112,6 +117,11 @@
         // register gap: no mark at all for a week that is over (people already marked absent are shown under "absent")
         if (!passed && needsAttend && !ov && !abWeeks.length && !(r.w1 && r.w1.status === "absent") && !(r.w2 && r.w2.status === "absent")) {
           [1, 2].forEach(function (n) { var st = (r["w" + n] || {}).status; if (weekOver(n) && st !== "here" && st !== "late" && st !== "absent") gaps[n].push(c.name || c.id); });
+        }
+        // no OPIS rating from anyone, once the last teaching night is over
+        if (covOk && needsAttend && weekOver(2) && !(r.w1 && r.w1.status === "absent" && r.w2 && r.w2.status === "absent")) {
+          var cv = cov[c.id] || {};
+          if (!(cv.raters || []).length) noOpis.push({ name: c.name || c.id, skipped: (cv.skippers || []).length });
         }
         var base = { candidateId: c.id, name: c.name || "", course: cname, degree: c.degree || "", email: c.email || "" };
 
@@ -152,6 +162,13 @@
           sub: names.length + " " + (names.length === 1 ? "person has" : "people have") + " no register mark for this night: " + names.slice(0, 12).join(", ") + (names.length > 12 ? " and " + (names.length - 12) + " more" : ""),
           tags: ["Register not complete"], href: "phase1.html?course=" + encodeURIComponent(cname) + "#register", hrefLabel: "Open the register and mark them", top: true, followup: null });
       });
+      if (noOpis.length) {
+        var nCov = Object.keys(cov).length, shownN = noOpis.slice(0, 12).map(function (x) { return x.name + (x.skipped ? " (" + x.skipped + " said not enough time)" : ""); });
+        items.push({ key: "o|" + cname, type: "noopis", kind: "link", title: cname + ", no OPIS rating yet", closed: false,
+          sub: noOpis.length + " " + (noOpis.length === 1 ? "candidate has" : "candidates have") + " no OPIS rating from anyone: " + shownN.join(", ") + (noOpis.length > 12 ? " and " + (noOpis.length - 12) + " more" : "") +
+            (nCov === 0 ? ". No rater counts are recorded for this course at all - if ratings were made before 29 Oct, run Fix rater counts on the OPIS review page first." : ""),
+          tags: ["No OPIS rating"], href: "opis-rating.html?course=" + encodeURIComponent(cname), hrefLabel: "Open OPIS rating for this course", followup: null });
+      }
     }
 
     // ── OPIS concerns (all courses) ──
