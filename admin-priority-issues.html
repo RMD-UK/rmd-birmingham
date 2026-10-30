@@ -433,7 +433,7 @@ function ccCard(it) {
 }
 function openCc(k) { openKey = k; openMode = "ccclose"; render(); const el = document.querySelector('.item[data-k="' + CSS.escape(k) + '"] textarea'); if (el) el.focus(); check(); }
 function ccForm(it) {
-  return `<div class="form"><h4>Outcome. Choose one</h4>` + P.INSTR_OUTCOMES.map(([k, l]) => `<label class="opt"><input type="radio" name="out" value="${esc(k)}" onchange="check()"> ${esc(l)}</label>`).join("") +
+  return `<div class="form"><h4>Outcome. Choose one</h4>` + P.CAND_OUTCOMES.map(([k, l]) => `<label class="opt"><input type="radio" name="out" value="${esc(k)}" onchange="check()"> ${esc(l)}</label>`).join("") +
     `<h4>Note <span class="need" id="needNote">(required, at least 15 characters)</span></h4><textarea id="fnote" maxlength="1500" oninput="check()" placeholder="What was agreed, and why it is closed."></textarea>` +
     `<div class="acts"><button type="button" class="btn2 pri" id="fsave" disabled onclick="ccSave('${esc(it.key)}')">Close concern</button><button type="button" class="btn2" onclick="openForm(null)">Cancel</button><span class="need" id="fmsg"></span></div></div>`;
 }
@@ -446,8 +446,8 @@ async function ccSave(key) {
   const it = R.items.find(x => x.key === key); if (!it || busy) return;
   busy = true; $("fsave").disabled = true; $("fmsg").textContent = "";
   try {
-    const o = document.querySelector('input[name="out"]:checked').value, lab = (P.INSTR_OUTCOMES.find(x => x[0] === o) || [o, o])[1];
-    await P.updateCandidateConcern(db, it.id, ME, { status: "closed", outcome: o }, { action: "Closed: " + lab, note: $("fnote").value.trim() });
+    const o = document.querySelector('input[name="out"]:checked').value, lab = (P.CAND_OUTCOMES.find(x => x[0] === o) || [o, o])[1];
+    await P.updateCandidateConcern(db, it.id, ME, Object.assign({ status: "closed", outcome: o }, o === "form" ? { formSubmitted: true } : {}), { action: "Closed: " + lab, note: $("fnote").value.trim() });
     openKey = null; openMode = null; busy = false; await refresh();
   } catch (e) { $("fmsg").textContent = "Could not save (" + (e.code || e.message || "error") + "). Try again."; busy = false; ccCheck(it); }
 }
@@ -457,7 +457,7 @@ async function ccTick(id, field, on) {
   catch (e) { alert("Could not save: " + (e.code || e.message)); render(); }
 }
 function ccDone(it) {
-  const c = it.rec, last = (c.log || []).slice(-1)[0] || {}, out = (P.INSTR_OUTCOMES.find(x => x[0] === c.outcome) || [0, c.outcome || ""])[1];
+  const c = it.rec, last = (c.log || []).slice(-1)[0] || {}, out = (P.CAND_OUTCOMES.find(x => x[0] === c.outcome) || [0, c.outcome || ""])[1];
   let h = `<div class="done" data-k="${esc(it.key)}"><div class="nm">${esc(it.title)} <span style="font-weight:400;color:var(--rmd-muted);">${esc(it.sub)}</span></div>` +
     `<div><span class="tag" style="background:#e6f4ea;color:#1a6e31;">${esc(out)}</span></div>` +
     `<div class="cbox"><strong>Concern: ${(c.reasonLabels || []).map(esc).join("; ")}</strong><div style="white-space:pre-wrap;margin-top:3px;">${esc(c.note || "")}</div></div>` +

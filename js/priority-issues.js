@@ -60,6 +60,7 @@
     ["support", "Wellbeing or may need extra support (personal, health or learning needs)"],
     ["other", "Other"]
   ];
+  var CAND_OUTCOMES = [["noconcern", "No concern anymore"], ["support", "Resolved, support in place"], ["referred", "Referred to programme lead or university"], ["form", "Concern form submitted"]];
   var INSTR_OUTCOMES = [["noconcern", "No concern anymore"], ["removed", "Removed from the course"], ["support", "Resolved, support in place"]];
 
   var CONCERN_ACTIONS = [
@@ -327,5 +328,5 @@
     await db.collection("candidate_concerns").doc(id).update(upd);
   }
 
-  window.RMD_PRIORITY = { flagCandidate: flagCandidate, updateCandidateConcern: updateCandidateConcern, CAND_REASONS: CAND_REASONS, load: load, loadInstructors: loadInstructors, flagInstructor: flagInstructor, updateInstructorConcern: updateInstructorConcern, INSTR_SOURCES: INSTR_SOURCES, INSTR_REASONS: INSTR_REASONS, INSTR_OUTCOMES: INSTR_OUTCOMES, UNI_FORM_URL: UNI_FORM_URL, REVIEW_DAYS: REVIEW_DAYS, saveFollowup: saveFollowup, CONCERN_ACTIONS: CONCERN_ACTIONS, GENERIC_ACTIONS: GENERIC_ACTIONS, fkey: fkey, SCAN_COURSES: SCAN_COURSES };
+  window.RMD_PRIORITY = { flagCandidate: flagCandidate, updateCandidateConcern: updateCandidateConcern, CAND_REASONS: CAND_REASONS, CAND_OUTCOMES: CAND_OUTCOMES, load: load, loadInstructors: loadInstructors, flagInstructor: flagInstructor, updateInstructorConcern: updateInstructorConcern, INSTR_SOURCES: INSTR_SOURCES, INSTR_REASONS: INSTR_REASONS, INSTR_OUTCOMES: INSTR_OUTCOMES, UNI_FORM_URL: UNI_FORM_URL, REVIEW_DAYS: REVIEW_DAYS, saveFollowup: saveFollowup, CONCERN_ACTIONS: CONCERN_ACTIONS, GENERIC_ACTIONS: GENERIC_ACTIONS, fkey: fkey, SCAN_COURSES: SCAN_COURSES };
 })();
