@@ -276,14 +276,20 @@ function chkRow(l){
   return{iso:iso,room:room,last:f[2]||"",first:f[3]||"",email:em,field:f[5]||"",year:f[6]||"",dmy:f[0]||"",issues:is,ok:!bad}
 }
 async function dedupe(){
-  S.err="";S.msg="Looking for duplicates...";render();
+  S.err="";S.msg="Looking for duplicates on every evening...";S.dd=null;render();
   try{
-    const sn=await db.collection("tuesday_nurses").get(),by={};
-    sn.forEach(d=>{const v=d.data();if(v.test||v.date==="TEST")return;const k=v.date+"|"+(v.last||"").toLowerCase()+"|"+(v.first||"").toLowerCase();(by[k]=by[k]||[]).push({id:d.id,v:v})});
-    const del=[];
-    Object.keys(by).forEach(k=>{const g=by[k];if(g.length<2)return;g.sort((a,b)=>((b.v.st||b.v.bls)?1:0)-((a.v.st||a.v.bls)?1:0));g.slice(1).forEach(x=>del.push(x.id))});
-    for(let i=0;i<del.length;i+=100){const b=db.batch();del.slice(i,i+100).forEach(id=>b.delete(db.collection("tuesday_nurses").doc(id)));await b.commit()}
-    S.msg=del.length?"Removed "+del.length+" duplicate rows (same name on the same evening). One of each is kept.":"No duplicates found."
+    const sn=await db.collection("tuesday_nurses").get(),all=[];
+    sn.forEach(d=>{const v=d.data();if(v.test||v.date==="TEST")return;all.push({id:d.id,v:v})});
+    const gone={},del=[],marked=x=>(x.v.st||x.v.bls)?1:0;
+    const pass=keyf=>{const by={};all.filter(x=>!gone[x.id]).forEach(x=>{const k=keyf(x.v);if(k)(by[k]=by[k]||[]).push(x)});
+      Object.keys(by).forEach(k=>{const g=by[k];if(g.length<2)return;g.sort((a,b)=>marked(b)-marked(a));g.slice(1).forEach(x=>{if(!marked(x)){gone[x.id]=1;del.push(x)}})})};
+    const nm=v=>v.date+"|"+(v.last||"").trim().toLowerCase()+"|"+(v.first||"").trim().toLowerCase();
+    pass(nm);pass(v=>v.email?v.date+"|"+v.email.trim().toLowerCase():"");
+    for(let i=0;i<del.length;i+=100){const b=db.batch();del.slice(i,i+100).forEach(x=>b.delete(db.collection("tuesday_nurses").doc(x.id)));await b.commit()}
+    const dates=[...new Set(all.map(x=>x.v.date))].sort(),rep=[];
+    dates.forEach(d=>{const left=all.filter(x=>x.v.date===d&&!gone[x.id]),rm=del.filter(x=>x.v.date===d).length,rc={};left.forEach(x=>rc[x.v.room]=(rc[x.v.room]||0)+1);rep.push({d:d,rm:rm,n:left.length,rc:rc})});
+    S.dd=rep;
+    S.msg=del.length?"Removed "+del.length+" duplicate rows. See each evening below. Anyone already marked or assessed is never removed.":"No duplicates found on any evening."
   }catch(e){S.msg="";S.err="Could not remove duplicates: "+(e.message||e)}
   render();
 }
@@ -579,7 +585,7 @@ function cohortView(){
   const can=o.date&&o.last.trim()&&o.first.trim();
   const lab=t=>'<label style="display:block;font-size:12px;font-weight:700;color:var(--mut);margin:10px 0 4px">'+t+'</label>';
   let h='<div class="chs">'+TROOMS.map(r=>'<span class="chip">'+r+': '+roomList(r).length+'</span>').join("")+'</div>';
-  h+='<div class="bt" style="margin-top:8px"><button class="btn" data-a="dedupe">Remove duplicates</button></div><div class="hint">If the same nurse was added twice on the same evening, this keeps one and removes the rest. Looks at every evening.</div>';
+  h+='<div class="bt" style="margin-top:8px"><button class="btn f" data-a="dedupe">Remove duplicates on every evening</button></div><div class="hint">If the same nurse was added twice on the same evening (same name, or same email), this keeps one and removes the rest, for every evening at once. Anyone already marked or assessed is never removed.</div>'+(S.dd?'<div class="cand">'+S.dd.map(x=>{const ov=TROOMS.filter(r=>(x.rc[r]||0)>PER_ROOM);return'<div class="hl"><b>'+esc(niceDate(x.d))+'</b>: removed '+x.rm+', now '+x.n+' ('+TROOMS.map(r=>r.slice(2)+":"+(x.rc[r]||0)).join(" ")+')'+(ov.length?' <span class="chip bad">over '+PER_ROOM+' in '+ov.join(", ")+'</span>':"")+'</div>'}).join("")+'<div class="hint">If a room is still over '+PER_ROOM+' or a count looks wrong, paste your list below and press Check against what is in the hub.</div></div>':"");
   h+='<div class="sect">Step 1 - Add nurses</div><div class="hint"><b>Nobody is booked until you press Add at the end.</b> Add people one at a time below, or paste many at once. Both end up in the same box, then press Parse &amp; preview.</div>';
   h+='<div style="background:#f7f5fc;border:1.5px solid var(--line);border-radius:12px;padding:14px;margin-top:10px"><div style="font-weight:800;font-size:16px">Add one nurse</div><div class="hint">Fill in the boxes and press Add to list. Evening, last name and first name are needed. If you do not choose a room, one is allocated at random.</div>'
    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">'
@@ -677,6 +683,8 @@ const DOORS=[["tonight","Tonight","Register, assess, results"],["plan","Planning
 const VIEWS={ros:rosView,shifts:shiftsView,room:roomView,reg:regView,move:moveView,res:resView,con:conView,end:endView,eve:eveView,cohort:cohortView,school:schoolView,fu:fuView,tt:ttView,test:testView,hand:handView};
 const TITLES={ros:"Room lists",shifts:"Teaching shifts",room:"Assess a room",reg:"Register",move:"Needs another date",res:"Results",con:"Concerns",tt:"Live timetable",end:"End of night",eve:"Which Tuesdays run",cohort:"Add nurses and rooms",school:"Nursing school sheet",fu:"Not passed follow-up",test:"Test evening",hand:"Resources"};
 const instrMode=()=>!S.staff||S.view==="instr";
+// Feedback tab (js/feedback-widget.js) asks this for the part of the page the person is on.
+window.__fbCtx=function(){try{const p=[],j=JOBS.find(x=>x.id===S.sub);const d=DOORS.find(x=>x[0]===S.door);if(d&&!instrMode())p.push(d[1]);if(j)p.push(j[0]?j.t:j.t);p.push(instrMode()?"Instructor view":"RMD faculty view");if(S.date)p.push(S.date);return p.join(", ")}catch(e){return""}};
 function visibleJobs(){
   if(instrMode())return JOBS.filter(j=>j.all);
   const fj=JOBS.filter(j=>!j.instr);return S.door==="all"?fj:fj.filter(j=>j.door===S.door);

@@ -8,7 +8,7 @@
   try {
     if (window.self !== window.top) return;                       // not inside iframes
     var path = (location.pathname.split("/").pop() || "index.html").toLowerCase();
-    var skip = /^(feedback|admin-feedback|signin|reset-password|index|about|news|research|sites|for-institutions|join|cd-dashboard-print|register-live|assessment-live|assessment-flow|timetable-screen|iw-checkin|iw-join|iw-rsvp-confirm|faculty-form|mou-form|mou-account-setup|instructor-eoi|summer-meeting-dietary|debug-connectivity|auth-check|rmd-logo-loop|iw-checkin-poster|iw-badges)\.html$/;
+    var skip = /^(feedback|admin-feedback|signin|reset-password|index|about|news|research|sites|for-institutions|join|cd-dashboard-print|register-live|assessment-live|assessment-flow|timetable-screen|tuesday-screen|iw-checkin|iw-join|iw-rsvp-confirm|faculty-form|mou-form|mou-account-setup|instructor-eoi|summer-meeting-dietary|debug-connectivity|auth-check|rmd-logo-loop|iw-checkin-poster|iw-badges)\.html$/;
     if (skip.test(path) || path === "") return;
 
     var ID = "rmdFeedbackTab";
