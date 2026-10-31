@@ -23,7 +23,7 @@ window.RMD_HELP = {
   reviewEveryMonths: 6,
   tasks: [
     // ── Evening courses: running the night ──
-    { t: "Run the Monday night (register, assessments, retests, results)", k: "monday night hub assessment night register check in evening course", href: "phase1.html", p: "Monday Night Hub", who: "all" },
+    { t: "Run the Monday night (register, assessments, retests, results)", k: "exam monday night hub assessment night register check in evening course", href: "phase1.html", p: "Monday Night Hub", who: "all" },
     { t: "Mark someone present or absent (Monday night)", k: "monday register attendance tick present absent here not here", href: "phase1.html", p: "Monday Night Hub", who: "all" },
     { t: "Mark a candidate late (Monday night)", k: "monday late arrived late", href: "phase1.html", p: "Monday Night Hub", who: "all" },
     { t: "Put back a candidate marked absent by mistake (Monday night)", k: "monday put back undo absent wrongly marked", href: "phase1.html", p: "Monday Night Hub", who: "all" },
@@ -34,14 +34,14 @@ window.RMD_HELP = {
     { t: "Show the Monday live assessment screen", k: "monday assessment live screen display", href: "assessment-live.html", p: "Assessment night live screen", who: "all" },
     { t: "Check the night is ready before it starts", k: "readiness ready checklist before the night preflight", href: "admin-stage1-readiness.html", p: "Assessment Night Readiness", who: "dir" },
     { t: "Read who does what on assessment night", k: "roles who does what runner assessor duties assessment evening guide", href: "resources/instructor-guide/2-assessment-evening-roles.html", p: "Assessment night guide", who: "all" },
-    { t: "See pass rates and who has passed", k: "results pass rate passed failed outcomes", href: "assessment-results.html", p: "Assessment results", who: "dirsf" },
+    { t: "See pass rates and who has passed", k: "exam results pass rate passed failed outcomes", href: "assessment-results.html", p: "Assessment results", who: "dirsf" },
     { t: "Read assessor comments", k: "assessor comments feedback on candidate", href: "assessment-results.html", p: "Assessment results", who: "dirsf" },
     { t: "Score a candidate I taught (OPIS)", k: "opis rate candidate rating score communication attitude feedback punctuality", href: "opis-rating.html", p: "OPIS candidate rating", who: "notma" },
     { t: "Review OPIS scores", k: "opis review scores ratings", href: "admin-instructor-applications.html", p: "Instructor application review", who: "dirsenior" },
 
     // ── Tuesday Night Hub (nurse refresher evenings, added 31 Oct 2026) ──
     { t: "Run the Tuesday refresher evening for nursing students", k: "tuesday night hub refresher nurses nursing students evening bls refresher", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
-    { t: "Assess my room on a Tuesday (pass or fail, confirm the register)", k: "tuesday assess room pass fail bls aed first aid what went wrong 999 nurse confirm register complete my room", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
+    { t: "Assess my room on a Tuesday (pass or fail, confirm the register)", k: "exam tuesday assess room pass fail bls aed first aid what went wrong 999 nurse confirm register complete my room", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
     { t: "Raise a concern about a nurse on a Tuesday", k: "tuesday concern nurse worried flag student", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
     { t: "Swap my Tuesday teaching night or hand it over", k: "tuesday swap night teaching shift cover hand over who teaches rota", href: "tuesday.html", p: "Tuesday Night Hub: Teaching shifts", who: "tue" },
     { t: "See the live timetable for Tuesday evening", k: "tuesday timetable running order live schedule 19:00", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
