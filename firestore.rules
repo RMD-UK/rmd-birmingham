@@ -1236,5 +1236,44 @@ service cloud.firestore {
       allow read, update, delete: if isDirector();
     }
 
+  
+    // ── Tuesday refresher hub (2026-10-31, Jon) ─────────────────────────────
+    // Single evening BLS refresher for nursing students, run on Tuesdays. Nurses have no
+    // accounts and never touch these collections directly. RMD faculty (Director, Student
+    // Faculty, Senior Faculty) run everything. Assessors and Senior Instructors (people
+    // role "assessor") may read, mark the register and enter assessment results for
+    // their room, confirm a room's register, and send concerns. The page limits an
+    // instructor to their own room. A separate permission from Monday on purpose.
+    function tueStaff() {
+      return isDirector() || isStudentFaculty() || isSeniorFaculty();
+    }
+    function tueTeach() {
+      return tueStaff() || isAssessorRole();
+    }
+    match /tuesday_config/{docId} {
+      allow read: if tueTeach();
+      allow write: if tueStaff();
+    }
+    match /tuesday_nurses/{nurseId} {
+      allow read: if tueTeach();
+      allow create, delete: if tueStaff();
+      allow update: if tueStaff()
+        || (isAssessorRole()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['st', 'auto', 'stBy', 'stAt', 'bls', 'fa', 'wb', 'wf', 'resBy', 'resAt']));
+    }
+    match /tuesday_rooms/{roomId} {
+      allow read: if tueTeach();
+      allow create, update: if tueTeach()
+        && request.resource.data.keys().hasOnly(['date', 'room', 'confirmed', 'by', 'at']);
+      allow delete: if tueStaff();
+    }
+    match /tuesday_concerns/{concernId} {
+      allow read: if tueStaff();
+      allow create: if tueTeach()
+        && request.resource.data.keys().hasOnly(['date', 'room', 'nurseId', 'nurseName', 'topics', 'text', 'by', 'open', 'at']);
+      allow update, delete: if tueStaff();
+    }
+
   }
 }

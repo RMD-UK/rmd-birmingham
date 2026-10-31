@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Tuesday Screen - RMD Birmingham</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+:root{--font:'Inter','Segoe UI',Arial,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:#f4f6fb;color:#18212f;font-size:15px}
+.hidden{display:none!important}
+.gate{max-width:560px;margin:80px auto;padding:20px;font-weight:600}
+.top{background:#2e1856;color:#fff;padding:12px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.top h1{font-size:17px;font-weight:800;margin-right:auto}.top a{color:#d9cff0;font-size:13px;font-weight:700}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 16px;background:#fff;border-bottom:1px solid #dfe5ef}
+.bar select,.btn{border:2px solid #dfe5ef;border-radius:10px;background:#fff;padding:8px 12px;font-family:inherit;font-size:15px;font-weight:700}
+.seg{display:flex;border:2px solid #dfe5ef;border-radius:10px;overflow:hidden}.seg button{border:0;background:#fff;padding:8px 14px;font-weight:700;font-family:inherit;font-size:15px}.seg button.on{background:#eee8f9;color:#43237c}
+main{max-width:1500px;margin:0 auto;padding:16px}
+.bsw{background:#2d1760;color:#fff;border-radius:16px;padding:26px 30px;min-height:560px}
+.bsh{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}.bst{font-size:40px;font-weight:800}.bss{font-size:18px;opacity:.8;margin-top:2px}.bsc{font-size:54px;font-weight:800;font-variant-numeric:tabular-nums}
+.bnr{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:20px}.bn{background:rgba(255,255,255,.12);border-radius:14px;padding:14px 18px}.bn span{display:block;font-size:17px;opacity:.85}.bn b{font-size:68px;line-height:1.05}.bn.g{background:#1f7a55}.bn.o{background:#b4600f}.bn.r{background:#9a2f2f}
+.brooms{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}.br{background:#fff;color:#1d2433;border-radius:14px;padding:16px}.brn{font-size:34px;font-weight:800;color:#432174;margin-bottom:6px}.brx{display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #e6e9f0;padding:6px 0}.brx span{font-size:17px;color:#5a667a}.brx b{font-size:40px}.brx.g b{color:#1f7a55}.brx.o b{color:#b4600f}.brf{margin-top:8px;font-size:16px;font-weight:700;color:#5a667a}
+.bbar{height:22px;background:rgba(255,255,255,.18);border-radius:11px;overflow:hidden}.bbar div{height:100%;background:#4cc38a}.bsn{text-align:center;font-size:14px;opacity:.7;margin-top:16px}
+.screen.full{position:fixed;inset:0;z-index:10;overflow:auto;background:#2d1760;border-radius:0}.screen.full .bsw{min-height:100vh;border-radius:0}
+.msg{background:#fce8e6;color:#b3261e;border-radius:10px;padding:9px 12px;font-weight:600;margin-bottom:12px}
+@media(max-width:900px){.bnr,.brooms{grid-template-columns:repeat(2,1fr)}.bst{font-size:28px}.bsc{font-size:34px}.bn b{font-size:48px}}
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+</head>
+<body>
+<div class="gate" id="gate"><div id="authMsg">Checking access...</div></div>
+<div id="app" class="hidden">
+ <div class="top"><h1>Tuesday screen</h1><a href="tuesday.html">Back to the Tuesday hub</a></div>
+ <div class="bar"><label>Evening <select id="dateSel"></select></label>
+  <div class="seg" id="modeSeg"><button type="button" data-m="register" class="on">Register</button><button type="button" data-m="results">Assessment results</button></div>
+  <button type="button" class="btn" id="fullBtn">Full screen</button></div>
+ <main><div id="msgs"></div><div class="screen" id="screen"></div>
+ <div style="font-size:13px;color:#667389;margin-top:8px">Counts only, no names. Updates by itself as each room marks people in.</div></main>
+</div>
+<script>
+initFirebase();
+const TROOMS=["CM02","CM03","CM04","CM06","CM07"],MN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const S={mode:"register",date:null,nurses:[],rooms:{},err:"",unsubs:[]};
+const $=id=>document.getElementById(id);
+const esc=v=>(v==null?"":String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function londonNow(){const p={};new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/London",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).forEach(x=>{p[x.type]=x.value});return{date:p.year+"-"+p.month+"-"+p.day,hm:p.hour+":"+p.minute}}
+function nice(iso){if(iso==="TEST")return"Test evening";const d=new Date(iso+"T12:00:00Z");return["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()]+" "+d.getUTCDate()+" "+MN[d.getUTCMonth()]+" "+d.getUTCFullYear()}
+const att=n=>n.st==="here"||n.st==="late";
+function roomC(r){const L=S.nurses.filter(n=>n.room===r),c={exp:L.length,here:0,late:0,not:0,as:0,pass:0};L.forEach(n=>{if(n.st==="here")c.here++;else if(n.st==="late")c.late++;else if(!n.st)c.not++;if(n.bls&&n.fa){c.as++;if(n.bls==="pass"&&n.fa==="pass")c.pass++}});return c}
+function tot(){const c={exp:S.nurses.length,here:0,late:0,not:0,abs:0,as:0,pass:0,ny:0};S.nurses.forEach(n=>{if(n.st==="here")c.here++;else if(n.st==="late")c.late++;else if(n.st==="absent")c.abs++;else c.not++;if(n.bls&&n.fa){c.as++;if(n.bls==="pass"&&n.fa==="pass")c.pass++;else c.ny++}});return c}
+const num=(l,v,k)=>'<div class="bn '+(k||"")+'"><span>'+l+'</span><b>'+v+'</b></div>';
+const head=t=>'<div class="bsh"><div><div class="bst">'+t+'</div><div class="bss">Tuesday refresher: '+esc(nice(S.date))+'</div></div><div class="bsc">'+londonNow().hm+'</div></div>';
+function render(){
+  $("msgs").innerHTML=S.err?'<div class="msg">'+esc(S.err)+'</div>':"";
+  const c=tot();let h;
+  if(S.mode==="register"){
+    h='<div class="bsw">'+head("Register")+'<div class="bnr">'+num("Expected",c.exp)+num("Here",c.here,"g")+num("Late",c.late,"o")+num("Not marked",c.not)+num("Absent",c.abs,"r")+'</div><div class="brooms">'+TROOMS.map(r=>{const x=roomC(r),cf=S.rooms[r];return'<div class="br"><div class="brn">'+r+'</div><div class="brx"><span>Expected</span><b>'+x.exp+'</b></div><div class="brx g"><span>Here</span><b>'+x.here+'</b></div><div class="brx o"><span>Late</span><b>'+x.late+'</b></div><div class="brf">'+(cf?"Register confirmed":(x.not?x.not+" not marked":"Waiting to confirm"))+'</div></div>'}).join("")+'</div><div class="bsn">Numbers only. No names on this screen.</div></div>';
+  }else{
+    const a=c.here+c.late,wait=a-c.as,bf=S.nurses.filter(n=>n.bls==="fail").length,ff=S.nurses.filter(n=>n.fa==="fail").length,pct=a?Math.round(c.as/a*100):0;
+    h='<div class="bsw">'+head("Assessment results")+'<div class="bnr">'+num("Attending",a)+num("Assessed",c.as)+num("Passed both parts",c.pass,"g")+num("Not passed",c.ny,"o")+num("Waiting to be assessed",wait)+'</div><div class="bbar"><div style="width:'+pct+'%"></div></div><div class="bsn" style="text-align:left;margin:4px 0 14px">'+c.as+' of '+a+' assessed ('+pct+'%). Failed BLS and AED: '+bf+'. Failed first aid: '+ff+'.</div><div class="brooms">'+TROOMS.map(r=>{const x=roomC(r),at=x.here+x.late;return'<div class="br"><div class="brn">'+r+'</div><div class="brx"><span>Attending</span><b>'+at+'</b></div><div class="brx"><span>Assessed</span><b>'+x.as+'</b></div><div class="brx g"><span>Passed both</span><b>'+x.pass+'</b></div><div class="brf">'+(at-x.as>0?(at-x.as)+" still to assess":"All assessed")+'</div></div>'}).join("")+'</div><div class="bsn">Numbers only. No names on this screen.</div></div>';
+  }
+  $("screen").innerHTML=h;
+}
+function attach(){
+  S.unsubs.forEach(u=>{try{u()}catch(e){}});S.unsubs=[];S.nurses=[];S.rooms={};
+  S.unsubs.push(db.collection("tuesday_nurses").where("date","==",S.date).onSnapshot(s=>{S.nurses=s.docs.map(d=>d.data());S.err="";render()},e=>{S.err="Could not read the nurses: "+e.message;render()}));
+  S.unsubs.push(db.collection("tuesday_rooms").where("date","==",S.date).onSnapshot(s=>{S.rooms={};s.forEach(d=>{const x=d.data();if(x.confirmed)S.rooms[x.room]=true});render()},e=>{}));
+}
+auth.onAuthStateChanged(async user=>{
+  if(!user){window.location.href="signin.html";return}
+  try{
+    const role=await resolveRole(user.uid,user.email||"");
+    const stu=await isStudentFaculty(user.email||"").catch(()=>false),sen=await isSeniorFaculty(user.email||"").catch(()=>false);
+    if(!(role===ROLES.DIRECTOR||stu||sen)){$("authMsg").textContent="This screen is for Directors, Student Faculty and Senior Faculty.";return}
+    let cfg={start:"2026-10-13",end:"2027-02-09",evenings:{}};
+    try{const d=await db.collection("tuesday_config").doc("series").get();if(d.exists)cfg=Object.assign(cfg,d.data())}catch(e){}
+    const dates=[];let d=cfg.start;while(new Date(d+"T12:00:00Z").getUTCDay()!==2)d=new Date(new Date(d+"T12:00:00Z").getTime()+864e5).toISOString().slice(0,10);
+    while(d<=cfg.end){if((cfg.evenings||{})[d]!=="no")dates.push(d);d=new Date(new Date(d+"T12:00:00Z").getTime()+7*864e5).toISOString().slice(0,10)}
+    const today=londonNow().date;
+    $("dateSel").innerHTML=dates.map(x=>'<option value="'+x+'">'+esc(nice(x))+(x===today?" (today)":"")+'</option>').join("")+'<option value="TEST">Test evening</option>';
+    const q=new URLSearchParams(location.search);const want=q.get("date");
+    S.date=want&&[...$("dateSel").options].some(o=>o.value===want)?want:(dates.find(x=>x>=today)||dates[dates.length-1]||"TEST");
+    if(q.get("mode")==="results")S.mode="results";
+    $("dateSel").value=S.date;$("dateSel").onchange=()=>{S.date=$("dateSel").value;attach();render()};
+    $("modeSeg").querySelectorAll("button").forEach(b=>{b.classList.toggle("on",b.dataset.m===S.mode);b.onclick=()=>{S.mode=b.dataset.m;$("modeSeg").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));render()}});
+    $("fullBtn").onclick=()=>$("screen").classList.toggle("full");
+    $("gate").classList.add("hidden");$("app").classList.remove("hidden");
+    attach();render();setInterval(render,30000);
+  }catch(err){console.error(err);$("authMsg").textContent="Could not open this page: "+(err.message||err)}
+});
+</script>
+</body>
+</html>
