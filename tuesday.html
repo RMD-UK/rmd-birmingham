@@ -112,11 +112,11 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}input,select,textare
 initFirebase();
 const TROOMS = ["CM02","CM03","CM04","CM06","CM07"], PER_ROOM = 8;
 const TT = [["18:30","Instructors: set up and briefing"],["19:00","Introduction and briefing"],["19:05","Cardiac arrest discussion"],["19:15","BLS and AED"],["19:55","Break"],["20:05","Adult choking"],["20:30","Paediatrics"],["20:45","Bleeding"],["20:55","Closure: questions and surveys"],["21:00","Close"]];
-const WB = ['Safety and approach','Response check','Calling for help','Airway and breathing check','Compression rate','Compression depth or recoil','Hand position','Rescue breaths','AED use','Paediatric BLS','Other'];
-const WF = ['Recovery position','Adult choking','Paediatric choking','Bleeding','Other'];
+const WB = ['Safety and approach','Response check','999 call / calling for help','Airway and breathing check','Compression rate','Compression depth or recoil','Hand position','Rescue breaths','AED use','Paediatric BLS','Other'];
+const WF = ['Recovery position','Adult choking','Paediatric choking','Bleeding','999 call / calling for help','Other'];
 const CR = ['Conduct or professionalism','Attendance or engagement','Wellbeing or may need extra support','Other'];
 const TESTN = [['Amira Khan','Adult'],['Ben Okafor','Adult'],['Chloe Ward','Child'],['Dev Patel','Mental health'],['Ella Brooks','Adult'],['Farah Ali','Learning disability'],['George Nowak','Adult'],['Hannah Price','Child'],['Isaac Moore','Mental health'],['Jade Turner','Adult'],['Kofi Mensah','Adult'],['Lily Evans','Child'],['Mia Chen','Child'],['Noah Barnes','Adult'],['Olivia Grant','Mental health']];
-const S = { user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
+const S = { user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",lastMsg:"",ccl:null,co:{out:"",mgr:"",note:""},mi:{},nmsg:{},one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
 const $ = id => document.getElementById(id);
 const esc = v => (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const TS = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -143,6 +143,7 @@ const nurseName = n => n.first+" "+n.last;
 function cnt(){const c={exp:S.nurses.length,here:0,late:0,abs:0,not:0,as:0,pass:0,ny:0};S.nurses.forEach(n=>{if(n.st==="here")c.here++;else if(n.st==="late")c.late++;else if(n.st==="absent")c.abs++;else c.not++;if(n.bls&&n.fa){c.as++;if(n.bls==="pass"&&n.fa==="pass")c.pass++;else c.ny++}});return c}
 function roomList(r){return S.nurses.filter(n=>n.room===r)}
 function wording(n){ if(n.bls&&n.fa){const f=[];if(n.bls==="fail")f.push("BLS and AED");if(n.fa==="fail")f.push("first aid");return f.length?"Not passed: "+f.join(" and "):"Passed BLS and AED and first aid"} if(attended(n))return "Attended, not yet assessed"; if(n.st==="absent")return "Did not attend"; return "Not marked" }
+function schoolWord(n){if(n.bls&&n.fa)return n.bls==="pass"&&n.fa==="pass"?"Passed":"Not passed";return wording(n)}
 function weak(n){return [].concat(n.bls==="fail"?(n.wb||[]):[],n.fa==="fail"?(n.wf||[]):[]).join(", ")}
 function unconf(){return TROOMS.filter(r=>!S.rooms[r])}
 
@@ -188,17 +189,51 @@ function fillDates(){
 async function upd(id,f){try{await db.collection("tuesday_nurses").doc(id).update(f)}catch(e){S.err="Could not save: "+e.message;render()}}
 function setSt(id,v){const n=S.nurses.find(x=>x.id===id);if(!n)return;if(n.auto&&v==="late"){upd(id,{auto:false,stBy:S.user.email||"",stAt:TS()});return}upd(id,{st:n.st===v?null:v,auto:false,stBy:S.user.email||"",stAt:TS()})}
 async function confirmRoom(r){const on=!S.rooms[r];try{await db.collection("tuesday_rooms").doc(S.date+"__"+r).set({date:S.date,room:r,confirmed:on,by:S.user.email||"",at:TS()})}catch(e){S.err="Could not save: "+e.message;render()}}
-async function saveResult(id){const A=S.af[id];if(!A)return;await upd(id,{bls:A.bls,fa:A.fa,wb:A.bls==="fail"?A.wb:[],wf:A.fa==="fail"?A.wf:[],resBy:S.user.email||"",resAt:TS()});delete S.af[id]}
-async function redo(id){const n=S.nurses.find(x=>x.id===id);S.af[id]={bls:n.bls,fa:n.fa,wb:(n.wb||[]).slice(),wf:(n.wf||[]).slice()};await upd(id,{bls:null,fa:null,wb:[],wf:[]})}
+async function saveResult(id){const A=S.af[id];if(!A||!afOk(id))return;const mapO=(arr,t)=>arr.map(x=>x==="Other"?"Other: "+(t||"").trim():x);await upd(id,{bls:A.bls,fa:A.fa,wb:A.bls==="fail"?mapO(A.wb,A.wbt):[],wf:A.fa==="fail"?mapO(A.wf,A.wft):[],resBy:S.user.email||"",resAt:TS()});delete S.af[id]}
+async function redo(id){const n=S.nurses.find(x=>x.id===id);const un=a=>{let t="";const r=(a||[]).map(x=>{if(x.indexOf("Other: ")===0){t=x.slice(7);return"Other"}return x});return{r:r,t:t}};const b=un(n.wb),f=un(n.wf);S.af[id]={bls:n.bls,fa:n.fa,wb:b.r,wf:f.r,wbt:b.t,wft:f.t};await upd(id,{bls:null,fa:null,wb:[],wf:[]})}
 async function sendConcern(){const n=S.nurses.find(x=>x.id===S.cc);if(!n)return;try{await db.collection("tuesday_concerns").add({date:S.date,room:n.room,nurseId:n.id,nurseName:nurseName(n),topics:S.ccr.slice(),text:S.cctext.trim(),by:S.user.email||"",open:true,at:TS()});S.cc=null;S.ccr=[];S.cctext="";S.msg="Concern sent to RMD faculty."}catch(e){S.err="Could not send: "+e.message}render()}
+async function closeConcern(id){try{await db.collection("tuesday_concerns").doc(id).update({open:false,outcome:S.co.out,managedBy:S.co.mgr.trim(),closeNote:S.co.note.trim(),resolvedBy:S.user.email||"",resolvedAt:TS()});S.ccl=null;S.co={out:"",mgr:"",note:""};S.msg="Concern closed."}catch(e){S.err="Could not close: "+(e.message||e)}render()}
 async function resolveConcern(id){try{await db.collection("tuesday_concerns").doc(id).update({open:false,resolvedBy:S.user.email||"",resolvedAt:TS()})}catch(e){S.err=e.message}render()}
 async function openFor(date){const s=await db.collection("tuesday_nurses").where("date","==",date).get();const per={};TROOMS.forEach(r=>per[r]=0);s.forEach(d=>{const r=d.data().room;if(per[r]!=null)per[r]++});return per}
-async function loadSpaces(){S.sp={};const base=isTest()?londonNow().date:S.date;const after=runEvenings().filter(d=>d>base);for(const d of after){const p=await openFor(d);S.sp[d]=p}render()}
+function outcomeOf(n){return n.st==="here"?"attended":n.st==="late"?"attended, late":n.st==="absent"?"did not attend":"not marked"}
+async function nurseHistory(n){
+  const rows={};
+  const put=(d,o)=>{if(d&&d!=="TEST"&&!rows[d])rows[d]=o};
+  (n.history||[]).forEach(h=>put(h.date,h.outcome||"did not attend"));
+  put(n.date,outcomeOf(n));
+  try{
+    if(n.email){const sn=await db.collection("tuesday_nurses").where("email","==",n.email).get();sn.forEach(x=>{const v=x.data();(v.history||[]).forEach(h=>put(h.date,h.outcome||"did not attend"));put(v.date,outcomeOf(v))})}
+  }catch(e){}
+  return Object.keys(rows).sort().map(d=>niceDate(d)+" ("+rows[d]+")");
+}
+async function buildLastMsg(){
+  S.err="";S.msg="Preparing the message...";render();
+  try{
+    const abs=S.nurses.filter(n=>n.st==="absent"),lines=[];
+    for(const n of abs){const h=await nurseHistory(n);lines.push("- "+nurseName(n)+(n.email?" ("+n.email+")":"")+(n.field?", "+n.field:"")+(n.year?", "+n.year:"")+"\n  Evenings allocated: "+h.join("; "))}
+    S.lastMsg="Subject: BLS refresher - students who did not attend and have no further date\n\nDear nursing school lead,\n\nThe BLS refresher evenings finished on "+niceDate(S.date)+". The "+(abs.length===1?"student":abs.length+" students")+" below "+(abs.length===1?"was":"were")+" allocated to a refresher evening but did not attend on the last evening. There is no later evening to move "+(abs.length===1?"them":"them")+" to, so we are letting you know.\n\n"+(lines.join("\n\n")||"(nobody)")+"\n\nFor each student, the dates above are every evening they were offered. Please let us know how you would like to follow this up.\n\nKind regards,\nRMD Birmingham";
+    S.msg=abs.length?"Message ready below for "+abs.length+" student"+(abs.length>1?"s":"")+".":"Nobody is absent on this evening."
+  }catch(e){S.msg="";S.err="Could not prepare the message: "+(e.message||e)}
+  render();
+}
+async function loadMoveInfo(){
+  const a=S.nurses.filter(n=>n.st==="absent");
+  for(const n of a){if(S.mi[n.id])continue;const h=await nurseHistory(n);S.mi[n.id]={count:Math.max(0,h.length-1),hist:h}}
+  render();
+}
+function degreeMsg(n,hist,kind,date){
+  const c=hist.length-1,who=nurseName(n)+(n.email?" ("+n.email+")":"")+(n.field?", "+n.field:"")+(n.year?", "+n.year:"");
+  const lines="Evenings allocated so far: "+hist.join("; ");
+  if(kind==="max")return "Subject: BLS refresher - student has reached the maximum of 3 reallocations\n\nDear nursing school lead,\n\n"+who+" did not attend the BLS refresher evening on "+niceDate(S.date)+". They have already been reallocated 3 times, which is the maximum, so we have not offered another evening.\n\n"+lines+"\n\nPlease let us know how you would like to follow this up.\n\nKind regards,\nRMD Birmingham";
+  return "Subject: BLS refresher - student wants to move again - your confirmation needed\n\nDear nursing school lead,\n\n"+who+" did not attend the BLS refresher evening on "+niceDate(S.date)+" or has asked to move again. They have already been reallocated "+c+" time"+(c>1?"s":"")+".\n\n"+lines+"\n\nWe have put the move on hold. The next available evening would be "+niceDate(date)+". Please reply to confirm that it is OK for us to reallocate them to that evening.\n\nKind regards,\nRMD Birmingham";
+}
+async function loadSpaces(){S.sp={};const base=isTest()?londonNow().date:S.date;const after=runEvenings().filter(d=>d>base);for(const d of after){const p=await openFor(d);S.sp[d]=p}render();loadMoveInfo()}
 async function moveNurse(id,date){
   if(isTest()){S.msg="Test evening: in a real evening this nurse would be moved to "+niceDate(date)+". Nothing was changed.";S.mv=null;render();return}
   const per=S.sp[date]||await openFor(date);let best=null;TROOMS.forEach(r=>{if(per[r]<PER_ROOM&&(best===null||per[r]<per[best]))best=r});
   if(!best){S.err="No space on "+niceDate(date)+".";render();return}
-  await upd(id,{date:date,room:best,st:null,auto:false,bls:null,fa:null,wb:[],wf:[],movedFrom:S.date,movedAt:TS(),movedBy:S.user.email||""});
+  const mn=S.nurses.find(x=>x.id===id),hist=((mn&&mn.history)||[]).concat([{date:S.date,room:mn?mn.room:"",outcome:"did not attend, moved"}]);
+  await upd(id,{date:date,room:best,st:null,auto:false,bls:null,fa:null,wb:[],wf:[],movedFrom:S.date,movedAt:TS(),movedBy:S.user.email||"",history:hist});
   delete S.sp[date];S.mv=null;S.msg="Moved to "+niceDate(date)+", room "+best+".";loadSpaces()
 }
 async function seedTest(){
@@ -228,7 +263,7 @@ function adviceFor(ls,ps){
 function chkRow(l){
   const f=splitLine(l),is=[];let bad=false;
   const iso=dmyToIso(f[0]);if(!iso){is.push("date not DD/MM/YYYY");bad=true}else if(!isTue(iso)){is.push("not a Tuesday");bad=true}else{const e=evState(iso);if(allTuesdays().indexOf(iso)<0)is.push("outside the series");else if(e==="no"){is.push("evening marked Not running");bad=true}else if(e==="tbc")is.push("evening still to confirm")}
-  const room=(f[1]||"").toUpperCase().replace(/^CM(\d)$/,"CM0$1");if(TROOMS.indexOf(room)<0){is.push("room not "+TROOMS.join(", "));bad=true}
+  const room=(f[1]||"").toUpperCase().replace(/^CM(\d)$/,"CM0$1");if(room!==""&&TROOMS.indexOf(room)<0){is.push("room not "+TROOMS.join(", ")+" (or leave it empty to allocate at random)");bad=true}
   if(!f[2]||!f[3]){is.push("name missing");bad=true}
   const em=f[4]||"";if(!em)is.push("no email yet");else if(!/^\S+@\S+\.\S+$/.test(em))is.push("email looks wrong");else if(!/@student\.bham\.ac\.uk$/i.test(em))is.push("email is not @student.bham.ac.uk");
   if(!f[5])is.push("no field of nursing");if(!f[6])is.push("no year of study");
@@ -253,7 +288,7 @@ async function parseNow(){
     const dates=[...new Set(S.parsed.filter(p=>p.ok).map(p=>p.iso))],cap={},names={};
     for(const d of dates){const sn=await db.collection("tuesday_nurses").where("date","==",d).get();cap[d]={};names[d]=new Set();sn.forEach(x=>{const v=x.data();cap[d][v.room]=(cap[d][v.room]||0)+1;names[d].add((v.last||"").toLowerCase()+"|"+(v.first||"").toLowerCase())})}
     let over=0;
-    S.parsed.forEach(p=>{if(!p.ok)return;const k=p.last.toLowerCase()+"|"+p.first.toLowerCase();if(names[p.iso].has(k))return;names[p.iso].add(k);const n=(cap[p.iso][p.room]||0)+1;if(n>PER_ROOM){p.issues.push("room "+p.room+" already has "+PER_ROOM+" on "+niceDate(p.iso)+" (max "+PER_ROOM+")");p.ok=false;over++}else cap[p.iso][p.room]=n});
+    S.parsed.forEach(p=>{if(!p.ok)return;const k=p.last.toLowerCase()+"|"+p.first.toLowerCase();if(names[p.iso].has(k))return;names[p.iso].add(k);if(!p.room){const open=TROOMS.filter(r=>(cap[p.iso][r]||0)<PER_ROOM);if(!open.length){p.issues.push("all rooms are full on "+niceDate(p.iso));p.ok=false;over++;return}p.room=open[Math.floor(Math.random()*open.length)];p.auto=true;p.issues.push("room chosen at random: "+p.room)}const n=(cap[p.iso][p.room]||0)+1;if(n>PER_ROOM){p.issues.push("room "+p.room+" already has "+PER_ROOM+" on "+niceDate(p.iso)+" (max "+PER_ROOM+")");p.ok=false;over++}else cap[p.iso][p.room]=n});
     if(over)S.advice.push(over+" line"+(over>1?"s are":" is")+" left out because the room already has "+PER_ROOM+" nurses on that evening. Choose another room or evening for them.");
   }catch(e){S.err="Could not check room spaces: "+(e.message||e)}
   render();
@@ -280,7 +315,7 @@ async function addParsed(){
 // ── downloads ──────────────────────────────────────────────────
 function toCsv(r){return r.map(x=>x.map(c=>'"'+String(c==null?"":c).replace(/"/g,'""')+'"').join(",")).join("\n")}
 function dlFile(text,name){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+text],{type:"text/csv"}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
-function schoolRows(){const r=[["Name","Email","Field of nursing","Year of study","Session date","Arrived","Result"]];S.nurses.filter(attended).forEach(n=>r.push([nurseName(n),n.email,n.field,n.year||"",niceDate(S.date),n.st==="late"?"Late":"On time",wording(n)]));r.push([]);r.push(["Expected but did not attend"]);r.push(["Name","Email","Field of nursing","Year of study","Session date","Status"]);S.nurses.filter(n=>!attended(n)).forEach(n=>r.push([nurseName(n),n.email,n.field,n.year||"",niceDate(S.date),n.st==="absent"?"Did not attend":"Not marked"]));return r}
+function schoolRows(){const r=[["Name","Email","Field of nursing","Year of study","Session date","Arrived","Result"]];S.nurses.filter(attended).forEach(n=>r.push([nurseName(n),n.email,n.field,n.year||"",niceDate(S.date),n.st==="late"?"Late":"On time",schoolWord(n)]));r.push([]);r.push(["Expected but did not attend"]);r.push(["Name","Email","Field of nursing","Year of study","Session date","Status"]);S.nurses.filter(n=>!attended(n)).forEach(n=>r.push([nurseName(n),n.email,n.field,n.year||"",niceDate(S.date),n.st==="absent"?"Did not attend":"Not marked"]));return r}
 function backupRows(){const r=[["Name","Email","Field","Year","Room","Register","BLS and AED","First aid","What went wrong"]];S.nurses.forEach(n=>r.push([nurseName(n),n.email,n.field,n.year||"",n.room,n.st||"not marked",n.bls||"",n.fa||"",weak(n)]));return r}
 
 // ── views ──────────────────────────────────────────────────────
@@ -297,12 +332,13 @@ function regView(){
     if(o)h+='<div class="gb">'+(m.length?m.map(n=>{const e=S.orow===n.id;return'<div class="rw"><button class="rl" data-a="rt" data-v="'+n.id+'"><b>'+esc(nurseName(n))+'</b><span>'+esc(n.room||"No room")+'</span></button>'+(e?'<div class="bt" style="padding:4px 0 8px">'+sbtn(n,"here","Here")+sbtn(n,"late","Late")+sbtn(n,"absent","Absent")+'</div>':"")+'</div>'}).join(""):'<div class="hint">Nobody.</div>')+'</div>'});
   return h+'<div class="hint" style="margin-top:10px">Tap a heading to open it. Tap a name to change their mark. Anyone not marked by 19:30 shows as Late.</div>'
 }
+function afOk(id){const A=S.af[id];if(!A)return false;const okp=(v,w,t)=>v&&(v!=="fail"||(w.length&&(w.indexOf("Other")<0||(t||"").trim().length>=3)));return !!(A.bls&&A.fa&&okp(A.bls,A.wb,A.wbt)&&okp(A.fa,A.wf,A.wft))}
 function afBlock(n){
   const A=S.af[n.id]||(S.af[n.id]={bls:null,fa:null,wb:[],wf:[]});
-  const part=(title,key,wkey,list)=>{const cur=A[key];let o='<div class="pfrow"><b>'+title+'</b><button class="pf p'+(cur==="pass"?" on":"")+'" data-a="pf" data-id="'+n.id+'" data-k="'+key+'" data-v="pass">Pass</button><button class="pf f'+(cur==="fail"?" on":"")+'" data-a="pf" data-id="'+n.id+'" data-k="'+key+'" data-v="fail">Fail</button></div>';
-    if(cur==="fail")o+='<div class="hint" style="margin:6px 0 2px">What went wrong? Tap all that apply.</div><div class="chs">'+list.map(w=>'<button class="ch'+(A[wkey].indexOf(w)>-1?" on":"")+'" data-a="why" data-id="'+n.id+'" data-k="'+wkey+'" data-v="'+esc(w)+'">'+esc(w)+'</button>').join("")+'</div>';return o};
-  const any=A.bls==="fail"||A.fa==="fail",ok=A.bls&&A.fa&&(A.bls!=="fail"||A.wb.length)&&(A.fa!=="fail"||A.wf.length);
-  return'<div class="asbox"><div class="asttl">Assessment</div>'+part("BLS and AED","bls","wb",WB)+part("First aid","fa","wf",WF)+(any?'<div class="hint" style="margin-top:8px">Any fail is flagged to RMD faculty.</div>':"")+'<button class="btn f" style="margin-top:10px" data-a="save" data-id="'+n.id+'" '+(ok?"":"disabled")+'>Save result</button>'+(any&&!ok?'<div class="hint" style="margin-top:6px">Choose at least one thing that went wrong for each part that failed.</div>':"")+'</div>'
+  const part=(title,key,wkey,list)=>{const cur=A[key],tk=wkey==='wb'?'wbt':'wft';let o='<div class="pfrow"><b>'+title+'</b><button class="pf p'+(cur==="pass"?" on":"")+'" data-a="pf" data-id="'+n.id+'" data-k="'+key+'" data-v="pass">Pass</button><button class="pf f'+(cur==="fail"?" on":"")+'" data-a="pf" data-id="'+n.id+'" data-k="'+key+'" data-v="fail">Fail</button></div>';
+    if(cur==="fail")o+='<div class="hint" style="margin:6px 0 2px">What went wrong? Tap all that apply.</div><div class="chs">'+list.map(w=>'<button class="ch'+(A[wkey].indexOf(w)>-1?" on":"")+'" data-a="why" data-id="'+n.id+'" data-k="'+wkey+'" data-v="'+esc(w)+'">'+esc(w)+'</button>').join("")+'</div>'+(A[wkey].indexOf("Other")>-1?'<div class="hint" style="margin:6px 0 2px">Other: say what went wrong (at least 3 characters)</div><input class="nt" id="ot_'+n.id+'_'+tk+'" value="'+esc(A[tk]||"")+'" placeholder="Type what went wrong">':"");return o};
+  const any=A.bls==="fail"||A.fa==="fail",ok=afOk(n.id);
+  return'<div class="asbox"><div class="asttl">Assessment</div>'+part("BLS and AED","bls","wb",WB)+part("First aid","fa","wf",WF)+(any?'<div class="hint" style="margin-top:8px">Any fail is flagged to RMD faculty.</div>':"")+'<button class="btn f" style="margin-top:10px" data-a="save" data-id="'+n.id+'" '+(ok?"":"disabled")+'>Save result</button>'+(any&&!ok?'<div class="hint" style="margin-top:6px">Choose at least one thing that went wrong for each part that failed. If you choose Other, type what went wrong.</div>':"")+'</div>'
 }
 function confCard(r){
   const un=S.nurses.filter(n=>n.room===r&&!n.st).length;
@@ -325,22 +361,51 @@ function roomView(){
   return h
 }
 function moveView(){
-  let h='<div class="sect">Needs another date</div>';const a=S.nurses.filter(n=>n.st==="absent");
+  let h='';const a=S.nurses.filter(n=>n.st==="absent");const isLast=!isTest()&&runEvenings().filter(d=>d>S.date).length===0;
+  if(isLast)return '<div class="note"><b>This is the last evening ('+esc(niceDate(S.date))+').</b> A nurse absent tonight has no later date to move to. Tell the nursing school instead. The message lists each student and every evening they were allocated.</div>'+(a.length?'<div class="hl">Absent tonight: <b>'+a.length+'</b></div>':'<div class="hint">Nobody is absent and waiting.</div>')+'<div class="bt"><button class="btn f" data-a="lastmsg" '+(a.length?"":"disabled")+'>Prepare message to the nursing school</button></div>'+(S.lastMsg?'<div class="sect">Message</div><textarea class="nt" id="lastmsg" rows="16">'+esc(S.lastMsg)+'</textarea><div class="bt"><button class="btn f" data-a="copymsg">Copy message</button></div><div class="hint" style="margin-top:6px">Copy it into an email to the nursing school lead. Check the names and dates first.</div>':'');
+  h='<div class="sect">Needs another date</div>';
   if(!a.length)h+='<div class="hint">Nobody absent and waiting.</div>';
-  a.forEach(n=>{h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.email||"no email yet")+'</small></span><span class="chip">'+esc(n.room)+'</span></div><div class="bt"><button class="btn" data-a="mvopen" data-id="'+n.id+'">Choose a date</button></div>'+(S.mv===n.id?'<div class="asbox"><div class="asttl">Move to</div>'+(runEvenings().filter(d=>d>(isTest()?londonNow().date:S.date)).map(d=>{const p=S.sp[d],free=p?TROOMS.reduce((t,r)=>t+PER_ROOM-p[r],0):null;return'<button class="btn" style="margin:3px" data-a="mvdo" data-id="'+n.id+'" data-v="'+d+'" '+(free===0?"disabled":"")+'>'+esc(niceDate(d))+(free!=null?" ("+free+" spaces)":"")+'</button>'}).join("")||'<div class="hint">No later evening is set to run. See Which Tuesdays run.</div>')+'</div>':"")+'</div>'});
-  return h+'<div class="note">The series ends on '+esc(niceDate(S.cfg.end))+'. Someone absent on the last date has no later date to move to. There is no limit on moves.</div>'
+  const later=runEvenings().filter(d=>d>(isTest()?londonNow().date:S.date));
+  a.forEach(n=>{
+    const mi=S.mi[n.id],cnt=mi?mi.count:null,pend=n.pendingMove;
+    let st='';if(cnt===null)st='<span class="chip">Checking history...</span>';else st='<span class="chip '+(cnt>=3?"bad":cnt>=1?"warn":"")+'">Reallocated '+cnt+' of 3</span>';
+    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.email||"no email yet")+'</small></span><span>'+st+' <span class="chip">'+esc(n.room)+'</span></span></div>';
+    if(cnt===null){h+='</div>';return}
+    if(pend){
+      h+='<div class="note"><b>On hold.</b> Waiting for the nursing school lead to confirm a move to '+esc(niceDate(pend.date))+'.</div><div class="bt"><button class="btn f" data-a="mvconfirm" data-id="'+n.id+'">Degree lead confirmed - move now</button><button class="btn" data-a="mvmsg" data-id="'+n.id+'">Show message to the lead</button><button class="btn" data-a="mvcancel" data-id="'+n.id+'">Cancel request</button></div>';
+    }else if(cnt>=3){
+      h+='<div class="note"><b>Maximum reached.</b> This nurse has been reallocated 3 times. No more moves. Tell the nursing school lead.</div><div class="bt"><button class="btn f" data-a="mvmsg" data-id="'+n.id+'">Prepare message to the lead</button></div>';
+    }else{
+      h+='<div class="hint" style="margin-top:6px">'+(cnt===0?"First reallocation: you can choose a date.":"Already reallocated "+cnt+" time"+(cnt>1?"s":"")+". A further move is held until the nursing school lead confirms it.")+'</div><div class="bt"><button class="btn" data-a="mvopen" data-id="'+n.id+'">'+(cnt===0?"Choose a date":"Request a move")+'</button></div>';
+      if(S.mv===n.id)h+='<div class="asbox"><div class="asttl">'+(cnt===0?"Move to":"Ask to move to")+'</div>'+(later.map(d=>{const p=S.sp[d],free=p?TROOMS.reduce((t,r)=>t+PER_ROOM-p[r],0):null;return'<button class="btn" style="margin:3px" data-a="'+(cnt===0?"mvdo":"mvreq")+'" data-id="'+n.id+'" data-v="'+d+'" '+(free===0?"disabled":"")+'>'+esc(niceDate(d))+(free!=null?" ("+free+" spaces)":"")+'</button>'}).join("")||'<div class="hint">No later evening is set to run. See Which Tuesdays run.</div>')+'</div>';
+    }
+    if(S.nmsg[n.id])h+='<div class="sect">Message to the nursing school lead</div><textarea class="nt" id="nm_'+n.id+'" rows="12">'+esc(S.nmsg[n.id])+'</textarea><div class="bt"><button class="btn f" data-a="mvcopy" data-id="'+n.id+'">Copy message</button></div><div class="hint" style="margin-top:6px">Copy it into an email to the lead. Check the names and dates first.</div>';
+    h+='</div>'});
+  return h+'<div class="note"><b>Rules.</b> A nurse can be reallocated up to 3 times. The first move you can do yourself. After that, if they did not attend again or want to move again, the move is held until the nursing school lead confirms. The series ends on '+esc(niceDate(S.cfg.end))+'.</div>'
 }
 function resView(){
   const c=cnt();let h='<div class="sect">Results so far</div><div class="chs"><span class="chip">Assessed '+c.as+'</span><span class="chip ok">Passed both parts '+c.pass+'</span><span class="chip warn">Failed a part '+c.ny+'</span></div>';
   h+='<div class="tw"><table class="dt" style="margin-top:10px"><tr><th>Room</th><th>Nurse</th><th>Result</th><th>What went wrong</th></tr>'+S.nurses.filter(attended).map(n=>'<tr><td>'+esc(n.room)+'</td><td>'+esc(nurseName(n))+'</td><td>'+esc(wording(n))+'</td><td>'+esc(weak(n))+'</td></tr>').join("")+'</table></div>';
   return h
 }
+const CON_OUT=[["noconcern","No concern anymore"],["support","Resolved, support in place"],["referred","Referred to programme lead or university"],["form","Concern form submitted"]];
 function conView(){
   let h='<div class="sect">Concerns from instructors</div>';
   if(!S.concerns.length)h+='<div class="hint">None for this evening.</div>';
-  S.concerns.forEach(x=>{h+='<div class="cand"><div class="nm"><span>'+esc(x.nurseName)+'<small>'+esc(x.room||"")+' - '+esc((x.topics||[]).join(", "))+'</small></span>'+(x.open?'<button class="btn" data-a="resolve" data-v="'+x.id+'">Resolve</button>':'<span class="chip ok">Resolved</span>')+'</div><div class="hint" style="margin-top:6px">'+esc(x.text||"")+'</div></div>'});
-  return h+'<div class="hint">Only RMD faculty see these. Concerns for the nursing school are raised separately, as on Monday.</div>'
+  S.concerns.forEach(x=>{
+    const out=(CON_OUT.find(o=>o[0]===x.outcome)||[0,""])[1];
+    h+='<div class="cand"><div class="nm"><span>'+esc(x.nurseName)+'<small>'+esc(x.room||"")+' - '+esc((x.topics||[]).join(", "))+'</small></span>'+(x.open?(S.ccl===x.id?'':'<button class="btn" data-a="conopen" data-v="'+x.id+'">Close concern</button>'):'<span class="chip ok">Closed</span>')+'</div><div class="hint" style="margin-top:6px">'+esc(x.text||"")+'</div>';
+    if(!x.open)h+='<div class="hl" style="margin-top:8px"><b>'+esc(out)+'</b><br>'+esc(x.closeNote||"")+'<div class="hint">Managed by: '+esc(x.managedBy||"")+'</div></div>';
+    if(x.open&&S.ccl===x.id){
+      h+='<div class="asbox"><div class="asttl">Outcome. Choose one</div>'+CON_OUT.map(o=>'<label style="display:block;padding:4px 0"><input type="radio" name="co_out" data-a="conout" data-v="'+o[0]+'"'+(S.co.out===o[0]?" checked":"")+'> '+esc(o[1])+'</label>').join("")
+        +'<div class="hint" style="margin:8px 0 2px">Who from RMD faculty managed this case? (at least one name)</div><div class="bt"><input class="nt" id="co_mgr" style="flex:1" placeholder="Names, separated by commas" value="'+esc(S.co.mgr)+'"><button class="btn" data-a="conme">Me</button></div>'
+        +'<div class="hint" style="margin:8px 0 2px">Note: what was agreed, and why it is closed (at least 15 characters)</div><textarea class="nt" id="co_note" rows="3">'+esc(S.co.note)+'</textarea>'
+        +'<div class="bt"><button class="btn f" id="co_save" data-a="consave" data-v="'+x.id+'" '+(conReady()?"":"disabled")+'>Close concern</button><button class="btn" data-a="concancel">Cancel</button></div></div>';
+    }
+    h+='</div>'});
+  return h+'<div class="hint">Only RMD faculty see these. Concerns for the school are raised separately, as on Monday. The outcomes are the same as on Monday.</div>'
 }
+const conReady=()=>!!(S.co.out&&S.co.mgr.trim()&&S.co.note.trim().length>=15);
 function endView(){
   const c=cnt(),un=S.nurses.filter(n=>attended(n)&&!(n.bls&&n.fa)).length;
   return'<div class="sect">End of night checks</div><div class="hl">Rooms not confirmed by their instructor: <b>'+(unconf().length?unconf().join(", "):"none")+'</b></div><div class="hl">Nurses not marked: <b>'+c.not+'</b></div><div class="hl">Here but not assessed: <b>'+un+'</b></div><div class="hl">Absent and not moved: <b>'+c.abs+'</b></div><div class="hl">Open concerns: <b>'+S.concerns.filter(x=>x.open).length+'</b></div><button class="btn f" style="margin-top:10px" data-a="dl">Download results backup</button><div class="hint" style="margin-top:6px">Everything: names, emails, field, year, attendance, result, what went wrong. For your records, not for the school. The school sheet is its own tool.</div>'
@@ -356,15 +421,15 @@ function eveView(){
 const FIELDS=["Adult","Child","Mental Health","Midwifery","Learning disability","Adult and Mental Health","Child and Mental Health"],YEARS=["2nd year","3rd year","4th year"];
 function cohortView(){
   const o=S.one,evs=runEvenings(),opt=(arr,cur,ph)=>'<option value="">'+ph+'</option>'+arr.map(x=>'<option'+(cur===x?' selected':'')+'>'+esc(x)+'</option>').join("");
-  const can=o.date&&o.room&&o.last.trim()&&o.first.trim();
+  const can=o.date&&o.last.trim()&&o.first.trim();
   const lab=t=>'<label style="display:block;font-size:12px;font-weight:700;color:var(--mut);margin:10px 0 4px">'+t+'</label>';
   let h='<div class="chs">'+TROOMS.map(r=>'<span class="chip">'+r+': '+roomList(r).length+'</span>').join("")+'</div>';
   h+='<div class="bt" style="margin-top:8px"><button class="btn" data-a="dedupe">Remove duplicates</button></div><div class="hint">If the same nurse was added twice on the same evening, this keeps one and removes the rest. Looks at every evening.</div>';
   h+='<div class="sect">Step 1 - Add nurses</div><div class="hint"><b>Nobody is booked until you press Add at the end.</b> Add people one at a time below, or paste many at once. Both end up in the same box, then press Parse &amp; preview.</div>';
-  h+='<div style="background:#f7f5fc;border:1.5px solid var(--line);border-radius:12px;padding:14px;margin-top:10px"><div style="font-weight:800;font-size:16px">Add one nurse</div><div class="hint">Fill in the boxes and press Add to list. Evening, room, last name and first name are needed.</div>'
+  h+='<div style="background:#f7f5fc;border:1.5px solid var(--line);border-radius:12px;padding:14px;margin-top:10px"><div style="font-weight:800;font-size:16px">Add one nurse</div><div class="hint">Fill in the boxes and press Add to list. Evening, last name and first name are needed. If you do not choose a room, one is allocated at random.</div>'
    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">'
    +'<div>'+lab('Evening')+'<select class="nt" id="o_date">'+'<option value="">Choose evening</option>'+evs.map(d=>'<option value="'+d+'"'+(o.date===d?' selected':'')+'>'+esc(niceDate(d))+'</option>').join("")+'</select></div>'
-   +'<div>'+lab('Room')+'<select class="nt" id="o_room">'+opt(TROOMS,o.room,"Choose room")+'</select></div>'
+   +'<div>'+lab('Room')+'<select class="nt" id="o_room">'+opt(TROOMS,o.room,"Random room (allocated for me)")+'</select></div>'
    +'<div>'+lab('Last name')+'<input class="nt" id="o_last" value="'+esc(o.last)+'"></div>'
    +'<div>'+lab('First name')+'<input class="nt" id="o_first" value="'+esc(o.first)+'"></div>'
    +'<div>'+lab('Email')+'<input class="nt" id="o_email" value="'+esc(o.email)+'"></div>'
@@ -372,16 +437,23 @@ function cohortView(){
    +'<div>'+lab('Year of study <span style="font-weight:500">(optional)</span>')+'<select class="nt" id="o_year">'+opt(YEARS,o.year,"Not set")+'</select></div></div>'
    +'<div class="bt" style="margin-top:12px"><button class="btn f" id="o_add" data-a="oneadd" '+(can?"":"disabled")+'>Add to list</button><button class="btn" data-a="oneclear">Clear boxes</button></div></div>';
   h+='<div style="text-align:center;margin:14px 0 8px;font-size:12px;font-weight:800;letter-spacing:.6px;color:var(--mut)">OR PASTE MANY</div>';
-  h+='<div class="hint">One per line: <b>date, room, last name, first name, email, course, year</b>. Email, course and year are optional. Commas or tabs both work, and copying rows from a spreadsheet works best. A header row at the top is ignored.</div>';
+  h+='<div class="hint">One per line: <b>date, room, last name, first name, email, course, year</b>. Leave the room empty to allocate one at random. Email, course and year are optional. Commas or tabs both work, and copying rows from a spreadsheet works best. A header row at the top is ignored.</div>';
   h+='<textarea class="nt" id="paste" rows="6" placeholder="24/11/2026, CM02, Nair, Priya, p.nair@student.bham.ac.uk, Adult, 2nd year\n24/11/2026, CM03, Rees, Tom, , Child, 3rd year">'+esc(S.paste)+'</textarea><button class="btn f" style="margin-top:8px" data-a="parse">Parse &amp; preview</button>';
   if(S.parsed){const ok=S.parsed.filter(p=>p.ok).length;if(S.advice&&S.advice.length)h+='<div class="note" style="margin-top:10px"><b>How to fix this:</b><ul style="margin:6px 0 0 18px">'+S.advice.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul></div>';if(S.hdr)h+='<div class="hint" style="margin-top:6px">The header row was ignored.</div>';h+='<div class="tw" style="margin-top:8px"><table class="dt"><tr><th>Date</th><th>Room</th><th>Name</th><th>Check</th></tr>'+S.parsed.map(p=>'<tr><td>'+esc(p.dmy)+'</td><td>'+esc(p.room)+'</td><td>'+esc(p.last+", "+p.first)+'</td><td>'+(p.issues.length?'<span class="chip '+(p.ok?"warn":"bad")+'">'+esc(p.issues.join("; "))+'</span>':'<span class="chip ok">OK</span>')+'</td></tr>').join("")+'</table></div><div class="hint">'+ok+' of '+S.parsed.length+' lines can be added. Lines with a red check are left out until fixed.</div><button class="btn f" data-a="addp" '+(ok&&!S.adding?"":"disabled")+'>'+(S.adding?"Adding...":"Add "+ok+" nurses")+'</button>'}
   return h
 }
+function schoolReady(){
+  const c=cnt(),un=S.nurses.filter(n=>attended(n)&&!(n.bls&&n.fa)).length,uc=unconf();
+  const items=[[uc.length===0,"Every room has confirmed its register"+(uc.length?" (waiting: "+uc.join(", ")+")":"")],[c.not===0,"Everyone is marked Here, Late or Absent"+(c.not?" ("+c.not+" not marked)":"")],[un===0,"Everyone who attended has been assessed"+(un?" ("+un+" still to assess)":"")]];
+  return{ok:items.every(x=>x[0])&&S.nurses.length>0,items:items}
+}
 function schoolView(){
   const r=schoolRows(),b=r.findIndex(x=>x[0]==="Expected but did not attend"),a=r.slice(0,b-1),d=r.slice(b+2);
   let h='<div class="sect">Spreadsheet for the nursing school</div><div class="hint">File title: <b>RMD basic life support refresher - '+esc(niceDate(S.date))+' - nursing</b></div><div class="sect">Attended ('+(a.length-1)+')</div><div class="tw"><table class="dt"><tr>'+a[0].map(c=>'<th>'+esc(c)+'</th>').join("")+'</tr>'+a.slice(1,6).map(x=>'<tr>'+x.map(c=>'<td>'+esc(c)+'</td>').join("")+'</tr>').join("")+'</table></div><div class="hint">First 5 of '+(a.length-1)+' shown. Late arrivals are marked.</div><div class="sect">Expected but did not attend ('+d.length+')</div><div class="tw"><table class="dt"><tr><th>Name</th><th>Status</th></tr>'+d.map(x=>'<tr><td>'+esc(x[0])+'</td><td>'+esc(x[5])+'</td></tr>').join("")+'</table></div>';
-  h+=isTest()?'<div class="note">Test evenings never go to the nursing school.</div>':'<button class="btn f" data-a="dls">Download spreadsheet</button>';
-  return h+'<div class="note">The top table lists only nurses who attended, with their result. Anyone expected who did not attend is listed underneath. Nurses moved to another date are not on this sheet. Result wording is a placeholder for the team leads to confirm.</div>'
+  const rd=schoolReady();
+  h+='<div class="sect">Before you can download</div>'+rd.items.map(x=>'<div class="hl">'+(x[0]?'<span class="chip ok">Done</span> ':'<span class="chip warn">Not yet</span> ')+esc(x[1])+'</div>').join('');
+  h+=isTest()?'<div class="note">Test evenings never go to the nursing school.</div>':'<div class="bt" style="margin-top:8px"><button class="btn f" data-a="dls" '+(rd.ok?'':'disabled')+'>Download spreadsheet</button></div>'+(rd.ok?'':'<div class="hint" style="margin-top:6px">The download unlocks when the register and the assessments are complete.</div>');
+  return h+'<div class="note">The top table lists only nurses who attended, with their result. Anyone expected who did not attend is listed underneath. Nurses moved to another date are not on this sheet. The Result column says only Passed or Not passed, with no detail about what went wrong.</div>'
 }
 function ttView(){
   const now=nowMin();let cur=-1;TT.forEach((t,i)=>{if(now>=tm(t[0]))cur=i});
@@ -452,7 +524,7 @@ function render(){
 
 document.addEventListener("input",e=>{
   const i=e.target.id;
-  if(i&&i.indexOf("o_")===0){S.one[i.slice(2)]=e.target.value;const bt=$("o_add");if(bt)bt.disabled=!(S.one.date&&S.one.room&&S.one.last.trim()&&S.one.first.trim());return}if(i==="fq"){S.fq=e.target.value;render();return}if(i==="paste")S.paste=e.target.value;else if(i==="cctext"){S.cctext=e.target.value;const b=document.querySelector("[data-a=sendcc]");if(b)b.disabled=!(S.ccr.length&&S.cctext.trim().length>=15)}
+  if(i&&i.indexOf("o_")===0){S.one[i.slice(2)]=e.target.value;const bt=$("o_add");if(bt)bt.disabled=!(S.one.date&&S.one.last.trim()&&S.one.first.trim());return}if(i==="co_mgr"||i==="co_note"){S.co[i==="co_mgr"?"mgr":"note"]=e.target.value;const b=$("co_save");if(b)b.disabled=!conReady();return}if(i==="lastmsg"){S.lastMsg=e.target.value;return}if(i&&i.indexOf("nm_")===0){S.nmsg[i.slice(3)]=e.target.value;return}if(i&&i.indexOf("ot_")===0){const m=/^ot_(.+)_(wbt|wft)$/.exec(i);if(m){S.af[m[1]][m[2]]=e.target.value;const bt=document.querySelector("[data-a=save][data-id=\""+m[1]+"\"]");if(bt)bt.disabled=!afOk(m[1])}return}if(i==="fq"){S.fq=e.target.value;render();return}if(i==="paste")S.paste=e.target.value;else if(i==="cctext"){S.cctext=e.target.value;const b=document.querySelector("[data-a=sendcc]");if(b)b.disabled=!(S.ccr.length&&S.cctext.trim().length>=15)}
   else if(i==="sdi")S.sdi=e.target.value;else if(i==="edi")S.edi=e.target.value;
   else if(i==="clkd"){S.clk=+e.target.value;autoLate();render()}
 });
@@ -476,7 +548,11 @@ document.addEventListener("click",e=>{
   else if(a==="ccr"){const i=S.ccr.indexOf(v);if(i>-1)S.ccr.splice(i,1);else S.ccr.push(v)}
   else if(a==="cancelcc")S.cc=null;
   else if(a==="sendcc"){sendConcern();return}
-  else if(a==="resolve"){resolveConcern(v);return}
+  else if(a==="conopen"){S.ccl=v;S.co={out:"",mgr:"",note:""}}
+  else if(a==="conout"){S.co.out=v;const b=$("co_save");if(b)b.disabled=!conReady();return}
+  else if(a==="conme"){const me=S.user.displayName||S.user.email||"";S.co.mgr=S.co.mgr.trim()?S.co.mgr.trim()+", "+me:me}
+  else if(a==="concancel"){S.ccl=null}
+  else if(a==="consave"){if(conReady())closeConcern(v);return}
   else if(a==="mvopen")S.mv=S.mv===id?null:id;
   else if(a==="mvdo"){moveNurse(id,v);return}
   else if(a==="ev"){S.cfg.evenings[id]=v;saveCfg();return}
@@ -485,11 +561,18 @@ document.addEventListener("click",e=>{
   else if(a==="parse"){parseNow();return}
   else if(a==="addp"){addParsed();return}
   else if(a==="dedupe"){dedupe();return}
+  else if(a==="lastmsg"){buildLastMsg();return}
+  else if(a==="mvreq"){const n=S.nurses.find(x=>x.id===id),mi=S.mi[id];if(n&&mi){S.nmsg[id]=degreeMsg(n,mi.hist,"again",v);upd(id,{pendingMove:{date:v,by:S.user.email||"",at:Date.now()}});S.mv=null;S.msg="Held. Send the message below to the nursing school lead."}}
+  else if(a==="mvconfirm"){const n=S.nurses.find(x=>x.id===id);if(n&&n.pendingMove){const d=n.pendingMove.date;upd(id,{pendingMove:null}).then(()=>moveNurse(id,d))}return}
+  else if(a==="mvcancel"){upd(id,{pendingMove:null});delete S.nmsg[id];S.msg="Request cancelled."}
+  else if(a==="mvmsg"){const n=S.nurses.find(x=>x.id===id),mi=S.mi[id];if(n&&mi){S.nmsg[id]=n.pendingMove?degreeMsg(n,mi.hist,"again",n.pendingMove.date):degreeMsg(n,mi.hist,"max")}}
+  else if(a==="mvcopy"){const ta=$("nm_"+id);if(ta){ta.select();try{navigator.clipboard.writeText(ta.value)}catch(e){document.execCommand("copy")}S.msg="Message copied."}}
+  else if(a==="copymsg"){const ta=$("lastmsg");if(ta){ta.select();try{navigator.clipboard.writeText(ta.value)}catch(e){document.execCommand("copy")}S.msg="Message copied."}}
   else if(a==="oneadd"){const o=S.one;const line=[isoToDmy(o.date),o.room,o.last.trim(),o.first.trim(),o.email.trim(),o.field,o.year].join(", ");S.paste=(S.paste.trim()?S.paste.replace(/\s+$/,"")+"\n":"")+line;S.one.last="";S.one.first="";S.one.email="";S.one.field="";S.one.year="";S.msg="Added to the list below. Press Parse & preview when you have added everyone."}
   else if(a==="oneclear"){S.one={date:S.one.date,room:S.one.room,last:"",first:"",email:"",field:"",year:""}}
   else if(a==="seed"){seedTest();return}
   else if(a==="dl")dlFile(toCsv(backupRows()),"RMD refresher - "+S.date+" - results backup.csv");
-  else if(a==="dls"){if(!isTest())dlFile(toCsv(schoolRows()),"RMD basic life support refresher - "+niceDate(S.date)+" - nursing.csv")}
+  else if(a==="dls"){if(!isTest()&&schoolReady().ok)dlFile(toCsv(schoolRows()),"RMD basic life support refresher - "+niceDate(S.date)+" - nursing.csv")}
   render();
 });
 

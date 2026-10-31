@@ -42,12 +42,15 @@ main{max-width:1100px;margin:0 auto;padding:16px}
 .dotk{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--org);vertical-align:-1px;margin-right:5px}
 .dotk.red{background:#E5484D}
 .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
-.sroom{background:rgba(255,255,255,.1);border-radius:12px;padding:12px;min-height:122px}
-.sroom b{font-size:16px}
-.sroom .v{font-size:32px;font-weight:800;font-variant-numeric:tabular-nums}
-.sroom small{display:block;color:#D9CFF0;font-size:12px}
-.sroom.done{background:rgba(88,192,127,.25)}
-.sroom.low{background:rgba(244,144,1,.22)}
+.sroom{background:#fff;color:var(--ink);border-radius:14px;padding:14px 14px 12px;min-height:130px;border:3px solid transparent}
+.sroom b{display:block;font-size:20px;font-weight:800;color:var(--pur);letter-spacing:-.2px}
+.sroom .v{margin-top:2px;line-height:1.05;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sroom .v .hv{font-size:44px;font-weight:800;color:var(--ink)}
+.sroom .v .tv{font-size:24px;font-weight:700;color:var(--mut);margin-left:2px}
+.sroom small{display:block;color:var(--mut);font-size:13px;font-weight:600;margin-top:2px}
+.sroom.done{border-color:#58C07F}.sroom.done .hv{color:#1E8449}
+.sroom.low{border-color:var(--org)}.sroom.low .hv{color:#B35F00}
+.sroom .dots i{box-shadow:0 0 0 2px rgba(0,0,0,.08)}.sroom .dots span{color:#B35F00}
 .dots{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;min-height:14px}
 .dots i{display:block;width:14px;height:14px;border-radius:50%;background:var(--org);box-shadow:0 0 0 2px rgba(255,255,255,.25)}
 .dots i.ab{background:#E5484D}
@@ -207,8 +210,8 @@ function render() {
     const dots = (lateN || absN) ? `<div class="dots" title="${lateN} late, ${absN} absent">${"<i></i>".repeat(shown)}${"<i class=\"ab\"></i>".repeat(shownA)}${(lateN + absN) > (shown + shownA) ? `<span>+${lateN + absN - shown - shownA}</span>` : ""}</div>` : '<div class="dots"></div>';
     const state = x.total && h === x.total ? "done" : (x.total && h / x.total < .4 ? "low" : "");
     const sub = x.total && h === x.total ? "All here" : ((x.total - h) + " to come" + (x.absent ? " &middot; " + x.absent + " absent" : ""));
-    return `<div class="sroom ${state}"><b>${esc(r)}</b><div class="v">${h}/${x.total}</div><small>${sub}</small>${dots}</div>`;
-  }).join("") + (noRoom.length ? `<div class="sroom"><b>No room</b><div class="v">${tally(noRoom, wk).here + tally(noRoom, wk).late}/${noRoom.length}</div><small>not allocated yet</small></div>` : "");
+    return `<div class="sroom ${state}"><b>${esc(r)}</b><div class="v"><span class="hv">${h}</span><span class="tv">/${x.total}</span></div><small>${sub}</small>${dots}</div>`;
+  }).join("") + (noRoom.length ? `<div class="sroom"><b>No room</b><div class="v"><span class="hv">${tally(noRoom, wk).here + tally(noRoom, wk).late}</span><span class="tv">/${noRoom.length}</span></div><small>not allocated yet</small></div>` : "");
   $("screen").innerHTML =
     `<div class="head"><h2>${esc(S.course)} &middot; Week ${wk} register${dateTxt ? " &middot; " + esc(dateTxt) : ""}</h2><span class="clock">${esc(now.hm)} &middot; live</span></div>` +
     `<div class="big"><span class="n">${here}</span><span class="of">of ${t.total} here${t.late ? " &middot; " + t.late + " late" : ""}${t.absent ? " &middot; " + t.absent + " absent" : ""}</span></div>` +
