@@ -289,6 +289,45 @@ async function parseNow(){
   }catch(e){S.err="Could not check room spaces: "+(e.message||e)}
   render();
 }
+async function checkList(){
+  const raw=S.paste.split("\n").filter(l=>l.trim()),hdr=raw.length&&/^date\b/i.test(raw[0].trim()),ls=hdr?raw.slice(1):raw,rows=ls.map(chkRow).filter(p=>p.ok||p.iso);
+  S.err="";S.chk=null;
+  if(!rows.length){S.err="Paste your allocation list in the box first, then press Check.";render();return}
+  S.msg="Checking against the hub...";render();
+  try{
+    const key=(l,f)=>(l||"").trim().toLowerCase()+"|"+(f||"").trim().toLowerCase(),dates=[...new Set(rows.filter(p=>p.iso).map(p=>p.iso))].sort(),out={};
+    for(const d of dates){
+      const sn=await db.collection("tuesday_nurses").where("date","==",d).get(),hub=[];sn.forEach(x=>hub.push(Object.assign({id:x.id},x.data())));
+      const want={};rows.filter(p=>p.iso===d).forEach(p=>{want[key(p.last,p.first)]=p});
+      const byK={};hub.forEach(n=>{(byK[key(n.last,n.first)]=byK[key(n.last,n.first)]||[]).push(n)});
+      const extras=[],wrongRoom=[],missing=[];
+      Object.keys(byK).forEach(k=>{const g=byK[k].sort((a,b)=>((b.st||b.bls)?1:0)-((a.st||a.bls)?1:0));if(!want[k]){g.forEach(n=>extras.push({n:n,why:"not on your list"}))}else{g.slice(1).forEach(n=>extras.push({n:n,why:"listed twice in the hub"}));if(want[k].room&&g[0].room!==want[k].room)wrongRoom.push({n:g[0],room:want[k].room})}});
+      Object.keys(want).forEach(k=>{if(!byK[k])missing.push(want[k])});
+      const rc={};hub.forEach(n=>rc[n.room]=(rc[n.room]||0)+1);
+      out[d]={expected:Object.keys(want).length,inhub:hub.length,extras:extras,wrongRoom:wrongRoom,missing:missing,rc:rc}
+    }
+    S.chk=out;S.msg="Check done."
+  }catch(e){S.msg="";S.err="Could not check: "+(e.message||e)}
+  render()
+}
+async function chkDelete(ids){
+  try{for(let i=0;i<ids.length;i+=100){const b=db.batch();ids.slice(i,i+100).forEach(id=>b.delete(db.collection("tuesday_nurses").doc(id)));await b.commit()}S.msg="Removed "+ids.length+" row"+(ids.length===1?"":"s")+". Press Check again to confirm.";S.chk=null}catch(e){S.err="Could not remove: "+(e.message||e)}
+  render()
+}
+function chkView(){
+  if(!S.chk)return"";let h='<div class="sect">Check result</div>';
+  Object.keys(S.chk).forEach(d=>{const c=S.chk[d],safe=c.extras.filter(x=>!x.n.st&&!x.n.bls);
+    const over=Object.keys(c.rc).filter(r=>c.rc[r]>PER_ROOM);
+    h+='<div class="cand"><div class="nm"><span><b>'+esc(niceDate(d))+'</b><small>Your list: '+c.expected+' - In the hub: '+c.inhub+'</small></span><span class="chip '+(c.extras.length||c.missing.length||over.length?"warn":"ok")+'">'+(c.extras.length||c.missing.length||c.wrongRoom.length||over.length?"Needs a look":"Matches")+'</span></div>'
+      +'<div class="chs" style="margin:6px 0">'+TROOMS.map(r=>'<span class="chip '+((c.rc[r]||0)>PER_ROOM?"bad":"")+'">'+r+': '+(c.rc[r]||0)+'</span>').join("")+'</div>';
+    if(over.length)h+='<div class="hint">Over the maximum of '+PER_ROOM+': '+over.join(", ")+'. Your own list may also be over, check it.</div>';
+    if(c.extras.length){h+='<div class="hint"><b>In the hub but not needed ('+c.extras.length+'):</b></div>'+c.extras.map(x=>'<div class="hl">'+esc(nurseName(x.n))+' - '+esc(x.n.room||"")+' - '+x.why+(x.n.movedFrom?' - moved from '+esc(niceDate(x.n.movedFrom)):"")+(x.n.secondCourse?' - second course':"")+((x.n.st||x.n.bls)?' - <b>already marked, kept</b>':' <button class="btn" data-a="chkdel" data-id="'+x.n.id+'">Remove</button>')+'</div>').join("");
+      if(safe.length)h+='<div class="bt"><button class="btn f" data-a="chkdelall" data-v="'+d+'">Remove all '+safe.length+' unneeded (not marked)</button></div>'}
+    if(c.missing.length)h+='<div class="hint" style="margin-top:6px"><b>On your list but not in the hub ('+c.missing.length+'):</b></div>'+c.missing.map(p=>'<div class="hl">'+esc(p.last+", "+p.first)+' - '+esc(p.room||"no room")+'</div>').join("")+'<div class="hint">To add these, use Parse &amp; preview then Add.</div>';
+    if(c.wrongRoom.length)h+='<div class="hint" style="margin-top:6px"><b>In a different room to your list ('+c.wrongRoom.length+'):</b></div>'+c.wrongRoom.map(x=>'<div class="hl">'+esc(nurseName(x.n))+' - hub '+esc(x.n.room)+', list '+esc(x.room)+'</div>').join("");
+    h+='</div>'});
+  return h
+}
 async function addParsed(){
   if(S.adding)return;
   const ok=S.parsed.filter(p=>p.ok);S.adding=true;S.err="";S.msg="Checking "+ok.length+" nurses...";render();
@@ -512,9 +551,9 @@ function cohortView(){
    +'<div class="bt" style="margin-top:12px"><button class="btn f" id="o_add" data-a="oneadd" '+(can?"":"disabled")+'>Add to list</button><button class="btn" data-a="oneclear">Clear boxes</button></div></div>';
   h+='<div style="text-align:center;margin:14px 0 8px;font-size:12px;font-weight:800;letter-spacing:.6px;color:var(--mut)">OR PASTE MANY</div>';
   h+='<div class="hint">One per line: <b>date, room, last name, first name, email, course, year</b>. Leave the room empty to allocate one at random. Email, course and year are optional. Commas or tabs both work, and copying rows from a spreadsheet works best. A header row at the top is ignored.</div>';
-  h+='<textarea class="nt" id="paste" rows="6" placeholder="24/11/2026, CM02, Nair, Priya, p.nair@student.bham.ac.uk, Adult, 2nd year\n24/11/2026, CM03, Rees, Tom, , Child, 3rd year">'+esc(S.paste)+'</textarea><button class="btn f" style="margin-top:8px" data-a="parse">Parse &amp; preview</button>';
+  h+='<textarea class="nt" id="paste" rows="6" placeholder="24/11/2026, CM02, Nair, Priya, p.nair@student.bham.ac.uk, Adult, 2nd year\n24/11/2026, CM03, Rees, Tom, , Child, 3rd year">'+esc(S.paste)+'</textarea><button class="btn f" style="margin-top:8px" data-a="parse">Parse &amp; preview</button> <button class="btn" style="margin-top:8px" data-a="chklist">Check against what is in the hub</button><div class="hint">Check compares your pasted allocation list with what is stored, and shows anyone extra, missing or in a different room.</div>';
   if(S.parsed){const ok=S.parsed.filter(p=>p.ok).length;if(S.advice&&S.advice.length)h+='<div class="note" style="margin-top:10px"><b>How to fix this:</b><ul style="margin:6px 0 0 18px">'+S.advice.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul></div>';if(S.hdr)h+='<div class="hint" style="margin-top:6px">The header row was ignored.</div>';h+='<div class="tw" style="margin-top:8px"><table class="dt"><tr><th>Date</th><th>Room</th><th>Name</th><th>Check</th></tr>'+S.parsed.map(p=>'<tr><td>'+esc(p.dmy)+'</td><td>'+esc(p.room)+'</td><td>'+esc(p.last+", "+p.first)+'</td><td>'+(p.issues.length?'<span class="chip '+(p.ok?"warn":"bad")+'">'+esc(p.issues.join("; "))+'</span>':'<span class="chip ok">OK</span>')+'</td></tr>').join("")+'</table></div><div class="hint">'+ok+' of '+S.parsed.length+' lines can be added. Lines with a red check are left out until fixed.</div><button class="btn f" data-a="addp" '+(ok&&!S.adding?"":"disabled")+'>'+(S.adding?"Adding...":"Add "+ok+" nurses")+'</button>'}
-  return h
+  return h+chkView()
 }
 const notPassed=n=>n.bls&&n.fa&&!(n.bls==="pass"&&n.fa==="pass");
 const isLastEve=()=>!isTest()&&runEvenings().filter(d=>d>S.date).length===0;
@@ -678,6 +717,9 @@ document.addEventListener("click",e=>{
   else if(a==="oneadd"){const o=S.one;const line=[isoToDmy(o.date),o.room,o.last.trim(),o.first.trim(),o.email.trim(),o.field,o.year].join(", ");S.paste=(S.paste.trim()?S.paste.replace(/\s+$/,"")+"\n":"")+line;S.one.last="";S.one.first="";S.one.email="";S.one.field="";S.one.year="";S.msg="Added to the list below. Press Parse & preview when you have added everyone."}
   else if(a==="oneclear"){S.one={date:S.one.date,room:S.one.room,last:"",first:"",email:"",field:"",year:""}}
   else if(a==="seed"){seedTest();return}
+  else if(a==="chklist"){checkList();return}
+  else if(a==="chkdel"){chkDelete([id]);return}
+  else if(a==="chkdelall"){const c=S.chk&&S.chk[v];if(c)chkDelete(c.extras.filter(x=>!x.n.st&&!x.n.bls).map(x=>x.n.id));return}
   else if(a==="meset"){S.me=v;try{localStorage.setItem("tueMe",v)}catch(e){}}
   else if(a==="meclr"){S.me="";try{localStorage.removeItem("tueMe")}catch(e){}}
   else if(a==="swopen"){S.sw=S.sw&&S.sw.date===v?null:{date:v,room:TROOMS[teachesOn(S.me,v)]}}
