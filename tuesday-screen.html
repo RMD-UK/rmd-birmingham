@@ -79,7 +79,7 @@ auth.onAuthStateChanged(async user=>{
     const role=await resolveRole(user.uid,user.email||"");
     const stu=await isStudentFaculty(user.email||"").catch(()=>false),sen=await isSeniorFaculty(user.email||"").catch(()=>false);
     if(!(role===ROLES.DIRECTOR||stu||sen)){$("authMsg").textContent="This screen is for Directors, Student Faculty and Senior Faculty.";return}
-    let cfg={start:"2026-10-20",end:"2027-02-09",evenings:{}};
+    let cfg={start:"2026-10-13",end:"2027-02-09",evenings:{}};
     try{const d=await db.collection("tuesday_config").doc("series").get();if(d.exists)cfg=Object.assign(cfg,d.data())}catch(e){}
     const dates=[];let d=cfg.start;while(new Date(d+"T12:00:00Z").getUTCDay()!==2)d=new Date(new Date(d+"T12:00:00Z").getTime()+864e5).toISOString().slice(0,10);
     while(d<=cfg.end){if((cfg.evenings||{})[d]!=="no")dates.push(d);d=new Date(new Date(d+"T12:00:00Z").getTime()+7*864e5).toISOString().slice(0,10)}
