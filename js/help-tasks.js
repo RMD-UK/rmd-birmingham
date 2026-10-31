@@ -15,22 +15,23 @@
 //         faculty  Directors, Faculty and Assessor Faculty
 //         dirsf    Directors, Student Faculty and Senior Faculty
 //         dirsenior Directors and Senior Faculty
+//         tue      Directors, Student and Senior Faculty, and assessors / Senior Instructors (the Tuesday hub teachers)
 //         dir      Directors only
 //         sfr      Directors, and Senior Faculty while the review is open (1 April to 1 July)
 window.RMD_HELP = {
-  reviewed: "2026-10-29",
+  reviewed: "2026-10-31",
   reviewEveryMonths: 6,
   tasks: [
     // ── Evening courses: running the night ──
     { t: "Run the Monday night (register, assessments, retests, results)", k: "monday night hub assessment night register check in evening course", href: "phase1.html", p: "Monday Night Hub", who: "all" },
-    { t: "Mark someone present or absent", k: "register attendance tick present absent here not here", href: "phase1.html", p: "Monday Night Hub", who: "all" },
-    { t: "Mark a candidate late", k: "late arrived late", href: "phase1.html", p: "Monday Night Hub", who: "all" },
-    { t: "Put back a candidate marked absent by mistake", k: "put back undo absent wrongly marked", href: "phase1.html", p: "Monday Night Hub", who: "all" },
-    { t: "Set up or start a retest", k: "retest resit retake second attempt third attempt", href: "phase1.html", p: "Monday Night Hub", who: "all" },
+    { t: "Mark someone present or absent (Monday night)", k: "monday register attendance tick present absent here not here", href: "phase1.html", p: "Monday Night Hub", who: "all" },
+    { t: "Mark a candidate late (Monday night)", k: "monday late arrived late", href: "phase1.html", p: "Monday Night Hub", who: "all" },
+    { t: "Put back a candidate marked absent by mistake (Monday night)", k: "monday put back undo absent wrongly marked", href: "phase1.html", p: "Monday Night Hub", who: "all" },
+    { t: "Set up or start a retest (Monday night)", k: "monday retest resit retake second attempt third attempt", href: "phase1.html", p: "Monday Night Hub", who: "all" },
     { t: "Practise on the test course", k: "test course practise try it out training", href: "admin-stage1-testcourse.html", p: "Test Course", who: "dir" },
-    { t: "Show the live register on a big screen", k: "register screen live register projector display", href: "register-live.html", p: "Register live screen", who: "all" },
+    { t: "Show the Monday live register on a big screen", k: "monday register screen live register projector display", href: "register-live.html", p: "Register live screen", who: "all" },
     { t: "Show the assessment night flow on a screen", k: "flow screen who is where rooms on screen display", href: "assessment-flow.html", p: "Assessment night flow screen", who: "all" },
-    { t: "Show the live assessment screen", k: "assessment live screen display", href: "assessment-live.html", p: "Assessment night live screen", who: "all" },
+    { t: "Show the Monday live assessment screen", k: "monday assessment live screen display", href: "assessment-live.html", p: "Assessment night live screen", who: "all" },
     { t: "Check the night is ready before it starts", k: "readiness ready checklist before the night preflight", href: "admin-stage1-readiness.html", p: "Assessment Night Readiness", who: "dir" },
     { t: "Read who does what on assessment night", k: "roles who does what runner assessor duties assessment evening guide", href: "resources/instructor-guide/2-assessment-evening-roles.html", p: "Assessment night guide", who: "all" },
     { t: "See pass rates and who has passed", k: "results pass rate passed failed outcomes", href: "assessment-results.html", p: "Assessment results", who: "dirsf" },
@@ -38,10 +39,28 @@ window.RMD_HELP = {
     { t: "Score a candidate I taught (OPIS)", k: "opis rate candidate rating score communication attitude feedback punctuality", href: "opis-rating.html", p: "OPIS candidate rating", who: "notma" },
     { t: "Review OPIS scores", k: "opis review scores ratings", href: "admin-instructor-applications.html", p: "Instructor application review", who: "dirsenior" },
 
+    // ── Tuesday Night Hub (nurse refresher evenings, added 31 Oct 2026) ──
+    { t: "Run the Tuesday refresher evening for nursing students", k: "tuesday night hub refresher nurses nursing students evening bls refresher", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
+    { t: "Assess my room on a Tuesday (pass or fail, confirm the register)", k: "tuesday assess room pass fail bls aed first aid what went wrong 999 nurse confirm register complete my room", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
+    { t: "Raise a concern about a nurse on a Tuesday", k: "tuesday concern nurse worried flag student", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
+    { t: "Swap my Tuesday teaching night or hand it over", k: "tuesday swap night teaching shift cover hand over who teaches rota", href: "tuesday.html", p: "Tuesday Night Hub: Teaching shifts", who: "tue" },
+    { t: "See the live timetable for Tuesday evening", k: "tuesday timetable running order live schedule 19:00", href: "tuesday.html", p: "Tuesday Night Hub", who: "tue" },
+    { t: "Mark nurses Here, Late or Absent on a Tuesday", k: "tuesday register here late absent nurse attendance not marked", href: "tuesday.html", p: "Tuesday Night Hub: Register", who: "dirsf" },
+    { t: "Move a nurse to another Tuesday", k: "tuesday move nurse another date reallocate absent needs another date", href: "tuesday.html", p: "Tuesday Night Hub: Needs another date", who: "dirsf" },
+    { t: "See and edit who is in each Tuesday room", k: "tuesday room lists move nurse between rooms edit details remove nurse", href: "tuesday.html", p: "Tuesday Night Hub: Room lists", who: "dirsf" },
+    { t: "Add the nurse list and rooms (paste it in)", k: "tuesday paste nurse list add nurses rooms allocation upload cohort", href: "tuesday.html", p: "Tuesday Night Hub: Add nurses and rooms", who: "dirsf" },
+    { t: "Set which Tuesdays run this year", k: "tuesday dates evenings confirm which run set dates year christmas break", href: "tuesday.html", p: "Tuesday Night Hub: Which Tuesdays run", who: "dirsf" },
+    { t: "Download the nursing school sheet (results and attendance)", k: "tuesday nursing school sheet results spreadsheet attended did not attend download", href: "tuesday.html", p: "Tuesday Night Hub: Nursing school sheet", who: "dirsf" },
+    { t: "Tell the nursing school about a student who did not pass", k: "tuesday not passed follow up school informed advice absent last evening", href: "tuesday.html", p: "Tuesday Night Hub: Not passed follow-up", who: "dirsf" },
+    { t: "Close off a Tuesday evening (checks and backup)", k: "tuesday end of night backup checks finish", href: "tuesday.html", p: "Tuesday Night Hub: End of night", who: "dirsf" },
+    { t: "Practise with the Tuesday test evening", k: "tuesday test evening practise made up nurses try it", href: "tuesday.html", p: "Tuesday Night Hub: Test evening", who: "dirsf" },
+    { t: "Show the Tuesday register on a big screen", k: "tuesday big screen register display projector counts late absent", href: "tuesday-screen.html?mode=register", p: "Tuesday register screen", who: "dirsf" },
+    { t: "Show the Tuesday results on a big screen", k: "tuesday big screen results display pass tally", href: "tuesday-screen.html?mode=results", p: "Tuesday results screen", who: "dirsf" },
+
     // ── Courses, candidates and rooms ──
-    { t: "See who is in which room and which instructors are teaching", k: "roster room who is in my room instructor team course list", href: "course-roster-view.html", p: "Evening Course Rosters", who: "all" },
+    { t: "See who is in which room and which instructors are teaching (Monday)", k: "monday roster room who is in my room instructor team course list", href: "course-roster-view.html", p: "Evening Course Rosters", who: "all" },
     { t: "Find a candidate by name", k: "find candidate search person where is look up", href: "course-roster-view.html", p: "Evening Course Rosters", who: "all" },
-    { t: "Edit rooms and instructor teams for the current course", k: "edit roster change room move instructor manage current course", href: "course-roster-edit.html", p: "Manage Current Course", who: "dirsf" },
+    { t: "Edit rooms and instructor teams for the current Monday course", k: "monday edit roster change room move instructor manage current course", href: "course-roster-edit.html", p: "Manage Current Course", who: "dirsf" },
     { t: "Move a candidate to a different course", k: "move change course new course swap reallocate allocation slot", href: "course-allocation.html", p: "Course allocation", who: "dir" },
     { t: "Book a candidate into an assessment slot", k: "assessment slot book assessment allocate slot", href: "course-allocation.html", p: "Course allocation", who: "dir" },
     { t: "Email people after they are moved", k: "reallocation email tell them they moved email about the change", href: "course-allocation.html", p: "Course allocation", who: "dir" },
