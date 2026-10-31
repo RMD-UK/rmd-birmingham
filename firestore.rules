@@ -1247,8 +1247,20 @@ service cloud.firestore {
     function tueStaff() {
       return isDirector() || isStudentFaculty() || isSeniorFaculty();
     }
+    // Senior Instructor is a label in people/{uid}.roleHistory (open period = the last entry),
+    // not a login role, so it is checked here as well as the "assessor" role.
+    function tueLastRH(h) {
+      return h is list && h.size() > 0
+        && h[h.size() - 1].get('role', '') == 'Senior Instructor'
+        && h[h.size() - 1].get('to', null) == null;
+    }
+    function tueSeniorInst() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/people/$(request.auth.uid)) &&
+        tueLastRH(get(/databases/$(database)/documents/people/$(request.auth.uid)).data.get('roleHistory', []));
+    }
     function tueTeach() {
-      return tueStaff() || isAssessorRole();
+      return tueStaff() || isAssessorRole() || tueSeniorInst();
     }
     match /tuesday_config/{docId} {
       allow read: if tueTeach();
@@ -1258,7 +1270,7 @@ service cloud.firestore {
       allow read: if tueTeach();
       allow create, delete: if tueStaff();
       allow update: if tueStaff()
-        || (isAssessorRole()
+        || ((isAssessorRole() || tueSeniorInst())
             && request.resource.data.diff(resource.data).affectedKeys()
                  .hasOnly(['st', 'auto', 'stBy', 'stAt', 'bls', 'fa', 'wb', 'wf', 'resBy', 'resAt']));
     }
@@ -1266,6 +1278,28 @@ service cloud.firestore {
       allow read: if tueTeach();
       allow create, update: if tueTeach()
         && request.resource.data.keys().hasOnly(['date', 'room', 'confirmed', 'by', 'at']);
+      allow delete: if tueStaff();
+    }
+    // Teaching roster (who teaches which room each night) and swap requests between teachers.
+    // The page enforces one teacher per room, swaps only when the other teacher accepts, and the
+    // 24 hour cut-off; the rules only limit which fields teachers may write.
+    match /tuesday_roster/{rosterDate} {
+      allow read: if tueTeach();
+      allow create, update: if tueStaff()
+        || (tueTeach()
+            && request.resource.data.keys().hasOnly(['date', 'lead', 'rooms', 'updatedBy', 'updatedAt'])
+            && request.resource.data.rooms is list
+            && request.resource.data.rooms.size() == 5);
+      allow delete: if tueStaff();
+    }
+    match /tuesday_swaps/{swapId} {
+      allow read: if tueTeach();
+      allow create: if tueTeach()
+        && request.resource.data.keys().hasOnly(['date', 'room', 'fromName', 'fromEmail', 'type', 'toName', 'toDate', 'toRoom', 'status', 'createdBy', 'createdMs', 'createdAt']);
+      allow update: if tueStaff()
+        || (tueTeach()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'decidedBy', 'decidedAt', 'prev']));
       allow delete: if tueStaff();
     }
     match /tuesday_concerns/{concernId} {

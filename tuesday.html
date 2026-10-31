@@ -116,7 +116,10 @@ const WB = ['Safety and approach','Response check','999 call / calling for help'
 const WF = ['Recovery position','Adult choking','Paediatric choking','Bleeding','999 call / calling for help','Other'];
 const CR = ['Conduct or professionalism','Attendance or engagement','Wellbeing or may need extra support','Other'];
 const TESTN = [['Amira Khan','Adult'],['Ben Okafor','Adult'],['Chloe Ward','Child'],['Dev Patel','Mental health'],['Ella Brooks','Adult'],['Farah Ali','Learning disability'],['George Nowak','Adult'],['Hannah Price','Child'],['Isaac Moore','Mental health'],['Jade Turner','Adult'],['Kofi Mensah','Adult'],['Lily Evans','Child'],['Mia Chen','Child'],['Noah Barnes','Adult'],['Olivia Grant','Mental health'],['Priya Shah','Adult'],['Quinn Murphy','Child'],['Ruth Adeyemi','Midwifery'],['Sam Walker','Adult'],['Tara Lewis','Mental health'],['Umar Farooq','Adult'],['Vera Novak','Child'],['Will Hughes','Adult'],['Xia Wang','Midwifery'],['Yusuf Demir','Adult']];
-const S = { user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",lastMsg:"",fusel:{},fumsg:{},fuev:null,ccl:null,co:{out:"",mgr:"",note:""},mi:{},nmsg:{},one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
+const ROSTER={"2026-10-20":{lead:"Kit Smith and Hannah Hardy",rooms:["Esme Freeman","Rachel Francis","Jenna Ghattaora","Shannon Beech","Jimmy Chen"]},"2026-10-27":{lead:"Kit Smith and Hannah Hardy",rooms:["Jenna Ghattaora","Martha Marjoram","Esme Freeman","Ishaan Paul","Evelyn Prime"]},"2026-11-03":{lead:"Kit Smith",rooms:["Lily Karaceylan","Naomi Ngobigha","Martha Marjoram","Rachel Francis","Jenna Ghattaora"]},"2026-11-10":{lead:"Kit Smith",rooms:["Rebecca Newton","Shannon Beech","Naomi Ngobigha","Esme Freeman","Olamide Sanusi"]},"2026-11-17":{lead:"Hannah Hardy",rooms:["Evelyn Prime","Shannon Beech","Laura Bland","Rebecca Newton","Ishaan Paul"]},"2026-11-24":{lead:"Hannah Hardy",rooms:["Olamide Sanusi","Ishaan Paul","Esme Freeman","Lily Karaceylan","Isla Topalli"]},"2026-12-01":{lead:"Kit Smith",rooms:["Martha Marjoram","Olamide Sanusi","Jimmy Chen","Isla Topalli","Laura Bland"]},"2026-12-08":{lead:"Hannah Hardy",rooms:["Jimmy Chen","Lucy McClean","Lily Karaceylan","Jenna Ghattaora","Rebecca Newton"]},"2027-01-12":{lead:"Hannah Hardy",rooms:["Naomi Ngobigha","Jenna Ghattaora","Lucy McClean","Laura Bland","Esme Freeman"]},"2027-01-19":{lead:"Kit Smith",rooms:["Rachel Francis","Lucy McClean","Evelyn Prime","Olamide Sanusi","Lily Karaceylan"]},"2027-01-26":{lead:"Hannah Hardy",rooms:["Laura Bland","Jimmy Chen","Rachel Francis","Naomi Ngobigha","Ishaan Paul"]},"2027-02-02":{lead:"Kit Smith",rooms:["Lucy McClean","Rebecca Newton","Martha Marjoram","Isla Topalli","Rachel Francis"]},"2027-02-09":{lead:"Hannah Hardy",rooms:["Shannon Beech","Evelyn Prime","Isla Topalli","Jimmy Chen","Naomi Ngobigha"]}};
+const rosterFor=d=>(S.rdb&&S.rdb[d])||ROSTER[d]||null;
+const teacherOf=(d,room)=>{const r=rosterFor(d);const i=TROOMS.indexOf(room);return r&&i>-1?r.rooms[i]:""};
+const S = { rdb:{},swaps:[],me:(function(){try{return localStorage.getItem('tueMe')||''}catch(e){return''}})(),sw:null,swe:null,user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",lastMsg:"",fusel:{},fumsg:{},ccl:null,co:{out:"",mgr:"",note:""},mi:{},nmsg:{},one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
 const $ = id => document.getElementById(id);
 const esc = v => (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const TS = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -188,6 +191,15 @@ function fillDates(){
 // ── actions ────────────────────────────────────────────────────
 async function upd(id,f){try{await db.collection("tuesday_nurses").doc(id).update(f)}catch(e){S.err="Could not save: "+e.message;render()}}
 function setSt(id,v){const n=S.nurses.find(x=>x.id===id);if(!n)return;if(n.auto&&v==="late"){upd(id,{auto:false,stBy:S.user.email||"",stAt:TS()});return}upd(id,{st:n.st===v?null:v,auto:false,stBy:S.user.email||"",stAt:TS()})}
+async function backfillEvening(){
+  const d=S.date,L=S.nurses.filter(n=>!n.st||!n.bls||!n.fa);S.bfAsk=false;S.err="";S.msg="Filling in the evening...";render();
+  try{
+    for(let i=0;i<L.length;i+=400){const b=db.batch();L.slice(i,i+400).forEach(n=>{const f={};if(!n.st){f.st="here";f.auto=false}f.stBy="backfill";f.stAt=TS();if(!n.st||n.st==="here"||n.st==="late"){if(!n.bls)f.bls="pass";if(!n.fa)f.fa="pass";if(!n.wb)f.wb=[];if(!n.wf)f.wf=[];f.resBy="backfill";f.resAt=TS()}b.update(db.collection("tuesday_nurses").doc(n.id),f)});await b.commit()}
+    const b2=db.batch();TROOMS.forEach(r=>{if(!S.rooms[r])b2.set(db.collection("tuesday_rooms").doc(d+"__"+r),{date:d,room:r,confirmed:true,by:"backfill",at:TS()})});await b2.commit();
+    S.msg="Done: "+L.length+" nurse"+(L.length===1?"":"s")+" marked Here and passed both parts, and every room confirmed."
+  }catch(e){S.msg="";S.err="Could not fill in the evening: "+(e.message||e)}
+  render()
+}
 async function confirmRoom(r){const on=!S.rooms[r];try{await db.collection("tuesday_rooms").doc(S.date+"__"+r).set({date:S.date,room:r,confirmed:on,by:S.user.email||"",at:TS()})}catch(e){S.err="Could not save: "+e.message;render()}}
 async function saveResult(id){const A=S.af[id];if(!A||!afOk(id))return;const mapO=(arr,t)=>arr.map(x=>x==="Other"?"Other: "+(t||"").trim():x);await upd(id,{bls:A.bls,fa:A.fa,wb:A.bls==="fail"?mapO(A.wb,A.wbt):[],wf:A.fa==="fail"?mapO(A.wf,A.wft):[],resBy:S.user.email||"",resAt:TS()});delete S.af[id]}
 async function redo(id){const n=S.nurses.find(x=>x.id===id);const un=a=>{let t="";const r=(a||[]).map(x=>{if(x.indexOf("Other: ")===0){t=x.slice(7);return"Other"}return x});return{r:r,t:t}};const b=un(n.wb),f=un(n.wf);S.af[id]={bls:n.bls,fa:n.fa,wb:b.r,wf:f.r,wbt:b.t,wft:f.t};await upd(id,{bls:null,fa:null,wb:[],wf:[]})}
@@ -305,11 +317,14 @@ function backupRows(){const r=[["Name","Email","Field","Year","Room","Register",
 // ── views ──────────────────────────────────────────────────────
 function chipFor(n){if(n.st==="here")return'<span class="chip ok">Here</span>';if(n.st==="late")return'<span class="chip warn">Late'+(n.auto?" (automatic)":"")+'</span>';if(n.st==="absent")return'<span class="chip bad">Absent</span>';return'<span class="chip">Not marked</span>'}
 function sbtn(n,v,l){return'<button class="sb '+v+(n.st===v&&!(v==="late"&&n.auto)?" on":"")+(v==="late"&&n.auto?" on":"")+'" data-a="st" data-id="'+n.id+'" data-v="'+v+'">'+l+'</button>'}
-function confStatus(){return'<div class="chs" style="margin:6px 0">'+TROOMS.map(r=>'<span class="chip '+(S.rooms[r]?"ok":"warn")+'">'+r+(S.rooms[r]?" confirmed":" not confirmed")+'</span>').join(" ")+'</div>'}
+function confStatus(){return'<div class="chs" style="margin:6px 0">'+TROOMS.map(r=>'<span class="chip '+(S.rooms[r]?"ok":"warn")+'">'+r+(teacherOf(S.date,r)&&!isTest()?" ("+esc(teacherOf(S.date,r))+")":"")+(S.rooms[r]?" confirmed":" not confirmed")+'</span>').join(" ")+'</div>'}
 function regView(){
   const G=[["nm","Not marked",n=>!n.st],["here","Here",n=>n.st==="here"],["late","Late",n=>n.st==="late"],["absent","Absent",n=>n.st==="absent"]];
   const uc=unconf().length,ro=S.og.rooms;let h='<div class="sect">Register: '+esc(niceDate(S.date))+'</div>';
   if(!S.nurses.length)return h+'<div class="hint">Nobody is booked on this evening yet. Use Add nurses.</div>';
+  if(S.staff&&!isTest()&&S.date<londonNow().date&&S.nurses.some(n=>!n.st||!n.bls||!n.fa)){
+    h+=S.bfAsk?'<div class="note" style="border:2px solid #e65100;background:#fff3e0"><b>Fill in this past evening?</b> Everyone not yet marked becomes Here, and anyone Here or Late without a result is marked as passed both parts. Absent stays Absent. Rooms are confirmed. Anything already marked stays as it is.<div class="bt"><button class="btn f" data-a="bfdo">Yes, fill it in</button><button class="btn" data-a="bfno">No, cancel</button></div></div>':'<div class="bt"><button class="btn" data-a="bfask">Past evening: mark everyone Here and passed</button></div>'
+  }
   h+='<button class="gh" data-a="gt" data-v="rooms"><span>Rooms confirmed by instructors</span><span class="chip '+(uc?"warn":"ok")+'">'+(TROOMS.length-uc)+' of '+TROOMS.length+'</span><i>'+(ro?"&#9662;":"&#9656;")+'</i></button>'+(ro?'<div class="gb">'+confStatus()+'</div>':"");
   G.forEach(g=>{const m=S.nurses.filter(g[2]);if(g[0]==="nm"&&!m.length)return;const o=S.og[g[0]];
     h+='<button class="gh" data-a="gt" data-v="'+g[0]+'"><span>'+g[1]+'</span><span class="chip '+(g[0]==="here"?"ok":g[0]==="absent"?"bad":g[0]==="late"?"warn":"")+'">'+m.length+'</span><i>'+(o?"&#9662;":"&#9656;")+'</i></button>';
@@ -329,8 +344,86 @@ function confCard(r){
   if(S.rooms[r])return'<div class="note" style="border-color:#2e7d32;background:#e8f5e9"><b>Register confirmed for '+r+'.</b> <button class="btn" data-a="conf" data-v="'+r+'">Reopen</button></div>';
   return'<div class="note" style="border:2px solid #e65100;background:#fff3e0"><b style="font-size:16px">To do: confirm the register for '+r+'</b><div style="margin:4px 0 8px">Do this at the end of your session. Check everyone is marked Here, Late or Absent.</div><button class="btn f" data-a="conf" data-v="'+r+'" '+(un?"disabled":"")+'>Register is complete</button>'+(un?'<div class="hint" style="margin-top:6px">'+un+' not marked yet.</div>':"")+'</div>'
 }
+
+// ── teaching shifts: roster, swaps, cover checks ──────────────
+function startRoster(){
+  try{db.collection("tuesday_roster").onSnapshot(q=>{S.rdb={};q.forEach(d=>{const x=d.data();if(x&&Array.isArray(x.rooms))S.rdb[d.id]={lead:x.lead||(ROSTER[d.id]||{}).lead||"",rooms:x.rooms}});render()},e=>{})}catch(e){}
+  try{db.collection("tuesday_swaps").onSnapshot(q=>{S.swaps=q.docs.map(d=>Object.assign({id:d.id},d.data())).sort((a,b)=>String(b.createdMs||0).localeCompare(String(a.createdMs||0),undefined,{numeric:true}));render()},e=>{})}catch(e){}
+}
+const allTeachers=()=>{const o={};Object.keys(ROSTER).forEach(d=>rosterFor(d).rooms.forEach(n=>o[n]=1));Object.keys(S.rdb).forEach(d=>S.rdb[d].rooms.forEach(n=>{if(n)o[n]=1}));return Object.keys(o).sort()};
+const allRosterDates=()=>{const o={};Object.keys(ROSTER).forEach(d=>o[d]=1);Object.keys(S.rdb).forEach(d=>o[d]=1);return Object.keys(o).sort()};
+function canChange(date){if(S.staff&&S.view!=="instr")return true;const t=londonNow(),db1=isoAdd(date,-1);return t.date<db1||(t.date===db1&&t.min<1080)}
+const teachesOn=(name,date)=>{const r=rosterFor(date);return r?r.rooms.indexOf(name):-1};
+function coverProblems(rooms){const pr=[];rooms.forEach((n,i)=>{if(!n||!String(n).trim())pr.push(TROOMS[i]+" has no teacher")});const seen={};rooms.forEach((n,i)=>{if(!n)return;if(seen[n]!==undefined)pr.push(n+" is in "+TROOMS[seen[n]]+" and "+TROOMS[i]);else seen[n]=i});return pr}
+function allProblems(){const o=[];const today=londonNow().date;allRosterDates().forEach(d=>{if(d<today)return;const r=rosterFor(d);coverProblems(r.rooms).forEach(x=>o.push(niceDate(d)+": "+x))});return o}
+const swapStale=sw=>{ // is the request still valid against the current roster?
+  if(sw.status!=="pending")return false;const a=rosterFor(sw.date);if(!a||a.rooms[TROOMS.indexOf(sw.room)]!==sw.fromName)return true;
+  if(sw.type==="swap"){const b=rosterFor(sw.toDate);if(!b||b.rooms[TROOMS.indexOf(sw.toRoom)]!==sw.toName)return true;if(teachesOn(sw.toName,sw.date)>-1||teachesOn(sw.fromName,sw.toDate)>-1)return true}
+  else if(teachesOn(sw.toName,sw.date)>-1)return true;
+  return false};
+async function saveRoster(date,rooms,lead,extra){const ref=db.collection("tuesday_roster").doc(date);return ref.set({date:date,lead:lead,rooms:rooms,updatedBy:S.user.email||"",updatedAt:TS()})}
+async function requestSwap(opt){
+  const a=rosterFor(S.sw.date);const sw={date:S.sw.date,room:S.sw.room,fromName:S.me,fromEmail:S.user.email||"",type:opt.type,toName:opt.toName,toDate:opt.toDate||"",toRoom:opt.toRoom||"",status:"pending",createdBy:S.user.email||"",createdMs:Date.now(),createdAt:TS()};
+  if(S.sw.date<=londonNow().date&&!S.staff){S.err="That night has passed.";render();return}
+  try{await db.collection("tuesday_swaps").add(sw);S.msg="Request sent to "+opt.toName+". Nothing changes until they accept.";S.sw=null}catch(e){S.err="Could not send: "+(e.message||e)}
+  render()}
+async function decideSwap(id,ok){
+  const sw=S.swaps.find(x=>x.id===id);if(!sw)return;S.err="";
+  try{
+    if(!ok){await db.collection("tuesday_swaps").doc(id).update({status:"declined",decidedBy:S.user.email||"",decidedAt:TS()});S.msg="Declined.";render();return}
+    if(swapStale(sw)){S.err="The roster has changed, so this request is no longer valid. Ask for a new one.";render();return}
+    if(!canChange(sw.date)||(sw.type==="swap"&&!canChange(sw.toDate))){S.err="Swaps close 24 hours before a night. Ask RMD faculty to make this change.";render();return}
+    const a=rosterFor(sw.date),ai=TROOMS.indexOf(sw.room),ra=a.rooms.slice();ra[ai]=sw.toName;
+    let rb=null,b=null;
+    if(sw.type==="swap"){b=rosterFor(sw.toDate);const bi=TROOMS.indexOf(sw.toRoom);rb=b.rooms.slice();rb[bi]=sw.fromName}
+    const bad=coverProblems(ra).concat(rb?coverProblems(rb):[]);
+    if(bad.length){S.err="Not allowed, it would leave cover wrong: "+bad.join("; ");render();return}
+    const batch=db.batch(),prev={};prev[sw.date]=a.rooms.slice();if(rb)prev[sw.toDate]=b.rooms.slice();
+    batch.set(db.collection("tuesday_roster").doc(sw.date),{date:sw.date,lead:a.lead,rooms:ra,updatedBy:S.user.email||"",updatedAt:TS()});
+    if(rb)batch.set(db.collection("tuesday_roster").doc(sw.toDate),{date:sw.toDate,lead:b.lead,rooms:rb,updatedBy:S.user.email||"",updatedAt:TS()});
+    batch.update(db.collection("tuesday_swaps").doc(id),{status:"accepted",decidedBy:S.user.email||"",decidedAt:TS(),prev:prev});
+    await batch.commit();S.msg="Done. The roster is updated."
+  }catch(e){S.err="Could not save: "+(e.message||e)}
+  render()}
+async function cancelSwap(id){try{await db.collection("tuesday_swaps").doc(id).update({status:"cancelled",decidedBy:S.user.email||"",decidedAt:TS()});S.msg="Request cancelled."}catch(e){S.err="Could not cancel: "+(e.message||e)}render()}
+async function undoSwap(id){const sw=S.swaps.find(x=>x.id===id);if(!sw||!sw.prev)return;try{const batch=db.batch();Object.keys(sw.prev).forEach(d=>{batch.set(db.collection("tuesday_roster").doc(d),{date:d,lead:rosterFor(d).lead,rooms:sw.prev[d],updatedBy:S.user.email||"",updatedAt:TS()})});batch.update(db.collection("tuesday_swaps").doc(id),{status:"undone",decidedBy:S.user.email||"",decidedAt:TS()});await batch.commit();S.msg="Swap undone."}catch(e){S.err="Could not undo: "+(e.message||e)}render()}
+async function saveEdit(){const d=S.swe.date,rooms=TROOMS.map((r,i)=>(S.swe.rooms[i]||"").trim());const bad=coverProblems(rooms);if(bad.length){S.err="Fix first: "+bad.join("; ");render();return}
+  try{await saveRoster(d,rooms,S.swe.lead,null);S.msg="Roster saved for "+niceDate(d)+".";S.swe=null}catch(e){S.err="Could not save: "+(e.message||e)}render()}
+function shiftsView(){
+  const today=londonNow().date,names=allTeachers();let h='';
+  const pr=allProblems();
+  h+=pr.length?'<div class="note" style="border:2px solid #b3261e;background:#fdecea"><b>Cover problem</b>'+pr.map(x=>'<div class="hl">'+esc(x)+'</div>').join("")+'</div>':'<div class="hint" style="margin-bottom:8px">Cover check: every room has one teacher on every night.</div>';
+  h+='<div class="sect">Who are you?</div>'+(S.me?'<div class="hint">You are <b>'+esc(S.me)+'</b>. <button class="btn" data-a="meclr">Not me</button></div>':'<div class="hint">Tap your name.</div><div class="chs">'+names.map(n=>'<button class="ch" data-a="meset" data-v="'+esc(n)+'">'+esc(n)+'</button>').join("")+'</div>');
+  if(S.me){
+    const inbox=S.swaps.filter(x=>x.status==="pending"&&x.toName===S.me),mine=S.swaps.filter(x=>x.fromName===S.me&&x.status==="pending");
+    if(inbox.length){h+='<div class="sect">Waiting for you</div>';inbox.forEach(x=>{const stale=swapStale(x);h+='<div class="cand"><b>'+esc(x.fromName)+'</b> asks '+(x.type==="swap"?'to swap: you take <b>'+esc(niceDate(x.date))+', '+esc(x.room)+'</b> and they take <b>'+esc(niceDate(x.toDate))+', '+esc(x.toRoom)+'</b>.':'you to take <b>'+esc(niceDate(x.date))+', '+esc(x.room)+'</b>.')+(stale?'<div class="hint">No longer valid, the roster has changed.</div>':"")+'<div class="bt">'+(stale?"":'<button class="btn f" data-a="swok" data-id="'+x.id+'">Accept</button>')+'<button class="btn" data-a="swno" data-id="'+x.id+'">Decline</button></div></div>'})}
+    if(mine.length){h+='<div class="sect">Your requests</div>';mine.forEach(x=>{h+='<div class="cand">'+esc(niceDate(x.date))+', '+esc(x.room)+' - '+(x.type==="swap"?'swap with ':'hand over to ')+'<b>'+esc(x.toName)+'</b>'+(x.type==="swap"?' ('+esc(niceDate(x.toDate))+')':"")+'. Waiting for them. <button class="btn" data-a="swcx" data-id="'+x.id+'">Cancel</button></div>'})}
+    h+='<div class="sect">Your nights</div>';
+    const mineN=allRosterDates().filter(d=>d>=today&&teachesOn(S.me,d)>-1);
+    if(!mineN.length)h+='<div class="hint">No upcoming nights for you.</div>';
+    mineN.forEach(d=>{const room=TROOMS[teachesOn(S.me,d)],ok=canChange(d),open=S.sw&&S.sw.date===d;
+      h+='<div class="cand"><div class="nm"><span><b>'+esc(niceDate(d))+'</b><small>'+room+' - lead '+esc(rosterFor(d).lead)+'</small></span>'+(ok?'<button class="btn" data-a="swopen" data-v="'+d+'">Can\'t make it</button>':'<span class="chip warn">Closed, ask RMD faculty</span>')+'</div>';
+      if(open){
+        const free=names.filter(n=>n!==S.me&&teachesOn(n,d)===-1);
+        const swaps=[];allRosterDates().filter(x=>x>today&&x!==d&&canChange(x)).forEach(x=>{rosterFor(x).rooms.forEach((n,i)=>{if(n&&n!==S.me&&teachesOn(n,d)===-1&&teachesOn(S.me,x)===-1)swaps.push({n:n,d:x,r:TROOMS[i]})})});
+        h+='<div class="asbox"><div class="asttl">Swap with someone who teaches another night (you take theirs)</div>'+(swaps.length?swaps.map(o=>'<button class="btn" style="margin:3px" data-a="swpick" data-v="swap|'+esc(o.n)+'|'+o.d+'|'+o.r+'">'+esc(o.n)+' - '+esc(niceDate(o.d))+', '+o.r+'</button>').join(""):'<div class="hint">No swaps available.</div>')+'<div class="asttl" style="margin-top:8px">Or ask someone free that night to take it</div>'+(free.length?free.map(n=>'<button class="btn" style="margin:3px" data-a="swpick" data-v="hand|'+esc(n)+'">'+esc(n)+'</button>').join(""):'<div class="hint">Nobody is free.</div>')+'<div class="hint" style="margin-top:6px">Nothing changes until they accept. You stay on the rota until then.</div></div>'}
+      h+='</div>'});
+  }
+  const done=S.swaps.filter(x=>x.status==="accepted").slice(0,6);
+  if(done.length)h+='<div class="sect">Recent changes</div>'+done.map(x=>'<div class="hl">'+esc(x.fromName)+(x.type==="swap"?' and '+esc(x.toName)+' swapped ('+esc(niceDate(x.date))+' / '+esc(niceDate(x.toDate))+')':' handed '+esc(niceDate(x.date))+' '+esc(x.room)+' to '+esc(x.toName))+(S.staff&&x.prev?' <button class="btn" data-a="swundo" data-id="'+x.id+'">Undo</button>':"")+'</div>').join("");
+  if(S.staff&&S.view!=="instr"){
+    h+='<div class="sect">RMD faculty: edit a night</div><div class="chs">'+allRosterDates().filter(d=>d>=today).map(d=>'<button class="ch'+(S.swe&&S.swe.date===d?" on":"")+'" data-a="sweopen" data-v="'+d+'">'+esc(niceDate(d).replace(/ 20\d\d$/,""))+'</button>').join("")+'</div>';
+    if(S.swe){const r=S.swe;h+='<div class="asbox"><div class="asttl">'+esc(niceDate(r.date))+'</div><label class="hint">RMD faculty lead <input id="swe_lead" value="'+esc(r.lead)+'"></label>'+TROOMS.map((g,i)=>'<div class="hl"><b>'+g+'</b> <input id="swe_'+i+'" list="tnames" value="'+esc(r.rooms[i]||"")+'"></div>').join("")+'<datalist id="tnames">'+names.map(n=>'<option value="'+esc(n)+'">').join("")+'</datalist><div class="bt"><button class="btn f" data-a="swesave">Save</button><button class="btn" data-a="swecx">Close</button></div><div class="hint">Needs exactly one teacher per room and nobody in two rooms.</div></div>'}
+  }
+  h+='<div class="hint" style="margin-top:10px">Rules: always one teacher per room. A swap only happens when the other person accepts. Changes close 24 hours before a night, after that ask RMD faculty.</div>';
+  return h}
+function nightStrip(){
+  const r=rosterFor(S.date);if(!r||isTest())return"";
+  return'<div class="note" style="margin:0 0 10px"><b>RMD faculty lead tonight: '+esc(r.lead)+'</b><details style="margin-top:4px"><summary style="cursor:pointer;font-weight:700">Teachers by room</summary>'+TROOMS.map((g,i)=>'<div class="hl"><b>'+g+'</b> '+esc(r.rooms[i])+'</div>').join("")+'</details></div>'
+}
 function roomView(){
   let h='<div class="sect">Your room</div><div class="chs">'+TROOMS.map(g=>'<button class="ch'+(S.room===g?" on":"")+'" data-a="grp" data-v="'+g+'">'+g+'</button>').join("")+'</div>';
+  if(teacherOf(S.date,S.room)&&!isTest())h+='<div class="hint" style="margin:6px 0">Teacher in '+esc(S.room)+': <b>'+esc(teacherOf(S.date,S.room))+'</b></div>';
   h+=confCard(S.room);
   h+='<div class="note"><b>How to assess:</b> anyone not marked by 19:30 shows as Late. Mark each nurse Here, Late or Absent. Then tap Pass or Fail for BLS and AED, and for first aid. On a Fail, tap what went wrong, then Save result.</div>';
   const L=roomList(S.room);if(!L.length)h+='<div class="hint">Nobody in this room tonight.</div>';
@@ -424,43 +517,32 @@ function cohortView(){
   return h
 }
 const notPassed=n=>n.bls&&n.fa&&!(n.bls==="pass"&&n.fa==="pass");
+const isLastEve=()=>!isTest()&&runEvenings().filter(d=>d>S.date).length===0;
+const noShowLast=n=>isLastEve()&&n.st==="absent";
+const needsFu=n=>notPassed(n)||noShowLast(n);
+async function fuMessageAbsent(n){
+  const h=await nurseHistory(n);
+  return "Subject: BLS refresher - student did not attend, no further date\n\nDear nursing school lead,\n\n"+nurseName(n)+(n.email?" ("+n.email+")":"")+(n.field?", "+n.field:"")+(n.year?", "+n.year:"")+" did not attend the BLS refresher on "+niceDate(S.date)+", the last evening of the series. There is no later evening to move them to.\n\nEvenings allocated:\n"+h.map(x=>"- "+x).join("\n")+"\n\nThis is rare, so we are letting you know so that the nursing school can deal with the student on a case-by-case basis. Please tell us if you need any more detail.\n\nKind regards,\nRMD Birmingham"
+}
 function fuMessage(n,sel){
   const parts=[];if(n.bls==="fail")parts.push("BLS and AED: "+((n.wb||[]).join(", ")||"no reason recorded"));if(n.fa==="fail")parts.push("First aid: "+((n.wf||[]).join(", ")||"no reason recorded"));
   const cons=S.concerns.filter(c=>c.nurseId===n.id&&sel.indexOf(c.id)>-1);
-  return "Subject: BLS refresher - student not passed - please advise the next step\n\nDear nursing school lead,\n\n"+nurseName(n)+(n.email?" ("+n.email+")":"")+(n.field?", "+n.field:"")+(n.year?", "+n.year:"")+" did not pass the BLS refresher on "+niceDate(S.date)+".\n\nWhat went wrong:\n"+parts.map(x=>"- "+x).join("\n")+(cons.length?"\n\nOther concerns raised on the evening:\n"+cons.map(c=>"- "+(c.topics||[]).join(", ")+(c.text?": "+c.text:"")).join("\n"):"")+"\n\nPlease advise which you would prefer:\n1. The student attends a second BLS refresher evening with us.\n2. The student receives further teaching through the nursing school.\n\nThe best choice may depend on why they did not pass and on any other concerns.\n\nKind regards,\nRMD Birmingham"
+  return "Subject: BLS refresher - student did not pass\n\nDear nursing school lead,\n\n"+nurseName(n)+(n.email?" ("+n.email+")":"")+(n.field?", "+n.field:"")+(n.year?", "+n.year:"")+" did not pass the BLS refresher on "+niceDate(S.date)+".\n\nWhat went wrong:\n"+parts.map(x=>"- "+x).join("\n")+(cons.length?"\n\nOther concerns raised on the evening:\n"+cons.map(c=>"- "+(c.topics||[]).join(", ")+(c.text?": "+c.text:"")).join("\n"):"")+"\n\nThis is rare, so we are letting you know so that the nursing school can deal with the student on a case-by-case basis. Please tell us if you need any more detail.\n\nKind regards,\nRMD Birmingham"
 }
 async function fuSet(id,f){await upd(id,{fu:f})}
-async function bookSecond(id,date){
-  const n=S.nurses.find(x=>x.id===id);if(!n)return;
-  const per=await openFor(date);const open=TROOMS.filter(r=>per[r]<PER_ROOM);
-  if(!open.length){S.err="No space on "+niceDate(date)+".";render();return}
-  const room=open[Math.floor(Math.random()*open.length)];
-  try{
-    const hist=((n.history||[]).concat([{date:S.date,room:n.room,outcome:"not passed"}]));
-    await db.collection("tuesday_nurses").add({date:date,room:room,last:n.last,first:n.first,email:n.email||"",field:n.field||"",year:n.year||"",st:null,secondCourse:true,history:hist,createdAt:TS(),createdBy:S.user.email||""});
-    await upd(id,{fu:Object.assign({},n.fu||{},{state:"second",adviceAt:Date.now(),secondDate:date,secondRoom:room,by:S.user.email||""})});
-    S.msg=nurseName(n)+" booked on "+niceDate(date)+", room "+room+"."
-  }catch(e){S.err="Could not book: "+(e.message||e)}
-  S.fuev=null;render()
-}
 function fuView(){
-  const L=S.nurses.filter(notPassed);let h='<div class="sect">Students who did not pass</div><div class="hint">Tell the nursing school, then record what they advise: a second course with us, or further teaching through the nursing school.</div>';
-  if(!L.length)return h+'<div class="hint" style="margin-top:8px">Nobody has not passed on this evening.</div>';
+  const L=S.nurses.filter(needsFu);let h='<div class="sect">Students who did not pass or did not attend</div><div class="hint">This is rare. Tell the nursing school, who deal with the student case by case.'+(isLastEve()?' This is the last evening, so anyone absent tonight appears here too.':'')+'</div>';
+  if(!L.length)return h+'<div class="hint" style="margin-top:8px">Nobody needs a follow-up on this evening.</div>';
   L.forEach(n=>{
     const fu=n.fu||{},cons=S.concerns.filter(c=>c.nurseId===n.id),sel=S.fusel[n.id]||[],later=runEvenings().filter(d=>d>(isTest()?londonNow().date:S.date));
-    const stChip=!fu.state?'<span class="chip warn">School not told yet</span>':fu.state==="informed"?'<span class="chip warn">Waiting for the school\'s advice</span>':fu.state==="second"?'<span class="chip ok">Second course booked</span>':'<span class="chip ok">School will teach</span>';
-    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.email||"no email yet")+(n.year?" - "+esc(n.year):"")+'</small></span>'+stChip+'</div><div class="hint" style="margin-top:6px">'+esc(wording(n))+(weak(n)?': '+esc(weak(n)):"")+'</div>';
+    const stChip=!fu.state?'<span class="chip warn">School not told yet</span>':'<span class="chip ok">School informed</span>';
+    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.email||"no email yet")+(n.year?" - "+esc(n.year):"")+'</small></span>'+stChip+'</div><div class="hint" style="margin-top:6px">'+(noShowLast(n)?'Did not attend, and there is no later evening to move to':esc(wording(n))+(weak(n)?': '+esc(weak(n)):""))+'</div>';
     if(!fu.state){
       if(cons.length)h+='<div class="hint" style="margin-top:8px">Concerns raised for this student. Tick any you want the school to see:</div>'+cons.map(c=>'<label style="display:block;padding:3px 0"><input type="checkbox" data-a="fucon" data-id="'+n.id+'" data-v="'+c.id+'"'+(sel.indexOf(c.id)>-1?" checked":"")+'> '+esc((c.topics||[]).join(", "))+(c.text?": "+esc(c.text):"")+'</label>').join("");
       h+='<div class="bt"><button class="btn f" data-a="fuprep" data-id="'+n.id+'">Prepare message to the nursing school</button></div>';
       if(S.fumsg[n.id])h+='<textarea class="nt" id="fm_'+n.id+'" rows="16" style="margin-top:8px">'+esc(S.fumsg[n.id])+'</textarea><div class="bt"><button class="btn" data-a="fucopy" data-id="'+n.id+'">Copy message</button><button class="btn f" data-a="fusent" data-id="'+n.id+'">I have sent it</button></div><div class="hint" style="margin-top:6px">Copy it into an email to the nursing school lead, send it, then tap I have sent it.</div>';
-    }else if(fu.state==="informed"){
-      h+='<div class="hint" style="margin-top:6px">School told on '+esc(new Date(fu.informedAt).toLocaleDateString("en-GB"))+'. Record their advice:</div><div class="bt"><button class="btn" data-a="fusecond" data-id="'+n.id+'">School says: second course</button><button class="btn" data-a="fuschool" data-id="'+n.id+'">School says: they will teach further</button></div>';
-      if(S.fuev===n.id)h+='<div class="asbox"><div class="asttl">Book the second course on</div>'+(later.map(d=>'<button class="btn" style="margin:3px" data-a="fubook" data-id="'+n.id+'" data-v="'+d+'">'+esc(niceDate(d))+'</button>').join("")||'<div class="hint">No later evening is set to run.</div>')+'</div>';
-    }else if(fu.state==="second"){
-      h+='<div class="hint" style="margin-top:6px">Booked on '+esc(niceDate(fu.secondDate||""))+(fu.secondRoom?", room "+esc(fu.secondRoom):"")+'.</div>';
     }else{
-      h+='<div class="hint" style="margin-top:6px">The nursing school will provide further teaching.</div>';
+      h+='<div class="hint" style="margin-top:6px">School told on '+esc(new Date(fu.informedAt||Date.now()).toLocaleDateString("en-GB"))+'. They deal with the student case by case.</div>';
     }
     h+='</div>'});
   return h
@@ -501,6 +583,7 @@ const JOBS=[
  {id:"end",t:"End of night",sub:"Checks and results backup",door:"tonight"},
  {id:"eve",t:"Which Tuesdays run",sub:"Set the year and confirm the evenings",door:"plan"},
  {id:"cohort",t:"Add nurses and rooms",sub:"Paste the list, then check it",door:"plan"},
+ {id:"shifts",t:"Teaching shifts",sub:"Swap a night, check cover",door:"plan",all:true},
  {id:"fu",t:"Not passed follow-up",sub:"Tell the school, then record their advice",door:"plan"},
  {id:"school",t:"Nursing school sheet",sub:"Who attended, results, did not attend",door:"plan"},
  {id:"test",t:"Test evening",sub:"Try it alone with made-up nurses",door:"plan"},
@@ -509,8 +592,8 @@ const JOBS=[
  {id:"hand",t:"Resources",sub:"Guides on the RMD site",door:"help",all:true}
 ];
 const DOORS=[["tonight","Tonight","Register, assess, results"],["plan","Planning","Dates, nurses, nursing school"],["help","Screens and help","Big screens, resources"]];
-const VIEWS={room:roomView,reg:regView,move:moveView,res:resView,con:conView,end:endView,eve:eveView,cohort:cohortView,school:schoolView,fu:fuView,tt:ttView,test:testView,hand:handView};
-const TITLES={room:"Assess a room",reg:"Register",move:"Needs another date",res:"Results",con:"Concerns",tt:"Live timetable",end:"End of night",eve:"Which Tuesdays run",cohort:"Add nurses and rooms",school:"Nursing school sheet",fu:"Not passed follow-up",test:"Test evening",hand:"Resources"};
+const VIEWS={shifts:shiftsView,room:roomView,reg:regView,move:moveView,res:resView,con:conView,end:endView,eve:eveView,cohort:cohortView,school:schoolView,fu:fuView,tt:ttView,test:testView,hand:handView};
+const TITLES={shifts:"Teaching shifts",room:"Assess a room",reg:"Register",move:"Needs another date",res:"Results",con:"Concerns",tt:"Live timetable",end:"End of night",eve:"Which Tuesdays run",cohort:"Add nurses and rooms",school:"Nursing school sheet",fu:"Not passed follow-up",test:"Test evening",hand:"Resources"};
 const instrMode=()=>!S.staff||S.view==="instr";
 function visibleJobs(){
   if(instrMode())return JOBS.filter(j=>j.all);
@@ -525,7 +608,7 @@ function render(){
   // doors
   $("doorBar").innerHTML=(S.staff&&!instrMode())?DOORS.map(d=>'<button class="'+(S.door===d[0]?"on":"")+((d[0]==="tonight"&&open)?" alert":"")+'" data-a="door" data-v="'+d[0]+'">'+d[1]+'<small>'+d[2]+(d[0]==="tonight"&&open?" - concerns waiting":"")+'</small></button>').join("")+'<button class="all" data-a="door" data-v="all">All jobs</button>':"";
   const doorT=instrMode()?"Tonight":(S.door==="all"?"All jobs":(DOORS.find(d=>d[0]===S.door)||DOORS[0])[1]);
-  $("roleBar").innerHTML='<div class="rolebar"><span><b>'+doorT+'</b> &middot; '+(instrMode()?"Instructor":"RMD faculty")+'</span>'+(S.staff?'<button class="chg" data-a="chg">Change role</button>':"")+'</div>';
+  $("roleBar").innerHTML='<div class="rolebar"><span><b>'+doorT+'</b> &middot; '+(instrMode()?"Instructor":"RMD faculty")+'</span>'+(S.staff?'<button class="chg" data-a="chg">Change role</button>':"")+'</div>'+nightStrip();
   // tiles
   $("sum").innerHTML=instrMode()?(()=>{const L=roomList(S.room),n={e:L.length,h:0,l:0,x:0,a:0};L.forEach(q=>{if(q.st==="here")n.h++;else if(q.st==="late")n.l++;else if(!q.st)n.x++;if(q.bls&&q.fa)n.a++});return tileHtml(n.e,S.room+" expected")+tileHtml(n.h,"Here","good")+tileHtml(n.l,"Late")+tileHtml(n.x,"Not marked",n.x?"warn":"")+tileHtml(n.a,"Assessed")})():tileHtml(c.exp,"Expected")+tileHtml(c.here,"Here","good")+tileHtml(c.late,"Late")+tileHtml(c.not,"Not marked",c.not?"warn":"")+tileHtml(c.abs,"Absent",c.abs?"warn":"")+tileHtml(c.as,"Assessed")+tileHtml(c.pass,"Passed both parts","good");
   // find a nurse
@@ -537,7 +620,7 @@ function render(){
   $("steps").innerHTML=jobs.map(j=>{k++;let badge="",cls="";
     if(j.id==="reg"&&unconf().length&&S.nurses.length)badge='<span class="pbadge w">'+unconf().length+'</span>';
     if(j.id==="move"&&c.abs){badge='<span class="pbadge w">'+c.abs+'</span>'}
-    if(j.id==="fu"){const nfu=S.nurses.filter(n=>n.bls&&n.fa&&!(n.bls==="pass"&&n.fa==="pass")&&!n.fu).length;if(nfu)badge='<span class="pbadge w">'+nfu+'</span>'}
+    if(j.id==="fu"){const nfu=S.nurses.filter(n=>needsFu(n)&&!n.fu).length;if(nfu)badge='<span class="pbadge w">'+nfu+'</span>'}
     if(j.id==="con"&&open){badge='<span class="pbadge">'+open+'</span>';cls=" alert"}
     if(j.href)return'<a class="stepcard link" href="'+j.href+(S.date?"&date="+encodeURIComponent(S.date):"")+'" target="_blank"><span class="no">'+k+'</span><span><b>'+esc(j.t)+' &#8599;</b><small>'+esc(j.sub)+'</small></span></a>';
     return'<button class="stepcard'+(S.sub===j.id?" on":"")+cls+'" data-a="go" data-v="'+j.id+'"><span class="no">'+k+'</span><span><b>'+esc(j.t)+badge+'</b><small>'+esc(j.sub)+'</small></span></button>'}).join("");
@@ -587,17 +670,28 @@ document.addEventListener("click",e=>{
   else if(a==="addp"){addParsed();return}
   else if(a==="dedupe"){dedupe();return}
   else if(a==="fucon"){const sl=S.fusel[id]||(S.fusel[id]=[]);const i=sl.indexOf(v);if(i>-1)sl.splice(i,1);else sl.push(v);return}
-  else if(a==="fuprep"){const n=S.nurses.find(x=>x.id===id);if(n)S.fumsg[id]=fuMessage(n,S.fusel[id]||[])}
+  else if(a==="fuprep"){const n=S.nurses.find(x=>x.id===id);if(n){if(noShowLast(n)){S.msg="Preparing the message...";render();fuMessageAbsent(n).then(m=>{S.fumsg[id]=m;S.msg="";render()}).catch(e=>{S.msg="";S.err="Could not prepare the message: "+(e.message||e);render()});return}S.fumsg[id]=fuMessage(n,S.fusel[id]||[])}}
   else if(a==="fucopy"){const ta=$("fm_"+id);if(ta){ta.select();try{navigator.clipboard.writeText(ta.value)}catch(e){document.execCommand("copy")}S.msg="Message copied."}}
   else if(a==="fusent"){fuSet(id,{state:"informed",informedAt:Date.now(),informedBy:S.user.email||""});delete S.fumsg[id];S.msg="Recorded as sent to the nursing school."}
-  else if(a==="fusecond"){S.fuev=S.fuev===id?null:id}
-  else if(a==="fubook"){bookSecond(id,v);return}
-  else if(a==="fuschool"){const n=S.nurses.find(x=>x.id===id);fuSet(id,Object.assign({},(n&&n.fu)||{},{state:"school",adviceAt:Date.now(),by:S.user.email||""}));S.msg="Recorded: the nursing school will provide further teaching."}
   else if(a==="mvask"){S.mc={id:id,date:v};S.mv=null}
   else if(a==="mvno"){S.mc=null}
   else if(a==="oneadd"){const o=S.one;const line=[isoToDmy(o.date),o.room,o.last.trim(),o.first.trim(),o.email.trim(),o.field,o.year].join(", ");S.paste=(S.paste.trim()?S.paste.replace(/\s+$/,"")+"\n":"")+line;S.one.last="";S.one.first="";S.one.email="";S.one.field="";S.one.year="";S.msg="Added to the list below. Press Parse & preview when you have added everyone."}
   else if(a==="oneclear"){S.one={date:S.one.date,room:S.one.room,last:"",first:"",email:"",field:"",year:""}}
   else if(a==="seed"){seedTest();return}
+  else if(a==="meset"){S.me=v;try{localStorage.setItem("tueMe",v)}catch(e){}}
+  else if(a==="meclr"){S.me="";try{localStorage.removeItem("tueMe")}catch(e){}}
+  else if(a==="swopen"){S.sw=S.sw&&S.sw.date===v?null:{date:v,room:TROOMS[teachesOn(S.me,v)]}}
+  else if(a==="swpick"){const q=v.split("|");requestSwap(q[0]==="swap"?{type:"swap",toName:q[1],toDate:q[2],toRoom:q[3]}:{type:"hand",toName:q[1]});return}
+  else if(a==="swok"){decideSwap(id,true);return}
+  else if(a==="swno"){decideSwap(id,false);return}
+  else if(a==="swcx"){cancelSwap(id);return}
+  else if(a==="swundo"){undoSwap(id);return}
+  else if(a==="sweopen"){const r=rosterFor(v);S.swe={date:v,lead:r.lead,rooms:r.rooms.slice()}}
+  else if(a==="swecx"){S.swe=null}
+  else if(a==="swesave"){S.swe.lead=$("swe_lead").value.trim();S.swe.rooms=TROOMS.map((g,i)=>$("swe_"+i).value);saveEdit();return}
+  else if(a==="bfask"){S.bfAsk=true}
+  else if(a==="bfno"){S.bfAsk=false}
+  else if(a==="bfdo"){backfillEvening();return}
   else if(a==="dl")dlFile(toCsv(backupRows()),"RMD refresher - "+S.date+" - results backup.csv");
   else if(a==="dls"){if(!isTest()&&schoolReady().ok)dlFile(toCsv(schoolRows()),"RMD basic life support refresher - "+niceDate(S.date)+" - nursing.csv")}
   render();
@@ -610,9 +704,12 @@ auth.onAuthStateChanged(async user=>{
     const role=await resolveRole(user.uid,user.email||"");
     const stu=await isStudentFaculty(user.email||"").catch(()=>false),sen=await isSeniorFaculty(user.email||"").catch(()=>false);
     S.staff=role===ROLES.DIRECTOR||stu||sen;S.role=role;
-    if(!(S.staff||role===ROLES.ASSESSOR)){$("authMsg").textContent="The Tuesday hub is for RMD faculty, assessors and Senior Instructors. If you should have access, ask the Course Director.";return}
+    let teach=role===ROLES.ASSESSOR;
+    if(!S.staff&&!teach){try{const st=await resolveAxisAStanding(user.uid,user.email||"");teach=!!(st&&st.standing==="senior-instructor")}catch(e){}}
+    if(!(S.staff||teach)){$("authMsg").textContent="The Tuesday hub is for RMD faculty, assessors and Senior Instructors. If you should have access, ask the Course Director.";return}
     
     await loadCfg();
+    startRoster();
     $("gate").classList.add("hidden");$("app").classList.remove("hidden");
     S.sub=S.staff?"reg":"room";
     fillDates();
