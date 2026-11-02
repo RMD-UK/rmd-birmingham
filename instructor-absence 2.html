@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Absence notice — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #f0f3f6; font-family: var(--font); margin: 0; padding: 0 0 60px; color: var(--rmd-text); }
+    .top-bar { background: var(--rmd-navy); color: white; padding: 10px 14px; display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.3); }
+    .top-bar img { height: 32px; border-radius: 50%; background: white; }
+    .top-bar-title { flex: 1; font-size: 15px; font-weight: 700; line-height: 1.2; }
+    .top-bar-sub { font-size: 11px; font-weight: 400; opacity: 0.7; display: block; }
+    .top-bar-back { background: none; border: 1px solid rgba(255,255,255,0.35); color: white; font-size: 12px; font-family: var(--font); padding: 5px 10px; border-radius: 6px; text-decoration: none; }
+    .wrap { max-width: 600px; margin: 0 auto; padding: 18px 14px 0; }
+    .intro { background: #FFF6E5; border: 1px solid #F0C36D; border-radius: 12px; padding: 12px 14px; font-size: 14px; line-height: 1.5; margin-bottom: 14px; }
+    .intro b { color: #7a4b00; }
+    .card { background: white; border: 1px solid #e2e8ed; border-radius: 10px; padding: 16px 16px 18px; margin-bottom: 16px; }
+    .card h2 { font-size: 15px; font-weight: 800; color: var(--rmd-navy); margin: 0 0 10px; }
+    label.l { display: block; font-size: 13px; font-weight: 700; margin: 14px 0 5px; }
+    label.l:first-of-type { margin-top: 0; }
+    label.l .req { color: #b7410e; }
+    input[type=text], input[type=email], input[type=number], input[type=date], textarea { width: 100%; font: 15px var(--font); padding: 9px 10px; border: 1px solid #cfd8e0; border-radius: 8px; background: #fff; }
+    textarea { min-height: 84px; resize: vertical; }
+    .hint { font-size: 12px; color: var(--rmd-muted); margin: 4px 0 0; line-height: 1.4; }
+    .opts { display: flex; flex-wrap: wrap; gap: 8px; }
+    .opt { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid #cfd8e0; border-radius: 8px; font-size: 14px; cursor: pointer; background: #fff; }
+    .opt input { margin: 0; }
+    .opt.on { border-color: var(--rmd-navy); background: #efe9f8; }
+    .nights { display: grid; gap: 8px; }
+    .course-h { font-size: 12px; font-weight: 800; color: var(--rmd-muted); text-transform: uppercase; letter-spacing: .4px; margin: 10px 0 2px; }
+    .night { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #cfd8e0; border-radius: 8px; cursor: pointer; background: #fff; }
+    .night.on { border-color: var(--rmd-navy); background: #efe9f8; }
+    .night b { font-size: 14px; }
+    .night small { color: var(--rmd-muted); font-size: 12px; display: block; }
+    .night.soon { border-color: #F0C36D; }
+    .warn { background: #FFF6E5; border: 1px solid #F0C36D; border-radius: 8px; padding: 9px 12px; font-size: 13px; margin-top: 10px; }
+    .ack { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; padding: 10px 12px; background: #f7f9fb; border-radius: 8px; }
+    .ack input { margin-top: 3px; }
+    .btn { font: 700 15px var(--font); padding: 12px 18px; border: 0; border-radius: 10px; background: var(--rmd-navy); color: #fff; cursor: pointer; width: 100%; margin-top: 16px; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .btn.sm { width: auto; padding: 6px 12px; font-size: 12px; margin: 0; background: #fff; color: var(--rmd-navy); border: 1px solid var(--rmd-navy); }
+    .msg { padding: 10px 12px; border-radius: 8px; font-size: 14px; margin-top: 12px; }
+    .msg.ok { background: #e6f4ea; border: 1px solid #a8d5b5; }
+    .msg.err { background: #fce8e6; border: 1px solid #f1b0a8; }
+    .mine { border-top: 1px solid #e8edf1; padding: 10px 0; }
+    .mine:first-of-type { border-top: 0; }
+    .mine b { font-size: 14px; }
+    .mine .when { font-size: 13px; color: var(--rmd-muted); }
+    .chip { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #e8edf1; color: #44525f; margin-left: 6px; }
+    .chip.cov { background: #e6f4ea; color: #1e6b34; }
+    .chip.wd { background: #eee; color: #777; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<div class="top-bar">
+  <img src="assets/rmd-logo.png" alt="" onerror="this.style.display='none'">
+  <div class="top-bar-title">Absence notice<span class="top-bar-sub">BLS instructor absence form</span></div>
+  <a class="top-bar-back" href="member-menu.html#me">Back</a>
+</div>
+<div class="wrap">
+  <div class="intro">Please complete this form <b>as far in advance as possible</b>. Please also <b>tell your mentor of your absence on WhatsApp</b>.<br>
+    We understand that sometimes you will be unwell or have unavoidable commitments, but we monitor absences carefully to make sure they are appropriate. This is a contracted job, so we expect 100% attendance.</div>
+
+  <div id="formCard" class="card">
+    <h2>Tell us when you can't teach</h2>
+    <label class="l" for="fName">Full name <span class="req">*</span></label>
+    <input type="text" id="fName" autocomplete="name">
+    <label class="l" for="fEmail">University e-mail address <span class="req">*</span></label>
+    <input type="email" id="fEmail" autocomplete="email">
+    <label class="l">What is your role? <span class="req">*</span></label>
+    <div class="opts" id="roleOpts">
+      <label class="opt"><input type="radio" name="role" value="Instructor"> Instructor</label>
+      <label class="opt"><input type="radio" name="role" value="Senior Instructor"> Senior Instructor</label>
+      <label class="opt"><input type="radio" name="role" value="Assessor"> Assessor</label>
+    </div>
+    <label class="l">Which evenings will you be absent? <span class="req">*</span></label>
+    <div class="nights" id="nightList"><div class="hint">Loading the course calendar...</div></div>
+    <div id="otherWrap">
+      <label class="l" for="fOther" style="margin-top:12px">Another date, not listed above</label>
+      <input type="date" id="fOther">
+      <div class="hint">Only if the evening you will miss is not in the list.</div>
+    </div>
+    <div id="soonWarn" class="warn hidden">Less than 2 days' notice. Please also message your mentor and the RMD faculty directly.</div>
+    <label class="l" for="fReason">Reason for absence <span class="req">*</span></label>
+    <textarea id="fReason" maxlength="1000"></textarea>
+    <label class="l" for="fPrior">Number of existing absences from BLS <span class="req">*</span></label>
+    <input type="number" id="fPrior" min="0" max="99" inputmode="numeric" style="max-width:140px">
+    <div class="hint">Absences you have already had this year, not counting this notice. Put 0 if none.</div>
+    <label class="ack" style="margin-top:16px"><input type="checkbox" id="fMentor"> <span>I have told my mentor of my absence on WhatsApp.</span></label>
+    <button class="btn" id="sendBtn" type="button">Send absence notice</button>
+    <div id="sendMsg" class="msg hidden"></div>
+  </div>
+
+  <div class="card">
+    <h2>Your notices</h2>
+    <div id="mineList"><div class="hint">Loading...</div></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/absence-util.js"></script>
+<script>
+  initFirebase();
+  const U = window.RMD_ABS;
+  const COL = "instructor_absences";
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  let me = null, nights = [];
+
+  function show(el, cls, text) { el.className = "msg " + cls; el.textContent = text; }
+
+  // Evenings still to come (today included), from the course calendar.
+  function loadNights(courses) {
+    const today = U.iso(new Date());
+    nights = U.absenceNights(courses).filter(n => n.date >= today);
+    const box = document.getElementById("nightList");
+    if (!nights.length) { box.innerHTML = '<div class="hint">No upcoming course evenings are on the calendar. Use "Another date" below.</div>'; return; }
+    let h = "", last = "";
+    nights.forEach((n, i) => {
+      if (n.course !== last) { h += `<div class="course-h">${esc(n.course)}</div>`; last = n.course; }
+      h += `<label class="night" data-i="${i}"><input type="checkbox" value="${i}"><span><b>${esc(U.niceDate(n.date))}</b><small>${esc(n.label)}</small></span></label>`;
+    });
+    box.innerHTML = h;
+    box.querySelectorAll(".night").forEach(l => l.querySelector("input").addEventListener("change", refreshNights));
+  }
+
+  function chosen() {
+    const list = [];
+    document.querySelectorAll("#nightList .night input:checked").forEach(c => { const n = nights[Number(c.value)]; list.push({ date: n.date, course: n.course, label: n.label }); });
+    const other = document.getElementById("fOther").value;
+    if (other && !list.some(x => x.date === other)) list.push({ date: other, course: null, label: "Other date" });
+    list.sort((a, b) => a.date < b.date ? -1 : 1);
+    return list;
+  }
+  function refreshNights() {
+    document.querySelectorAll("#nightList .night").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
+    const soon = chosen().some(n => { const h = U.noticeHours(new Date(), n.date); return h !== null && h < U.SHORT_NOTICE_HOURS; });
+    document.getElementById("soonWarn").classList.toggle("hidden", !soon);
+  }
+
+  async function loadMine() {
+    const box = document.getElementById("mineList");
+    try {
+      const s = await db.collection(COL).where("uid", "==", me.uid).get();
+      const rows = s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      rows.sort((a, b) => ((b.submittedAt && b.submittedAt.seconds) || 0) - ((a.submittedAt && a.submittedAt.seconds) || 0));
+      if (!rows.length) { box.innerHTML = '<div class="hint">You have not sent any absence notices on this site.</div>'; return; }
+      const today = U.iso(new Date());
+      box.innerHTML = rows.map(r => {
+        const ds = (r.nights || []).map(n => U.niceDate(n.date)).join(", ");
+        const future = (r.nightDates || []).some(d => d >= today);
+        return `<div class="mine"><b>${esc(ds)}</b>${r.status === "withdrawn" ? '<span class="chip wd">Withdrawn</span>' : ""}${r.covered ? '<span class="chip cov">Cover arranged</span>' : ""}
+          <div class="when">${esc(r.reason || "")}</div>
+          ${r.status !== "withdrawn" && future ? `<div style="margin-top:6px"><button class="btn sm" data-wd="${esc(r.id)}" type="button">Withdraw this notice</button></div>` : ""}</div>`;
+      }).join("");
+      box.querySelectorAll("[data-wd]").forEach(b => b.onclick = async () => {
+        if (!confirm("Withdraw this absence notice? Tell your mentor too.")) return;
+        b.disabled = true;
+        try { await db.collection(COL).doc(b.dataset.wd).update({ status: "withdrawn", withdrawnAt: firebase.firestore.FieldValue.serverTimestamp() }); loadMine(); }
+        catch (e) { b.disabled = false; alert("Could not withdraw it: " + e.message); }
+      });
+    } catch (e) { box.innerHTML = '<div class="hint">Could not load your notices. Reload the page to try again.</div>'; }
+  }
+
+  async function send() {
+    const msg = document.getElementById("sendMsg");
+    const name = document.getElementById("fName").value.trim();
+    const email = document.getElementById("fEmail").value.trim().toLowerCase();
+    const roleEl = document.querySelector("input[name=role]:checked");
+    const reason = document.getElementById("fReason").value.trim();
+    const priorTxt = document.getElementById("fPrior").value.trim();
+    const list = chosen();
+    const problems = [];
+    if (!name) problems.push("your name");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) problems.push("your university e-mail address");
+    if (!roleEl) problems.push("your role");
+    if (!list.length) problems.push("the evenings you will miss");
+    if (!reason) problems.push("a reason");
+    if (priorTxt === "" || !(Number(priorTxt) >= 0) || !Number.isInteger(Number(priorTxt))) problems.push("your number of existing absences (0 if none)");
+    if (!document.getElementById("fMentor").checked) problems.push("the tick to say you have told your mentor on WhatsApp");
+    if (problems.length) { show(msg, "err", "Please add: " + problems.join("; ") + "."); return; }
+    const btn = document.getElementById("sendBtn"); btn.disabled = true;
+    try {
+      await db.collection(COL).add({
+        uid: me.uid, name, email, role: roleEl.value, reason,
+        priorAbsences: Number(priorTxt), nights: list, nightDates: list.map(n => n.date),
+        mentorTold: true, status: "active",
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      show(msg, "ok", "Thank you. Your absence notice has been sent to the RMD faculty. Please make sure your mentor knows too.");
+      document.getElementById("fReason").value = ""; document.getElementById("fOther").value = "";
+      document.querySelectorAll("#nightList input").forEach(c => c.checked = false);
+      document.getElementById("fMentor").checked = false; document.getElementById("fPrior").value = "";
+      refreshNights(); loadMine();
+    } catch (e) {
+      show(msg, "err", "Your notice was not sent: " + e.message + ". Please try again, and tell your mentor and the RMD faculty directly.");
+    }
+    btn.disabled = false;
+  }
+
+  auth.onAuthStateChanged(async function (user) {
+    if (!user) { window.location.href = "signin.html"; return; }
+    me = user;
+    document.getElementById("fEmail").value = user.email || "";
+    try {
+      const p = await db.collection(COLLECTIONS.people).doc(user.uid).get();
+      if (p.exists) {
+        const d = p.data();
+        document.getElementById("fName").value = d.name || "";
+        if (d.role === "assessor") document.querySelector("input[name=role][value=Assessor]").checked = true;
+        else if (d.role === "instructor") document.querySelector("input[name=role][value=Instructor]").checked = true;
+      }
+    } catch (e) { /* the person can type it */ }
+    try {
+      const cs = await db.collection("config").doc("stage1_course_dates").get();
+      loadNights(cs.exists ? (cs.data().courses || []) : []);
+    } catch (e) { document.getElementById("nightList").innerHTML = '<div class="hint">Could not load the course calendar. Use "Another date" below.</div>'; }
+    document.querySelectorAll(".opts .opt").forEach(l => l.querySelector("input").addEventListener("change", () => document.querySelectorAll(".opts .opt").forEach(x => x.classList.toggle("on", x.querySelector("input").checked))));
+    document.querySelectorAll(".opts .opt").forEach(x => x.classList.toggle("on", x.querySelector("input").checked));
+    document.getElementById("fOther").addEventListener("change", refreshNights);
+    document.getElementById("sendBtn").onclick = send;
+    loadMine();
+  });
+</script>
+</body>
+</html>
