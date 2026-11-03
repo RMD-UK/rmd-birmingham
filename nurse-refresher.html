@@ -34,6 +34,35 @@
     .scale { font-size:12px; color:#667389; margin-top:4px; }
     .note { background:#fff3d6; border-radius:10px; padding:12px; font-size:14px; margin:10px 0; }
     .hidden { display:none; }
+
+    /* Certificate (A4 landscape). On screen it is a preview; printing shows only the certificate. */
+    #certWrap { position:fixed; inset:0; background:rgba(20,28,46,.82); z-index:50; overflow:auto; padding:16px; }
+    #certWrap .bar { max-width:900px; margin:0 auto 12px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; color:#fff; font-size:14px; }
+    #certWrap .bar .btn { width:auto; padding:10px 18px; margin:0; }
+    .paper { position:relative; width:297mm; height:209mm; background:#fff; margin:0 auto; overflow:hidden; color:#14284b; font-family:Arial,Helvetica,sans-serif; transform-origin:top left; }
+    .paper .band { height:5mm; background:#14284b; }
+    .paper .wm { position:absolute; left:50%; top:52%; width:150mm; transform:translate(-50%,-50%); opacity:.07; }
+    .paper .hd { display:flex; align-items:center; justify-content:space-between; padding:6mm 16mm 0; }
+    .paper .hd img.l { height:26mm; } .paper .hd img.r { height:15mm; }
+    .paper .hd .t { text-align:center; flex:1; } .paper .hd .t b { display:block; font-size:21pt; } .paper .hd .t span { font-size:8pt; color:#667389; }
+    .paper h3 { text-align:center; font-size:15pt; margin:9mm 0 6mm; }
+    .paper .c { text-align:center; position:relative; }
+    .paper .c .s { font-size:10pt; color:#444; } .paper .c .n { font-size:28pt; font-weight:700; margin:4mm 0; }
+    .paper .c .m { font-size:11pt; margin:3mm 0; } .paper .c .ses { font-size:11pt; margin-top:9mm; }
+    .paper .inc { position:relative; margin:9mm 30mm 0; font-size:9.5pt; } .paper .inc h4 { text-align:center; font-size:10pt; letter-spacing:.5px; margin:0 0 3mm; }
+    .paper .inc .g { display:flex; gap:12mm; } .paper .inc ul { flex:1; margin:0; padding-left:5mm; } .paper .inc li { margin:1.5mm 0; }
+    .paper .gmc { position:relative; text-align:center; font-size:7pt; color:#667389; margin:8mm 20mm 0; }
+    .paper .sg { position:relative; text-align:center; margin-top:2mm; } .paper .sg img { height:17mm; } .paper .sg b { display:block; font-size:10pt; } .paper .sg span { font-size:8pt; color:#667389; }
+    .paper .iss { position:absolute; left:10mm; bottom:5mm; font-size:7pt; color:#667389; }
+    @page { size: A4 landscape; margin: 0; }
+    @media print {
+      body > *:not(#certWrap) { display:none !important; }
+      html, body { margin:0 !important; padding:0 !important; height:auto !important; }
+      #certWrap { position:static; background:#fff; padding:0; overflow:hidden; height:209mm; }
+      #certWrap .bar { display:none; }
+      #certBox { width:auto !important; height:auto !important; }
+      .paper { margin:0; transform:none !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    }
   </style>
 </head>
 <body>
@@ -59,6 +88,23 @@
 
 </div>
 
+
+<div id="certWrap" class="hidden">
+  <div class="bar"><button class="btn" id="printBtn" type="button">Save as PDF</button><button class="btn alt" id="closeCert" type="button" style="background:#fff">Close</button><span>In the print window, choose <b>Save as PDF</b> as the printer. On a phone, choose Share or Save.</span></div>
+  <div id="certBox" style="margin:0 auto"><div class="paper" id="certPaper">
+    <div class="band"></div>
+    <img class="wm" src="assets/rmd-logo-transparent.png" alt="">
+    <div class="hd"><img class="l" src="assets/rmd-logo.png" alt="RMD"><div class="t"><b>RMD Birmingham</b><span>Resuscitation &middot; Mentorship &middot; Development &mdash; University of Birmingham</span></div><img class="r" src="assets/uob-logo.png" alt="University of Birmingham"></div>
+    <h3>Certificate of Continuing Professional Development</h3>
+    <div class="c"><div class="s">This is to certify that</div><div class="n" id="certName"></div>
+      <div class="m">has passed a Basic Life Support Refresher session, with individual assessment of BLS and first aid.</div>
+      <div class="ses"><b>Session:</b> <span id="certSession"></span></div></div>
+    <div class="inc"><h4>THE SESSION INCLUDED</h4><div class="g"><ul><li>Recognising cardiac arrest and calling for help</li><li>Basic life support (BLS) with rescue breaths and chest compressions</li><li>Use of an automated external defibrillator (AED)</li></ul><ul><li>Adult choking, and BLS for asphyxial cardiac arrest</li><li>Paediatric BLS, including choking in children and infants</li><li>First aid for bleeding</li></ul></div></div>
+    <div class="gmc">RMD is cited by the General Medical Council as an innovative teaching method and is one of the largest peer-led life support courses in Europe.</div>
+    <div class="sg"><img src="assets/jon-signature.png" alt="Signature"><b>Professor Jon Hulme</b><span>Course Director, RMD Birmingham &mdash; University of Birmingham</span></div>
+    <div class="iss" id="certIssued"></div>
+  </div></div>
+</div>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
@@ -136,7 +182,8 @@ function render() {
     row("Questionnaire after the course", me.post ? dn : ny) +
     (!me.pre ? "<button class='btn' data-q='pre' type='button'>Do the questionnaire before the course</button>" : "") +
     (!me.post ? (sessionOver ? "<button class='btn' data-q='post' type='button'>Do the questionnaire after the course</button>" : "<div class='hint'>The questionnaire after the course opens on the day of your session.</div>") : "") +
-    "<div class='hint'>Your certificate will be added to this page.</div>";
+    (me.passed && me.pre && me.post ? "<button class='btn' id='certBtn' type='button'>Download your certificate</button>" : "<div class='hint'>Your certificate is ready when all three are done.</div>");
+  const cb = $("certBtn"); if (cb) cb.onclick = openCert;
   $("tickCard").querySelectorAll("[data-q]").forEach(b => b.onclick = () => openQ(b.dataset.q));
   $("qCard").classList.add("hidden");
 }
@@ -182,6 +229,20 @@ async function submitQ() {
   }
 }
 
+
+function openCert() {
+  const ps = me.sessions.filter(x => x.passed), ses = ps[ps.length - 1] || me.sessions[me.sessions.length - 1];
+  $("certName").textContent = me.name;
+  $("certSession").textContent = (ses.date === "TEST" ? "Practice evening" : nice(ses.date)) + ", 19:00 to 21:00 (2 hours)";
+  $("certIssued").textContent = "Issued: " + today() + (ses.date === "TEST" ? " - practice certificate" : "");
+  $("certWrap").classList.remove("hidden");
+  const paper = $("certPaper"), scale = Math.min(1, (window.innerWidth - 32) / paper.offsetWidth);
+  paper.style.transform = "scale(" + scale + ")";
+  const box = $("certBox"); box.style.width = (paper.offsetWidth * scale) + "px"; box.style.height = (paper.offsetHeight * scale) + "px";
+  window.scrollTo(0, 0);
+}
+$("closeCert").onclick = () => $("certWrap").classList.add("hidden");
+$("printBtn").onclick = () => window.print();
 $("goBtn").onclick = () => lookup();
 ["pw", "nm", "em"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") lookup(); }));
 </script>
