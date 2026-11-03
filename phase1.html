@@ -1330,6 +1330,11 @@ function teamOf(list) {
 function staffDoc(n, uid) { return S.staff[S.course + "__w" + n + "__" + uid]; }
 const RAPSVG = '<span class="rap" title="RMD Reasonable Adjustments Pathway" aria-label="RAP"><svg viewBox="0 0 10 10" width="12" height="12" aria-hidden="true"><path d="M3.4 0h3.2v3.4H10v3.2H6.6V10H3.4V6.6H0V3.4h3.4z" fill="#d11a2a"/></svg></span>';
 
+// Register reminder window (3 Nov 2026, Jon): the banner shows from 17:45 to 20:00 London time only.
+const REMIND_FROM = "17:45", REMIND_TO = "20:00";
+function inRemindWindow() { const h = londonNow().hm; return h >= REMIND_FROM && h < REMIND_TO; }
+setInterval(() => { if (S.view === "register" && S.course && inRemindWindow() !== S.remWin && S.mine && S.mine.length) render(); }, 30000);
+
 // ── Render ──────────────────────────────────────────────────────────────────
 function render() {
   if (!S.course) return;
@@ -1342,9 +1347,11 @@ function render() {
   // messages
   let msgs = "";
   // Teaching-night reminder (3 Nov 2026, Jon): instructors on a room team must mark themselves present at the start of the night.
-  if (dates && S.user && S.mine.some(c => c.course === S.course)) {
+  S.remShown = false; S.remWin = inRemindWindow();
+  if (dates && S.user && S.mine.some(c => c.course === S.course) && inRemindWindow()) {
     const tn = weekState(dates[0]) === "today" ? 1 : (weekState(dates[1]) === "today" ? 2 : 0);
-    if (tn && !staffDoc(tn, S.user.uid)) msgs += `<div class="regremind" role="alert"><div class="tx"><b>Teaching night ${tn}: record your presence in the register</b>Do it as soon as you arrive, before the candidates come in.</div><button class="btn" type="button" data-arrive="${tn}">I'm here</button></div>`;
+    if (tn && !staffDoc(tn, S.user.uid)) S.remShown = true;
+    if (S.remShown) msgs += `<div class="regremind" role="alert"><div class="tx"><b>Teaching night ${tn}: record your presence in the register</b>Do it as soon as you arrive, before the candidates come in.</div><button class="btn" type="button" data-arrive="${tn}">I'm here</button></div>`;
   }
   if (lastErr) msgs += `<div class="msg err">${esc(lastErr)}</div>`;
   if (S.editAny && !dirToolsOn()) S.editAny = false;
