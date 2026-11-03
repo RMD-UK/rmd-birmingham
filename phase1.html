@@ -74,9 +74,12 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .btn:disabled{opacity:.4;cursor:default}
 .tg{display:inline-flex;gap:8px;align-items:center;font-weight:700;font-size:14px}
 .tg input{width:18px;height:18px;accent-color:var(--pur)}
-.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-bottom:14px}
-.rooms .r{background:#fff;border:2px solid var(--line);border-radius:10px;padding:7px 10px;text-align:left;color:var(--ink)}
-.rooms .r b{font-size:14px;display:block}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;margin-bottom:12px}
+.rooms .r{background:#fff;border:2px solid var(--line);border-radius:10px;padding:6px 10px;text-align:left;color:var(--ink);display:flex;align-items:center;gap:6px}
+.rooms .r b{font-size:14px;flex:1}
+.rooms .r .n{font-size:13px;font-weight:800;color:var(--mut);font-variant-numeric:tabular-nums}
+.rooms .r.full .n{color:#1E8449}
+.rooms .r .ab{width:9px;height:9px;border-radius:50%;background:#E5484D;flex:none}
 .rooms .r small{display:block;color:var(--mut);font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums}
 .rooms .r.on{border-color:var(--pur);background:var(--purtint)}
 .rooms .r.mine{box-shadow:inset 4px 0 0 var(--org)}
@@ -1385,8 +1388,9 @@ function render() {
     const myRooms = new Set(S.mine.filter(c => c.course === S.course).map(c => c.room));
     $("rooms").innerHTML = rooms.map(r => {
       const rc = S.cands.filter(c => c.room === r);
-      const a = counts(rc, 1), b = counts(rc, 2);
-      return `<button type="button" class="r${r === S.room ? " on" : ""}${myRooms.has(r) ? " mine" : ""}" data-room="${esc(r)}"><b>${esc(r)}</b><small>W1 ${a.here + a.late}/${rc.length} · W2 ${b.here + b.late}/${rc.length}</small></button>`;
+      const cw = dates && weekState(dates[1]) !== "future" ? 2 : 1;   // the current week only; the other is hidden
+      const a = counts(rc, cw), all = rc.length && a.here + a.late === rc.length;
+      return `<button type="button" class="r${r === S.room ? " on" : ""}${myRooms.has(r) ? " mine" : ""}${all ? " full" : ""}" data-room="${esc(r)}"><b>${esc(r)}</b><span class="n">${a.here + a.late}/${rc.length}</span>${a.absent ? `<i class="ab" title="${a.absent} absent"></i>` : ""}</button>`;
     }).join("");
     $("rooms").querySelectorAll("button").forEach(b => b.onclick = () => { S.room = b.dataset.room; render(); });
   } else $("rooms").innerHTML = "";
