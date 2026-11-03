@@ -4853,7 +4853,7 @@ async function tueFindNurse(data) {
   const seen = new Map();
   for (const v of tueEmailVariants(email)) {
     const snap = await db.collection("tuesday_nurses").where("email", "==", v).get();
-    snap.docs.forEach(d => { if (!d.data().test) seen.set(d.id, { id: d.id, ...d.data() }); });
+    snap.docs.forEach(d => { seen.set(d.id, { id: d.id, ...d.data() }); });
   }
   const all = [...seen.values()];
   const wanted = normalizeNameForMatch(name);
@@ -4864,13 +4864,15 @@ async function tueFindNurse(data) {
     if (close) return { found: false, closeMatch: true, suggestedName: ((close.first || "") + " " + (close.last || "")).trim() };
     return { found: false };
   }
-  return { found: true, nurses: hits.sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))), emailLower: String(hits[0].email || email).trim().toLowerCase() };
+  const isTest = hits.every(n => n.test === true);
+  const use = isTest ? hits : hits.filter(n => !n.test);
+  return { found: true, test: isTest, nurses: use.sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))), emailLower: String(hits[0].email || email).trim().toLowerCase() };
 }
 
 exports.nurseRefresherLookup = onCall({ region: "us-central1" }, async (request) => {
   const r = await tueFindNurse(request.data || {});
   if (!r.found) return r;
-  const q = await Promise.all(["pre", "post"].map(k => db.collection("tuesday_questionnaires").doc(r.emailLower + "__" + k).get()));
+  const q = await Promise.all(["pre", "post"].map(k => db.collection("tuesday_questionnaires").doc((r.test ? "TEST__" : "") + r.emailLower + "__" + k).get()));
   const sessions = r.nurses.map(n => ({
     date: n.date || null, room: n.room || null, time: "19:00 to 21:00",
     moved: !!n.movedFrom, attended: n.st === "here" || n.st === "late",
@@ -4879,7 +4881,7 @@ exports.nurseRefresherLookup = onCall({ region: "us-central1" }, async (request)
   const first = r.nurses[0];
   return {
     found: true, name: ((first.first || "") + " " + (first.last || "")).trim(), sessions,
-    passed: sessions.some(s => s.passed), pre: q[0].exists, post: q[1].exists
+    passed: sessions.some(s => s.passed), pre: q[0].exists, post: q[1].exists, test: r.test === true
   };
 });
 
@@ -4890,12 +4892,12 @@ exports.nurseRefresherSubmit = onCall({ region: "us-central1" }, async (request)
   if (bad) throw new HttpsError("invalid-argument", bad);
   const r = await tueFindNurse(request.data || {});
   if (!r.found) throw new HttpsError("not-found", "We could not find you.");
-  const ref = db.collection("tuesday_questionnaires").doc(r.emailLower + "__" + kind);
+  const ref = db.collection("tuesday_questionnaires").doc((r.test ? "TEST__" : "") + r.emailLower + "__" + kind);
   const have = await ref.get();
   if (have.exists) return { ok: true, already: true };
   const latest = r.nurses[r.nurses.length - 1];
   await ref.set({
-    kind, emailLower: r.emailLower, name: ((latest.first || "") + " " + (latest.last || "")).trim(),
+    kind, test: r.test === true, emailLower: r.emailLower, name: ((latest.first || "") + " " + (latest.last || "")).trim(),
     date: latest.date || null, room: latest.room || null,
     answers: TUE_Q[kind].map((d, i) => ({ q: d.q, k: d.k, a: answers[i] })),
     createdAt: admin.firestore.FieldValue.serverTimestamp()

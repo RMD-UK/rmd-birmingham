@@ -70,7 +70,7 @@ const fns = firebase.functions();
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 const MN = ["January","February","March","April","May","June","July","August","September","October","November","December"], DN = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
-const nice = iso => { if (!iso) return "to be confirmed"; const d = new Date(iso + "T12:00:00Z"); return DN[d.getUTCDay()] + " " + d.getUTCDate() + " " + MN[d.getUTCMonth()] + " " + d.getUTCFullYear(); };
+const nice = iso => { if (!iso) return "to be confirmed"; if (iso === "TEST") return "Test evening (practice)"; const d = new Date(iso + "T12:00:00Z"); return DN[d.getUTCDay()] + " " + d.getUTCDate() + " " + MN[d.getUTCMonth()] + " " + d.getUTCFullYear(); };
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
 
 // Same questions as nurse functions (nurseRefresherSubmit in functions/index.js).
@@ -127,7 +127,7 @@ function render() {
   $("sessCard").innerHTML = "<h2>Hello " + esc(me.name.split(" ")[0]) + "</h2>" +
     s.map((x, i) => "<div class='row'><span><b>" + esc(nice(x.date)) + "</b><br>Time: " + esc(x.time) + "<br>Room: " + esc(x.room || "to be confirmed") + "</span>" + (s.length > 1 && i < s.length - 1 ? "<span class='chip no'>Earlier date</span>" : "") + "</div>").join("") +
     "<div class='note'>Please be in your teaching room, ready for 19:00. Your instructor will take the register.</div>";
-  const sessionOver = cur.date && cur.date <= today();
+  const sessionOver = cur.date && (cur.date === "TEST" || cur.date <= today());
   const row = (t, chip) => "<div class='row'><span>" + t + "</span>" + chip + "</div>";
   const dn = "<span class='chip ok'>Done</span>", ny = "<span class='chip no'>Not yet</span>";
   $("tickCard").innerHTML = "<h2>Your checklist</h2>" +

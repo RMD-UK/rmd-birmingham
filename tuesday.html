@@ -213,6 +213,16 @@ async function backfillEvening(){
   }catch(e){S.msg="";S.err="Could not fill in the evening: "+(e.message||e)}
   render()
 }
+async function addTestNurse(){
+  const o=S.one;S.err="";
+  try{
+    const sn=await db.collection("tuesday_nurses").where("date","==","TEST").get(),cnt={};sn.forEach(x=>{const r=x.data().room;cnt[r]=(cnt[r]||0)+1});
+    const room=o.room||TROOMS.slice().sort((a,b)=>(cnt[a]||0)-(cnt[b]||0))[0];
+    await db.collection("tuesday_nurses").add({date:"TEST",test:true,room:room,last:o.last.trim(),first:o.first.trim(),email:o.email.trim(),field:o.field||"",year:o.year||"",st:null,createdAt:TS(),createdBy:S.user.email||""});
+    S.msg=o.first.trim()+" "+o.last.trim()+" added to the Test evening, room "+room+". Open the Test evening to see them.";
+    S.one.last="";S.one.first="";S.one.email="";S.one.field="";S.one.year=""
+  }catch(e){S.err="Could not add: "+(e.message||e)}
+  render()}
 async function confirmRoom(r){const on=!S.rooms[r];try{await db.collection("tuesday_rooms").doc(S.date+"__"+r).set({date:S.date,room:r,confirmed:on,by:S.user.email||"",at:TS()})}catch(e){S.err="Could not save: "+e.message;render()}}
 async function saveResult(id){const A=S.af[id];if(!A||!afOk(id))return;const mapO=(arr,t)=>arr.map(x=>x==="Other"?"Other: "+(t||"").trim():x);await upd(id,{bls:A.bls,fa:A.fa,wb:A.bls==="fail"?mapO(A.wb,A.wbt):[],wf:A.fa==="fail"?mapO(A.wf,A.wft):[],resBy:S.user.email||"",resAt:TS()});delete S.af[id]}
 async function redo(id){const n=S.nurses.find(x=>x.id===id);const un=a=>{let t="";const r=(a||[]).map(x=>{if(x.indexOf("Other: ")===0){t=x.slice(7);return"Other"}return x});return{r:r,t:t}};const b=un(n.wb),f=un(n.wf);S.af[id]={bls:n.bls,fa:n.fa,wb:b.r,wf:f.r,wbt:b.t,wft:f.t};await upd(id,{bls:null,fa:null,wb:[],wf:[]})}
@@ -247,7 +257,7 @@ async function moveNurse(id,date){
 }
 async function seedTest(){
   S.msg="";const old=await db.collection("tuesday_nurses").where("date","==","TEST").get();const b=db.batch();old.forEach(d=>b.delete(d.ref));
-  const rc=await db.collection("tuesday_rooms").where("date","==","TEST").get();rc.forEach(d=>b.delete(d.ref));const sq=await db.collection("tuesday_staff").where("date","==","TEST").get();sq.forEach(d=>b.delete(d.ref));try{sessionStorage.removeItem("tueNoTEST")}catch(e){}
+  const rc=await db.collection("tuesday_rooms").where("date","==","TEST").get();rc.forEach(d=>b.delete(d.ref));const sq=await db.collection("tuesday_staff").where("date","==","TEST").get();sq.forEach(d=>b.delete(d.ref));try{const tq=await db.collection("tuesday_questionnaires").where("test","==",true).get();tq.forEach(d=>b.delete(d.ref))}catch(e){}try{sessionStorage.removeItem("tueNoTEST")}catch(e){}
   const cc=await db.collection("tuesday_concerns").where("date","==","TEST").get();cc.forEach(d=>b.delete(d.ref));
   TESTN.forEach((t,i)=>{const p=t[0].split(" ");b.set(db.collection("tuesday_nurses").doc(),{date:"TEST",test:true,room:TROOMS[Math.floor(i/5)],first:p[0],last:p[1],email:(p[0][0]+"."+p[1]).toLowerCase()+"@example.ac.uk",field:t[1],year:"",st:null,createdAt:TS()})});
   try{await b.commit();S.msg="Test evening reset with 25 made-up nurses."}catch(e){S.err="Could not reset: "+e.message}render()
@@ -548,7 +558,7 @@ function qsView(){
   h+='<div class="sect">All answers</div>';
   if(S.qd===null)return h+'<div class="hint">Loading...</div>';
   ["pre","post"].forEach(k=>{
-    const rs=S.qd.filter(x=>x.kind===k);h+='<div class="cand"><b>'+(k==="pre"?"Before the course":"After the course")+'</b> - '+rs.length+' response'+(rs.length===1?"":"s");
+    const rs=S.qd.filter(x=>x.kind===k&&!!x.test===isTest());h+='<div class="cand"><b>'+(k==="pre"?"Before the course":"After the course")+'</b> - '+rs.length+' response'+(rs.length===1?"":"s");
     if(!rs.length){h+='</div>';return}
     const qn=rs[0].answers;
     qn.forEach((a,i)=>{
@@ -645,7 +655,7 @@ function cohortView(){
   h+='<div class="sect">Step 1 - Add nurses</div><div class="hint"><b>Nobody is booked until you press Add at the end.</b> Add people one at a time below, or paste many at once. Both end up in the same box, then press Parse &amp; preview.</div>';
   h+='<div style="background:#f7f5fc;border:1.5px solid var(--line);border-radius:12px;padding:14px;margin-top:10px"><div style="font-weight:800;font-size:16px">Add one nurse</div><div class="hint">Fill in the boxes and press Add to list. Evening, last name and first name are needed. If you do not choose a room, one is allocated at random.</div>'
    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 14px">'
-   +'<div>'+lab('Evening')+'<select class="nt" id="o_date">'+'<option value="">Choose evening</option>'+evs.map(d=>'<option value="'+d+'"'+(o.date===d?' selected':'')+'>'+esc(niceDate(d))+'</option>').join("")+'</select></div>'
+   +'<div>'+lab('Evening')+'<select class="nt" id="o_date">'+'<option value="">Choose evening</option><option value="TEST"'+(o.date==="TEST"?' selected':'')+'>Test evening (practice only)</option>'+evs.map(d=>'<option value="'+d+'"'+(o.date===d?' selected':'')+'>'+esc(niceDate(d))+'</option>').join("")+'</select></div>'
    +'<div>'+lab('Room')+'<select class="nt" id="o_room">'+opt(TROOMS,o.room,"Random room (allocated for me)")+'</select></div>'
    +'<div>'+lab('Last name')+'<input class="nt" id="o_last" value="'+esc(o.last)+'"></div>'
    +'<div>'+lab('First name')+'<input class="nt" id="o_first" value="'+esc(o.first)+'"></div>'
@@ -822,6 +832,7 @@ document.addEventListener("click",e=>{
   else if(a==="fusent"){fuSet(id,{state:"informed",informedAt:Date.now(),informedBy:S.user.email||""});delete S.fumsg[id];S.msg="Recorded as sent to the nursing school."}
   else if(a==="mvask"){S.mc={id:id,date:v};S.mv=null}
   else if(a==="mvno"){S.mc=null}
+  else if(a==="oneadd"&&S.one.date==="TEST"){addTestNurse();return}
   else if(a==="oneadd"){const o=S.one;const line=[isoToDmy(o.date),o.room,o.last.trim(),o.first.trim(),o.email.trim(),o.field,o.year].join(", ");S.paste=(S.paste.trim()?S.paste.replace(/\s+$/,"")+"\n":"")+line;S.one.last="";S.one.first="";S.one.email="";S.one.field="";S.one.year="";S.msg="Added to the list below. Press Parse & preview when you have added everyone."}
   else if(a==="oneclear"){S.one={date:S.one.date,room:S.one.room,last:"",first:"",email:"",field:"",year:""}}
   else if(a==="seed"){seedTest();return}
