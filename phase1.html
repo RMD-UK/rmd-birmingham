@@ -62,6 +62,10 @@ input,select{font-family:inherit;font-size:16px;color:var(--ink)}
 .msg.ok{background:var(--okbg);color:var(--ok)}
 .msg.warn{background:var(--warnbg);color:var(--warn)}
 .msg.err{background:var(--badbg);color:var(--bad)}
+.regremind{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--org);color:#1A2233;border:3px solid var(--pur);border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(68,36,124,.25)}
+.regremind .tx{flex:1 1 260px;font-size:17px;line-height:1.45;font-weight:600}
+.regremind .tx b{display:block;font-size:20px;font-weight:800;margin-bottom:2px}
+.regremind .btn{font-size:17px;padding:12px 22px;background:var(--pur);color:#fff;border-color:var(--pur)}
 .tools{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
 .tools select{padding:9px 12px;border:2px solid var(--line);border-radius:10px;background:#fff;font-weight:700}
 .btn{border:2px solid var(--pur);background:#fff;color:var(--pur);border-radius:10px;padding:8px 14px;font-weight:800;font-size:14px}
@@ -1337,11 +1341,17 @@ function render() {
 
   // messages
   let msgs = "";
+  // Teaching-night reminder (3 Nov 2026, Jon): instructors on a room team must mark themselves present at the start of the night.
+  if (dates && S.user && S.mine.some(c => c.course === S.course)) {
+    const tn = weekState(dates[0]) === "today" ? 1 : (weekState(dates[1]) === "today" ? 2 : 0);
+    if (tn && !staffDoc(tn, S.user.uid)) msgs += `<div class="regremind" role="alert"><div class="tx"><b>Teaching night ${tn}: record your presence in the register</b>Do it as soon as you arrive, before the candidates come in.</div><button class="btn" type="button" data-arrive="${tn}">I'm here</button></div>`;
+  }
   if (lastErr) msgs += `<div class="msg err">${esc(lastErr)}</div>`;
   if (S.editAny && !dirToolsOn()) S.editAny = false;
   if (S.editAny) msgs += `<div class="msg warn">Edit-any-date is ON. Changes here are not limited to the day of the session, and no late question is asked.</div>`;
   if (!dates) msgs += onCatchup() ? `<div class="msg ok"><b>${esc(S.course)}</b> is an assessment-only night. There are no teaching evenings, so there is no register. Use <b>Assessment night</b> above.</div>` : `<div class="msg err">${esc(S.course)} has no date set, so the weeks cannot be worked out.</div>`;
   $("msgs").innerHTML = msgs;
+  $("msgs").querySelectorAll("[data-arrive]").forEach(b => b.onclick = () => setArrival(+b.dataset.arrive, false));
   renderSent(); renderAbs(); renderMoved();
 
   // tools
