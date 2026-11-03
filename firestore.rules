@@ -1302,6 +1302,13 @@ service cloud.firestore {
                  .hasOnly(['status', 'decidedBy', 'decidedAt', 'prev']));
       allow delete: if tueStaff();
     }
+    // Teachers recording that they are here on the night (17:45 to 20:00 banner).
+    match /tuesday_staff/{staffId} {
+      allow read: if tueTeach();
+      allow create, update: if tueTeach()
+        && request.resource.data.keys().hasOnly(['date', 'room', 'name', 'by', 'at']);
+      allow delete: if tueTeach();
+    }
     match /tuesday_concerns/{concernId} {
       allow read: if tueStaff();
       allow create: if tueTeach()

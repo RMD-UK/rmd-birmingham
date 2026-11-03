@@ -64,6 +64,9 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}input,select,textare
 .cand{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:#fff}
 .nm{display:flex;justify-content:space-between;align-items:center;gap:8px}.nm small{display:block;color:var(--mut);font-size:12px}
 .bt{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.regremind{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#F49001;color:#1A2233;border:3px solid var(--pur);border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(68,36,124,.25)}
+.regremind .tx{flex:1 1 260px;font-size:17px;line-height:1.45;font-weight:600}.regremind .tx b{display:block;font-size:20px;font-weight:800;margin-bottom:2px}
+.regremind .btn{font-size:17px;padding:12px 22px;background:var(--pur);color:#fff;border-color:var(--pur);margin:3px}.regremind .btn.o{background:#fff;color:var(--pur)}
 .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;align-items:start;margin-top:8px}
 .rcol{background:#fff;border:1.5px solid var(--line);border-radius:12px;overflow:hidden}.rcol.over{border-color:var(--bad)}
 .rhead{background:#f7f5fc;padding:8px 10px;border-bottom:1px solid var(--line)}.rhead b{font-size:16px;color:var(--pur)}.rhead .rt{display:block;font-size:12px;color:var(--mut);font-weight:600}
@@ -129,7 +132,7 @@ const TESTN = [['Amira Khan','Adult'],['Ben Okafor','Adult'],['Chloe Ward','Chil
 const ROSTER={"2026-10-20":{lead:"Kit Smith and Hannah Hardy",rooms:["Esme Freeman","Rachel Francis","Jenna Ghattaora","Shannon Beech","Jimmy Chen"]},"2026-10-27":{lead:"Kit Smith and Hannah Hardy",rooms:["Jenna Ghattaora","Martha Marjoram","Esme Freeman","Ishaan Paul","Evelyn Prime"]},"2026-11-03":{lead:"Kit Smith",rooms:["Lily Karaceylan","Naomi Ngobigha","Martha Marjoram","Rachel Francis","Jenna Ghattaora"]},"2026-11-10":{lead:"Kit Smith",rooms:["Rebecca Newton","Shannon Beech","Naomi Ngobigha","Esme Freeman","Olamide Sanusi"]},"2026-11-17":{lead:"Hannah Hardy",rooms:["Evelyn Prime","Shannon Beech","Laura Bland","Rebecca Newton","Ishaan Paul"]},"2026-11-24":{lead:"Hannah Hardy",rooms:["Olamide Sanusi","Ishaan Paul","Esme Freeman","Lily Karaceylan","Isla Topalli"]},"2026-12-01":{lead:"Kit Smith",rooms:["Martha Marjoram","Olamide Sanusi","Jimmy Chen","Isla Topalli","Laura Bland"]},"2026-12-08":{lead:"Hannah Hardy",rooms:["Jimmy Chen","Lucy McClean","Lily Karaceylan","Jenna Ghattaora","Rebecca Newton"]},"2027-01-12":{lead:"Hannah Hardy",rooms:["Naomi Ngobigha","Jenna Ghattaora","Lucy McClean","Laura Bland","Esme Freeman"]},"2027-01-19":{lead:"Kit Smith",rooms:["Rachel Francis","Lucy McClean","Evelyn Prime","Olamide Sanusi","Lily Karaceylan"]},"2027-01-26":{lead:"Hannah Hardy",rooms:["Laura Bland","Jimmy Chen","Rachel Francis","Naomi Ngobigha","Ishaan Paul"]},"2027-02-02":{lead:"Kit Smith",rooms:["Lucy McClean","Rebecca Newton","Martha Marjoram","Isla Topalli","Rachel Francis"]},"2027-02-09":{lead:"Hannah Hardy",rooms:["Shannon Beech","Evelyn Prime","Isla Topalli","Jimmy Chen","Naomi Ngobigha"]}};
 const rosterFor=d=>(S.rdb&&S.rdb[d])||ROSTER[d]||null;
 const teacherOf=(d,room)=>{const r=rosterFor(d);const i=TROOMS.indexOf(room);return r&&i>-1?r.rooms[i]:""};
-const S = { rop:null,red:null,rdel:null,rdb:{},swaps:[],me:(function(){try{return localStorage.getItem('tueMe')||''}catch(e){return''}})(),sw:null,swe:null,user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",lastMsg:"",fusel:{},fumsg:{},ccl:null,co:{out:"",mgr:"",note:""},mi:{},nmsg:{},one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
+const S = { sd:{},rop:null,red:null,rdel:null,rdb:{},swaps:[],me:(function(){try{return localStorage.getItem('tueMe')||''}catch(e){return''}})(),sw:null,swe:null,user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",lastMsg:"",fusel:{},fumsg:{},ccl:null,co:{out:"",mgr:"",note:""},mi:{},nmsg:{},one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
 const $ = id => document.getElementById(id);
 const esc = v => (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const TS = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -244,7 +247,7 @@ async function moveNurse(id,date){
 }
 async function seedTest(){
   S.msg="";const old=await db.collection("tuesday_nurses").where("date","==","TEST").get();const b=db.batch();old.forEach(d=>b.delete(d.ref));
-  const rc=await db.collection("tuesday_rooms").where("date","==","TEST").get();rc.forEach(d=>b.delete(d.ref));
+  const rc=await db.collection("tuesday_rooms").where("date","==","TEST").get();rc.forEach(d=>b.delete(d.ref));const sq=await db.collection("tuesday_staff").where("date","==","TEST").get();sq.forEach(d=>b.delete(d.ref));try{sessionStorage.removeItem("tueNoTEST")}catch(e){}
   const cc=await db.collection("tuesday_concerns").where("date","==","TEST").get();cc.forEach(d=>b.delete(d.ref));
   TESTN.forEach((t,i)=>{const p=t[0].split(" ");b.set(db.collection("tuesday_nurses").doc(),{date:"TEST",test:true,room:TROOMS[Math.floor(i/5)],first:p[0],last:p[1],email:(p[0][0]+"."+p[1]).toLowerCase()+"@example.ac.uk",field:t[1],year:"",st:null,createdAt:TS()})});
   try{await b.commit();S.msg="Test evening reset with 25 made-up nurses."}catch(e){S.err="Could not reset: "+e.message}render()
@@ -402,6 +405,7 @@ function confCard(r){
 
 // ── teaching shifts: roster, swaps, cover checks ──────────────
 function startRoster(){
+  try{db.collection("tuesday_staff").onSnapshot(q=>{S.sd={};q.forEach(d=>{S.sd[d.id]=d.data()});render()},e=>{})}catch(e){}
   try{db.collection("tuesday_roster").onSnapshot(q=>{S.rdb={};q.forEach(d=>{const x=d.data();if(x&&Array.isArray(x.rooms))S.rdb[d.id]={lead:x.lead||(ROSTER[d.id]||{}).lead||"",rooms:x.rooms}});render()},e=>{})}catch(e){}
   try{db.collection("tuesday_swaps").onSnapshot(q=>{S.swaps=q.docs.map(d=>Object.assign({id:d.id},d.data())).sort((a,b)=>String(b.createdMs||0).localeCompare(String(a.createdMs||0),undefined,{numeric:true}));render()},e=>{})}catch(e){}
 }
@@ -503,9 +507,33 @@ async function rosSave(id){
   if(f.email&&!/^\S+@\S+\.\S+$/.test(f.email)){S.err="That email does not look right.";render();return}
   await upd(id,f);if(!S.err)S.msg="Details saved.";S.rop=null;S.red=null;render()}
 async function rosDelete(id){try{await db.collection("tuesday_nurses").doc(id).delete();S.msg="Removed from this evening.";S.rop=null;S.red=null;S.rdel=null}catch(e){S.err="Could not remove: "+(e.message||e)}render()}
+
+// ── teacher presence banner (17:45 to 20:00 on a teaching night) ──
+const REMIND_FROM=1065,REMIND_TO=1200;
+const staffKey=(d,room)=>d+"__"+room;
+function bannerCtx(){
+  if(isTest()){const t=londonNow().date,ds=allRosterDates(),d=ds.find(x=>x>=t)||ds[ds.length-1];const r=rosterFor(d);return r?{date:"TEST",rooms:r.rooms,min:nowMin()}:null}
+  const t=londonNow(),r=rosterFor(t.date);return r?{date:t.date,rooms:r.rooms,min:t.min}:null}
+function presenceBanner(){
+  if(!instrMode())return"";const c=bannerCtx();if(!c||c.min<REMIND_FROM||c.min>=REMIND_TO)return"";
+  const i=S.me?c.rooms.indexOf(S.me):-1;
+  if(S.me&&i<0)return"";
+  if(i>-1){if(S.sd[staffKey(c.date,TROOMS[i])])return"";
+    return'<div class="regremind" role="alert"><div class="tx"><b>Teaching tonight: record your presence in the register</b>Do it as soon as you arrive, before the nurses come in. You are teaching '+TROOMS[i]+'.</div><button class="btn" data-a="imhere" data-v="'+esc(S.me)+'">I\'m here</button></div>'}
+  let no="";try{no=sessionStorage.getItem("tueNo"+c.date)||""}catch(e){}
+  if(no)return"";
+  return'<div class="regremind" role="alert"><div class="tx"><b>Are you teaching tonight? Tap your name</b>This records you as here in the register. Do it as soon as you arrive.</div><div>'+c.rooms.map((n,k)=>'<button class="btn" data-a="imhere" data-v="'+esc(n)+'">'+esc(n)+' ('+TROOMS[k]+')</button>').join("")+'<button class="btn o" data-a="imno">Not teaching tonight</button></div></div>'}
+async function markHere(name,undo){
+  const c=bannerCtx();if(!c)return;const i=c.rooms.indexOf(name);if(i<0)return;S.me=name;try{localStorage.setItem("tueMe",name)}catch(e){}
+  const ref=db.collection("tuesday_staff").doc(staffKey(c.date,TROOMS[i]));
+  try{if(undo){await ref.delete();S.msg="Your arrival was undone."}else{await ref.set({date:c.date,room:TROOMS[i],name:name,by:S.user.email||"",at:TS()});S.msg="Thanks "+name.split(" ")[0]+", you are recorded as here."}}catch(e){S.err="Could not save: "+(e.message||e)}
+  render()}
+function teacherLine(){
+  const r=rosterFor(S.date);if(!r||isTest()||S.date>londonNow().date)return"";const n=TROOMS.filter(g=>S.sd[staffKey(S.date,g)]).length;
+  return'<div class="hint" style="margin-top:4px">Teachers here: <b>'+n+' of '+TROOMS.length+'</b></div>'}
 function nightStrip(){
   const r=rosterFor(S.date);if(!r||isTest())return"";
-  return'<div class="note" style="margin:0 0 10px"><b>RMD faculty lead tonight: '+esc(r.lead)+'</b><details style="margin-top:4px"><summary style="cursor:pointer;font-weight:700">Teachers by room</summary>'+TROOMS.map((g,i)=>'<div class="hl"><b>'+g+'</b> '+esc(r.rooms[i])+'</div>').join("")+'</details></div>'
+  return'<div class="note" style="margin:0 0 10px"><b>RMD faculty lead tonight: '+esc(r.lead)+'</b>'+teacherLine()+'<details style="margin-top:4px"><summary style="cursor:pointer;font-weight:700">Teachers by room</summary>'+TROOMS.map((g,i)=>'<div class="hl"><b>'+g+'</b> '+esc(r.rooms[i])+(!isTest()&&S.date<=londonNow().date?(S.sd[staffKey(S.date,g)]?' <span class="chip ok">here</span>'+(r.rooms[i]===S.me&&S.date===londonNow().date?' <button class="btn" data-a="unhere" data-v="'+esc(S.me)+'">Undo</button>':""):' <span class="chip">not yet</span>'):"")+'</div>').join("")+'</details></div>'
 }
 function roomView(){
   let h='<div class="sect">Your room</div><div class="chs">'+TROOMS.map(g=>'<button class="ch'+(S.room===g?" on":"")+'" data-a="grp" data-v="'+g+'">'+g+'</button>').join("")+'</div>';
@@ -692,7 +720,7 @@ function tileHtml(n,l,k){return'<div class="tile '+(k||"")+'"><div class="n">'+n
 function render(){
   if(!S.user)return;
   const c=cnt(),open=S.concerns.filter(x=>x.open).length;
-  $("msgs").innerHTML=(S.err?'<div class="msg">'+esc(S.err)+'</div>':"")+(S.msg?'<div class="msg ok">'+esc(S.msg)+'</div>':"");
+  $("msgs").innerHTML=presenceBanner()+(S.err?'<div class="msg">'+esc(S.err)+'</div>':"")+(S.msg?'<div class="msg ok">'+esc(S.msg)+'</div>':"");
   $("testb").innerHTML=isTest()?'<div class="testb"><b>TEST EVENING.</b> Made-up nurses. Nothing goes to the nursing school.</div>':"";
   // doors
   $("doorBar").innerHTML=(S.staff&&!instrMode())?DOORS.map(d=>'<button class="'+(S.door===d[0]?"on":"")+((d[0]==="tonight"&&open)?" alert":"")+'" data-a="door" data-v="'+d[0]+'">'+d[1]+'<small>'+d[2]+(d[0]==="tonight"&&open?" - concerns waiting":"")+'</small></button>').join("")+'<button class="all" data-a="door" data-v="all">All jobs</button>':"";
@@ -767,6 +795,9 @@ document.addEventListener("click",e=>{
   else if(a==="oneadd"){const o=S.one;const line=[isoToDmy(o.date),o.room,o.last.trim(),o.first.trim(),o.email.trim(),o.field,o.year].join(", ");S.paste=(S.paste.trim()?S.paste.replace(/\s+$/,"")+"\n":"")+line;S.one.last="";S.one.first="";S.one.email="";S.one.field="";S.one.year="";S.msg="Added to the list below. Press Parse & preview when you have added everyone."}
   else if(a==="oneclear"){S.one={date:S.one.date,room:S.one.room,last:"",first:"",email:"",field:"",year:""}}
   else if(a==="seed"){seedTest();return}
+  else if(a==="imhere"){markHere(v,false);return}
+  else if(a==="unhere"){markHere(v,true);return}
+  else if(a==="imno"){const c=bannerCtx();if(c)try{sessionStorage.setItem("tueNo"+c.date,"1")}catch(e){}}
   else if(a==="ropen"){if(S.rop===id){S.rop=null;S.red=null}else{const n=S.nurses.find(x=>x.id===id);S.rop=id;S.rdel=null;S.red=n?{last:n.last||"",first:n.first||"",email:n.email||"",field:n.field||"",year:n.year||""}:null}}
   else if(a==="rmove"){rosMove(id,v);return}
   else if(a==="rsave"){rosSave(id);return}
