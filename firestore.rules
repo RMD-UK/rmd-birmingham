@@ -1309,6 +1309,12 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['date', 'room', 'name', 'by', 'at']);
       allow delete: if tueTeach();
     }
+    // Nurse questionnaires. Written only by the nurseRefresherSubmit Cloud Function (Admin SDK).
+    // RMD faculty read them; instructors do not, so ratings of individual teachers stay with faculty.
+    match /tuesday_questionnaires/{qId} {
+      allow read: if tueStaff();
+      allow write: if false;
+    }
     match /tuesday_concerns/{concernId} {
       allow read: if tueStaff();
       allow create: if tueTeach()

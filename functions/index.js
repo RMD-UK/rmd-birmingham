@@ -4772,3 +4772,136 @@ exports.iwKioskCheckIn = onCall({ region: "us-central1" }, async (request) => {
   }, { merge: true });
   return { ok: true, alreadyCheckedIn: false, day, firstName: first };
 });
+
+/**
+ * Tuesday nurse refresher: questionnaires and "find my session" (2026-11-03, Jon).
+ *
+ * Nurses never sign in. Like lookupCandidateRoom above, these callables check the shared
+ * access code (config/candidate_access) on the server, then find the nurse by EMAIL (the
+ * strict gate) and confirm the name. Nothing in tuesday_nurses is readable by the client.
+ *
+ *   nurseRefresherLookup  - returns that nurse's own sessions (date, time, room) and which
+ *                           of the two questionnaires are done, and whether they passed.
+ *   nurseRefresherSubmit  - validates and saves the pre-course or post-course answers to
+ *                           tuesday_questionnaires/{email}__{kind} (client cannot write it)
+ *                           and marks pre / post on that nurse's tuesday_nurses records so
+ *                           instructors can see "pre-course done".
+ *
+ * Question lists must match nurse-refresher.html. Pass = BLS and AED pass AND first aid pass.
+ */
+const TUE_Q = {
+  pre: [
+    { q: "Have you done BLS on a clinical placement in the last 12 months?", k: "c", o: ["Yes", "No"] },
+    { q: "Have you had BLS training outside university? This includes another group, organisation or hospital.", k: "c", o: ["Yes", "No"] },
+    { q: "Have you had training in any of these?", k: "m", o: ["Drowning", "Asphyxia", "Choking infant", "Paediatric BLS", "None of these"] },
+    { q: "How confident are you to do BLS right now?", k: "s" },
+    { q: "How well could you explain the BLS steps to someone?", k: "s" },
+    { q: "How confident are you giving chest compressions to a female patient?", k: "s" },
+    { q: "How useful do you think this course is for you?", k: "s" },
+    { q: "What do you expect to find most helpful in the course?", k: "t" },
+    { q: "Which part of BLS do you feel least prepared for?", k: "t" },
+    { q: "Any other comments? (optional)", k: "t", opt: true }
+  ],
+  post: [
+    { q: "How would you rate the content of the session?", k: "s" },
+    { q: "How would you rate the length of the session?", k: "s" },
+    { q: "How would you rate the way it was taught?", k: "s" },
+    { q: "How would you rate your instructor's teaching and feedback?", k: "s" },
+    { q: "How confident are you to do BLS now?", k: "s" },
+    { q: "How well could you explain the BLS steps to someone?", k: "s" },
+    { q: "How confident are you giving chest compressions to a female patient?", k: "s" },
+    { q: "Was learning with the breasted manikins helpful?", k: "s" },
+    { q: "How useful is this course for students?", k: "s" },
+    { q: "Overall, how would you rate the session?", k: "s" },
+    { q: "What could we improve or add? (optional)", k: "t", opt: true }
+  ]
+};
+
+function tueEmailVariants(email) {
+  const e = String(email || "").trim();
+  const lower = e.toLowerCase();
+  const at = lower.indexOf("@");
+  const out = new Set([lower, e]);
+  if (at > 0) out.add(lower.slice(0, at).toUpperCase() + lower.slice(at));
+  return [...out].filter(Boolean);
+}
+
+function tueCheckAnswers(kind, answers) {
+  const defs = TUE_Q[kind];
+  if (!defs) return "Unknown questionnaire.";
+  if (!Array.isArray(answers) || answers.length !== defs.length) return "Please answer every question.";
+  for (let i = 0; i < defs.length; i++) {
+    const d = defs[i], a = answers[i];
+    if (d.k === "s") { if (!Number.isInteger(a) || a < 1 || a > 5) return "Question " + (i + 1) + " needs a rating from 1 to 5."; }
+    else if (d.k === "c") { if (typeof a !== "string" || d.o.indexOf(a) < 0) return "Question " + (i + 1) + " needs an answer."; }
+    else if (d.k === "m") { if (!Array.isArray(a) || !a.length || a.some(x => d.o.indexOf(x) < 0)) return "Question " + (i + 1) + " needs at least one choice."; }
+    else { if (typeof a !== "string" || a.length > 2000 || (!d.opt && !a.trim())) return "Question " + (i + 1) + " needs an answer."; }
+  }
+  return "";
+}
+
+async function tueFindNurse(data) {
+  const code = String(data.code || "").trim().toLowerCase();
+  const name = String(data.name || "").trim();
+  const email = String(data.email || "").trim();
+  if (!code) throw new HttpsError("invalid-argument", "Password required.");
+  if (!name) throw new HttpsError("invalid-argument", "Name required.");
+  if (!email) throw new HttpsError("invalid-argument", "Email required.");
+  const codeSnap = await db.collection("config").doc("candidate_access").get();
+  const realCode = (codeSnap.exists && codeSnap.data().code ? String(codeSnap.data().code) : "").trim().toLowerCase();
+  if (!realCode || code !== realCode) throw new HttpsError("permission-denied", "That password isn't right.");
+  const seen = new Map();
+  for (const v of tueEmailVariants(email)) {
+    const snap = await db.collection("tuesday_nurses").where("email", "==", v).get();
+    snap.docs.forEach(d => { if (!d.data().test) seen.set(d.id, { id: d.id, ...d.data() }); });
+  }
+  const all = [...seen.values()];
+  const wanted = normalizeNameForMatch(name);
+  const hits = all.filter(n => normalizeNameForMatch((n.first || "") + " " + (n.last || "")) === wanted ||
+    normalizeNameForMatch((n.last || "") + " " + (n.first || "")) === wanted);
+  if (!hits.length) {
+    const close = all.find(n => isCloseNameMatch(name, (n.first || "") + " " + (n.last || "")) || isCloseNameMatch(name, (n.last || "") + " " + (n.first || "")));
+    if (close) return { found: false, closeMatch: true, suggestedName: ((close.first || "") + " " + (close.last || "")).trim() };
+    return { found: false };
+  }
+  return { found: true, nurses: hits.sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))), emailLower: String(hits[0].email || email).trim().toLowerCase() };
+}
+
+exports.nurseRefresherLookup = onCall({ region: "us-central1" }, async (request) => {
+  const r = await tueFindNurse(request.data || {});
+  if (!r.found) return r;
+  const q = await Promise.all(["pre", "post"].map(k => db.collection("tuesday_questionnaires").doc(r.emailLower + "__" + k).get()));
+  const sessions = r.nurses.map(n => ({
+    date: n.date || null, room: n.room || null, time: "19:00 to 21:00",
+    moved: !!n.movedFrom, attended: n.st === "here" || n.st === "late",
+    passed: n.bls === "pass" && n.fa === "pass", assessed: !!(n.bls && n.fa)
+  }));
+  const first = r.nurses[0];
+  return {
+    found: true, name: ((first.first || "") + " " + (first.last || "")).trim(), sessions,
+    passed: sessions.some(s => s.passed), pre: q[0].exists, post: q[1].exists
+  };
+});
+
+exports.nurseRefresherSubmit = onCall({ region: "us-central1" }, async (request) => {
+  const kind = String((request.data || {}).kind || "");
+  const answers = (request.data || {}).answers;
+  const bad = tueCheckAnswers(kind, answers);
+  if (bad) throw new HttpsError("invalid-argument", bad);
+  const r = await tueFindNurse(request.data || {});
+  if (!r.found) throw new HttpsError("not-found", "We could not find you.");
+  const ref = db.collection("tuesday_questionnaires").doc(r.emailLower + "__" + kind);
+  const have = await ref.get();
+  if (have.exists) return { ok: true, already: true };
+  const latest = r.nurses[r.nurses.length - 1];
+  await ref.set({
+    kind, emailLower: r.emailLower, name: ((latest.first || "") + " " + (latest.last || "")).trim(),
+    date: latest.date || null, room: latest.room || null,
+    answers: TUE_Q[kind].map((d, i) => ({ q: d.q, k: d.k, a: answers[i] })),
+    createdAt: admin.firestore.FieldValue.serverTimestamp()
+  });
+  const batch = db.batch();
+  r.nurses.forEach(n => batch.update(db.collection("tuesday_nurses").doc(n.id), { [kind]: true }));
+  await batch.commit();
+  return { ok: true, already: false };
+});

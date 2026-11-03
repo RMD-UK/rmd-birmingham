@@ -132,7 +132,7 @@ const TESTN = [['Amira Khan','Adult'],['Ben Okafor','Adult'],['Chloe Ward','Chil
 const ROSTER={"2026-10-20":{lead:"Kit Smith and Hannah Hardy",rooms:["Esme Freeman","Rachel Francis","Jenna Ghattaora","Shannon Beech","Jimmy Chen"]},"2026-10-27":{lead:"Kit Smith and Hannah Hardy",rooms:["Jenna Ghattaora","Martha Marjoram","Esme Freeman","Ishaan Paul","Evelyn Prime"]},"2026-11-03":{lead:"Kit Smith",rooms:["Lily Karaceylan","Naomi Ngobigha","Martha Marjoram","Rachel Francis","Jenna Ghattaora"]},"2026-11-10":{lead:"Kit Smith",rooms:["Rebecca Newton","Shannon Beech","Naomi Ngobigha","Esme Freeman","Olamide Sanusi"]},"2026-11-17":{lead:"Hannah Hardy",rooms:["Evelyn Prime","Shannon Beech","Laura Bland","Rebecca Newton","Ishaan Paul"]},"2026-11-24":{lead:"Hannah Hardy",rooms:["Olamide Sanusi","Ishaan Paul","Esme Freeman","Lily Karaceylan","Isla Topalli"]},"2026-12-01":{lead:"Kit Smith",rooms:["Martha Marjoram","Olamide Sanusi","Jimmy Chen","Isla Topalli","Laura Bland"]},"2026-12-08":{lead:"Hannah Hardy",rooms:["Jimmy Chen","Lucy McClean","Lily Karaceylan","Jenna Ghattaora","Rebecca Newton"]},"2027-01-12":{lead:"Hannah Hardy",rooms:["Naomi Ngobigha","Jenna Ghattaora","Lucy McClean","Laura Bland","Esme Freeman"]},"2027-01-19":{lead:"Kit Smith",rooms:["Rachel Francis","Lucy McClean","Evelyn Prime","Olamide Sanusi","Lily Karaceylan"]},"2027-01-26":{lead:"Hannah Hardy",rooms:["Laura Bland","Jimmy Chen","Rachel Francis","Naomi Ngobigha","Ishaan Paul"]},"2027-02-02":{lead:"Kit Smith",rooms:["Lucy McClean","Rebecca Newton","Martha Marjoram","Isla Topalli","Rachel Francis"]},"2027-02-09":{lead:"Hannah Hardy",rooms:["Shannon Beech","Evelyn Prime","Isla Topalli","Jimmy Chen","Naomi Ngobigha"]}};
 const rosterFor=d=>(S.rdb&&S.rdb[d])||ROSTER[d]||null;
 const teacherOf=(d,room)=>{const r=rosterFor(d);const i=TROOMS.indexOf(room);return r&&i>-1?r.rooms[i]:""};
-const S = { sd:{},rop:null,red:null,rdel:null,rdb:{},swaps:[],me:(function(){try{return localStorage.getItem('tueMe')||''}catch(e){return''}})(),sw:null,swe:null,user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",lastMsg:"",fusel:{},fumsg:{},ccl:null,co:{out:"",mgr:"",note:""},mi:{},nmsg:{},one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
+const S = { qd:null,sd:{},rop:null,red:null,rdel:null,rdb:{},swaps:[],me:(function(){try{return localStorage.getItem('tueMe')||''}catch(e){return''}})(),sw:null,swe:null,user:null, staff:false, role:null, date:null, cfg:{ start:"2026-10-20", end:"2027-02-09", evenings:{}, confirmBy:"" }, nurses:[], rooms:{}, concerns:[], sub:null,door:"tonight",view:"faculty",fq:"",lastMsg:"",fusel:{},fumsg:{},ccl:null,co:{out:"",mgr:"",note:""},mi:{},nmsg:{},one:{date:"",room:"",last:"",first:"",email:"",field:"",year:""}, og:{}, orow:null, room:"CM02", af:{}, cc:null, ccr:[], cctext:"", err:"", msg:"", sp:{}, sdi:"", edi:"", paste:"", parsed:null, clk:null, unsubs:[] };
 const $ = id => document.getElementById(id);
 const esc = v => (v == null ? "" : String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const TS = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -484,7 +484,7 @@ function rosView(){
   let h='<div class="sect">Room lists: '+esc(niceDate(S.date))+'</div><div class="sumstrip" style="margin:0 0 8px">'+tileHtml(L.length,"Nurses")+tileHtml(L.length-noRoom.length,"In a room")+tileHtml(noRoom.length,"No room",noRoom.length?"warn":"")+tileHtml(here,"Here or late")+tileHtml(assd,"Assessed")+'</div>';
   if(!L.length)return h+'<div class="hint">Nobody is booked on this evening yet. Use Add nurses and rooms.</div>';
   h+='<div class="hint">Tap a nurse to move them to another room, fix their details, or take them off this evening. A room holds up to '+PER_ROOM+'.</div><div class="rgrid">';
-  const card=n=>{const open=S.rop===n.id;let c='<button class="rn" data-a="ropen" data-id="'+n.id+'"><span>'+esc(nurseName(n))+'<small>'+esc((n.field||"")+(n.year?" - "+n.year:""))+(n.movedFrom?" - moved in":"")+'</small></span>'+chipFor(n)+'</button>';
+  const card=n=>{const open=S.rop===n.id;let c='<button class="rn" data-a="ropen" data-id="'+n.id+'"><span>'+esc(nurseName(n))+'<small>'+esc((n.field||"")+(n.year?" - "+n.year:""))+(n.movedFrom?" - moved in":"")+" - pre "+(n.pre?"done":"no")+", post "+(n.post?"done":"no")+'</small></span>'+chipFor(n)+'</button>';
     if(open&&S.red){const r=S.red;
       c+='<div class="rpanel"><div class="hint" style="margin:0 0 4px"><b>Move to room</b></div><div class="chs">'+TROOMS.filter(x=>x!==n.room).map(x=>{const full=rc[x].length>=PER_ROOM;return'<button class="ch" '+(full?'disabled style="opacity:.4"':'')+' data-a="rmove" data-id="'+n.id+'" data-v="'+x+'">'+x+' ('+rc[x].length+')</button>'}).join("")+'</div>'
        +'<div class="hint" style="margin:8px 0 0"><b>Details</b></div><input id="re_last" value="'+esc(r.last)+'" placeholder="Last name"><input id="re_first" value="'+esc(r.first)+'" placeholder="First name"><input id="re_email" value="'+esc(r.email)+'" placeholder="Email"><select id="re_field"><option value="">Course not set</option>'+FIELDS.map(f=>'<option'+(r.field===f?' selected':'')+'>'+esc(f)+'</option>').join("")+'</select><select id="re_year"><option value="">Year not set</option>'+YEARS.map(f=>'<option'+(r.year===f?' selected':'')+'>'+esc(f)+'</option>').join("")+'</select>'
@@ -531,6 +531,34 @@ async function markHere(name,undo){
 function teacherLine(){
   const r=rosterFor(S.date);if(!r||isTest()||S.date>londonNow().date)return"";const n=TROOMS.filter(g=>S.sd[staffKey(S.date,g)]).length;
   return'<div class="hint" style="margin-top:4px">Teachers here: <b>'+n+' of '+TROOMS.length+'</b></div>'}
+
+// ── questionnaires (RMD faculty): who has done them and the answers ──
+async function loadQs(){
+  S.qd=null;render();
+  try{const q=await db.collection("tuesday_questionnaires").get();S.qd=q.docs.map(d=>d.data())}catch(e){S.qd=[];S.err="Could not load the questionnaires: "+(e.message||e)}
+  render()}
+function qsView(){
+  const L=S.nurses.filter(n=>true),npre=L.filter(n=>n.pre).length,npost=L.filter(n=>n.post).length;
+  let h='<div class="sect">Questionnaires: '+esc(niceDate(S.date))+'</div><div class="sumstrip" style="margin:0 0 8px">'+tileHtml(L.length,"Nurses")+tileHtml(npre,"Done before")+tileHtml(L.length-npre,"Not before",L.length-npre?"warn":"")+tileHtml(npost,"Done after")+'</div>';
+  h+='<div class="hint">Nurses do these on their own page after entering the RMD password. The after-course one opens on the day of their session.</div>';
+  const notPre=L.filter(n=>!n.pre);
+  if(notPre.length)h+='<details style="margin:8px 0"><summary style="cursor:pointer;font-weight:700">Not done before the course ('+notPre.length+')</summary>'+notPre.map(n=>'<div class="hl">'+esc(nurseName(n))+' - '+esc(n.room||"")+'</div>').join("")+'</details>';
+  const notPost=L.filter(n=>!n.post&&attended(n));
+  if(notPost.length)h+='<details style="margin:8px 0"><summary style="cursor:pointer;font-weight:700">Here but not done after ('+notPost.length+')</summary>'+notPost.map(n=>'<div class="hl">'+esc(nurseName(n))+' - '+esc(n.room||"")+'</div>').join("")+'</details>';
+  h+='<div class="sect">All answers</div>';
+  if(S.qd===null)return h+'<div class="hint">Loading...</div>';
+  ["pre","post"].forEach(k=>{
+    const rs=S.qd.filter(x=>x.kind===k);h+='<div class="cand"><b>'+(k==="pre"?"Before the course":"After the course")+'</b> - '+rs.length+' response'+(rs.length===1?"":"s");
+    if(!rs.length){h+='</div>';return}
+    const qn=rs[0].answers;
+    qn.forEach((a,i)=>{
+      if(a.k==="s"){const v=rs.map(r=>r.answers[i]&&r.answers[i].a).filter(x=>typeof x==="number");h+='<div class="hl">'+esc(a.q)+' <b>'+(v.length?(v.reduce((x,y)=>x+y,0)/v.length).toFixed(1):"-")+' / 5</b></div>'}
+      else if(a.k==="c"){const c={};rs.forEach(r=>{const x=r.answers[i]&&r.answers[i].a;if(x)c[x]=(c[x]||0)+1});h+='<div class="hl">'+esc(a.q)+' '+Object.keys(c).map(x=>esc(x)+' '+c[x]).join(", ")+'</div>'}
+      else if(a.k==="m"){const c={};rs.forEach(r=>((r.answers[i]&&r.answers[i].a)||[]).forEach(x=>c[x]=(c[x]||0)+1));h+='<div class="hl">'+esc(a.q)+' '+Object.keys(c).map(x=>esc(x)+' '+c[x]).join(", ")+'</div>'}
+    });
+    qn.forEach((a,i)=>{if(a.k!=="t")return;const t=rs.map(r=>(r.answers[i]&&r.answers[i].a)||"").filter(x=>x.trim());h+='<details style="margin-top:6px"><summary style="cursor:pointer;font-weight:700">'+esc(a.q)+' ('+t.length+')</summary>'+t.map(x=>'<div class="hl">'+esc(x)+'</div>').join("")+'</details>'});
+    h+='</div>'});
+  return h}
 function nightStrip(){
   const r=rosterFor(S.date);if(!r||isTest())return"";
   return'<div class="note" style="margin:0 0 10px"><b>RMD faculty lead tonight: '+esc(r.lead)+'</b>'+teacherLine()+'<details style="margin-top:4px"><summary style="cursor:pointer;font-weight:700">Teachers by room</summary>'+TROOMS.map((g,i)=>'<div class="hl"><b>'+g+'</b> '+esc(r.rooms[i])+(!isTest()&&S.date<=londonNow().date?(S.sd[staffKey(S.date,g)]?' <span class="chip ok">here</span>'+(r.rooms[i]===S.me&&S.date===londonNow().date?' <button class="btn" data-a="unhere" data-v="'+esc(S.me)+'">Undo</button>':""):' <span class="chip">not yet</span>'):"")+'</div>').join("")+'</details></div>'
@@ -543,7 +571,7 @@ function roomView(){
   const L=roomList(S.room);if(!L.length)h+='<div class="hint">Nobody in this room tonight.</div>';
   h+='<div class="cgrid">';
   L.forEach(n=>{const here=attended(n);
-    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.field||"")+(n.year?" - "+esc(n.year):"")+'</small></span>'+chipFor(n)+'</div><div class="bt st3">'+sbtn(n,"here","Here")+sbtn(n,"late","Late")+sbtn(n,"absent","Absent")+'</div>';
+    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.field||"")+(n.year?" - "+esc(n.year):"")+(n.pre?" - pre-course done":" - pre-course not yet")+'</small></span>'+chipFor(n)+'</div><div class="bt st3">'+sbtn(n,"here","Here")+sbtn(n,"late","Late")+sbtn(n,"absent","Absent")+'</div>';
     if(!here){}
     else if(n.bls&&n.fa)h+='<div class="asbox"><div class="asttl">Result</div>'+esc(wording(n))+(weak(n)?'<div class="hint" style="margin-top:6px">What went wrong: '+esc(weak(n))+'</div>':"")+'<div class="bt"><button class="btn" data-a="redo" data-id="'+n.id+'">Change result</button></div></div>';
     else h+=afBlock(n);
@@ -700,17 +728,19 @@ const JOBS=[
  {id:"eve",t:"Which Tuesdays run",sub:"Set the year and confirm the evenings",door:"plan"},
  {id:"cohort",t:"Add nurses and rooms",sub:"Paste the list, then check it",door:"plan"},
  {id:"shifts",t:"Teaching shifts",sub:"Swap a night, check cover",door:"plan",all:true},
+ {id:"qs",t:"Questionnaires",sub:"Who has done them, and the answers",door:"plan"},
  {id:"fu",t:"Not passed follow-up",sub:"Tell the school, then record their advice",door:"plan"},
  {id:"school",t:"Nursing school sheet",sub:"Who attended, results, did not attend",door:"plan"},
  {id:"test",t:"Test evening",sub:"Try it alone with made-up nurses",door:"plan"},
  {id:"bigreg",t:"Register big screen",sub:"Counts only, no names",door:"help",href:"tuesday-screen.html?mode=register"},
  {id:"bigres",t:"Results big screen",sub:"Counts only, no names",door:"help",href:"tuesday-screen.html?mode=results"},
+ {id:"nurse",t:"Nurse page",sub:"The page nurses use (password, then questionnaires)",door:"help",href:"nurse-refresher.html?from=hub"},
  {id:"guide",t:"User guide",sub:"How to use this hub",door:"help",all:true,href:"tuesday-guide.html?from=hub"},
  {id:"hand",t:"Resources",sub:"Guides on the RMD site",door:"help",all:true}
 ];
 const DOORS=[["tonight","Tonight","Register, assess, results"],["plan","Planning","Dates, nurses, nursing school"],["help","Screens and help","Big screens, resources"]];
-const VIEWS={ros:rosView,shifts:shiftsView,room:roomView,reg:regView,move:moveView,res:resView,con:conView,end:endView,eve:eveView,cohort:cohortView,school:schoolView,fu:fuView,tt:ttView,test:testView,hand:handView};
-const TITLES={ros:"Room lists",shifts:"Teaching shifts",room:"Assess a room",reg:"Register",move:"Needs another date",res:"Results",con:"Concerns",tt:"Live timetable",end:"End of night",eve:"Which Tuesdays run",cohort:"Add nurses and rooms",school:"Nursing school sheet",fu:"Not passed follow-up",test:"Test evening",hand:"Resources"};
+const VIEWS={qs:qsView,ros:rosView,shifts:shiftsView,room:roomView,reg:regView,move:moveView,res:resView,con:conView,end:endView,eve:eveView,cohort:cohortView,school:schoolView,fu:fuView,tt:ttView,test:testView,hand:handView};
+const TITLES={qs:"Questionnaires",ros:"Room lists",shifts:"Teaching shifts",room:"Assess a room",reg:"Register",move:"Needs another date",res:"Results",con:"Concerns",tt:"Live timetable",end:"End of night",eve:"Which Tuesdays run",cohort:"Add nurses and rooms",school:"Nursing school sheet",fu:"Not passed follow-up",test:"Test evening",hand:"Resources"};
 const instrMode=()=>!S.staff||S.view==="instr";
 function visibleJobs(){
   if(instrMode())return JOBS.filter(j=>j.all);
@@ -756,7 +786,7 @@ document.addEventListener("input",e=>{
 document.addEventListener("click",e=>{
   const t=e.target.closest("[data-a]");if(!t)return;
   const a=t.dataset.a,id=t.dataset.id,v=t.dataset.v,k=t.dataset.k;S.msg=(a==="go"?"":S.msg);S.err="";
-  if(a==="go"){S.sub=v;if(v==="move")loadSpaces()}
+  if(a==="go"){S.sub=v;if(v==="move")loadSpaces();if(v==="qs")loadQs()}
   else if(a==="dt"){S.date=v;S.parsed=null;S.cc=null;S.mv=null;renderTabs();attach()}
   else if(a==="door"){S.door=v;const f=JOBS.filter(j=>!j.instr&&(v==="all"||j.door===v)).find(j=>!j.href);if(f)S.sub=f.id;if(S.sub==="move")loadSpaces()}
   else if(a==="chg"){S.view=S.view==="faculty"?"instr":"faculty";S.door="tonight";S.sub=S.view==="instr"?"room":"reg"}

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nurse BLS Refresher — RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 60px; color:#18212f; }
+    .top-bar { background: var(--rmd-navy); color:#fff; padding:12px 16px; display:flex; align-items:center; gap:12px; }
+    .top-bar img { height:36px; border-radius:50%; background:#fff; }
+    .top-bar-title { font-size:17px; font-weight:800; }
+    .top-bar-sub { font-size:12px; opacity:.75; display:block; font-weight:400; }
+    .wrap { max-width:560px; margin:0 auto; padding:18px 14px; }
+    .card { background:#fff; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.08); padding:18px; margin-bottom:14px; }
+    h2 { font-size:18px; margin:0 0 6px; color:var(--rmd-navy); }
+    .hint { font-size:13px; color:#667389; line-height:1.5; margin:4px 0 10px; }
+    input[type=text], input[type=email], input[type=password], textarea { width:100%; padding:12px; border:2px solid #ccd6dd; border-radius:8px; font-size:16px; font-family:var(--font); margin-bottom:10px; }
+    textarea { min-height:70px; resize:vertical; }
+    .btn { width:100%; padding:13px; background:var(--rmd-blue); color:#fff; border:none; border-radius:8px; font-size:15px; font-weight:700; font-family:var(--font); cursor:pointer; margin-top:4px; }
+    .btn.alt { background:#fff; color:var(--rmd-navy); border:2px solid var(--rmd-navy); }
+    .btn:disabled { opacity:.45; cursor:default; }
+    .err { color:#b7410e; font-size:14px; margin-top:8px; }
+    .row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-top:1px solid #eef0f6; font-size:15px; }
+    .row:first-of-type { border-top:0; }
+    .chip { font-size:12px; font-weight:800; border-radius:999px; padding:3px 10px; }
+    .chip.ok { background:#dff3e6; color:#1a6e31; } .chip.no { background:#fff3cd; color:#856404; } .chip.bad { background:#fce8e6; color:#b7410e; }
+    .q { font-weight:700; font-size:15px; margin-top:16px; }
+    .qh { font-size:13px; color:#667389; margin:2px 0 6px; }
+    .opts { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+    .opt { border:2px solid #ccd6dd; background:#fff; border-radius:10px; padding:10px 14px; font-size:15px; font-weight:700; font-family:var(--font); cursor:pointer; min-width:48px; }
+    .opt.on { background:var(--rmd-navy); border-color:var(--rmd-navy); color:#fff; }
+    .scale { font-size:12px; color:#667389; margin-top:4px; }
+    .note { background:#fff3d6; border-radius:10px; padding:12px; font-size:14px; margin:10px 0; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+<div class="top-bar"><img src="assets/rmd-logo.png" alt="RMD"><div class="top-bar-title">Nurse BLS refresher<span class="top-bar-sub">RMD Birmingham</span></div></div>
+<div class="wrap">
+
+<div class="card" id="lookupCard">
+  <h2>Find my session</h2>
+  <div class="hint">Enter the RMD password you were given, then your full name and email, as you registered.</div>
+  <input type="password" id="pw" placeholder="RMD password" autocomplete="off">
+  <input type="text" id="nm" placeholder="Full name" autocomplete="name">
+  <input type="email" id="em" placeholder="Email" autocomplete="email">
+  <button class="btn" id="goBtn" type="button">Find my session</button>
+  <div class="err" id="lookErr"></div>
+  <div class="note hidden" id="closeBox"></div>
+</div>
+
+<div id="meBox" class="hidden">
+  <div class="card" id="sessCard"></div>
+  <div class="card" id="tickCard"></div>
+  <div class="card hidden" id="qCard"></div>
+</div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const fns = firebase.functions();
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const MN = ["January","February","March","April","May","June","July","August","September","October","November","December"], DN = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const nice = iso => { if (!iso) return "to be confirmed"; const d = new Date(iso + "T12:00:00Z"); return DN[d.getUTCDay()] + " " + d.getUTCDate() + " " + MN[d.getUTCMonth()] + " " + d.getUTCFullYear(); };
+const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
+
+// Same questions as nurse functions (nurseRefresherSubmit in functions/index.js).
+const PRE = [
+  { q:"Have you done BLS on a clinical placement in the last 12 months?", k:"c", o:["Yes","No"] },
+  { q:"Have you had BLS training outside university? This includes another group, organisation or hospital.", k:"c", o:["Yes","No"] },
+  { q:"Have you had training in any of these?", h:"Tick all that apply.", k:"m", o:["Drowning","Asphyxia","Choking infant","Paediatric BLS","None of these"] },
+  { q:"How confident are you to do BLS right now?", k:"s", lo:"Not at all confident", hi:"Very confident" },
+  { q:"How well could you explain the BLS steps to someone?", k:"s", lo:"Not at all well", hi:"Very well" },
+  { q:"How confident are you giving chest compressions to a female patient?", h:"This includes hand position and managing clothing and breast tissue.", k:"s", lo:"Not at all confident", hi:"Very confident" },
+  { q:"How useful do you think this course is for you?", k:"s", lo:"Not useful", hi:"Very useful" },
+  { q:"What do you expect to find most helpful in the course?", k:"t" },
+  { q:"Which part of BLS do you feel least prepared for?", k:"t" },
+  { q:"Any other comments? (optional)", k:"t", opt:true }
+];
+const POST = [
+  { q:"How would you rate the content of the session?", k:"s", lo:"Poor", hi:"Excellent" },
+  { q:"How would you rate the length of the session?", k:"s", lo:"Poor", hi:"Excellent" },
+  { q:"How would you rate the way it was taught?", k:"s", lo:"Poor", hi:"Excellent" },
+  { q:"How would you rate your instructor's teaching and feedback?", k:"s", lo:"Poor", hi:"Excellent" },
+  { q:"How confident are you to do BLS now?", k:"s", lo:"Not at all confident", hi:"Very confident" },
+  { q:"How well could you explain the BLS steps to someone?", k:"s", lo:"Not at all well", hi:"Very well" },
+  { q:"How confident are you giving chest compressions to a female patient?", h:"This includes hand position and managing clothing and breast tissue.", k:"s", lo:"Not at all confident", hi:"Very confident" },
+  { q:"Was learning with the breasted manikins helpful?", k:"s", lo:"Not helpful", hi:"Very helpful" },
+  { q:"How useful is this course for students?", k:"s", lo:"Not useful", hi:"Very useful" },
+  { q:"Overall, how would you rate the session?", k:"s", lo:"Poor", hi:"Excellent" },
+  { q:"What could we improve or add? (optional)", k:"t", opt:true }
+];
+
+let creds = null, me = null, kind = null, ans = [];
+
+async function lookup(overrideName) {
+  $("lookErr").textContent = ""; $("closeBox").classList.add("hidden");
+  const code = $("pw").value.trim(), name = (overrideName || $("nm").value).trim(), email = $("em").value.trim();
+  if (!code || !name || !email) { $("lookErr").textContent = "Please fill in all three boxes."; return; }
+  $("goBtn").disabled = true; $("goBtn").textContent = "Looking...";
+  try {
+    const r = (await fns.httpsCallable("nurseRefresherLookup")({ code, name, email })).data;
+    if (r.found) { creds = { code, name, email }; me = r; render(); return; }
+    if (r.closeMatch) {
+      const b = $("closeBox"); b.classList.remove("hidden");
+      b.innerHTML = "Did you mean <b>" + esc(r.suggestedName) + "</b>? <button class='btn' id='yesBtn' type='button'>Yes, that is me</button>";
+      $("yesBtn").onclick = () => { $("nm").value = r.suggestedName; lookup(r.suggestedName); };
+    } else $("lookErr").textContent = "We could not find you. Check your name and email match how you registered.";
+  } catch (e) {
+    $("lookErr").textContent = (e && e.code === "functions/permission-denied") ? "That password isn't right." : "Something went wrong. Please try again.";
+  }
+  $("goBtn").disabled = false; $("goBtn").textContent = "Find my session";
+}
+
+function render() {
+  $("lookupCard").classList.add("hidden"); $("meBox").classList.remove("hidden");
+  const s = me.sessions, cur = s[s.length - 1];
+  $("sessCard").innerHTML = "<h2>Hello " + esc(me.name.split(" ")[0]) + "</h2>" +
+    s.map((x, i) => "<div class='row'><span><b>" + esc(nice(x.date)) + "</b><br>Time: " + esc(x.time) + "<br>Room: " + esc(x.room || "to be confirmed") + "</span>" + (s.length > 1 && i < s.length - 1 ? "<span class='chip no'>Earlier date</span>" : "") + "</div>").join("") +
+    "<div class='note'>Please be in your teaching room, ready for 19:00. Your instructor will take the register.</div>";
+  const sessionOver = cur.date && cur.date <= today();
+  const row = (t, chip) => "<div class='row'><span>" + t + "</span>" + chip + "</div>";
+  const dn = "<span class='chip ok'>Done</span>", ny = "<span class='chip no'>Not yet</span>";
+  $("tickCard").innerHTML = "<h2>Your checklist</h2>" +
+    row("Passed the session", me.passed ? dn : (me.sessions.some(x => x.assessed) ? "<span class='chip bad'>Not passed</span>" : ny)) +
+    row("Questionnaire before the course", me.pre ? dn : ny) +
+    row("Questionnaire after the course", me.post ? dn : ny) +
+    (!me.pre ? "<button class='btn' data-q='pre' type='button'>Do the questionnaire before the course</button>" : "") +
+    (!me.post ? (sessionOver ? "<button class='btn' data-q='post' type='button'>Do the questionnaire after the course</button>" : "<div class='hint'>The questionnaire after the course opens on the day of your session.</div>") : "") +
+    "<div class='hint'>Your certificate will be added to this page.</div>";
+  $("tickCard").querySelectorAll("[data-q]").forEach(b => b.onclick = () => openQ(b.dataset.q));
+  $("qCard").classList.add("hidden");
+}
+
+function openQ(k) { kind = k; ans = (k === "pre" ? PRE : POST).map(d => d.k === "m" ? [] : (d.k === "t" ? "" : null)); drawQ(); $("qCard").scrollIntoView({ behavior: "smooth" }); }
+
+function complete() {
+  return (kind === "pre" ? PRE : POST).every((d, i) => d.k === "t" ? (d.opt || String(ans[i]).trim()) : d.k === "m" ? ans[i].length > 0 : ans[i] != null);
+}
+
+function drawQ() {
+  const defs = kind === "pre" ? PRE : POST;
+  let h = "<h2>" + (kind === "pre" ? "Before the course" : "After the course") + "</h2><div class='hint'>Please answer every question. Only the last box is optional.</div>";
+  defs.forEach((d, i) => {
+    h += "<div class='q'>" + esc(d.q) + "</div>" + (d.h ? "<div class='qh'>" + esc(d.h) + "</div>" : "");
+    if (d.k === "s") h += "<div class='opts'>" + [1,2,3,4,5].map(n => "<button type='button' class='opt" + (ans[i] === n ? " on" : "") + "' data-i='" + i + "' data-v='" + n + "'>" + n + "</button>").join("") + "</div><div class='scale'>1 = " + esc(d.lo) + ", 5 = " + esc(d.hi) + "</div>";
+    else if (d.k === "c") h += "<div class='opts'>" + d.o.map(o => "<button type='button' class='opt" + (ans[i] === o ? " on" : "") + "' data-i='" + i + "' data-v='" + esc(o) + "'>" + esc(o) + "</button>").join("") + "</div>";
+    else if (d.k === "m") h += "<div class='opts'>" + d.o.map(o => "<button type='button' class='opt" + (ans[i].indexOf(o) > -1 ? " on" : "") + "' data-m='" + i + "' data-v='" + esc(o) + "'>" + esc(o) + "</button>").join("") + "</div>";
+    else h += "<textarea data-t='" + i + "' maxlength='2000'>" + esc(ans[i]) + "</textarea>";
+  });
+  h += "<button class='btn' id='subBtn' type='button' " + (complete() ? "" : "disabled") + ">Submit</button><button class='btn alt' id='cxBtn' type='button'>Cancel</button><div class='err' id='qErr'></div>";
+  const c = $("qCard"); c.innerHTML = h; c.classList.remove("hidden");
+  c.querySelectorAll("[data-i]").forEach(b => b.onclick = () => { const d = defs[+b.dataset.i]; ans[+b.dataset.i] = d.k === "s" ? +b.dataset.v : b.dataset.v; drawQ(); });
+  c.querySelectorAll("[data-m]").forEach(b => b.onclick = () => {
+    const i = +b.dataset.m, v = b.dataset.v, a = ans[i], at = a.indexOf(v);
+    if (at > -1) a.splice(at, 1); else if (v === "None of these") ans[i] = ["None of these"]; else { const z = a.indexOf("None of these"); if (z > -1) a.splice(z, 1); a.push(v); }
+    drawQ(); });
+  c.querySelectorAll("[data-t]").forEach(t => t.oninput = () => { ans[+t.dataset.t] = t.value; $("subBtn").disabled = !complete(); });
+  $("cxBtn").onclick = () => { $("qCard").classList.add("hidden"); };
+  $("subBtn").onclick = submitQ;
+}
+
+async function submitQ() {
+  $("subBtn").disabled = true; $("subBtn").textContent = "Sending...";
+  try {
+    await fns.httpsCallable("nurseRefresherSubmit")({ ...creds, kind, answers: ans });
+    me = (await fns.httpsCallable("nurseRefresherLookup")(creds)).data; render();
+    $("sessCard").insertAdjacentHTML("afterbegin", "<div class='note'>Thank you. Your answers are saved.</div>");
+    window.scrollTo(0, 0);
+  } catch (e) {
+    $("qErr").textContent = "Could not send. " + ((e && e.message) || "Please try again.");
+    $("subBtn").disabled = false; $("subBtn").textContent = "Submit";
+  }
+}
+
+$("goBtn").onclick = () => lookup();
+["pw", "nm", "em"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") lookup(); }));
+</script>
+</body>
+</html>
