@@ -69,6 +69,9 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}input,select,textare
 .regremind .btn{font-size:17px;padding:12px 22px;background:var(--pur);color:#fff;border-color:var(--pur);margin:3px}.regremind .btn.o{background:#fff;color:var(--pur)}
 .qd{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #9aa5b8;background:#fff;vertical-align:middle;margin-left:4px}.qd.on{background:#2e7d4f;border-color:#2e7d4f}
 .qds{display:inline-flex;align-items:center;gap:1px;margin-right:6px;white-space:nowrap}
+.rside{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}.rside .qds{margin:0}.rside .qd:first-child{margin-left:0}
+.rn{align-items:flex-start}.cgrid .nm{align-items:flex-start}
+.rkey{background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.7;margin:6px 0}
 .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;align-items:start;margin-top:8px}
 .rcol{background:#fff;border:1.5px solid var(--line);border-radius:12px;overflow:hidden}.rcol.over{border-color:var(--bad)}
 .rhead{background:#f7f5fc;padding:8px 10px;border-bottom:1px solid var(--line)}.rhead b{font-size:16px;color:var(--pur)}.rhead .rt{display:block;font-size:12px;color:var(--mut);font-weight:600}
@@ -497,8 +500,8 @@ function rosView(){
   const noRoom=L.filter(n=>TROOMS.indexOf(n.room)<0),here=L.filter(n=>n.st==="here"||n.st==="late").length,assd=L.filter(n=>n.bls&&n.fa).length,away=L.filter(n=>n.st==="absent"||notPassed(n));
   let h='<div class="sect">Room lists: '+esc(niceDate(S.date))+'</div><div class="sumstrip" style="margin:0 0 8px">'+tileHtml(L.length,"Nurses")+tileHtml(L.length-noRoom.length,"In a room")+tileHtml(noRoom.length,"No room",noRoom.length?"warn":"")+tileHtml(here,"Here or late")+tileHtml(assd,"Assessed")+'</div>';
   if(!L.length)return h+'<div class="hint">Nobody is booked on this evening yet. Use Add nurses and rooms.</div>';
-  h+='<div class="hint">Tap a nurse to move them to another room, fix their details, or take them off this evening. A room holds up to '+PER_ROOM+'. Dots: first = questionnaire before, second = after. Green = done.</div><div class="rgrid">';
-  const card=n=>{const open=S.rop===n.id;let c='<button class="rn" data-a="ropen" data-id="'+n.id+'"><span>'+esc(nurseName(n))+'<small>'+esc((n.field||"")+(n.year?" - "+n.year:""))+(n.movedFrom?" - moved in":"")+'</small></span><span>'+qdots(n,true)+chipFor(n)+'</span>'+'</button>';
+  h+='<div class="rkey"><div><b>Tap a nurse</b> to move, edit or remove them.</div><div>Questionnaires: <span class="qds">'+qdot(true,"Before")+qdot(false,"After")+'</span> first dot = <b>before</b> the course, second dot = <b>after</b>. <span class="qd on" style="margin:0 2px"></span> green = done, <span class="qd" style="margin:0 2px"></span> empty = not yet.</div><div>Each room holds up to '+PER_ROOM+'.</div></div><div class="rgrid">';
+  const card=n=>{const open=S.rop===n.id;let c='<button class="rn" data-a="ropen" data-id="'+n.id+'"><span>'+esc(nurseName(n))+'<small>'+esc((n.field||"")+(n.year?" - "+n.year:""))+(n.movedFrom?" - moved in":"")+'</small></span><span class="rside">'+qdots(n,true)+chipFor(n)+'</span>'+'</button>';
     if(open&&S.red){const r=S.red;
       c+='<div class="rpanel"><div class="hint" style="margin:0 0 4px"><b>Move to room</b></div><div class="chs">'+TROOMS.filter(x=>x!==n.room).map(x=>{const full=rc[x].length>=PER_ROOM;return'<button class="ch" '+(full?'disabled style="opacity:.4"':'')+' data-a="rmove" data-id="'+n.id+'" data-v="'+x+'">'+x+' ('+rc[x].length+')</button>'}).join("")+'</div>'
        +'<div class="hint" style="margin:8px 0 0"><b>Details</b></div><input id="re_last" value="'+esc(r.last)+'" placeholder="Last name"><input id="re_first" value="'+esc(r.first)+'" placeholder="First name"><input id="re_email" value="'+esc(r.email)+'" placeholder="Email"><select id="re_field"><option value="">Course not set</option>'+FIELDS.map(f=>'<option'+(r.field===f?' selected':'')+'>'+esc(f)+'</option>').join("")+'</select><select id="re_year"><option value="">Year not set</option>'+YEARS.map(f=>'<option'+(r.year===f?' selected':'')+'>'+esc(f)+'</option>').join("")+'</select>'
@@ -585,7 +588,7 @@ function roomView(){
   const L=roomList(S.room);if(!L.length)h+='<div class="hint">Nobody in this room tonight.</div>';
   h+='<div class="cgrid">';
   L.forEach(n=>{const here=attended(n);
-    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.field||"")+(n.year?" - "+esc(n.year):"")+'</small></span><span>'+qdots(n,false)+chipFor(n)+'</span>'+'</div><div class="bt st3">'+sbtn(n,"here","Here")+sbtn(n,"late","Late")+sbtn(n,"absent","Absent")+'</div>';
+    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.field||"")+(n.year?" - "+esc(n.year):"")+'</small></span><span class="rside">'+qdots(n,false)+chipFor(n)+'</span>'+'</div><div class="bt st3">'+sbtn(n,"here","Here")+sbtn(n,"late","Late")+sbtn(n,"absent","Absent")+'</div>';
     if(!here){}
     else if(n.bls&&n.fa)h+='<div class="asbox"><div class="asttl">Result</div>'+esc(wording(n))+(weak(n)?'<div class="hint" style="margin-top:6px">What went wrong: '+esc(weak(n))+'</div>':"")+'<div class="bt"><button class="btn" data-a="redo" data-id="'+n.id+'">Change result</button></div></div>';
     else h+=afBlock(n);
