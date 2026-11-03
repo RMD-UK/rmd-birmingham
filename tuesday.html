@@ -67,6 +67,8 @@ button{font-family:inherit;font-size:inherit;cursor:pointer}input,select,textare
 .regremind{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:#F49001;color:#1A2233;border:3px solid var(--pur);border-radius:14px;padding:16px 18px;margin-bottom:14px;box-shadow:0 2px 10px rgba(68,36,124,.25)}
 .regremind .tx{flex:1 1 260px;font-size:17px;line-height:1.45;font-weight:600}.regremind .tx b{display:block;font-size:20px;font-weight:800;margin-bottom:2px}
 .regremind .btn{font-size:17px;padding:12px 22px;background:var(--pur);color:#fff;border-color:var(--pur);margin:3px}.regremind .btn.o{background:#fff;color:var(--pur)}
+.qd{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #9aa5b8;background:#fff;vertical-align:middle;margin-left:4px}.qd.on{background:#2e7d4f;border-color:#2e7d4f}
+.qds{display:inline-flex;align-items:center;gap:1px;margin-right:6px;white-space:nowrap}
 .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;align-items:start;margin-top:8px}
 .rcol{background:#fff;border:1.5px solid var(--line);border-radius:12px;overflow:hidden}.rcol.over{border-color:var(--bad)}
 .rhead{background:#f7f5fc;padding:8px 10px;border-bottom:1px solid var(--line)}.rhead b{font-size:16px;color:var(--pur)}.rhead .rt{display:block;font-size:12px;color:var(--mut);font-weight:600}
@@ -383,6 +385,8 @@ function schoolRows(){const r=[["Name","Email address","Year of study","Arrived"
 function backupRows(){const r=[["Name","Email","Field","Year","Room","Register","BLS and AED","First aid","What went wrong"]];S.nurses.forEach(n=>r.push([nurseName(n),n.email,n.field,n.year||"",n.room,n.st||"not marked",n.bls||"",n.fa||"",weak(n)]));return r}
 
 // ── views ──────────────────────────────────────────────────────
+const qdot=(on,t)=>'<span class="qd'+(on?' on':'')+'" title="'+t+(on?': done':': not yet')+'" aria-label="'+t+(on?': done':': not yet')+'"></span>';
+const qdots=(n,both)=>'<span class="qds">'+qdot(n.pre,"Before the course")+(both?qdot(n.post,"After the course"):"")+'</span>';
 function chipFor(n){if(n.st==="here")return'<span class="chip ok">Here</span>';if(n.st==="late")return'<span class="chip warn">Late'+(n.auto?" (automatic)":"")+'</span>';if(n.st==="absent")return'<span class="chip bad">Absent</span>';return'<span class="chip">Not marked</span>'}
 function sbtn(n,v,l){return'<button class="sb '+v+(n.st===v&&!(v==="late"&&n.auto)?" on":"")+(v==="late"&&n.auto?" on":"")+'" data-a="st" data-id="'+n.id+'" data-v="'+v+'">'+l+'</button>'}
 function confStatus(){return'<div class="chs" style="margin:6px 0">'+TROOMS.map(r=>'<span class="chip '+(S.rooms[r]?"ok":"warn")+'">'+r+(teacherOf(S.date,r)&&!isTest()?" ("+esc(teacherOf(S.date,r))+")":"")+(S.rooms[r]?" confirmed":" not confirmed")+'</span>').join(" ")+'</div>'}
@@ -493,8 +497,8 @@ function rosView(){
   const noRoom=L.filter(n=>TROOMS.indexOf(n.room)<0),here=L.filter(n=>n.st==="here"||n.st==="late").length,assd=L.filter(n=>n.bls&&n.fa).length,away=L.filter(n=>n.st==="absent"||notPassed(n));
   let h='<div class="sect">Room lists: '+esc(niceDate(S.date))+'</div><div class="sumstrip" style="margin:0 0 8px">'+tileHtml(L.length,"Nurses")+tileHtml(L.length-noRoom.length,"In a room")+tileHtml(noRoom.length,"No room",noRoom.length?"warn":"")+tileHtml(here,"Here or late")+tileHtml(assd,"Assessed")+'</div>';
   if(!L.length)return h+'<div class="hint">Nobody is booked on this evening yet. Use Add nurses and rooms.</div>';
-  h+='<div class="hint">Tap a nurse to move them to another room, fix their details, or take them off this evening. A room holds up to '+PER_ROOM+'.</div><div class="rgrid">';
-  const card=n=>{const open=S.rop===n.id;let c='<button class="rn" data-a="ropen" data-id="'+n.id+'"><span>'+esc(nurseName(n))+'<small>'+esc((n.field||"")+(n.year?" - "+n.year:""))+(n.movedFrom?" - moved in":"")+" - pre "+(n.pre?"done":"no")+", post "+(n.post?"done":"no")+'</small></span>'+chipFor(n)+'</button>';
+  h+='<div class="hint">Tap a nurse to move them to another room, fix their details, or take them off this evening. A room holds up to '+PER_ROOM+'. Dots: first = questionnaire before, second = after. Green = done.</div><div class="rgrid">';
+  const card=n=>{const open=S.rop===n.id;let c='<button class="rn" data-a="ropen" data-id="'+n.id+'"><span>'+esc(nurseName(n))+'<small>'+esc((n.field||"")+(n.year?" - "+n.year:""))+(n.movedFrom?" - moved in":"")+'</small></span><span>'+qdots(n,true)+chipFor(n)+'</span>'+'</button>';
     if(open&&S.red){const r=S.red;
       c+='<div class="rpanel"><div class="hint" style="margin:0 0 4px"><b>Move to room</b></div><div class="chs">'+TROOMS.filter(x=>x!==n.room).map(x=>{const full=rc[x].length>=PER_ROOM;return'<button class="ch" '+(full?'disabled style="opacity:.4"':'')+' data-a="rmove" data-id="'+n.id+'" data-v="'+x+'">'+x+' ('+rc[x].length+')</button>'}).join("")+'</div>'
        +'<div class="hint" style="margin:8px 0 0"><b>Details</b></div><input id="re_last" value="'+esc(r.last)+'" placeholder="Last name"><input id="re_first" value="'+esc(r.first)+'" placeholder="First name"><input id="re_email" value="'+esc(r.email)+'" placeholder="Email"><select id="re_field"><option value="">Course not set</option>'+FIELDS.map(f=>'<option'+(r.field===f?' selected':'')+'>'+esc(f)+'</option>').join("")+'</select><select id="re_year"><option value="">Year not set</option>'+YEARS.map(f=>'<option'+(r.year===f?' selected':'')+'>'+esc(f)+'</option>').join("")+'</select>'
@@ -581,7 +585,7 @@ function roomView(){
   const L=roomList(S.room);if(!L.length)h+='<div class="hint">Nobody in this room tonight.</div>';
   h+='<div class="cgrid">';
   L.forEach(n=>{const here=attended(n);
-    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.field||"")+(n.year?" - "+esc(n.year):"")+(n.pre?" - pre-course done":" - pre-course not yet")+'</small></span>'+chipFor(n)+'</div><div class="bt st3">'+sbtn(n,"here","Here")+sbtn(n,"late","Late")+sbtn(n,"absent","Absent")+'</div>';
+    h+='<div class="cand"><div class="nm"><span>'+esc(nurseName(n))+'<small>'+esc(n.field||"")+(n.year?" - "+esc(n.year):"")+'</small></span><span>'+qdots(n,false)+chipFor(n)+'</span>'+'</div><div class="bt st3">'+sbtn(n,"here","Here")+sbtn(n,"late","Late")+sbtn(n,"absent","Absent")+'</div>';
     if(!here){}
     else if(n.bls&&n.fa)h+='<div class="asbox"><div class="asttl">Result</div>'+esc(wording(n))+(weak(n)?'<div class="hint" style="margin-top:6px">What went wrong: '+esc(weak(n))+'</div>':"")+'<div class="bt"><button class="btn" data-a="redo" data-id="'+n.id+'">Change result</button></div></div>';
     else h+=afBlock(n);
@@ -638,6 +642,9 @@ function endView(){
   return'<div class="sect">End of night checks</div><div class="hl">Rooms not confirmed by their instructor: <b>'+(unconf().length?unconf().join(", "):"none")+'</b></div><div class="hl">Nurses not marked: <b>'+c.not+'</b></div><div class="hl">Here but not assessed: <b>'+un+'</b></div><div class="hl">Absent and not moved: <b>'+c.abs+'</b></div><div class="hl">Open concerns: <b>'+S.concerns.filter(x=>x.open).length+'</b></div><button class="btn f" style="margin-top:10px" data-a="dl">Download results backup</button><div class="hint" style="margin-top:6px">Everything: names, emails, field, year, attendance, result, what went wrong. For your records, not for the school. The school sheet is its own tool.</div>'
 }
 function eveView(){
+  const h=eveViewInner();
+  return isTest()?'<div class="note"><b>Not used on the Test evening.</b> These settings change the real dates, so they are switched off here. Open a real evening to change them.</div><div inert style="opacity:.45;pointer-events:none" aria-disabled="true">'+h+'</div>':h}
+function eveViewInner(){
   const L=allTuesdays(),c={run:0,no:0,tbc:0};L.forEach(k=>c[evState(k)]++);let cur="",h='<div class="sect">Dates for the year</div><div class="hint">Set the first and last date each year. The list below is made from them.</div><div class="bt"><input class="nt" id="sdi" style="width:45%" placeholder="First date DD/MM/YYYY" value="'+esc(S.sdi)+'"><input class="nt" id="edi" style="width:45%" placeholder="Last date DD/MM/YYYY" value="'+esc(S.edi)+'"></div><button class="btn f" style="margin-top:8px" data-a="mkev">Make the Tuesday list</button>';
   h+='<div class="sect">Which Tuesdays run</div><div class="hint">Mark each Tuesday as Running, To confirm or Not running. Pasting nurses onto a Not running evening is blocked.</div><div class="chs" style="margin:6px 0"><span class="chip ok">Running: '+c.run+'</span><span class="chip bad">Not running: '+c.no+'</span><span class="chip warn">To confirm: '+c.tbc+'</span></div>';
   h+='<div class="hint" style="margin-top:8px">Confirm the To confirm evenings by (date):</div><input class="nt" id="evby" style="max-width:240px" placeholder="DD/MM/YYYY" value="'+esc(S.cfg.confirmBy?isoToDmy(S.cfg.confirmBy):"")+'"><button class="btn" data-a="saveby" style="margin-left:6px">Save date</button>'+(c.tbc&&S.cfg.confirmBy?'<div class="note">Reminder: confirm '+c.tbc+' evening'+(c.tbc>1?"s":"")+' by '+esc(isoToDmy(S.cfg.confirmBy))+'.</div>':"");
@@ -820,6 +827,7 @@ document.addEventListener("click",e=>{
   else if(a==="consave"){if(conReady())closeConcern(v);return}
   else if(a==="mvopen")S.mv=S.mv===id?null:id;
   else if(a==="mvdo"){S.mc=null;moveNurse(id,v);return}
+  else if((a==="ev"||a==="mkev"||a==="saveby")&&isTest()){S.msg="Dates cannot be changed on the Test evening.";S.err=""}
   else if(a==="ev"){S.cfg.evenings[id]=v;saveCfg();return}
   else if(a==="mkev"){const s=dmyToIso(S.sdi),z=dmyToIso(S.edi);if(!s||!z)S.err="Use DD/MM/YYYY for both dates.";else if(z<=s)S.err="The last date must be after the first date.";else if((new Date(z)-new Date(s))/864e5>400)S.err="That is more than a year. Check the dates.";else{S.cfg.start=s;S.cfg.end=z;saveCfg();fillDates();return}}
   else if(a==="saveby"){const x=$("evby").value.trim();if(!x){S.cfg.confirmBy=""}else{const iso=dmyToIso(x);if(!iso){S.err="Use DD/MM/YYYY.";render();return}S.cfg.confirmBy=iso}saveCfg();return}
