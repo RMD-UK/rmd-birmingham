@@ -37,7 +37,7 @@
       var st = document.createElement("style");
       st.textContent =
         "#" + ID + "{position:fixed;right:0;bottom:96px;z-index:2147482000;" +
-        "background:#44247C;color:#fff;font:700 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+        "background:#150069;color:#fff;font:700 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
         "padding:9px 8px;border-radius:10px 0 0 10px;text-decoration:none;letter-spacing:.04em;" +
         "writing-mode:vertical-rl;transform:rotate(180deg);box-shadow:-2px 0 6px rgba(0,0,0,.25);opacity:.85;white-space:nowrap}" +
         "#" + ID + ":hover,#" + ID + ":focus-visible{opacity:1;background:#0067A4;outline:2px solid #fff;outline-offset:-3px}" +
