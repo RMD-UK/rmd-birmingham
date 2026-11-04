@@ -1316,6 +1316,17 @@ service cloud.firestore {
       allow create, update: if false;
       allow delete: if tueStaff();
     }
+    // Nurse certificates and their lookup index. Written only by the nurseRefresherCertificate
+    // Cloud Function (Admin SDK). Anyone checks a certificate through nurseCertificateVerify, not here.
+    match /tuesday_certificates/{certId} {
+      allow read: if tueStaff();
+      allow create, update: if false;
+      allow delete: if tueStaff();
+    }
+    match /tuesday_cert_index/{idxId} {
+      allow read: if false;
+      allow write: if false;
+    }
     match /tuesday_concerns/{concernId} {
       allow read: if tueStaff();
       allow create: if tueTeach()

@@ -386,6 +386,8 @@ async function addParsed(){
 function toCsv(r){return r.map(x=>x.map(c=>'"'+String(c==null?"":c).replace(/"/g,'""')+'"').join(",")).join("\n")}
 function dlFile(text,name){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+text],{type:"text/csv"}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
 function schoolRows(){const r=[["Name","Email address","Year of study","Arrived","Result"]];S.nurses.filter(attended).forEach(n=>r.push([nurseName(n),n.email,n.year||"",n.st==="late"?"Late":"On time",schoolWord(n)]));r.push([]);r.push(["Expected but did not attend"]);r.push(["Name","Email address","Year of study","Status"]);S.nurses.filter(n=>!attended(n)).forEach(n=>r.push([nurseName(n),n.email,n.year||"",n.st==="absent"?"Did not attend":"Not marked"]));return r}
+function verifyNote(){return[[],["How to check a CPD certificate"],["A student who passed can download a certificate from the RMD refresher page. It shows a Certificate ID and a QR code."],["To check it, scan the QR code, or go to https://rmd.uk.com/verify.html and type the ID."],["The page shows the name, session date and issue date. Check they match the student in front of you."],["A genuine certificate belongs to a student marked Passed on this sheet."],["If the page says Not found or Withdrawn, please contact RMD Birmingham."],["The PDF itself can be edited, so this check is the only reliable proof. Checking is optional."]]}
+function schoolFileRows(){return schoolRows().concat(verifyNote())}
 function backupRows(){const r=[["Name","Email","Field","Year","Room","Register","BLS and AED","First aid","What went wrong"]];S.nurses.forEach(n=>r.push([nurseName(n),n.email,n.field,n.year||"",n.room,n.st||"not marked",n.bls||"",n.fa||"",weak(n)]));return r}
 
 // ── views ──────────────────────────────────────────────────────
@@ -718,7 +720,7 @@ function schoolReady(){
 }
 function schoolView(){
   const r=schoolRows(),b=r.findIndex(x=>x[0]==="Expected but did not attend"),a=r.slice(0,b-1),d=r.slice(b+2);
-  let h='<div class="sect">Spreadsheet for the nursing school</div><div class="hint">File title: <b>RMD basic life support refresher - '+esc(niceDate(S.date))+' - nursing</b></div><div class="sect">Attended ('+(a.length-1)+')</div><div class="tw"><table class="dt"><tr>'+a[0].map(c=>'<th>'+esc(c)+'</th>').join("")+'</tr>'+a.slice(1,6).map(x=>'<tr>'+x.map(c=>'<td>'+esc(c)+'</td>').join("")+'</tr>').join("")+'</table></div><div class="hint">First 5 of '+(a.length-1)+' shown. Late arrivals are marked.</div><div class="sect">Expected but did not attend ('+d.length+')</div><div class="tw"><table class="dt"><tr><th>Name</th><th>Status</th></tr>'+d.map(x=>'<tr><td>'+esc(x[0])+'</td><td>'+esc(x[3])+'</td></tr>').join("")+'</table></div>';
+  let h='<div class="sect">Spreadsheet for the nursing school</div><div class="hint">File title: <b>RMD basic life support refresher - '+esc(niceDate(S.date))+' - nursing</b></div><div class="sect">Attended ('+(a.length-1)+')</div><div class="tw"><table class="dt"><tr>'+a[0].map(c=>'<th>'+esc(c)+'</th>').join("")+'</tr>'+a.slice(1,6).map(x=>'<tr>'+x.map(c=>'<td>'+esc(c)+'</td>').join("")+'</tr>').join("")+'</table></div><div class="hint">First 5 of '+(a.length-1)+' shown. Late arrivals are marked. The file ends with a short note on how to check a CPD certificate.</div><div class="sect">Expected but did not attend ('+d.length+')</div><div class="tw"><table class="dt"><tr><th>Name</th><th>Status</th></tr>'+d.map(x=>'<tr><td>'+esc(x[0])+'</td><td>'+esc(x[3])+'</td></tr>').join("")+'</table></div>';
   const rd=schoolReady();
   h+='<div class="sect">Before you can download</div>'+rd.items.map(x=>'<div class="hl">'+(x[0]?'<span class="chip ok">Done</span> ':'<span class="chip warn">Not yet</span> ')+esc(x[1])+'</div>').join('');
   h+=isTest()?'<div class="note">Test evenings never go to the nursing school.</div>':'<div class="bt" style="margin-top:8px"><button class="btn f" data-a="dls" '+(rd.ok?'':'disabled')+'>Download spreadsheet</button></div>'+(rd.ok?'':'<div class="hint" style="margin-top:6px">The download unlocks when the register and the assessments are complete.</div>');
@@ -875,7 +877,7 @@ document.addEventListener("click",e=>{
   else if(a==="bfno"){S.bfAsk=false}
   else if(a==="bfdo"){backfillEvening();return}
   else if(a==="dl")dlFile(toCsv(backupRows()),"RMD refresher - "+S.date+" - results backup.csv");
-  else if(a==="dls"){if(!isTest()&&schoolReady().ok)dlFile(toCsv(schoolRows()),"RMD basic life support refresher - "+niceDate(S.date)+" - nursing.csv")}
+  else if(a==="dls"){if(!isTest()&&schoolReady().ok)dlFile(toCsv(schoolFileRows()),"RMD basic life support refresher - "+niceDate(S.date)+" - nursing.csv")}
   render();
 });
 

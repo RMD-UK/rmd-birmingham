@@ -4907,3 +4907,70 @@ exports.nurseRefresherSubmit = onCall({ region: "us-central1" }, async (request)
   await batch.commit();
   return { ok: true, already: false };
 });
+
+/**
+ * Tuesday nurse certificate with a check code.
+ *
+ *   nurseRefresherCertificate - same sign-in as the lookup (password, name, email). Only if the
+ *                               nurse has passed AND done both questionnaires. Issues (once) a
+ *                               certificate record in tuesday_certificates/{id}; the name and
+ *                               date come from OUR record, never from the browser. Asking again
+ *                               returns the same ID.
+ *   nurseCertificateVerify    - public. Takes an ID and returns valid + name + session date.
+ *                               Nothing else (no email, room, answers).
+ *
+ * To withdraw a certificate: set revoked = true on its tuesday_certificates document.
+ * Deploy: firebase deploy --only functions:nurseRefresherCertificate,functions:nurseCertificateVerify
+ */
+const TUE_CERT_ALPHA = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function tueNewCertId() {
+  const b = crypto.randomBytes(10);
+  let s = "";
+  for (const x of b) s += TUE_CERT_ALPHA[x % TUE_CERT_ALPHA.length];
+  return s;
+}
+
+exports.nurseRefresherCertificate = onCall({ region: "us-central1" }, async (request) => {
+  const r = await tueFindNurse(request.data || {});
+  if (!r.found) throw new HttpsError("not-found", "We could not find you.");
+  const passed = r.nurses.filter(n => n.bls === "pass" && n.fa === "pass");
+  if (!passed.length) throw new HttpsError("failed-precondition", "No pass is recorded yet.");
+  const q = await Promise.all(["pre", "post"].map(k => db.collection("tuesday_questionnaires").doc((r.test ? "TEST__" : "") + r.emailLower + "__" + k).get()));
+  if (!q[0].exists || !q[1].exists) throw new HttpsError("failed-precondition", "Both questionnaires must be done first.");
+  const n = passed[passed.length - 1];
+  const name = ((n.first || "") + " " + (n.last || "")).trim();
+  const date = n.date || null;
+  const key = crypto.createHash("sha256").update((r.test ? "T" : "R") + "|" + r.emailLower + "|" + (date || "")).digest("hex").slice(0, 32);
+  const idxRef = db.collection("tuesday_cert_index").doc(key);
+  const issuedDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
+  const out = await db.runTransaction(async (tx) => {
+    const idx = await tx.get(idxRef);
+    if (idx.exists) {
+      const cs = await tx.get(db.collection("tuesday_certificates").doc(idx.data().certId));
+      if (cs.exists) {
+        const d = cs.data();
+        if (d.revoked) throw new HttpsError("permission-denied", "This certificate has been withdrawn. Please contact RMD.");
+        return { certId: cs.id, name: d.name, date: d.date, issued: d.issuedDate, test: d.test === true };
+      }
+    }
+    const certId = tueNewCertId();
+    tx.set(db.collection("tuesday_certificates").doc(certId), {
+      name, date, emailLower: r.emailLower, test: r.test === true, revoked: false,
+      issuedDate, issuedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    tx.set(idxRef, { certId, at: admin.firestore.FieldValue.serverTimestamp() });
+    return { certId, name, date, issued: issuedDate, test: r.test === true };
+  });
+  return out;
+});
+
+exports.nurseCertificateVerify = onCall({ region: "us-central1" }, async (request) => {
+  let id = String((request.data || {}).id || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (id.length === 13 && id.startsWith("RMD")) id = id.slice(3);
+  if (id.length !== 10) return { valid: false };
+  const s = await db.collection("tuesday_certificates").doc(id).get();
+  if (!s.exists) return { valid: false };
+  const d = s.data();
+  if (d.revoked) return { valid: false, withdrawn: true };
+  return { valid: true, name: d.name, date: d.date || null, issued: d.issuedDate || null, test: d.test === true };
+});

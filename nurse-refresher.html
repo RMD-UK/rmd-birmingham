@@ -53,7 +53,10 @@
     .paper .inc .g { display:flex; gap:12mm; } .paper .inc ul { flex:1; margin:0; padding-left:5mm; } .paper .inc li { margin:1.5mm 0; }
     .paper .gmc { position:relative; text-align:center; font-size:7pt; color:#667389; margin:11mm 20mm 0; }
     .paper .sg { position:relative; text-align:center; margin-top:2mm; } .paper .sg img { height:17mm; } .paper .sg b { display:block; font-size:10pt; } .paper .sg span { font-size:8pt; color:#667389; }
-    .paper .iss { position:absolute; left:10mm; bottom:5mm; font-size:7pt; color:#667389; }
+    .paper .iss { position:absolute; left:10mm; bottom:5mm; font-size:7pt; color:#667389; line-height:1.5; }
+    .paper .vq { position:absolute; right:10mm; bottom:5mm; display:flex; align-items:flex-end; gap:2.5mm; text-align:right; font-size:6.5pt; color:#667389; line-height:1.4; }
+    .paper .vq #certQr { width:22mm; height:22mm; } .paper .vq #certQr svg { width:100%; height:100%; display:block; }
+    .paper .vq b { color:#14284b; font-size:7pt; }
     @page { size: A4 landscape; margin: 0; }
     @media print {
       body > *:not(#certWrap) { display:none !important; }
@@ -102,7 +105,8 @@
     <div class="inc"><h4>THE SESSION INCLUDED</h4><div class="g"><ul><li>Recognising cardiac arrest and calling for help</li><li>Basic life support (BLS) with rescue breaths and chest compressions</li><li>Use of an automated external defibrillator (AED)</li></ul><ul><li>Adult choking, and BLS for asphyxial cardiac arrest</li><li>Paediatric BLS, including choking in children and infants</li><li>First aid for bleeding</li></ul></div></div>
     <div class="gmc">RMD is cited by the General Medical Council as an innovative teaching method and is one of the largest peer-led life support courses in Europe.</div>
     <div class="sg"><img src="assets/jon-signature.png" alt="Signature"><b>Professor Jon Hulme</b><span>Course Director, RMD Birmingham &mdash; University of Birmingham</span></div>
-    <div class="iss" id="certIssued"></div>
+    <div class="iss"><div id="certIssued"></div><div id="certId"></div></div>
+    <div class="vq"><div>Check this certificate<br>rmd.uk.com/verify.html<br><b id="certIdQ"></b></div><div id="certQr"></div></div>
   </div></div>
 </div>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -110,6 +114,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/qrcode.min.js"></script>
 <script>
 initFirebase();
 const fns = firebase.functions();
@@ -230,16 +235,28 @@ async function submitQ() {
 }
 
 
-function openCert() {
-  const ps = me.sessions.filter(x => x.passed), ses = ps[ps.length - 1] || me.sessions[me.sessions.length - 1];
-  $("certName").textContent = me.name;
-  $("certSession").textContent = (ses.date === "TEST" ? "Practice evening" : nice(ses.date)) + ", 19:00 to 21:00 (2 hours)";
-  $("certIssued").textContent = "Issued: " + today() + (ses.date === "TEST" ? " - practice certificate" : "");
-  $("certWrap").classList.remove("hidden");
-  const paper = $("certPaper"), scale = Math.min(1, (window.innerWidth - 32) / paper.offsetWidth);
-  paper.style.transform = "scale(" + scale + ")";
-  const box = $("certBox"); box.style.width = (paper.offsetWidth * scale) + "px"; box.style.height = (paper.offsetHeight * scale) + "px";
-  window.scrollTo(0, 0);
+async function openCert() {
+  const btn = $("certBtn"); if (btn) { btn.disabled = true; btn.textContent = "Preparing your certificate..."; }
+  try {
+    const c = (await fns.httpsCallable("nurseRefresherCertificate")(creds)).data;
+    const show = "RMD-" + c.certId.slice(0, 5) + "-" + c.certId.slice(5);
+    $("certName").textContent = c.name;
+    $("certSession").textContent = (c.test ? "Practice evening" : nice(c.date)) + ", 19:00 to 21:00 (2 hours)";
+    $("certIssued").textContent = "Issued: " + c.issued + (c.test ? " - practice certificate" : "");
+    $("certId").textContent = "Certificate ID: " + show;
+    $("certIdQ").textContent = show;
+    const q = qrcode(0, "M"); q.addData("https://rmd.uk.com/verify.html?id=" + c.certId); q.make();
+    $("certQr").innerHTML = q.createSvgTag({ cellSize: 4, margin: 16, scalable: true });
+    $("certWrap").classList.remove("hidden");
+    const paper = $("certPaper"), scale = Math.min(1, (window.innerWidth - 32) / paper.offsetWidth);
+    paper.style.transform = "scale(" + scale + ")";
+    const box = $("certBox"); box.style.width = (paper.offsetWidth * scale) + "px"; box.style.height = (paper.offsetHeight * scale) + "px";
+    window.scrollTo(0, 0);
+  } catch (e) {
+    const m = e && e.code === "functions/failed-precondition" ? e.message : (e && e.code === "functions/permission-denied" ? e.message : "Could not make the certificate just now. Please try again.");
+    $("tickCard").insertAdjacentHTML("beforeend", "<div class='err'>" + esc(m) + "</div>");
+  }
+  if (btn) { btn.disabled = false; btn.textContent = "Download your certificate"; }
 }
 $("closeCert").onclick = () => $("certWrap").classList.add("hidden");
 $("printBtn").onclick = () => window.print();

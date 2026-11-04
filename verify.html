@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Check a certificate - RMD Birmingham</title>
+  <link rel="stylesheet" href="css/rmd.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#f0f3f6; font-family: var(--font); margin:0; padding:0 0 60px; color:#18212f; }
+    .top-bar { background: var(--rmd-navy); color:#fff; padding:12px 16px; display:flex; align-items:center; gap:12px; }
+    .top-bar img { height:36px; border-radius:50%; background:#fff; }
+    .top-bar-title { font-size:17px; font-weight:800; }
+    .top-bar-sub { font-size:12px; opacity:.75; display:block; font-weight:400; }
+    .wrap { max-width:560px; margin:0 auto; padding:18px 14px; }
+    .card { background:#fff; border-radius:12px; box-shadow:0 2px 10px rgba(0,0,0,.08); padding:18px; margin-bottom:14px; }
+    h2 { font-size:18px; margin:0 0 6px; color:var(--rmd-navy); }
+    .hint { font-size:13px; color:#667389; line-height:1.5; margin:4px 0 10px; }
+    input[type=text] { width:100%; padding:12px; border:2px solid #ccd6dd; border-radius:8px; font-size:16px; font-family:var(--font); margin-bottom:10px; text-transform:uppercase; letter-spacing:1px; }
+    .btn { width:100%; padding:13px; background:var(--rmd-blue); color:#fff; border:none; border-radius:8px; font-size:15px; font-weight:700; font-family:var(--font); cursor:pointer; margin-top:4px; }
+    .btn:disabled { opacity:.45; cursor:default; }
+    .res { border-radius:12px; padding:16px; margin-top:12px; font-size:15px; line-height:1.6; }
+    .res.ok { background:#dff3e6; color:#14532d; } .res.bad { background:#fce8e6; color:#8a2a0a; } .res.warn { background:#fff3cd; color:#664d03; }
+    .res .big { font-size:19px; font-weight:800; display:block; margin-bottom:4px; }
+    .res .nm { font-size:22px; font-weight:800; display:block; margin:6px 0 2px; }
+  </style>
+</head>
+<body>
+<div class="top-bar"><img src="assets/rmd-logo.png" alt="RMD"><div class="top-bar-title">Check a certificate<span class="top-bar-sub">RMD Birmingham</span></div></div>
+<div class="wrap">
+  <div class="card">
+    <h2>Check a certificate</h2>
+    <div class="hint">Type the certificate ID printed at the bottom of the certificate, or scan its QR code.</div>
+    <input type="text" id="cid" placeholder="RMD-XXXXX-XXXXX" autocomplete="off" autocapitalize="characters">
+    <button class="btn" id="goBtn" type="button">Check</button>
+    <div id="res"></div>
+  </div>
+</div>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script>
+initFirebase();
+const fns = firebase.functions();
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const MN = ["January","February","March","April","May","June","July","August","September","October","November","December"], DN = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const nice = iso => { if (!iso || iso === "TEST") return ""; const d = new Date(iso + "T12:00:00Z"); return DN[d.getUTCDay()] + " " + d.getUTCDate() + " " + MN[d.getUTCMonth()] + " " + d.getUTCFullYear(); };
+
+async function check() {
+  const id = $("cid").value.trim();
+  const out = $("res");
+  if (!id) { out.innerHTML = ""; return; }
+  $("goBtn").disabled = true; $("goBtn").textContent = "Checking...";
+  try {
+    const r = (await fns.httpsCallable("nurseCertificateVerify")({ id })).data;
+    if (r.valid && r.test) out.innerHTML = "<div class='res warn'><span class='big'>Practice certificate</span>This is a test certificate from a practice evening. It is not a real award.</div>";
+    else if (r.valid) out.innerHTML = "<div class='res ok'><span class='big'>Genuine RMD certificate</span>Awarded to<span class='nm'>" + esc(r.name) + "</span>Basic Life Support refresher" + (r.date ? ", " + esc(nice(r.date)) : "") + (r.issued ? "<br>Issued " + esc(nice(r.issued)) : "") + "<br>Check that this name matches the person showing you the certificate.</div>";
+    else if (r.withdrawn) out.innerHTML = "<div class='res bad'><span class='big'>Withdrawn</span>This certificate has been withdrawn by RMD. Please contact RMD Birmingham.</div>";
+    else out.innerHTML = "<div class='res bad'><span class='big'>Not found</span>No certificate has this ID. Check it was typed correctly. If it was, treat the certificate as not genuine.</div>";
+  } catch (e) {
+    out.innerHTML = "<div class='res warn'>Could not check just now. Please try again.</div>";
+  }
+  $("goBtn").disabled = false; $("goBtn").textContent = "Check";
+}
+$("goBtn").onclick = check;
+$("cid").addEventListener("keydown", e => { if (e.key === "Enter") check(); });
+const p = new URLSearchParams(location.search).get("id");
+if (p) { $("cid").value = p; check(); }
+</script>
+</body>
+</html>
