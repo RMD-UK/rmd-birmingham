@@ -21,7 +21,7 @@
     ".ragk-i{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}" +
     ".ragk-i b{color:#002B5C}" +
     ".ragk-dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none}" +
-    ".ragk-green{background:#1a6e31}.ragk-amber{background:#c17a00}.ragk-red{background:#b7410e}" +
+    ".ragk-green{background:#1a6e31}.ragk-amber{background:#c17a00}.ragk-red{background:#B8001C}" +
     ".ragk-sub{margin-top:3px;font-size:11px;color:#6b7b88}.ragk-sub b{color:#002B5C;font-weight:700}";
   function fill() {
     var nodes = document.querySelectorAll("[data-rag-key]");

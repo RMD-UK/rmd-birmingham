@@ -61,7 +61,7 @@
     ".fb-chip.on{background:#1f2a5c;border-color:#1f2a5c;color:#fff}" +
     ".fb-chip .fb-n{opacity:.7;font-weight:600}" +
     ".fb-count{margin-left:auto;color:#5a6b8c;font-weight:600}" +
-    ".fb-clear{appearance:none;border:none;background:none;color:#1a56a8;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px;text-decoration:underline}" +
+    ".fb-clear{appearance:none;border:none;background:none;color:#2A1A8C;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px;text-decoration:underline}" +
     ".rt-toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1f2540;color:#fff;padding:9px 16px;border-radius:10px;font-size:13px;font-weight:600;z-index:3000;box-shadow:0 4px 14px rgba(0,0,0,.3)}" +
     ".rt-toast.err{background:#b3261e}";
   var st = document.createElement("style"); st.textContent = css; document.head.appendChild(st);

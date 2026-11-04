@@ -252,7 +252,7 @@ h1 { font-size: 20pt; } h2 { font-size: 14pt; margin-top: 18pt; } h3 { font-size
     };
     h += grouped("Most valuable", "valuable") + grouped("Suggestions", "suggestions");
     if (br.some(g => g.n < 5 && (g.valuable.length || g.suggestions.length)))
-      h += '<div class="text-sm" style="color:#b7410e;font-weight:700;margin:4px 0 14px">Some roles have fewer than 5 responses, so a comment may be traceable to one person. Check before sharing.</div>';
+      h += '<div class="text-sm" style="color:#B8001C;font-weight:700;margin:4px 0 14px">Some roles have fewer than 5 responses, so a comment may be traceable to one person. Check before sharing.</div>';
     return h;
   }
 

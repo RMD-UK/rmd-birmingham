@@ -12,7 +12,7 @@
   st.textContent = "html,body{overscroll-behavior-y:contain}" +
     ".dg-banner{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:13px;font-weight:700;border-bottom:1px solid #b5d9bc;background:#e6f4ea;color:#1a6e31}" +
     ".dg-banner.warn{background:#fff3cd;color:#8a5a00;border-color:#f0d58a}" +
-    ".dg-banner.err{background:#fde8e4;color:#b7410e;border-color:#f4bfb6}" +
+    ".dg-banner.err{background:#fde8e4;color:#B8001C;border-color:#f4bfb6}" +
     ".dg-banner small{font-weight:600;opacity:.85}" +
     ".dg-tick{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;color:#1a6e31;background:#e6f4ea;border:1px solid #b5d9bc;border-radius:999px;padding:1px 8px;white-space:nowrap}";
   (document.head || document.documentElement).appendChild(st);

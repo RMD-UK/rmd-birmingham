@@ -7,7 +7,7 @@
 <title>Tuesday Night Hub - RMD Birmingham</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
-:root{--ink:#1A2233;--mut:#6B7C93;--line:#E3E8EF;--bg:#F5F7FA;--pur:#150069;--pur2:#2E1856;--purtint:#EFEAF8;--blu:#0067A4;--org:#F49001;--ok:#1E8449;--okbg:#E3F3E8;--bad:#B3261E;--badbg:#FCE8E6;--warn:#8A5200;--warnbg:#FFF1D6;--font:'Inter','Segoe UI',Arial,sans-serif}
+:root{--ink:#1A2233;--mut:#6B7C93;--line:#E3E8EF;--bg:#F5F7FA;--pur:#150069;--pur2:#0E0049;--purtint:#EAE7F6;--blu:#3A2AA8;--org:#F49001;--ok:#1E8449;--okbg:#E3F3E8;--bad:#B3261E;--badbg:#FCE8E6;--warn:#8A5200;--warnbg:#FFF1D6;--font:'Inter','Segoe UI',Arial,sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;min-height:100vh}
 button{font-family:inherit;font-size:inherit;cursor:pointer}input,select,textarea{font-family:inherit;font-size:16px;color:var(--ink)}
@@ -198,7 +198,7 @@ async function saveCfg(){try{await db.collection("tuesday_config").doc("series")
 function shortDate(iso){const d=new Date(iso+"T12:00:00Z");return d.getUTCDate()+" "+MN[d.getUTCMonth()].slice(0,3)}
 function renderTabs(){
   const today=londonNow().date,run=runEvenings(),nx=run.find(d=>d>=today);
-  $("dateTabs").innerHTML=run.map(d=>'<button class="'+(S.date===d?"on":"")+'" data-a="dt" data-v="'+d+'">'+esc(shortDate(d))+(d===today?'<span class="nowdot">today</span>':(d===nx?'<span class="nowdot" style="background:#0067A4">next</span>':""))+'</button>').join("");
+  $("dateTabs").innerHTML=run.map(d=>'<button class="'+(S.date===d?"on":"")+'" data-a="dt" data-v="'+d+'">'+esc(shortDate(d))+(d===today?'<span class="nowdot">today</span>':(d===nx?'<span class="nowdot" style="background:#3A2AA8">next</span>':""))+'</button>').join("");
   $("testTabs").classList.toggle("hidden",!S.staff);$("testTabs").innerHTML='<span class="tl">Test</span><button class="'+(isTest()?"on":"")+'" data-a="dt" data-v="TEST">Test evening</button>';
 }
 function fillDates(){
@@ -728,7 +728,7 @@ function schoolView(){
 }
 function ttView(){
   const now=nowMin();let cur=-1;TT.forEach((t,i)=>{if(now>=tm(t[0]))cur=i});
-  return'<div class="sect">Timetable</div>'+TT.map((t,i)=>'<div class="hl" style="'+(i===cur&&S.date===londonNow().date?"border-color:#43237c;background:#eee8f9;":"")+'"><b>'+t[0]+'</b> &nbsp; '+esc(t[1])+'</div>').join("")+'<div class="hint">Running order from the Tuesday team. Tonight\'s current slot is highlighted.</div>'
+  return'<div class="sect">Timetable</div>'+TT.map((t,i)=>'<div class="hl" style="'+(i===cur&&S.date===londonNow().date?"border-color:#150069;background:#EAE7F6;":"")+'"><b>'+t[0]+'</b> &nbsp; '+esc(t[1])+'</div>').join("")+'<div class="hint">Running order from the Tuesday team. Tonight\'s current slot is highlighted.</div>'
 }
 function bigView(){
   return'<div class="sect">Big screens</div><div class="hint">For the wall or projector in the main room. Counts only, never names. Open one on the screen and press Full screen.</div><div class="bt"><a class="btn f" style="text-decoration:none" target="_blank" href="tuesday-screen.html?mode=register&date='+encodeURIComponent(S.date)+'">Open register screen</a><a class="btn f" style="text-decoration:none" target="_blank" href="tuesday-screen.html?mode=results&date='+encodeURIComponent(S.date)+'">Open results screen</a></div>'

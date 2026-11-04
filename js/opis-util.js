@@ -45,7 +45,7 @@
     var bits = [];
     if (c.often && OFTEN[c.often]) bits.push(OFTEN[c.often]);
     (c.done || []).forEach(function (d) { if (DONE[d]) bits.push(DONE[d]); });
-    return '<div class="concern-note" style="margin:6px 0 2px;padding:8px 10px;background:#fce8e6;border-left:4px solid #b7410e;border-radius:0 6px 6px 0;font-size:12px;line-height:1.4;">' +
+    return '<div class="concern-note" style="margin:6px 0 2px;padding:8px 10px;background:#fce8e6;border-left:4px solid #B8001C;border-radius:0 6px 6px 0;font-size:12px;line-height:1.4;">' +
       '<b style="color:#8a2f08;">Concern raised</b>' + (reasons ? ': ' + reasons : '') +
       (bits.length ? '<div style="color:#5c2410;">' + bits.map(escH).join(" &middot; ") + '</div>' : '') +
       (c.text ? '<div style="margin-top:3px;white-space:pre-wrap;">' + escH(c.text) + '</div>' : '') + '</div>';
