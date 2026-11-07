@@ -585,6 +585,16 @@ service cloud.firestore {
       allow read, write: if isDirector();
     }
 
+    // ── Assessor / Senior Instructor sign-off (2026-11) ─────────────────────
+    // One doc per Assessor / Senior Instructor candidate (doc id = lowercased
+    // email, non-alphanumerics replaced with underscores), written from
+    // admin-assessor-si-signoff.html. There is no formal pass/fail on these
+    // courses; this is the Course Director's single sign-off per candidate.
+    // Director only, read and write.
+    match /assessor_si_signoffs/{docId} {
+      allow read, write: if isDirector();
+    }
+
     // ── Development assessments ─────────────────────────────────────────────
     // Read: any signed-in user (candidate can see their own RAG trajectory).
     // Create/update: faculty or director only.
